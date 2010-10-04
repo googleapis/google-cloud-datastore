@@ -17,7 +17,8 @@ to worry about backwards compatibility between versions of this
 experimental code. You are not required to check out the trunk,
 however I do not plan to fix bugs in older branches.
 
---Guido van Rossum (guido@google.com)
+--Guido van Rossum <guido@google.com>
+
 
 Overview
 --------
