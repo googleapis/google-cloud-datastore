@@ -89,7 +89,7 @@ class Key(object):
 
   def __getnewargs__(self):
     # TODO: app, namespace
-    return ({'flat': tuple(self.flat())},)
+    return ({'pairs': tuple(self.pairs())},)
 
   def pairs(self):
     for elem in self.__reference.path().element_list():
