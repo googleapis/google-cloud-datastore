@@ -8,6 +8,8 @@ import os
 
 from google.appengine.datastore import entity_pb
 
+from core.datastore_rpc import _positional as positional
+
 class Key(object):
   """An immutable datastore key.
 
@@ -23,18 +25,21 @@ class Key(object):
 
   __slots__ = ['__reference']
 
-  def __new__(cls, _kwargs=None, **kwargs):
-    assert cls is Key
-    if _kwargs:  # For pickling only
-      assert isinstance(_kwargs, dict)
+  def __new__(cls, *args, **kwargs):
+    if args:
+      # For pickling only: one positional argument is allowed,
+      # giving a dict specifying the keyword arguments.
       assert not kwargs
-      kwargs = _kwargs
-    pairs = kwargs.pop('pairs', None)
-    flat = kwargs.pop('flat', None)
-    reference = kwargs.pop('reference', None)
-    serialized = kwargs.pop('serialized', None)
-    urlsafe = kwargs.pop('urlsafe', None)
-    assert not kwargs
+      assert len(args) == 1
+      kwargs = args[0]
+      assert isinstance(kwargs, dict)
+    return cls.construct(**kwargs)
+
+  @classmethod
+  @positional(1)
+  def construct(cls, pairs=None, flat=None,
+                reference=None, serialized=None, urlsafe=None):
+    assert cls is Key
     howmany = (bool(pairs) + bool(flat) +
                bool(reference) + bool(serialized) + bool(urlsafe))
     assert howmany == 1
