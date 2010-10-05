@@ -11,7 +11,7 @@ from google.appengine.datastore import entity_pb
 
 from core import datastore_rpc
 
-from ndb.key import Key
+from ndb.key import Key, _ReferenceFromPairs, _DefaultAppId
 
 class ModelAdapter(datastore_rpc.AbstractAdapter):
 
@@ -100,9 +100,11 @@ class Model(object):
     pb = entity_pb.EntityProto()
     key = self.__key
     if key is None:
-      key = Key(pairs=[(self.getkind(), None)])
-    ref = key._Key__reference  # Don't copy
-    pb.mutable_key().CopyFrom(ref)
+      ref = _ReferenceFromPairs([(self.getkind(), None)], pb.mutable_key())
+      ref.set_app(_DefaultAppId())
+    else:
+      ref = key._Key__reference  # Don't copy
+      pb.mutable_key().CopyFrom(ref)
     group = pb.mutable_entity_group()
     elem = ref.path().element(0)
     if elem.id() or elem.name():

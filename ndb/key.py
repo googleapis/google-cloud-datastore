@@ -131,11 +131,12 @@ def _ConstructReference(cls, pairs=None, flat=None,
     if not serialized:
       reference = _ReferenceFromReference(reference)
   if not reference.app():
-    reference.set_app(os.getenv('APPLICATION_ID', '_'))
+    reference.set_app(_DefaultAppId())
   return reference
 
-def _ReferenceFromPairs(pairs):
-  reference = entity_pb.Reference()
+def _ReferenceFromPairs(pairs, reference=None):
+  if reference is None:
+    reference = entity_pb.Reference()
   path = reference.mutable_path()
   last = False
   for kind, idorname in pairs:
@@ -181,3 +182,6 @@ def _DecodeUrlSafe(urlsafe):
     urlsafe += '=' * (4 - mod)
   # This is 3-4x faster than urlsafe_b64decode()
   return base64.b64decode(urlsafe.replace('-', '+').replace('_', '/'))
+
+def _DefaultAppId():
+  return os.getenv('APPLICATION_ID', '_')
