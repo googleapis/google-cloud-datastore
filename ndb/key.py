@@ -33,35 +33,8 @@ class Key(object):
       assert len(args) == 1
       kwargs = args[0]
       assert isinstance(kwargs, dict)
-    return cls.construct(**kwargs)
-
-  @classmethod
-  @positional(1)
-  def construct(cls, pairs=None, flat=None,
-                reference=None, serialized=None, urlsafe=None):
-    assert cls is Key
-    howmany = (bool(pairs) + bool(flat) +
-               bool(reference) + bool(serialized) + bool(urlsafe))
-    assert howmany == 1
-    if flat or pairs:
-      if flat:
-        assert len(flat) % 2 == 0
-        pairs = [(flat[i], flat[i+1]) for i in xrange(0, len(flat), 2)]
-      assert pairs
-      reference = _ReferenceFromPairs(pairs)
-    else:
-      if urlsafe:
-        serialized = _DecodeUrlSafe(urlsafe)
-      if serialized:
-        reference = _ReferenceFromSerialized(serialized)
-      assert reference.path().element_size()
-      # TODO: assert that each element has a type and either an id or a name
-      if not serialized:
-        reference = _ReferenceFromReference(reference)
-    if not reference.app():
-      reference.set_app(os.getenv('APPLICATION_ID', '_'))
     self = super(Key, cls).__new__(cls)
-    self.__reference = reference
+    self.__reference = _ConstructReference(cls, **kwargs)
     return self
 
   def __repr__(self):
@@ -96,8 +69,10 @@ class Key(object):
     return ({'pairs': tuple(self.pairs())},)
 
   def __setstate__(self, state):
-    dummy = Key(*state)
-    self.__reference = dummy.__reference
+    assert len(state) == 1
+    kwargs = state[0]
+    assert isinstance(kwargs, dict)
+    self.__reference = _ConstructReference(self.__class__, **kwargs)
 
   def __getnewargs__(self):
     # TODO: app, namespace
@@ -157,6 +132,32 @@ def _ReferenceFromPairs(pairs):
       last = True
     else:
       assert False, 'bad idorname (%r)' % (idorname,)
+  return reference
+
+@positional(1)
+def _ConstructReference(cls, pairs=None, flat=None,
+                        reference=None, serialized=None, urlsafe=None):
+  assert cls is Key
+  howmany = (bool(pairs) + bool(flat) +
+             bool(reference) + bool(serialized) + bool(urlsafe))
+  assert howmany == 1
+  if flat or pairs:
+    if flat:
+      assert len(flat) % 2 == 0
+      pairs = [(flat[i], flat[i+1]) for i in xrange(0, len(flat), 2)]
+    assert pairs
+    reference = _ReferenceFromPairs(pairs)
+  else:
+    if urlsafe:
+      serialized = _DecodeUrlSafe(urlsafe)
+    if serialized:
+      reference = _ReferenceFromSerialized(serialized)
+    assert reference.path().element_size()
+    # TODO: assert that each element has a type and either an id or a name
+    if not serialized:
+      reference = _ReferenceFromReference(reference)
+  if not reference.app():
+    reference.set_app(os.getenv('APPLICATION_ID', '_'))
   return reference
 
 def _ReferenceFromReference(reference):
