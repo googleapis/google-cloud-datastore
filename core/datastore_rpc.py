@@ -382,7 +382,10 @@ class MultiRpc(object):
 
     This mimics the UserRPC.wait() method.
     """
-    apiproxy_stub_map.UserRPC.wait_all(self.__rpcs)
+    # XXX wait_all() requires SDK 1.3.8.
+    # apiproxy_stub_map.UserRPC.wait_all(self.__rpcs)
+    for rpc in self.__rpcs:
+      rpc.wait()
 
   def check_success(self):
     """Check success of all wrapped RPCs, failing if any of the failed.
