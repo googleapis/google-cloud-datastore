@@ -11,13 +11,12 @@ from google.appengine.datastore import entity_pb
 
 from core import datastore_rpc
 
-from ndb import key
-Key = key.Key
+from ndb.key import Key
 
 class ModelAdapter(datastore_rpc.AbstractAdapter):
 
   def pb_to_key(self, pb):
-    return key.Key(reference=pb)
+    return Key(reference=pb)
 
   def key_to_pb(self, key):
     return key.reference()
@@ -47,7 +46,12 @@ class Model(object):
     self.__key = None
     self.__values = {}
 
+  def getkind(self):
+    return self.__class__.__name__
+
   def getkey(self):
+    if self.__key is None:
+      self.__key = Key(pairs=[(self.getkind(), None)])
     return self.__key
 
   def setkey(self, key):
@@ -56,6 +60,11 @@ class Model(object):
       if self.__class__ is not Model:
         assert list(key.pairs())[-1][0] == self.__class__.__name__
     self.__key = key
+
+  def delkey(self):
+    self.__key = None
+
+  key = property(getkey, setkey, delkey)
 
   def getvalue(self, name, default=None):
     return self.__values.get(name, default)

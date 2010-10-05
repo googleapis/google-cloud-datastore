@@ -68,17 +68,17 @@ class ModelTests(unittest.TestCase):
 
   def testKey(self):
     m = model.Model()
-    self.assertEqual(m.getkey(), None)
+    self.assertEqual(m.getkey(), key.Key(flat=['Model', None]))
     k = key.Key(flat=['ParentModel', 42, 'Model', 'foobar'])
-    m.setkey(k)
-    self.assertEqual(m.getkey(), k)
-    m.setkey(None)
-    self.assertEqual(m.getkey(), None)
+    m.key = k
+    self.assertEqual(m.key, k)
+    m.delkey()
+    self.assertEqual(m.key, key.Key(flat=['Model', None]))
 
   def testSerialize(self):
     m = model.Model()
     k = key.Key(flat=['Model', 42])
-    m.setkey(k)
+    m.key = k
     m.setvalue('p', 42)
     m.setvalue('q', 'hello')
     m.setvalue('k', key.Key(flat=['Model', 42]))
@@ -91,7 +91,7 @@ class ModelTests(unittest.TestCase):
   def testIncompleteKey(self):
     m = model.Model()
     k = key.Key(flat=['Model', None])
-    m.setkey(k)
+    m.key = k
     m.setvalue('p', 42)
     pb = m.ToPb()
     m2 = model.Model()

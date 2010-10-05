@@ -32,11 +32,12 @@ class HomePage(webapp.RequestHandler):
   def post(self):
     body = self.request.get('body')
     logging.info('body=%.100r', body)
-    key = Key(flat=['Message', 'kkk'])
+    key = Key(flat=['Message', None])
     msg = Message()
-    msg.setkey(key)
+    msg.key = key
     msg.setvalue('body', body)
     msg.put()
+    logging.info('key=%r', msg.key)
     self.redirect('/')
 
 urls = [
