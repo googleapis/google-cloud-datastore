@@ -99,9 +99,10 @@ class KeyTests(unittest.TestCase):
     flat = ['Kind', 1, 'Subkind', 'foobar']
     pairs = [(flat[i], flat[i+1]) for i in xrange(0, len(flat), 2)]
     k = key.Key(flat=flat)
-    s = pickle.dumps(k, protocol=pickle.HIGHEST_PROTOCOL)
-    kk = pickle.loads(s)
-    self.assertEqual(k, kk)
+    for proto in range(pickle.HIGHEST_PROTOCOL + 1):
+      s = pickle.dumps(k, protocol=proto)
+      kk = pickle.loads(s)
+      self.assertEqual(k, kk)
 
   def testIncomplete(self):
     k = key.Key(flat=['Kind', None])

@@ -87,6 +87,13 @@ class Key(object):
       return NotImplemented
     return not self.__eq__(other)
 
+  def __getstate__(self):
+    return ({'pairs': tuple(self.pairs())},)
+
+  def __setstate__(self, state):
+    dummy = Key(*state)
+    self.__reference = dummy.__reference
+
   def __getnewargs__(self):
     # TODO: app, namespace
     return ({'pairs': tuple(self.pairs())},)
