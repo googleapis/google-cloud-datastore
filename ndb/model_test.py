@@ -68,7 +68,7 @@ class ModelTests(unittest.TestCase):
 
   def testKey(self):
     m = model.Model()
-    self.assertEqual(m.getkey(), None)
+    self.assertEqual(m.key, None)
     k = key.Key(flat=['ParentModel', 42, 'Model', 'foobar'])
     m.key = k
     self.assertEqual(m.key, k)
