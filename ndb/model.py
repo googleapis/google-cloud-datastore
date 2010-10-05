@@ -5,10 +5,34 @@ TODO: docstrings, style
 
 import calendar
 import datetime
+import logging
 
 from google.appengine.datastore import entity_pb
 
-from ndb.key import Key  # class, not module
+from core import datastore_rpc
+
+from ndb import key
+Key = key.Key
+
+class ModelAdapter(datastore_rpc.AbstractAdapter):
+
+  def pb_to_key(self, pb):
+    return key.Key(reference=pb)
+
+  def key_to_pb(self, key):
+    return key.reference()
+
+  def pb_to_entity(self, pb):
+    ent = Model()
+    ent.FromPb(pb)
+    return ent
+
+  def entity_to_pb(self, ent):
+    pb = ent.ToPb()
+    logging.info('pb = %s', pb)
+    return pb
+
+conn = datastore_rpc.Connection(adapter=ModelAdapter())
 
 class Model(object):
   """a mutable datastore entity.
@@ -104,13 +128,16 @@ class Model(object):
 
   @classmethod
   def get(cls, key):
-    raise NotYetImplemented
+    return conn.get([key])[0]
 
   def put(self):
-    raise NotYetImplemented
+    key = conn.put([self])[0]
+    if self.__key != key:
+      self.__key = key
+    return key
 
   def delete(self):
-    raise NotYetImplemented
+    conn.delete([self.key()])
 
   # TODO: queries, transaction
   # TODO: lifecycle hooks
