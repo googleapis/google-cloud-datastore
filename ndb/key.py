@@ -104,6 +104,7 @@ class Key(object):
     return self.__reference.Encode()
 
   def urlsafe(self):
+    # This is 3-4x faster than urlsafe_b64decode()
     urlsafe = base64.b64encode(self.__reference.Encode())
     return urlsafe.rstrip('=').replace('+', '-').replace('/', '_')
 
