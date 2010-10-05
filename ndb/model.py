@@ -50,8 +50,6 @@ class Model(object):
     return self.__class__.__name__
 
   def getkey(self):
-    if self.__key is None:
-      self.__key = Key(pairs=[(self.getkind(), None)])
     return self.__key
 
   def setkey(self, key):
@@ -100,13 +98,15 @@ class Model(object):
 
   def ToPb(self):
     pb = entity_pb.EntityProto()
-    if self.__key:
-      ref = self.__key._Key__reference  # Don't copy
-      pb.mutable_key().CopyFrom(ref)
-      group = pb.mutable_entity_group()
-      elem = ref.path().element(0)
-      if elem.id() or elem.name():
-        group.add_element().CopyFrom(elem)
+    key = self.__key
+    if key is None:
+      key = Key(pairs=[(self.getkind(), None)])
+    ref = key._Key__reference  # Don't copy
+    pb.mutable_key().CopyFrom(ref)
+    group = pb.mutable_entity_group()
+    elem = ref.path().element(0)
+    if elem.id() or elem.name():
+      group.add_element().CopyFrom(elem)
     for name, value in sorted(self.__values.iteritems()):
       # TODO: list properties
       serialized = _SerializeProperty(name, value)

@@ -68,12 +68,12 @@ class ModelTests(unittest.TestCase):
 
   def testKey(self):
     m = model.Model()
-    self.assertEqual(m.getkey(), key.Key(flat=['Model', None]))
+    self.assertEqual(m.getkey(), None)
     k = key.Key(flat=['ParentModel', 42, 'Model', 'foobar'])
     m.key = k
     self.assertEqual(m.key, k)
-    m.delkey()
-    self.assertEqual(m.key, key.Key(flat=['Model', None]))
+    del m.key
+    self.assertEqual(m.key, None)
 
   def testSerialize(self):
     m = model.Model()
