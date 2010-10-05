@@ -108,6 +108,32 @@ class Key(object):
     urlsafe = base64.b64encode(self.__reference.Encode())
     return urlsafe.rstrip('=').replace('+', '-').replace('/', '_')
 
+@positional(1)
+def _ConstructReference(cls, pairs=None, flat=None,
+                        reference=None, serialized=None, urlsafe=None):
+  assert cls is Key
+  howmany = (bool(pairs) + bool(flat) +
+             bool(reference) + bool(serialized) + bool(urlsafe))
+  assert howmany == 1
+  if flat or pairs:
+    if flat:
+      assert len(flat) % 2 == 0
+      pairs = [(flat[i], flat[i+1]) for i in xrange(0, len(flat), 2)]
+    assert pairs
+    reference = _ReferenceFromPairs(pairs)
+  else:
+    if urlsafe:
+      serialized = _DecodeUrlSafe(urlsafe)
+    if serialized:
+      reference = _ReferenceFromSerialized(serialized)
+    assert reference.path().element_size()
+    # TODO: assert that each element has a type and either an id or a name
+    if not serialized:
+      reference = _ReferenceFromReference(reference)
+  if not reference.app():
+    reference.set_app(os.getenv('APPLICATION_ID', '_'))
+  return reference
+
 def _ReferenceFromPairs(pairs):
   reference = entity_pb.Reference()
   path = reference.mutable_path()
@@ -133,32 +159,6 @@ def _ReferenceFromPairs(pairs):
       last = True
     else:
       assert False, 'bad idorname (%r)' % (idorname,)
-  return reference
-
-@positional(1)
-def _ConstructReference(cls, pairs=None, flat=None,
-                        reference=None, serialized=None, urlsafe=None):
-  assert cls is Key
-  howmany = (bool(pairs) + bool(flat) +
-             bool(reference) + bool(serialized) + bool(urlsafe))
-  assert howmany == 1
-  if flat or pairs:
-    if flat:
-      assert len(flat) % 2 == 0
-      pairs = [(flat[i], flat[i+1]) for i in xrange(0, len(flat), 2)]
-    assert pairs
-    reference = _ReferenceFromPairs(pairs)
-  else:
-    if urlsafe:
-      serialized = _DecodeUrlSafe(urlsafe)
-    if serialized:
-      reference = _ReferenceFromSerialized(serialized)
-    assert reference.path().element_size()
-    # TODO: assert that each element has a type and either an id or a name
-    if not serialized:
-      reference = _ReferenceFromReference(reference)
-  if not reference.app():
-    reference.set_app(os.getenv('APPLICATION_ID', '_'))
   return reference
 
 def _ReferenceFromReference(reference):
