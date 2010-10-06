@@ -119,6 +119,55 @@ property <
 >
 """
 
+NESTED_PB = """\
+key <
+  app: "_"
+  path <
+    Element {
+      type: "Person"
+      id: 0
+    }
+  >
+>
+entity_group <
+>
+property <
+  name: "address.home.city"
+  value <
+    stringValue: "Mountain View"
+  >
+  multiple: false
+>
+property <
+  name: "address.home.street"
+  value <
+    stringValue: "1600 Amphitheatre"
+  >
+  multiple: false
+>
+property <
+  name: "address.work.city"
+  value <
+    stringValue: "San Francisco"
+  >
+  multiple: false
+>
+property <
+  name: "address.work.street"
+  value <
+    stringValue: "345 Spear"
+  >
+  multiple: false
+>
+property <
+  name: "name"
+  value <
+    stringValue: "Google"
+  >
+  multiple: false
+>
+"""
+
 class ModelTests(unittest.TestCase):
 
   def testProperties(self):
@@ -243,6 +292,28 @@ class ModelTests(unittest.TestCase):
     self.assertEqual(p.address.street, '1600 Amphitheatre')
     self.assertEqual(p.address.city, 'Mountain View')
     self.assertEqual(p.address, a)
+
+  def testNestedStructuredProperty(self):
+    class Address(model.MiniModel):
+      street = model.StringProperty()
+      city = model.StringProperty()
+    class AddressPair(model.MiniModel):
+      home = Address.ToProperty()
+      work = Address.ToProperty()
+    class Person(model.Model):
+      name = model.StringProperty()
+      address = AddressPair.ToProperty()
+    model.FixUpProperties(Person)
+
+    p = Person()
+    p.name = 'Google'
+    p.address = AddressPair(home=Address(), work=Address())
+    p.address.home.city = 'Mountain View'
+    p.address.home.street = '1600 Amphitheatre'
+    p.address.work.city = 'San Francisco'
+    p.address.work.street = '345 Spear'
+    pb = p.ToPb()
+    self.assertEqual(str(pb), NESTED_PB)
 
 def main():
   unittest.main()

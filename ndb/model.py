@@ -33,10 +33,9 @@ class ModelAdapter(datastore_rpc.AbstractAdapter):
 conn = datastore_rpc.Connection(adapter=ModelAdapter())
 
 class Model(object):
-  """A mutable datastore entity.
+  """A mutable datastore entity."""
 
-  TODO: almost everything
-  """
+  # TODO: Prevent accidental attribute assignments
 
   __slots__ = ['_values', '_key']
 
@@ -425,6 +424,8 @@ class MiniModel(object):
       name = StringProperty()
       address = MiniModel.ToProperty()
   """
+
+  # TODO: Prevent accidental attribute assignments
 
   _properties = None
 
