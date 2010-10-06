@@ -315,6 +315,15 @@ class ModelTests(unittest.TestCase):
     pb = p.ToPb()
     self.assertEqual(str(pb), NESTED_PB)
 
+    p = Person()
+    p.FromPb(pb)
+    self.assertEqual(p.name, 'Google')
+    self.assertEqual(p.address.home.street, '1600 Amphitheatre')
+    self.assertEqual(p.address.home.city, 'Mountain View')
+    self.assertEqual(p.address.work.street, '345 Spear')
+    self.assertEqual(p.address.work.city, 'San Francisco')
+    
+
 def main():
   unittest.main()
 

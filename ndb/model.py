@@ -45,7 +45,7 @@ class Model(object):
   # simple aliases. That way the _ version is still accessible even if
   # the non-_ version has been obscured by a property.
 
-  # TODO: Prevent property names starting with _.
+  # TODO: Prevent property names starting with _
 
   # TODO: Distinguish between purposes: to call FromPb() or setvalue() etc.
   # TODO: Support keyword args to initialize property values
@@ -145,22 +145,23 @@ class Model(object):
     assert isinstance(pb, entity_pb.EntityProto)
     if pb.has_key():
       self._key = Key(reference=pb.key())
-    for pblist in pb.property_list(), pb.raw_property_list():
-      for pb in pblist:
-        name = pb.name()
+    for plist in pb.property_list(), pb.raw_property_list():
+      for p in plist:
+        name = p.name()
         if self._properties is not None:
+          # TODO: Distinguish py_name from db_name
           prop = self._properties.get(name)
           if prop is None and '.' in name:
             # Hackish approach to structured properties
             head, tail = name.split('.', 1)
             prop = self._properties.get(head)
           if prop is not None:
-            prop.Deserialize(self, pb)
+            prop.Deserialize(self, p)
             continue
-        assert not pb.multiple()
+        assert not p.multiple()
         # TODO: utf8 -> unicode?
         assert name not in self._values  # TODO: support list values
-        value = _DeserializeProperty(pb)
+        value = _DeserializeProperty(p)
         self._values[name] = value
 
   @classmethod
@@ -183,10 +184,10 @@ def _SerializeProperty(name, value, multiple=False):
   assert isinstance(name, basestring)
   if isinstance(name, unicode):
     name = name.encode('utf8')
-  pb = entity_pb.Property()
-  pb.set_name(name)
-  pb.set_multiple(multiple)  # Why on earth is this a required field?
-  v = pb.mutable_value()  # a PropertyValue
+  p = entity_pb.Property()
+  p.set_name(name)
+  p.set_multiple(multiple)  # Why on earth is this a required field?
+  v = p.mutable_value()  # a PropertyValue
   # TODO: use a dict mapping types to functions
   if isinstance(value, str):
     v.set_stringvalue(value)
@@ -213,23 +214,23 @@ def _SerializeProperty(name, value, multiple=False):
     ival = (long(calendar.timegm(value.timetuple()) * 1000000L) +
             value.microsecond)
     v.set_int64value(ival)
-    pb.set_meaning(entity_pb.Property.GD_WHEN)
+    p.set_meaning(entity_pb.Property.GD_WHEN)
   else:
     # TODO: blob, blobkey, user, datetime, atom types, gdata types, geopt
     assert False, type(value)
-  return pb
+  return p
 
 _EPOCH = datetime.datetime.utcfromtimestamp(0)
 
-def _DeserializeProperty(pb):
-  v = pb.value()
+def _DeserializeProperty(p):
+  v = p.value()
   if v.has_stringvalue():
     return v.stringvalue()
   elif v.has_booleanvalue():
     return v.booleanvalue()
   elif v.has_int64value():
     ival = v.int64value()
-    if pb.meaning() == entity_pb.Property.GD_WHEN:
+    if p.meaning() == entity_pb.Property.GD_WHEN:
       return _EPOCH + datetime.timedelta(microseconds=ival)
     return ival
   elif v.has_doublevalue():
@@ -245,13 +246,12 @@ def _DeserializeProperty(pb):
 ### Properties done right ###
 
 # TODO: Kill _SerializeProperty() and _DeserializeProperty() above
-# TODO: Make Property a descriptor
 # TODO: Use a metaclass to automatically call FixUpProperties()
 # TODO: More Property types
 # TODO: Generic properties (to be used by Expando models)
 # TODO: Decide on names starting with underscore
 # TODO: List properties (and Set and Dict)
-# TODO: Use a builder pattern in the [de]serialization API
+# TODO: Use a builder pattern in the [de]serialization API?
 # TODO: etc., etc., etc.
 
 class Property(object):
@@ -261,6 +261,8 @@ class Property(object):
 
   def __init__(self, db_name=None):
     # Don't set self.name -- it's set by FixUp()
+    if db_name:
+      assert '.' not in db_name  # The '.' is used elsewhere.
     self.db_name = db_name
 
   def FixUp(self, name):
@@ -298,8 +300,9 @@ class Property(object):
     if value is not None:
       self.DbSetValue(v, value)
 
-  def Deserialize(self, entity, p):
+  def Deserialize(self, entity, p, prefix=''):
     # entity <- p; p is a Property message
+    # In this class, prefix is unused.
     v = p.value()
     value = self.DbGetValue(v)
     entity._values[self.name] = value
@@ -401,17 +404,23 @@ class StructuredProperty(Property):
     for name, prop in sorted(cls._properties.iteritems()):
       prop.Serialize(value, pb, prefix + self.db_name + '.')
 
-  def Deserialize(self, entity, p):
-    # TODO: Nested minimodels; the name parsing will be different.
+  def Deserialize(self, entity, p, prefix=''):
     db_name = p.name()
-    head, tail = db_name.split('.', 1)
     subentity = entity._values.get(self.name)
     if subentity is None:
       subentity = self.minimodelclass()
       entity._values[self.name] = subentity
+    # TODO: Distinguish py_name from db_name
+    if prefix:
+      assert prefix.endswith('.')
+    n = prefix.count('.') + 1  # Nesting level
+    parts = db_name.split('.')
+    assert len(parts) > n, (prefix, db_name, parts, n)
+    tail = parts[n]
     prop = self.minimodelclass._properties.get(tail)
+    assert prop is not None, (prefix, db_name, parts, tail)
     if prop is not None:
-      prop.Deserialize(subentity, p)
+      prop.Deserialize(subentity, p, prefix + tail + '.')
 
 class MiniModel(object):
   """A reusable component of a model (may be nested).
@@ -429,7 +438,7 @@ class MiniModel(object):
 
   _properties = None
 
-  # TODO: Share some code between Model and MiniModel.
+  # TODO: Share some code between Model and MiniModel
 
   def __init__(self, **kwds):
     cls = self.__class__
