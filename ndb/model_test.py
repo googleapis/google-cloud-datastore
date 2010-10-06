@@ -98,6 +98,23 @@ class ModelTests(unittest.TestCase):
     m2.FromPb(pb)
     self.assertEqual(m2, m)
 
+  def testNewProperties(self):
+    class Model(model.Model):
+      p = model.IntegerProperty()
+      q = model.StringProperty()
+      k = model.KeyProperty()
+    model.FixUpProperties(Model)
+    ent = Model()
+    k = model.Key(flat=['Model', 42])
+    ent.key = k
+    ent.p.SetValue(ent, 42)
+    ent.q.SetValue(ent, 'hello')
+    ent.k.SetValue(ent, k)
+    self.assertEqual(ent.p.GetValue(ent), 42)
+    self.assertEqual(ent.q.GetValue(ent), 'hello')
+    pb = model.conn.adapter.entity_to_pb(ent)
+    self.assertEqual(str(pb), GOLDEN_PB)
+
 
 def main():
   unittest.main()

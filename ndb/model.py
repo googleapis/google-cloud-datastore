@@ -39,43 +39,43 @@ class Model(object):
   TODO: everything
   """
 
-  __slots__ = ['__values', '__key']
+  __slots__ = ['_values', '_key']
 
   # TODO: Distinguish between purposes: to call FromPb() or setvalue() etc.
   def __init__(self):
-    self.__key = None
-    self.__values = {}
+    self._key = None
+    self._values = {}
 
   def getkind(self):
     return self.__class__.__name__
 
   def getkey(self):
-    return self.__key
+    return self._key
 
   def setkey(self, key):
     if key is not None:
       assert isinstance(key, Key)
       if self.__class__ is not Model:
         assert list(key.pairs())[-1][0] == self.__class__.__name__
-    self.__key = key
+    self._key = key
 
   def delkey(self):
-    self.__key = None
+    self._key = None
 
   key = property(getkey, setkey, delkey)
 
   def getvalue(self, name, default=None):
-    return self.__values.get(name, default)
+    return self._values.get(name, default)
 
   def setvalue(self, name, value):
-    self.__values[name] = value
+    self._values[name] = value
 
   def delvalue(self, name):
-    if name in self.__values:
-      del self.__values[name]
+    if name in self._values:
+      del self._values[name]
 
   def propnames(self):
-    return self.__values.keys()
+    return self._values.keys()
 
   def __hash__(self):
     raise TypeError('Model is not immutable')
@@ -86,9 +86,9 @@ class Model(object):
     if other.__class__ is not self.__class__:
       return False
     # It's okay to use private names -- we're the same class
-    if self.__key != other.__key:
+    if self._key != other._key:
       return False
-    return self.__values == other.__values
+    return self._values == other._values
 
   def __ne__(self, other):
     eq = self.__eq__(other)
@@ -98,7 +98,7 @@ class Model(object):
 
   def ToPb(self):
     pb = entity_pb.EntityProto()
-    key = self.__key
+    key = self._key
     if key is None:
       ref = _ReferenceFromPairs([(self.getkind(), None)], pb.mutable_key())
       ref.set_app(_DefaultAppId())
@@ -109,7 +109,7 @@ class Model(object):
     elem = ref.path().element(0)
     if elem.id() or elem.name():
       group.add_element().CopyFrom(elem)
-    for name, value in sorted(self.__values.iteritems()):
+    for name, value in sorted(self._values.iteritems()):
       # TODO: list properties
       serialized = _SerializeProperty(name, value)
       if self._IsUnindexed(name, value):
@@ -123,19 +123,19 @@ class Model(object):
     return isinstance(value, basestring) and len(value) > 500
 
   def FromPb(self, pb):
-    assert not self.__key
-    assert not self.__values
+    assert not self._key
+    assert not self._values
     assert isinstance(pb, entity_pb.EntityProto)
     if pb.has_key():
-      self.__key = Key(reference=pb.key())
+      self._key = Key(reference=pb.key())
     for pblist in pb.property_list(), pb.raw_property_list():
       for pb in pblist:
         assert not pb.multiple()
         name = pb.name()
         # TODO: utf8 -> unicode?
-        assert name not in self.__values  # TODO: support list values
+        assert name not in self._values  # TODO: support list values
         value = _DeserializeProperty(pb)
-        self.__values[name] = value
+        self._values[name] = value
 
   @classmethod
   def get(cls, key):
@@ -143,8 +143,8 @@ class Model(object):
 
   def put(self):
     key = conn.put([self])[0]
-    if self.__key != key:
-      self.__key = key
+    if self._key != key:
+      self._key = key
     return key
 
   def delete(self):
@@ -215,3 +215,35 @@ def _DeserializeProperty(pb):
     return Key(pairs=pairs)  # TODO: app, namespace
   else:
     assert False, str(v)
+
+### Properties ###
+
+class Property(object):
+
+  def __init__(self):
+    pass
+
+  def FixUp(self, name):
+    self.name = name
+
+  def SetValue(self, entity, value):
+    # TODO: validation
+    entity._values[self.name] = value
+
+  def GetValue(self, entity):
+    return entity._values.get(self.name)
+
+class IntegerProperty(Property):
+  pass
+
+class StringProperty(Property):
+  pass
+
+class KeyProperty(Property):
+  pass
+
+def FixUpProperties(cls):
+  for name in dir(cls):
+    val = getattr(cls, name, None)
+    if isinstance(val, Property):
+      val.FixUp(name)
