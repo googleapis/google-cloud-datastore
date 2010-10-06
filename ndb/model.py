@@ -33,9 +33,9 @@ class ModelAdapter(datastore_rpc.AbstractAdapter):
 conn = datastore_rpc.Connection(adapter=ModelAdapter())
 
 class Model(object):
-  """a mutable datastore entity.
+  """A mutable datastore entity.
 
-  TODO: everything
+  TODO: almost everything
   """
 
   __slots__ = ['_values', '_key']
@@ -141,7 +141,7 @@ class Model(object):
         if self._properties is not None:
           prop = self._properties.get(name)
           if prop is not None:
-            # TODO: This may not be right for compound properties
+            # TODO: This may not be right for structured properties
             prop.Deserialize(self, pb)
             continue
         assert not pb.multiple()
@@ -235,10 +235,8 @@ def _DeserializeProperty(pb):
 # TODO: Make Property a descriptor
 # TODO: Use a metaclass to automatically call FixUpProperties()
 # TODO: More Property types
-# TODO: DbGetValue
 # TODO: Generic properties (to be used by Expando models)
 # TODO: Decide on names starting with underscore
-# TODO: Compound properties
 # TODO: List properties (and Set and Dict)
 # TODO: Use a builder pattern in the [de]serialization API
 # TODO: etc., etc., etc.
@@ -312,7 +310,6 @@ class StringProperty(Property):
       except UnicodeDecodeError:
         return raw
         
-
 class TextProperty(StringProperty):
   indexed = False
 

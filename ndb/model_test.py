@@ -157,11 +157,12 @@ class ModelTests(unittest.TestCase):
     self.assertEqual(MyModel.q.GetValue(ent), 'hello')
     self.assertEqual(MyModel.k.GetValue(ent), k)
 
-  def testUnindexedPropertySerialize(self):
+  def testUnindexedPropertySerializeDeserialize(self):
     class MyModel(model.Model):
       t = model.TextProperty()
       b = model.BlobProperty()
     model.FixUpProperties(MyModel)
+
     ent = MyModel()
     MyModel.t.SetValue(ent, u'Hello world\u1234')
     MyModel.b.SetValue(ent, '\x00\xff')
@@ -170,6 +171,13 @@ class ModelTests(unittest.TestCase):
     pb = ent.ToPb()
     self.assertEqual(str(pb), UNINDEXED_PB)
 
+    ent = MyModel()
+    ent.FromPb(pb)
+    self.assertEqual(ent.getkind(), 'MyModel')
+    k = model.Key(flat=['MyModel', None])
+    self.assertEqual(ent.key, k)
+    self.assertEqual(MyModel.t.GetValue(ent), u'Hello world\u1234')
+    self.assertEqual(MyModel.b.GetValue(ent), '\x00\xff')
 
 def main():
   unittest.main()
