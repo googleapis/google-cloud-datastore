@@ -11,7 +11,10 @@ from google.appengine.datastore import entity_pb
 
 from core import datastore_rpc
 
+# NOTE: Key is meant for export, too.
 from ndb.key import Key, _ReferenceFromPairs, _DefaultAppId
+
+kind_map = {}  # Dict mapping {kind: Model subclass}
 
 class ModelAdapter(datastore_rpc.AbstractAdapter):
 
@@ -22,7 +25,13 @@ class ModelAdapter(datastore_rpc.AbstractAdapter):
     return key.reference()
 
   def pb_to_entity(self, pb):
-    ent = Model()
+    kind = None
+    if pb.has_key():
+      key = Key(reference=pb.key())  # TODO: Avoid doing this twice
+      for kind, _ in key.pairs():
+        pass  # As a side effect, set kind to the last kind, if any
+    modelclass = kind_map.get(kind, Model)
+    ent = modelclass()
     ent.FromPb(pb)
     return ent
 
@@ -59,8 +68,9 @@ class Model(object):
     self._values = {}
 
   # TODO: Make a property 'kind'?
-  def getkind(self):
-    return self.__class__.__name__
+  @classmethod
+  def getkind(cls):
+    return cls.__name__
 
   def getkey(self):
     return self._key
@@ -338,7 +348,7 @@ class StringProperty(Property):
         return value
       except UnicodeDecodeError:
         return raw
-        
+
 class TextProperty(StringProperty):
   indexed = False
 
@@ -390,6 +400,8 @@ def FixUpProperties(cls):
       prop.FixUp(name)
       cls._properties[name] = prop
       cls._db_properties[prop.db_name] = prop
+  if issubclass(cls, Model):  # Skip this for MiniModel.
+    kind_map[cls.getkind()] = cls
 
 class StructuredProperty(Property):
 

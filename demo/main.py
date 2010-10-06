@@ -1,13 +1,12 @@
+import cgi
 import logging
+import time
 
 from google.appengine.ext import webapp
 from google.appengine.ext.webapp import util
 
-from ndb.model import Model
-from ndb.key import Key
-
-class Message(Model):
-  """A guestbook message."""
+from ndb import model
+from core import datastore_query
 
 form = """
 <script>
@@ -24,18 +23,39 @@ function focus() {
 </body>
 """
 
+class Message(model.Model):
+  """A guestbook message."""
+
+  body = model.StringProperty()
+  when = model.IntegerProperty()
+
+model.FixUpProperties(Message)
+  
+
 class HomePage(webapp.RequestHandler):
 
   def get(self):
     self.response.out.write(form)
+    order = datastore_query.PropertyOrder(
+      'when',
+      datastore_query.PropertyOrder.DESCENDING)
+    query = datastore_query.Query(kind=Message.getkind(), order=order)
+    for batch in query.run(model.conn):
+      for result in batch.results:
+        self.response.out.write('<hr>%s<p>%s</p>' %
+                                (time.ctime(result.when),
+                                 cgi.escape(result.body)))
 
   def post(self):
     body = self.request.get('body')
     logging.info('body=%.100r', body)
-    msg = Message()
-    msg.setvalue('body', body)
-    msg.put()
-    logging.info('key=%r', msg.key)
+    body = body.rstrip()
+    if body:
+      msg = Message()
+      msg.body = body
+      msg.when = int(time.time())
+      msg.put()
+      logging.info('key=%r', msg.key)
     self.redirect('/')
 
 urls = [

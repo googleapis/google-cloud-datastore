@@ -7,7 +7,7 @@ import unittest
 
 from google.appengine.datastore import entity_pb
 
-from ndb import key, model
+from ndb import model
 
 GOLDEN_PB = """\
 key <
@@ -240,7 +240,7 @@ class ModelTests(unittest.TestCase):
   def testKey(self):
     m = model.Model()
     self.assertEqual(m.key, None)
-    k = key.Key(flat=['ParentModel', 42, 'Model', 'foobar'])
+    k = model.Key(flat=['ParentModel', 42, 'Model', 'foobar'])
     m.key = k
     self.assertEqual(m.key, k)
     del m.key
@@ -248,11 +248,11 @@ class ModelTests(unittest.TestCase):
 
   def testOldSerialize(self):
     m = model.Model()
-    k = key.Key(flat=['Model', 42])
+    k = model.Key(flat=['Model', 42])
     m.key = k
     m.setvalue('p', 42)
     m.setvalue('q', 'hello')
-    m.setvalue('k', key.Key(flat=['Model', 42]))
+    m.setvalue('k', model.Key(flat=['Model', 42]))
     pb = m.ToPb()
     self.assertEqual(str(pb), GOLDEN_PB)
     m2 = model.Model()
@@ -261,7 +261,7 @@ class ModelTests(unittest.TestCase):
 
   def testIncompleteKey(self):
     m = model.Model()
-    k = key.Key(flat=['Model', None])
+    k = model.Key(flat=['Model', None])
     m.key = k
     m.setvalue('p', 42)
     pb = m.ToPb()
@@ -389,7 +389,7 @@ class ModelTests(unittest.TestCase):
       root = Node.ToProperty()
     model.FixUpProperties(Tree)
 
-    k = key.Key(flat=['Tree', None])
+    k = model.Key(flat=['Tree', None])
     tree = Tree()
     tree.key = k
     tree.root = Node(name='a',
@@ -462,6 +462,17 @@ class ModelTests(unittest.TestCase):
     self.assertEqual(p.ad.ho.ci, 'Mountain View')
     self.assertEqual(p.ad.wo.st, '345 Spear')
     self.assertEqual(p.ad.wo.ci, 'San Francisco')
+
+  def testKindMap(self):
+    model.kind_map.clear()
+    class A1(model.Model):
+      pass
+    class A2(model.Model):
+      pass
+    model.FixUpProperties(A1)
+    self.assertEqual(model.kind_map, {'A1': A1})
+    model.FixUpProperties(A2)
+    self.assertEqual(model.kind_map, {'A1': A1, 'A2': A2})
 
 def main():
   unittest.main()
