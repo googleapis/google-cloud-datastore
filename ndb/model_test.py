@@ -226,7 +226,7 @@ raw_property <
 
 class ModelTests(unittest.TestCase):
 
-  def testProperties(self):
+  def testOldProperties(self):
     m = model.Model()
     self.assertEqual(m.propnames(), [])
     self.assertEqual(m.getvalue('p'), None)
@@ -246,7 +246,7 @@ class ModelTests(unittest.TestCase):
     del m.key
     self.assertEqual(m.key, None)
 
-  def testSerialize(self):
+  def testOldSerialize(self):
     m = model.Model()
     k = key.Key(flat=['Model', 42])
     m.key = k
@@ -269,7 +269,7 @@ class ModelTests(unittest.TestCase):
     m2.FromPb(pb)
     self.assertEqual(m2, m)
 
-  def testPropertySerializeDeserialize(self):
+  def testProperty(self):
     class MyModel(model.Model):
       p = model.IntegerProperty()
       q = model.StringProperty()
@@ -297,7 +297,7 @@ class ModelTests(unittest.TestCase):
     self.assertEqual(MyModel.q.GetValue(ent), 'hello')
     self.assertEqual(MyModel.k.GetValue(ent), k)
 
-  def testUnindexedPropertySerializeDeserialize(self):
+  def testUnindexedProperty(self):
     class MyModel(model.Model):
       t = model.TextProperty()
       b = model.BlobProperty()
@@ -404,6 +404,34 @@ class ModelTests(unittest.TestCase):
     tree2 = Tree()
     tree2.FromPb(pb)
     self.assertEqual(tree2, tree)
+
+  def testRenamedProperty(self):
+    class MyModel(model.Model):
+      pp = model.IntegerProperty('p')
+      qq = model.StringProperty('q')
+      kk = model.KeyProperty('k')
+    model.FixUpProperties(MyModel)
+
+    ent = MyModel()
+    k = model.Key(flat=['MyModel', 42])
+    ent.key = k
+    MyModel.pp.SetValue(ent, 42)
+    MyModel.qq.SetValue(ent, 'hello')
+    MyModel.kk.SetValue(ent, k)
+    self.assertEqual(MyModel.pp.GetValue(ent), 42)
+    self.assertEqual(MyModel.qq.GetValue(ent), 'hello')
+    self.assertEqual(MyModel.kk.GetValue(ent), k)
+    pb = model.conn.adapter.entity_to_pb(ent)
+    self.assertEqual(str(pb), INDEXED_PB)
+
+    ent = MyModel()
+    ent.FromPb(pb)
+    self.assertEqual(ent.getkind(), 'MyModel')
+    k = model.Key(flat=['MyModel', 42])
+    self.assertEqual(ent.key, k)
+    self.assertEqual(MyModel.pp.GetValue(ent), 42)
+    self.assertEqual(MyModel.qq.GetValue(ent), 'hello')
+    self.assertEqual(MyModel.kk.GetValue(ent), k)
 
 def main():
   unittest.main()

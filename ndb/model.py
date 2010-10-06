@@ -39,7 +39,8 @@ class Model(object):
 
   __slots__ = ['_values', '_key']
 
-  _properties = None  # Set to a dict {name: Property} by FixUpProperties()
+  _properties = None  # Set to a dict by FixUpProperties()
+  _db_properties = None  # Set to a dict by FixUpProperties()
 
   # TODO: Make _ versions of all methods, and make non-_ versions
   # simple aliases. That way the _ version is still accessible even if
@@ -147,22 +148,22 @@ class Model(object):
       self._key = Key(reference=pb.key())
     for plist in pb.property_list(), pb.raw_property_list():
       for p in plist:
-        name = p.name()
-        if self._properties is not None:
-          # TODO: Distinguish py_name from db_name
-          prop = self._properties.get(name)
-          if prop is None and '.' in name:
+        db_name = p.name()
+        if self._db_properties is not None:
+          prop = self._db_properties.get(db_name)
+          if prop is None and '.' in db_name:
             # Hackish approach to structured properties
-            head, tail = name.split('.', 1)
-            prop = self._properties.get(head)
+            head, tail = db_name.split('.', 1)
+            prop = self._db_properties.get(head)
           if prop is not None:
             prop.Deserialize(self, p)
             continue
+        # TODO: Use a GenericProperty for this case
         assert not p.multiple()
         # TODO: utf8 -> unicode?
-        assert name not in self._values  # TODO: support list values
+        assert db_name not in self._values  # TODO: support list values
         value = _DeserializeProperty(p)
-        self._values[name] = value
+        self._values[db_name] = value
 
   @classmethod
   def get(cls, key):
@@ -378,12 +379,14 @@ class KeyProperty(Property):
     return Key(reference=ref)
 
 def FixUpProperties(cls):
-  cls._properties = {}
+  cls._properties = {}  # Map of {name: Property}
+  cls._db_properties = {}  # Map of {db_name: Property}
   for name in set(dir(cls)):
     prop = getattr(cls, name, None)
     if isinstance(prop, Property):
       prop.FixUp(name)
       cls._properties[name] = prop
+      cls._db_properties[prop.db_name] = prop
 
 class StructuredProperty(Property):
 
