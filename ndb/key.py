@@ -25,14 +25,13 @@ class Key(object):
 
   __slots__ = ['__reference']
 
-  def __new__(cls, *args, **kwargs):
-    if args:
+  def __new__(cls, _kwdict=None, **kwargs):
+    if _kwdict:
       # For pickling only: one positional argument is allowed,
       # giving a dict specifying the keyword arguments.
+      assert isinstance(_kwdict, dict)
       assert not kwargs
-      assert len(args) == 1
-      kwargs = args[0]
-      assert isinstance(kwargs, dict)
+      kwargs = _kwdict
     self = super(Key, cls).__new__(cls)
     self.__reference = _ConstructReference(cls, **kwargs)
     return self
