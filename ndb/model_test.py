@@ -237,6 +237,13 @@ class ModelTests(unittest.TestCase):
     pb = p.ToPb()
     self.assertEqual(str(pb), PERSON_PB)
 
+    p = Person()
+    p.FromPb(pb)
+    self.assertEqual(p.name, 'Google')
+    self.assertEqual(p.address.street, '1600 Amphitheatre')
+    self.assertEqual(p.address.city, 'Mountain View')
+    self.assertEqual(p.address, a)
+
 def main():
   unittest.main()
 

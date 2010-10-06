@@ -42,6 +42,12 @@ class Model(object):
 
   _properties = None  # Set to a dict {name: Property} by FixUpProperties()
 
+  # TODO: Make _ versions of all methods, and make non-_ versions
+  # simple aliases. That way the _ version is still accessible even if
+  # the non-_ version has been obscured by a property.
+
+  # TODO: Prevent property names starting with _.
+
   # TODO: Distinguish between purposes: to call FromPb() or setvalue() etc.
   # TODO: Support keyword args to initialize property values
   def __init__(self):
@@ -88,10 +94,8 @@ class Model(object):
     raise TypeError('Model is not immutable')
 
   def __eq__(self, other):
-    if not isinstance(other, Model):
-      return NotImplemented
     if other.__class__ is not self.__class__:
-      return False
+      return NotImplemented
     # It's okay to use private names -- we're the same class
     if self._key != other._key:
       return False
@@ -132,9 +136,10 @@ class Model(object):
     return pb
 
   def _IsUnindexed(self, name, value):
-    # TODO: Do this properly
+    # TODO: Kill this (it's subsumed by Property.indexed)
     return isinstance(value, basestring) and len(value) > 500
 
+  # TODO: Make this a class method?
   def FromPb(self, pb):
     assert not self._key
     assert not self._values
@@ -146,8 +151,11 @@ class Model(object):
         name = pb.name()
         if self._properties is not None:
           prop = self._properties.get(name)
+          if prop is None and '.' in name:
+            # Hackish approach to structured properties
+            head, tail = name.split('.', 1)
+            prop = self._properties.get(head)
           if prop is not None:
-            # TODO: This may not be right for structured properties
             prop.Deserialize(self, pb)
             continue
         assert not pb.multiple()
@@ -395,11 +403,16 @@ class StructuredProperty(Property):
       prop.Serialize(value, pb, prefix + self.db_name + '.')
 
   def Deserialize(self, entity, p):
-    XXX
-    # entity <- p; p is a Property message
-    v = p.value()
-    value = self.DbGetValue(v)
-    entity._values[self.name] = value
+    # TODO: Nested minimodels; the name parsing will be different.
+    db_name = p.name()
+    head, tail = db_name.split('.', 1)
+    subentity = entity._values.get(self.name)
+    if subentity is None:
+      subentity = self.minimodelclass()
+      entity._values[self.name] = subentity
+    prop = self.minimodelclass._properties.get(tail)
+    if prop is not None:
+      prop.Deserialize(subentity, p)
 
 class MiniModel(object):
   """A reusable component of a model (may be nested).
@@ -415,7 +428,8 @@ class MiniModel(object):
 
   _properties = None
 
-  # TODO: Share code between Model and MiniModel
+  # TODO: Share some code between Model and MiniModel.
+
   def __init__(self, **kwds):
     cls = self.__class__
     if cls._properties is None:
@@ -425,6 +439,21 @@ class MiniModel(object):
       prop = getattr(cls, name)
       assert isinstance(prop, Property)
       prop.SetValue(self, value)
+
+  def __hash__(self):
+    raise TypeError('MiniModel is not immutable')
+
+  def __eq__(self, other):
+    if other.__class__ is not self.__class__:
+      return NotImplemented
+    # It's okay to use private names -- we're the same class
+    return self._values == other._values
+
+  def __ne__(self, other):
+    eq = self.__eq__(other)
+    if eq is  NotImplemented:
+      return NotImplemented
+    return not eq
 
   @classmethod
   def ToProperty(cls):
