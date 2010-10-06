@@ -390,8 +390,8 @@ def FixUpProperties(cls):
 
 class StructuredProperty(Property):
 
-  def __init__(self, minimodelclass, db_name=None):
-    super(StructuredProperty, self).__init__(db_name=db_name)
+  def __init__(self, minimodelclass, db_name=None, indexed=None):
+    super(StructuredProperty, self).__init__(db_name=db_name, indexed=indexed)
     self.minimodelclass = minimodelclass
 
   def Serialize(self, entity, pb, prefix=''):
@@ -422,7 +422,7 @@ class StructuredProperty(Property):
     parts = db_name.split('.')
     assert len(parts) > n, (prefix, db_name, parts, n)
     tail = parts[n]
-    prop = self.minimodelclass._properties.get(tail)
+    prop = self.minimodelclass._db_properties.get(tail)
     assert prop is not None, (prefix, db_name, parts, tail)
     if prop is not None:
       prop.Deserialize(subentity, p, prefix + tail + '.')
@@ -442,12 +442,13 @@ class MiniModel(object):
   # TODO: Prevent accidental attribute assignments
 
   _properties = None
+  _db_properties = None
 
   # TODO: Share some code between Model and MiniModel
 
   def __init__(self, **kwds):
     cls = self.__class__
-    if cls._properties is None:
+    if cls._properties is None or cls._db_properties is None:
       FixUpProperties(cls)
     self._values = {}
     for name, value in kwds.iteritems():
@@ -471,6 +472,6 @@ class MiniModel(object):
     return not eq
 
   @classmethod
-  def ToProperty(cls):
-    prop = StructuredProperty(cls)
+  def ToProperty(cls, db_name=None, indexed=None):
+    prop = StructuredProperty(cls, db_name=db_name, indexed=indexed)
     return prop

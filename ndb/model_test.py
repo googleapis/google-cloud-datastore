@@ -433,6 +433,36 @@ class ModelTests(unittest.TestCase):
     self.assertEqual(MyModel.qq.GetValue(ent), 'hello')
     self.assertEqual(MyModel.kk.GetValue(ent), k)
 
+  def testRenamedStructuredProperty(self):
+    class Address(model.MiniModel):
+      st = model.StringProperty('street')
+      ci = model.StringProperty('city')
+    class AddressPair(model.MiniModel):
+      ho = Address.ToProperty('home')
+      wo = Address.ToProperty('work')
+    class Person(model.Model):
+      na = model.StringProperty('name')
+      ad = AddressPair.ToProperty('address')
+    model.FixUpProperties(Person)
+
+    p = Person()
+    p.na = 'Google'
+    p.ad = AddressPair(ho=Address(), wo=Address())
+    p.ad.ho.ci = 'Mountain View'
+    p.ad.ho.st = '1600 Amphitheatre'
+    p.ad.wo.ci = 'San Francisco'
+    p.ad.wo.st = '345 Spear'
+    pb = p.ToPb()
+    self.assertEqual(str(pb), NESTED_PB)
+
+    p = Person()
+    p.FromPb(pb)
+    self.assertEqual(p.na, 'Google')
+    self.assertEqual(p.ad.ho.st, '1600 Amphitheatre')
+    self.assertEqual(p.ad.ho.ci, 'Mountain View')
+    self.assertEqual(p.ad.wo.st, '345 Spear')
+    self.assertEqual(p.ad.wo.ci, 'San Francisco')
+
 def main():
   unittest.main()
 
