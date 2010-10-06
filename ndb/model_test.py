@@ -168,6 +168,62 @@ property <
 >
 """
 
+RECURSIVE_PB = """\
+key <
+  app: "_"
+  path <
+    Element {
+      type: "Tree"
+      id: 0
+    }
+  >
+>
+entity_group <
+>
+raw_property <
+  name: "root.left.left.name"
+  value <
+    stringValue: "a1a"
+  >
+  multiple: false
+>
+raw_property <
+  name: "root.left.name"
+  value <
+    stringValue: "a1"
+  >
+  multiple: false
+>
+raw_property <
+  name: "root.left.rite.name"
+  value <
+    stringValue: "a1b"
+  >
+  multiple: false
+>
+raw_property <
+  name: "root.name"
+  value <
+    stringValue: "a"
+  >
+  multiple: false
+>
+raw_property <
+  name: "root.rite.name"
+  value <
+    stringValue: "a2"
+  >
+  multiple: false
+>
+raw_property <
+  name: "root.rite.rite.name"
+  value <
+    stringValue: "a2b"
+  >
+  multiple: false
+>
+"""
+
 class ModelTests(unittest.TestCase):
 
   def testProperties(self):
@@ -322,7 +378,32 @@ class ModelTests(unittest.TestCase):
     self.assertEqual(p.address.home.city, 'Mountain View')
     self.assertEqual(p.address.work.street, '345 Spear')
     self.assertEqual(p.address.work.city, 'San Francisco')
-    
+
+  def testRecursiveStructuredProperty(self):
+    class Node(model.MiniModel):
+      name = model.StringProperty(indexed=False)
+    Node.left = Node.ToProperty()
+    Node.rite = Node.ToProperty()
+    model.FixUpProperties(Node)
+    class Tree(model.Model):
+      root = Node.ToProperty()
+    model.FixUpProperties(Tree)
+
+    k = key.Key(flat=['Tree', None])
+    tree = Tree()
+    tree.key = k
+    tree.root = Node(name='a',
+                     left=Node(name='a1',
+                               left=Node(name='a1a'),
+                               rite=Node(name='a1b')),
+                     rite=Node(name='a2',
+                               rite=Node(name='a2b')))
+    pb = tree.ToPb()
+    self.assertEqual(str(pb), RECURSIVE_PB)
+
+    tree2 = Tree()
+    tree2.FromPb(pb)
+    self.assertEqual(tree2, tree)
 
 def main():
   unittest.main()

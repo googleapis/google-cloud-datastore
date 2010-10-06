@@ -259,11 +259,13 @@ class Property(object):
 
   indexed = True
 
-  def __init__(self, db_name=None):
+  def __init__(self, db_name=None, indexed=None):
     # Don't set self.name -- it's set by FixUp()
     if db_name:
       assert '.' not in db_name  # The '.' is used elsewhere.
     self.db_name = db_name
+    if indexed is not None:
+      self.indexed = indexed
 
   def FixUp(self, name):
     self.name = name
@@ -467,4 +469,5 @@ class MiniModel(object):
 
   @classmethod
   def ToProperty(cls):
-    return StructuredProperty(cls)
+    prop = StructuredProperty(cls)
+    return prop
