@@ -28,7 +28,6 @@ class ModelAdapter(datastore_rpc.AbstractAdapter):
 
   def entity_to_pb(self, ent):
     pb = ent.ToPb()
-    logging.info('pb = %s', pb)
     return pb
 
 conn = datastore_rpc.Connection(adapter=ModelAdapter())
@@ -224,6 +223,8 @@ def _DeserializeProperty(pb):
 
 class Property(object):
 
+  indexed = True
+
   def __init__(self, db_name=None):
     # Don't set self.name -- it's set by FixUp()
     self.db_name = db_name
@@ -242,7 +243,10 @@ class Property(object):
 
   def Serialize(self, entity, pb):
     value = entity._values.get(self.name)
-    p = pb.add_property()
+    if self.indexed:
+      p = pb.add_property()
+    else:
+      p = pb.add_raw_property()
     p.set_name(self.db_name)
     p.set_multiple(False)
     v = p.mutable_value()
@@ -261,6 +265,16 @@ class StringProperty(Property):
     assert isinstance(value, basestring)
     if isinstance(value, unicode):
       value = value.encode('utf-8')
+    v.set_stringvalue(value)
+
+class TextProperty(StringProperty):
+  indexed = False
+
+class BlobProperty(Property):
+  indexed = False
+
+  def DbSetValue(self, v, value):
+    assert isinstance(value, str)
     v.set_stringvalue(value)
 
 class KeyProperty(Property):

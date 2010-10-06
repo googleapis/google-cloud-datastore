@@ -54,6 +54,34 @@ property <
 >
 """
 
+UNINDEXED_PB = """\
+key <
+  app: "_"
+  path <
+    Element {
+      type: "MyModel"
+      id: 0
+    }
+  >
+>
+entity_group <
+>
+raw_property <
+  name: "b"
+  value <
+    stringValue: "\\000\\377"
+  >
+  multiple: false
+>
+raw_property <
+  name: "t"
+  value <
+    stringValue: "Hello world\\341\\210\\264"
+  >
+  multiple: false
+>
+"""
+
 class ModelTests(unittest.TestCase):
 
   def testProperties(self):
@@ -115,6 +143,19 @@ class ModelTests(unittest.TestCase):
     self.assertEqual(ent.q.GetValue(ent), 'hello')
     pb = model.conn.adapter.entity_to_pb(ent)
     self.assertEqual(str(pb), re.sub('Model', 'MyModel', GOLDEN_PB))
+
+  def testUnindexedProperties(self):
+    class MyModel(model.Model):
+      t = model.TextProperty()
+      b = model.BlobProperty()
+    model.FixUpProperties(MyModel)
+    ent = MyModel()
+    ent.t.SetValue(ent, u'Hello world\u1234')
+    ent.b.SetValue(ent, '\x00\xff')
+    self.assertEqual(ent.t.GetValue(ent), u'Hello world\u1234')
+    self.assertEqual(ent.b.GetValue(ent), '\x00\xff')
+    pb = ent.ToPb()
+    self.assertEqual(str(pb), UNINDEXED_PB)
 
 
 def main():
