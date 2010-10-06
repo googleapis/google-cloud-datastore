@@ -109,13 +109,17 @@ class Model(object):
     elem = ref.path().element(0)
     if elem.id() or elem.name():
       group.add_element().CopyFrom(elem)
-    for name, value in sorted(self._values.iteritems()):
-      # TODO: list properties
-      serialized = _SerializeProperty(name, value)
-      if self._IsUnindexed(name, value):
-        pb.raw_property_list().append(serialized)
-      else:
-        pb.property_list().append(serialized)
+    if hasattr(self, '_properties'):
+      for name, prop in sorted(self._properties.iteritems()):
+        prop.Serialize(self, pb)
+    else:
+      for name, value in sorted(self._values.iteritems()):
+        # TODO: list properties
+        serialized = _SerializeProperty(name, value)
+        if self._IsUnindexed(name, value):
+          pb.raw_property_list().append(serialized)
+        else:
+          pb.property_list().append(serialized)
     return pb
 
   def _IsUnindexed(self, name, value):
@@ -220,11 +224,14 @@ def _DeserializeProperty(pb):
 
 class Property(object):
 
-  def __init__(self):
-    pass
+  def __init__(self, db_name=None):
+    # Don't set self.name -- it's set by FixUp()
+    self.db_name = db_name
 
   def FixUp(self, name):
     self.name = name
+    if self.db_name is None:
+      self.db_name = name
 
   def SetValue(self, entity, value):
     # TODO: validation
@@ -233,17 +240,46 @@ class Property(object):
   def GetValue(self, entity):
     return entity._values.get(self.name)
 
+  def Serialize(self, entity, pb):
+    value = entity._values.get(self.name)
+    p = pb.add_property()
+    p.set_name(self.db_name)
+    p.set_multiple(False)
+    v = p.mutable_value()
+    if value is not None:
+      self.DbSetValue(v, value)
+
 class IntegerProperty(Property):
-  pass
+
+  def DbSetValue(self, v, value):
+    assert isinstance(value, (bool, int, long))
+    v.set_int64value(value)
 
 class StringProperty(Property):
-  pass
+
+  def DbSetValue(self, v, value):
+    assert isinstance(value, basestring)
+    if isinstance(value, unicode):
+      value = value.encode('utf-8')
+    v.set_stringvalue(value)
 
 class KeyProperty(Property):
-  pass
+
+  def DbSetValue(self, v, value):
+    assert isinstance(value, Key)
+    # See datastore_types.PackKey
+    ref = value._Key__reference  # Don't copy
+    rv = v.mutable_referencevalue()  # A Reference
+    rv.set_app(ref.app())
+    if ref.has_name_space():
+      rv.set_name_space()
+    for elem in ref.path().element_list():
+      rv.add_pathelement().CopyFrom(elem)
 
 def FixUpProperties(cls):
-  for name in dir(cls):
-    val = getattr(cls, name, None)
-    if isinstance(val, Property):
-      val.FixUp(name)
+  cls._properties = {}
+  for name in set(dir(cls)):
+    prop = getattr(cls, name, None)
+    if isinstance(prop, Property):
+      prop.FixUp(name)
+      cls._properties[name] = prop

@@ -2,6 +2,7 @@
 
 import base64
 import pickle
+import re
 import unittest
 
 from google.appengine.datastore import entity_pb
@@ -99,13 +100,13 @@ class ModelTests(unittest.TestCase):
     self.assertEqual(m2, m)
 
   def testNewProperties(self):
-    class Model(model.Model):
+    class MyModel(model.Model):
       p = model.IntegerProperty()
       q = model.StringProperty()
       k = model.KeyProperty()
-    model.FixUpProperties(Model)
-    ent = Model()
-    k = model.Key(flat=['Model', 42])
+    model.FixUpProperties(MyModel)
+    ent = MyModel()
+    k = model.Key(flat=['MyModel', 42])
     ent.key = k
     ent.p.SetValue(ent, 42)
     ent.q.SetValue(ent, 'hello')
@@ -113,7 +114,7 @@ class ModelTests(unittest.TestCase):
     self.assertEqual(ent.p.GetValue(ent), 42)
     self.assertEqual(ent.q.GetValue(ent), 'hello')
     pb = model.conn.adapter.entity_to_pb(ent)
-    self.assertEqual(str(pb), GOLDEN_PB)
+    self.assertEqual(str(pb), re.sub('Model', 'MyModel', GOLDEN_PB))
 
 
 def main():
