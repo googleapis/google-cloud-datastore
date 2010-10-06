@@ -379,11 +379,14 @@ class KeyProperty(Property):
     return Key(reference=ref)
 
 def FixUpProperties(cls):
+  # NOTE: This may be called multiple times if properties are
+  # dynamically added to the class.
   cls._properties = {}  # Map of {name: Property}
   cls._db_properties = {}  # Map of {db_name: Property}
   for name in set(dir(cls)):
     prop = getattr(cls, name, None)
     if isinstance(prop, Property):
+      assert not name.startswith('_')
       prop.FixUp(name)
       cls._properties[name] = prop
       cls._db_properties[prop.db_name] = prop
