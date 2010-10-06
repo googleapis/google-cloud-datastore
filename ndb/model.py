@@ -40,11 +40,14 @@ class Model(object):
 
   __slots__ = ['_values', '_key']
 
+  _properties = None  # Set to a dict {name: Property} by FixUpProperties()
+
   # TODO: Distinguish between purposes: to call FromPb() or setvalue() etc.
   def __init__(self):
     self._key = None
     self._values = {}
 
+  # TODO: Make a property 'kind'?
   def getkind(self):
     return self.__class__.__name__
 
@@ -108,10 +111,11 @@ class Model(object):
     elem = ref.path().element(0)
     if elem.id() or elem.name():
       group.add_element().CopyFrom(elem)
-    if hasattr(self, '_properties'):
+    if self._properties is not None:
       for name, prop in sorted(self._properties.iteritems()):
         prop.Serialize(self, pb)
     else:
+      # TODO: Change this to only do "orphan" values
       for name, value in sorted(self._values.iteritems()):
         # TODO: list properties
         serialized = _SerializeProperty(name, value)
@@ -133,8 +137,14 @@ class Model(object):
       self._key = Key(reference=pb.key())
     for pblist in pb.property_list(), pb.raw_property_list():
       for pb in pblist:
-        assert not pb.multiple()
         name = pb.name()
+        if self._properties is not None:
+          prop = self._properties.get(name)
+          if prop is not None:
+            # TODO: This may not be right for compound properties
+            prop.Deserialize(self, pb)
+            continue
+        assert not pb.multiple()
         # TODO: utf8 -> unicode?
         assert name not in self._values  # TODO: support list values
         value = _DeserializeProperty(pb)
@@ -219,9 +229,22 @@ def _DeserializeProperty(pb):
   else:
     assert False, str(v)
 
-### Properties ###
+### Properties done right ###
+
+# TODO: Kill _SerializeProperty() and _DeserializeProperty() above
+# TODO: Make Property a descriptor
+# TODO: Use a metaclass to automatically call FixUpProperties()
+# TODO: More Property types
+# TODO: DbGetValue
+# TODO: Generic properties (to be used by Expando models)
+# TODO: Decide on names starting with underscore
+# TODO: Compound properties
+# TODO: List properties (and Set and Dict)
+# TODO: Use a builder pattern in the [de]serialization API
+# TODO: etc., etc., etc.
 
 class Property(object):
+  # TODO: Separate 'simple' properties from base Property class
 
   indexed = True
 
@@ -242,6 +265,7 @@ class Property(object):
     return entity._values.get(self.name)
 
   def Serialize(self, entity, pb):
+    # entity -> pb; pb is an EntityProto message
     value = entity._values.get(self.name)
     if self.indexed:
       p = pb.add_property()
@@ -253,11 +277,20 @@ class Property(object):
     if value is not None:
       self.DbSetValue(v, value)
 
+  def Deserialize(self, entity, p):
+    # entity <- p; p is a Property message
+    v = p.value()
+    value = self.DbGetValue(v)
+    entity._values[self.name] = value
+
 class IntegerProperty(Property):
 
   def DbSetValue(self, v, value):
     assert isinstance(value, (bool, int, long))
     v.set_int64value(value)
+
+  def DbGetValue(self, v):
+    return int(v.int64value())
 
 class StringProperty(Property):
 
@@ -266,6 +299,19 @@ class StringProperty(Property):
     if isinstance(value, unicode):
       value = value.encode('utf-8')
     v.set_stringvalue(value)
+
+  def DbGetValue(self, v):
+    raw = v.stringvalue()
+    try:
+      raw.decode('ascii')
+      return raw  # Don't bother with Unicode in this case
+    except UnicodeDecodeError:
+      try:
+        value = raw.decode('utf-8')
+        return value
+      except UnicodeDecodeError:
+        return raw
+        
 
 class TextProperty(StringProperty):
   indexed = False
@@ -277,7 +323,11 @@ class BlobProperty(Property):
     assert isinstance(value, str)
     v.set_stringvalue(value)
 
+  def DbGetValue(self, v):
+    return v.stringvalue()
+
 class KeyProperty(Property):
+  # TODO: namespaces
 
   def DbSetValue(self, v, value):
     assert isinstance(value, Key)
@@ -286,9 +336,21 @@ class KeyProperty(Property):
     rv = v.mutable_referencevalue()  # A Reference
     rv.set_app(ref.app())
     if ref.has_name_space():
-      rv.set_name_space()
+      rv.set_name_space(ref.name_space())
     for elem in ref.path().element_list():
       rv.add_pathelement().CopyFrom(elem)
+
+  def DbGetValue(self, v):
+    ref = entity_pb.Reference()
+    rv = v.referencevalue()
+    if rv.has_app():
+      ref.set_app(rv.app())
+    if rv.has_name_space():
+      ref.set_name_space(rv.name_space())
+    path = ref.mutable_path()
+    for elem in rv.pathelement_list():
+      path.add_element().CopyFrom(elem)
+    return Key(reference=ref)
 
 def FixUpProperties(cls):
   cls._properties = {}

@@ -54,6 +54,8 @@ property <
 >
 """
 
+INDEXED_PB = re.sub('Model', 'MyModel', GOLDEN_PB)
+
 UNINDEXED_PB = """\
 key <
   app: "_"
@@ -127,33 +129,44 @@ class ModelTests(unittest.TestCase):
     m2.FromPb(pb)
     self.assertEqual(m2, m)
 
-  def testNewProperties(self):
+  def testPropertySerializeDeserialize(self):
     class MyModel(model.Model):
       p = model.IntegerProperty()
       q = model.StringProperty()
       k = model.KeyProperty()
     model.FixUpProperties(MyModel)
+
     ent = MyModel()
     k = model.Key(flat=['MyModel', 42])
     ent.key = k
-    ent.p.SetValue(ent, 42)
-    ent.q.SetValue(ent, 'hello')
-    ent.k.SetValue(ent, k)
-    self.assertEqual(ent.p.GetValue(ent), 42)
-    self.assertEqual(ent.q.GetValue(ent), 'hello')
+    MyModel.p.SetValue(ent, 42)
+    MyModel.q.SetValue(ent, 'hello')
+    MyModel.k.SetValue(ent, k)
+    self.assertEqual(MyModel.p.GetValue(ent), 42)
+    self.assertEqual(MyModel.q.GetValue(ent), 'hello')
+    self.assertEqual(MyModel.k.GetValue(ent), k)
     pb = model.conn.adapter.entity_to_pb(ent)
-    self.assertEqual(str(pb), re.sub('Model', 'MyModel', GOLDEN_PB))
+    self.assertEqual(str(pb), INDEXED_PB)
 
-  def testUnindexedProperties(self):
+    ent = MyModel()
+    ent.FromPb(pb)
+    self.assertEqual(ent.getkind(), 'MyModel')
+    k = model.Key(flat=['MyModel', 42])
+    self.assertEqual(ent.key, k)
+    self.assertEqual(MyModel.p.GetValue(ent), 42)
+    self.assertEqual(MyModel.q.GetValue(ent), 'hello')
+    self.assertEqual(MyModel.k.GetValue(ent), k)
+
+  def testUnindexedPropertySerialize(self):
     class MyModel(model.Model):
       t = model.TextProperty()
       b = model.BlobProperty()
     model.FixUpProperties(MyModel)
     ent = MyModel()
-    ent.t.SetValue(ent, u'Hello world\u1234')
-    ent.b.SetValue(ent, '\x00\xff')
-    self.assertEqual(ent.t.GetValue(ent), u'Hello world\u1234')
-    self.assertEqual(ent.b.GetValue(ent), '\x00\xff')
+    MyModel.t.SetValue(ent, u'Hello world\u1234')
+    MyModel.b.SetValue(ent, '\x00\xff')
+    self.assertEqual(MyModel.t.GetValue(ent), u'Hello world\u1234')
+    self.assertEqual(MyModel.b.GetValue(ent), '\x00\xff')
     pb = ent.ToPb()
     self.assertEqual(str(pb), UNINDEXED_PB)
 
