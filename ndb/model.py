@@ -43,7 +43,12 @@ class Model(object):
   _properties = None  # Set to a dict {name: Property} by FixUpProperties()
 
   # TODO: Distinguish between purposes: to call FromPb() or setvalue() etc.
+  # TODO: Support keyword args to initialize property values
   def __init__(self):
+    # TODO: Enable this code (it currently breaks some old tests)
+##     cls = self.__class__
+##     if cls._properties is None:
+##       FixUpProperties(cls)
     self._key = None
     self._values = {}
 
@@ -112,6 +117,7 @@ class Model(object):
     if elem.id() or elem.name():
       group.add_element().CopyFrom(elem)
     if self._properties is not None:
+      # TODO: Sort by property declaration order
       for name, prop in sorted(self._properties.iteritems()):
         prop.Serialize(self, pb)
     else:
@@ -262,14 +268,24 @@ class Property(object):
   def GetValue(self, entity):
     return entity._values.get(self.name)
 
-  def Serialize(self, entity, pb):
+  def __get__(self, obj, cls=None):
+    if obj is None:
+      return self  # __get__ called on class
+    return self.GetValue(obj)
+
+  def __set__(self, obj, value):
+    self.SetValue(obj, value)
+
+  # TODO: __delete__
+
+  def Serialize(self, entity, pb, prefix=''):
     # entity -> pb; pb is an EntityProto message
     value = entity._values.get(self.name)
     if self.indexed:
       p = pb.add_property()
     else:
       p = pb.add_raw_property()
-    p.set_name(self.db_name)
+    p.set_name(prefix + self.db_name)
     p.set_multiple(False)
     v = p.mutable_value()
     if value is not None:
@@ -356,3 +372,60 @@ def FixUpProperties(cls):
     if isinstance(prop, Property):
       prop.FixUp(name)
       cls._properties[name] = prop
+
+class StructuredProperty(Property):
+
+  def __init__(self, minimodelclass, db_name=None):
+    super(StructuredProperty, self).__init__(db_name=db_name)
+    self.minimodelclass = minimodelclass
+
+  def Serialize(self, entity, pb, prefix=''):
+    # entity -> pb; pb is an EntityProto message
+    value = entity._values.get(self.name)
+    if value is None:
+      # TODO: Is this the right thing for queries?
+      # Skip structured values that are None.
+      return
+    cls = self.minimodelclass
+    assert isinstance(value, cls)
+    if cls._properties is None:
+      FixUpProperties(cls)
+    # TODO: Sort by property declaration order
+    for name, prop in sorted(cls._properties.iteritems()):
+      prop.Serialize(value, pb, prefix + self.db_name + '.')
+
+  def Deserialize(self, entity, p):
+    XXX
+    # entity <- p; p is a Property message
+    v = p.value()
+    value = self.DbGetValue(v)
+    entity._values[self.name] = value
+
+class MiniModel(object):
+  """A reusable component of a model (may be nested).
+
+  Example:
+    class Address(MiniModel):
+      street = StringProperty()
+      city = StringProperty()
+    class Person(Model):
+      name = StringProperty()
+      address = MiniModel.ToProperty()
+  """
+
+  _properties = None
+
+  # TODO: Share code between Model and MiniModel
+  def __init__(self, **kwds):
+    cls = self.__class__
+    if cls._properties is None:
+      FixUpProperties(cls)
+    self._values = {}
+    for name, value in kwds.iteritems():
+      prop = getattr(cls, name)
+      assert isinstance(prop, Property)
+      prop.SetValue(self, value)
+
+  @classmethod
+  def ToProperty(cls):
+    return StructuredProperty(cls)

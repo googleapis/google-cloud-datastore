@@ -84,6 +84,41 @@ raw_property <
 >
 """
 
+PERSON_PB = """\
+key <
+  app: "_"
+  path <
+    Element {
+      type: "Person"
+      id: 0
+    }
+  >
+>
+entity_group <
+>
+property <
+  name: "address.city"
+  value <
+    stringValue: "Mountain View"
+  >
+  multiple: false
+>
+property <
+  name: "address.street"
+  value <
+    stringValue: "1600 Amphitheatre"
+  >
+  multiple: false
+>
+property <
+  name: "name"
+  value <
+    stringValue: "Google"
+  >
+  multiple: false
+>
+"""
+
 class ModelTests(unittest.TestCase):
 
   def testProperties(self):
@@ -178,6 +213,29 @@ class ModelTests(unittest.TestCase):
     self.assertEqual(ent.key, k)
     self.assertEqual(MyModel.t.GetValue(ent), u'Hello world\u1234')
     self.assertEqual(MyModel.b.GetValue(ent), '\x00\xff')
+
+  def testStructuredProperty(self):
+    class Address(model.MiniModel):
+      street = model.StringProperty()
+      city = model.StringProperty()
+    class Person(model.Model):
+      name = model.StringProperty()
+      address = Address.ToProperty()
+    model.FixUpProperties(Person)
+
+    p = Person()
+    p.name = 'Google'
+    a = Address(street='1600 Amphitheatre')
+    p.address = a
+    p.address.city = 'Mountain View'
+    self.assertEqual(Person.name.GetValue(p), 'Google')
+    self.assertEqual(p.name, 'Google')
+    self.assertEqual(Person.address.GetValue(p), a)
+    self.assertEqual(Address.street.GetValue(a), '1600 Amphitheatre')
+    self.assertEqual(Address.city.GetValue(a), 'Mountain View')
+
+    pb = p.ToPb()
+    self.assertEqual(str(pb), PERSON_PB)
 
 def main():
   unittest.main()
