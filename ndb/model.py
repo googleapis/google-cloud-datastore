@@ -1,4 +1,4 @@
-"""Model class and associated stuff.
+"""Model and Property classes and associated stuff.
 
 TODO: docstrings, style, asserts
 """
@@ -46,15 +46,18 @@ class Model(object):
 
   # TODO: Prevent accidental attribute assignments
 
-  _properties = None  # Set to a dict by FixUpProperties()
-  _db_properties = None  # Set to a dict by FixUpProperties()
+  # Class variables updated by FixUpProperties()
+  _properties = None
+  _db_properties = None
   _has_repeated = False
+
+  # Defaults for instance variables.
+  _key = None
+  _values = None
 
   # TODO: Make _ versions of all methods, and make non-_ versions
   # simple aliases. That way the _ version is still accessible even if
   # the non-_ version has been obscured by a property.
-
-  # TODO: Prevent property names starting with _
 
   # TODO: Distinguish between purposes: to call FromPb() or setvalue() etc.
   # TODO: Support keyword args to initialize property values
@@ -76,33 +79,20 @@ class Model(object):
   def getkind(cls):
     return cls.__name__
 
-  def getkey(self):
+  def _getkey(self):
     return self._key
 
-  def setkey(self, key):
+  def _setkey(self, key):
     if key is not None:
       assert isinstance(key, Key)
       if self.__class__ is not Model:
-        assert list(key.pairs())[-1][0] == self.__class__.__name__
+        assert list(key.pairs())[-1][0] == self.getkind()
     self._key = key
 
-  def delkey(self):
+  def _delkey(self):
     self._key = None
 
-  key = property(getkey, setkey, delkey)
-
-  def getvalue(self, name, default=None):
-    return self._values.get(name, default)
-
-  def setvalue(self, name, value):
-    self._values[name] = value
-
-  def delvalue(self, name):
-    if name in self._values:
-      del self._values[name]
-
-  def propnames(self):
-    return self._values.keys()
+  key = property(_getkey, _setkey, _delkey)
 
   def __hash__(self):
     raise TypeError('Model is not immutable')
@@ -134,24 +124,11 @@ class Model(object):
     elem = ref.path().element(0)
     if elem.id() or elem.name():
       group.add_element().CopyFrom(elem)
-    if self._properties is not None:
+    if self._properties:
       # TODO: Sort by property declaration order
       for name, prop in sorted(self._properties.iteritems()):
         prop.Serialize(self, pb)
-    else:
-      # TODO: Change this to only do "orphan" values
-      for name, value in sorted(self._values.iteritems()):
-        # TODO: list properties
-        serialized = _SerializeProperty(name, value)
-        if self._IsUnindexed(name, value):
-          pb.raw_property_list().append(serialized)
-        else:
-          pb.property_list().append(serialized)
     return pb
-
-  def _IsUnindexed(self, name, value):
-    # TODO: Kill this (it's subsumed by Property.indexed)
-    return isinstance(value, basestring) and len(value) > 500
 
   # TODO: Make this a class method?
   def FromPb(self, pb):
@@ -163,7 +140,7 @@ class Model(object):
     for plist in pb.property_list(), pb.raw_property_list():
       for p in plist:
         db_name = p.name()
-        if self._db_properties is not None:
+        if self._db_properties:
           prop = self._db_properties.get(db_name)
           if prop is None and '.' in db_name:
             # Hackish approach to structured properties
@@ -172,12 +149,8 @@ class Model(object):
           if prop is not None:
             prop.Deserialize(self, p)
             continue
-        # TODO: Use a GenericProperty for this case
-        assert not p.multiple()
-        # TODO: utf8 -> unicode?
-        assert db_name not in self._values  # TODO: support list values
-        value = _DeserializeProperty(p)
-        self._values[db_name] = value
+
+  # TODO: Move db methods out of this class?
 
   @classmethod
   def get(cls, key):
@@ -192,8 +165,7 @@ class Model(object):
   def delete(self):
     conn.delete([self.key()])
 
-  # TODO: queries, transaction
-  # TODO: lifecycle hooks
+# TODO: Remove the following after I've added orphan properties
 
 def _SerializeProperty(name, value, multiple=False):
   assert isinstance(name, basestring)
@@ -258,13 +230,9 @@ def _DeserializeProperty(p):
   else:
     assert False, str(v)
 
-### Properties done right ###
-
-# TODO: Kill _SerializeProperty() and _DeserializeProperty() above
 # TODO: Use a metaclass to automatically call FixUpProperties()
 # TODO: More Property types
-# TODO: Generic properties (to be used by Expando models)
-# TODO: Split Property into Property and SimpleProperty
+# TODO: Orphan properties
 
 class Property(object):
   # TODO: Separate 'simple' properties from base Property class
