@@ -301,6 +301,56 @@ property <
 >
 """
 
+# NOTE: When a structured property is repeated its fields are not marked so.
+MULTISTRUCT_PB = """\
+key <
+  app: "_"
+  path <
+    Element {
+      type: "Person"
+      id: 0
+    }
+  >
+>
+entity_group <
+>
+property <
+  name: "address.label"
+  value <
+    stringValue: "work"
+  >
+  multiple: false
+>
+property <
+  name: "address.text"
+  value <
+    stringValue: "San Francisco"
+  >
+  multiple: false
+>
+property <
+  name: "address.label"
+  value <
+    stringValue: "home"
+  >
+  multiple: false
+>
+property <
+  name: "address.text"
+  value <
+    stringValue: "Mountain View"
+  >
+  multiple: false
+>
+property <
+  name: "name"
+  value <
+    stringValue: "Google"
+  >
+  multiple: false
+>
+"""
+
 class ModelTests(unittest.TestCase):
 
   def testOldProperties(self):
@@ -589,6 +639,37 @@ class ModelTests(unittest.TestCase):
     m2 = Person()
     m2.FromPb(pb)
     self.assertEqual(m2, m)
+
+  def testMultipleStructuredProperty(self):
+    class Address(model.Model):
+      label = model.StringProperty()
+      text = model.StringProperty()
+    class Person(model.Model):
+      name = model.StringProperty()
+      address = model.StructuredProperty(Address, repeated=True)
+    model.FixUpProperties(Person)
+
+    m = Person(name='Google',
+               address=[Address(label='work', text='San Francisco'),
+                        Address(label='home', text='Mountain View')])
+    m.key = model.Key(flat=['Person', None])
+    self.assertEqual(m.address[0].label, 'work')
+    self.assertEqual(m.address[0].text, 'San Francisco')
+    self.assertEqual(m.address[1].label, 'home')
+    self.assertEqual(m.address[1].text, 'Mountain View')
+    pb = m.ToPb()
+    self.assertEqual(str(pb), MULTISTRUCT_PB)
+
+##     m2 = Person()
+##     m2.FromPb(pb)
+##     assert m2 == m
+##     self.assertEqual(m2, m)
+
+  def testCannotMultipleInMultiple(self):
+    class Inner(model.Model):
+      innerval = model.StringProperty(repeated=True)
+    self.assertRaises(AssertionError, 
+                      model.StructuredProperty, Inner, repeated=True)
 
 def main():
   unittest.main()

@@ -48,6 +48,7 @@ class Model(object):
 
   _properties = None  # Set to a dict by FixUpProperties()
   _db_properties = None  # Set to a dict by FixUpProperties()
+  _has_repeated = False
 
   # TODO: Make _ versions of all methods, and make non-_ versions
   # simple aliases. That way the _ version is still accessible even if
@@ -309,6 +310,7 @@ class Property(object):
 
   def Serialize(self, entity, pb, prefix=''):
     # entity -> pb; pb is an EntityProto message
+    # TODO: None vs. empty list
     value = entity._values.get(self.name)
     if self.repeated:
       assert isinstance(value, list)
@@ -423,6 +425,8 @@ def FixUpProperties(cls):
     if isinstance(prop, Property):
       assert not name.startswith('_')
       prop.FixUp(name)
+      if prop.repeated:
+        cls._has_repeated = True
       cls._properties[name] = prop
       cls._db_properties[prop.db_name] = prop
   if issubclass(cls, Model):
@@ -430,8 +434,14 @@ def FixUpProperties(cls):
 
 class StructuredProperty(Property):
 
-  def __init__(self, minimodelclass, db_name=None, indexed=None):
-    super(StructuredProperty, self).__init__(db_name=db_name, indexed=indexed)
+  def __init__(self, minimodelclass, db_name=None, indexed=None,
+               repeated=None):
+    if repeated:
+      if minimodelclass._properties is None:
+        FixUpProperties(minimodelclass)
+      assert not minimodelclass._has_repeated
+    super(StructuredProperty, self).__init__(db_name=db_name, indexed=indexed,
+                                             repeated=repeated)
     self.minimodelclass = minimodelclass
 
   def Serialize(self, entity, pb, prefix=''):
@@ -442,12 +452,19 @@ class StructuredProperty(Property):
       # Skip structured values that are None.
       return
     cls = self.minimodelclass
-    assert isinstance(value, cls)
     if cls._properties is None:
       FixUpProperties(cls)
+    if self.repeated:
+      assert isinstance(value, list)
+      values = value
+    else:
+      assert isinstance(value, cls)
+      values = [value]
     # TODO: Sort by property declaration order
-    for name, prop in sorted(cls._properties.iteritems()):
-      prop.Serialize(value, pb, prefix + self.db_name + '.')
+    items = sorted(cls._properties.iteritems())
+    for value in values:
+      for name, prop in items:
+        prop.Serialize(value, pb, prefix + self.db_name + '.')
 
   def Deserialize(self, entity, p, prefix=''):
     db_name = p.name()
