@@ -660,10 +660,9 @@ class ModelTests(unittest.TestCase):
     pb = m.ToPb()
     self.assertEqual(str(pb), MULTISTRUCT_PB)
 
-##     m2 = Person()
-##     m2.FromPb(pb)
-##     assert m2 == m
-##     self.assertEqual(m2, m)
+    m2 = Person()
+    m2.FromPb(pb)
+    self.assertEqual(m2, m)
 
   def testCannotMultipleInMultiple(self):
     class Inner(model.Model):

@@ -1,6 +1,6 @@
 """Model class and associated stuff.
 
-TODO: docstrings, style
+TODO: docstrings, style, asserts
 """
 
 import calendar
@@ -468,11 +468,6 @@ class StructuredProperty(Property):
 
   def Deserialize(self, entity, p, prefix=''):
     db_name = p.name()
-    subentity = entity._values.get(self.name)
-    if subentity is None:
-      subentity = self.minimodelclass()
-      entity._values[self.name] = subentity
-    # TODO: Distinguish py_name from db_name
     if prefix:
       assert prefix.endswith('.')
     n = prefix.count('.') + 1  # Nesting level
@@ -481,5 +476,27 @@ class StructuredProperty(Property):
     tail = parts[n]
     prop = self.minimodelclass._db_properties.get(tail)
     assert prop is not None, (prefix, db_name, parts, tail)
-    if prop is not None:
-      prop.Deserialize(subentity, p, prefix + tail + '.')
+    if self.repeated:
+      if self.name in entity._values:
+        values = entity._values[self.name]
+        if not isinstance(values, list):
+          values = [values]
+      else:
+        values = []
+      entity._values[self.name] = values
+      # Find the first subentity that doesn't have a value for this
+      # property yet.
+      for sub in values:
+        assert isinstance(sub, self.minimodelclass)
+        if prop.name not in sub._values:
+          subentity = sub
+          break
+      else:
+        subentity = self.minimodelclass()
+        values.append(subentity)
+    else:
+      subentity = entity._values.get(self.name)
+      if subentity is None:
+        subentity = self.minimodelclass()
+        entity._values[self.name] = subentity
+    prop.Deserialize(subentity, p, prefix + tail + '.')
