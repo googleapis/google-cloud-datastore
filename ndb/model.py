@@ -103,7 +103,14 @@ class Model(object):
     # It's okay to use private names -- we're the same class
     if self._key != other._key:
       return False
-    return self._values == other._values
+    # Ignore differences in values that are None.
+    self_values = [(name, value)
+                   for name, value in self._values.iteritems()
+                   if value is not None]
+    other_values = [(name, value)
+                    for name, value in other._values.iteritems()
+                    if value is not None]
+    return self_values == other_values
 
   def __ne__(self, other):
     eq = self.__eq__(other)

@@ -664,6 +664,7 @@ class ModelTests(unittest.TestCase):
     model.FixUpProperties(Person)
     k = model.Key(flat=['Person', 42])
     p = Person()
+    p.key = k
     self.assertEqual(p.address, None)
     self.assertEqual(p.name, None)
     self.assertEqual(p.k, None)
@@ -673,9 +674,28 @@ class ModelTests(unittest.TestCase):
     self.assertEqual(q.address, None)
     self.assertEqual(q.name, None)
     self.assertEqual(q.k, None)
-    # For comparison, remove None from q._values
-    clean = dict([(k, v) for k, v in q._values.iteritems() if v is not None])
-    self.assertEqual(clean,p._values)
+    self.assertEqual(p, q)
+
+  def testOrphanProperties(self):
+    # TODO: Make this test orphans
+    class Address(model.Model):
+      street = model.StringProperty()
+      city = model.StringProperty()
+      zip = model.IntegerProperty()
+    model.FixUpProperties(Address)
+    class Person(model.Model):
+      address = model.StructuredProperty(Address)
+      name = model.StringProperty()
+      k = model.KeyProperty()
+    model.FixUpProperties(Person)
+    k = model.Key(flat=['Person', 42])
+    p = Person(name='White House', k=k,
+               address=Address(city='Washington, DC', zip=20500))
+    p.key = k
+    pb = p.ToPb()
+    q = Person()
+    q.FromPb(pb)
+    self.assertEqual(p, q)
 
 def main():
   unittest.main()
