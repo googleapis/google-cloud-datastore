@@ -59,13 +59,18 @@ class Model(object):
 
   # TODO: Distinguish between purposes: to call FromPb() or setvalue() etc.
   # TODO: Support keyword args to initialize property values
-  def __init__(self):
-    # TODO: Enable this code (it currently breaks some old tests)
-##     cls = self.__class__
-##     if cls._properties is None:
-##       FixUpProperties(cls)
+  def __init__(self, **kwds):
+    cls = self.__class__
+    if kwds:
+      # TODO: Enable this unconditionally (it currently breaks some old tests)
+      if cls._properties is None:
+        FixUpProperties(cls)
     self._key = None
     self._values = {}
+    for name, value in kwds.iteritems():
+      prop = getattr(cls, name)
+      assert isinstance(prop, Property)
+      prop.SetValue(self, value)
 
   # TODO: Make a property 'kind'?
   @classmethod
@@ -400,7 +405,7 @@ def FixUpProperties(cls):
       prop.FixUp(name)
       cls._properties[name] = prop
       cls._db_properties[prop.db_name] = prop
-  if issubclass(cls, Model):  # Skip this for MiniModel.
+  if issubclass(cls, Model):
     kind_map[cls.getkind()] = cls
 
 class StructuredProperty(Property):
@@ -441,52 +446,3 @@ class StructuredProperty(Property):
     assert prop is not None, (prefix, db_name, parts, tail)
     if prop is not None:
       prop.Deserialize(subentity, p, prefix + tail + '.')
-
-class MiniModel(object):
-  """A reusable component of a model (may be nested).
-
-  Example:
-    class Address(MiniModel):
-      street = StringProperty()
-      city = StringProperty()
-    class Person(Model):
-      name = StringProperty()
-      address = MiniModel.ToProperty()
-  """
-
-  # TODO: Prevent accidental attribute assignments
-
-  _properties = None
-  _db_properties = None
-
-  # TODO: Share some code between Model and MiniModel
-
-  def __init__(self, **kwds):
-    cls = self.__class__
-    if cls._properties is None or cls._db_properties is None:
-      FixUpProperties(cls)
-    self._values = {}
-    for name, value in kwds.iteritems():
-      prop = getattr(cls, name)
-      assert isinstance(prop, Property)
-      prop.SetValue(self, value)
-
-  def __hash__(self):
-    raise TypeError('MiniModel is not immutable')
-
-  def __eq__(self, other):
-    if other.__class__ is not self.__class__:
-      return NotImplemented
-    # It's okay to use private names -- we're the same class
-    return self._values == other._values
-
-  def __ne__(self, other):
-    eq = self.__eq__(other)
-    if eq is  NotImplemented:
-      return NotImplemented
-    return not eq
-
-  @classmethod
-  def ToProperty(cls, db_name=None, indexed=None):
-    prop = StructuredProperty(cls, db_name=db_name, indexed=indexed)
-    return prop

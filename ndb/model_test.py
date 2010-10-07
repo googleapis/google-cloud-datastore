@@ -320,12 +320,12 @@ class ModelTests(unittest.TestCase):
     self.assertEqual(MyModel.b.GetValue(ent), '\x00\xff')
 
   def testStructuredProperty(self):
-    class Address(model.MiniModel):
+    class Address(model.Model):
       street = model.StringProperty()
       city = model.StringProperty()
     class Person(model.Model):
       name = model.StringProperty()
-      address = Address.ToProperty()
+      address = model.StructuredProperty(Address)
     model.FixUpProperties(Person)
 
     p = Person()
@@ -350,15 +350,16 @@ class ModelTests(unittest.TestCase):
     self.assertEqual(p.address, a)
 
   def testNestedStructuredProperty(self):
-    class Address(model.MiniModel):
+    class Address(model.Model):
       street = model.StringProperty()
       city = model.StringProperty()
-    class AddressPair(model.MiniModel):
-      home = Address.ToProperty()
-      work = Address.ToProperty()
+    model.FixUpProperties(Address)
+    class AddressPair(model.Model):
+      home = model.StructuredProperty(Address)
+      work = model.StructuredProperty(Address)
     class Person(model.Model):
       name = model.StringProperty()
-      address = AddressPair.ToProperty()
+      address = model.StructuredProperty(AddressPair)
     model.FixUpProperties(Person)
 
     p = Person()
@@ -380,13 +381,13 @@ class ModelTests(unittest.TestCase):
     self.assertEqual(p.address.work.city, 'San Francisco')
 
   def testRecursiveStructuredProperty(self):
-    class Node(model.MiniModel):
+    class Node(model.Model):
       name = model.StringProperty(indexed=False)
-    Node.left = Node.ToProperty()
-    Node.rite = Node.ToProperty()
+    Node.left = model.StructuredProperty(Node)
+    Node.rite = model.StructuredProperty(Node)
     model.FixUpProperties(Node)
     class Tree(model.Model):
-      root = Node.ToProperty()
+      root = model.StructuredProperty(Node)
     model.FixUpProperties(Tree)
 
     k = model.Key(flat=['Tree', None])
@@ -434,15 +435,16 @@ class ModelTests(unittest.TestCase):
     self.assertEqual(MyModel.kk.GetValue(ent), k)
 
   def testRenamedStructuredProperty(self):
-    class Address(model.MiniModel):
+    class Address(model.Model):
       st = model.StringProperty('street')
       ci = model.StringProperty('city')
-    class AddressPair(model.MiniModel):
-      ho = Address.ToProperty('home')
-      wo = Address.ToProperty('work')
+    model.FixUpProperties(Address)
+    class AddressPair(model.Model):
+      ho = model.StructuredProperty(Address, 'home')
+      wo = model.StructuredProperty(Address, 'work')
     class Person(model.Model):
       na = model.StringProperty('name')
-      ad = AddressPair.ToProperty('address')
+      ad = model.StructuredProperty(AddressPair, 'address')
     model.FixUpProperties(Person)
 
     p = Person()
