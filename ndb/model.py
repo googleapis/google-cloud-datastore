@@ -102,6 +102,8 @@ class Model(object):
       return NotImplemented
     # It's okay to use private names -- we're the same class
     if self._key != other._key:
+      # TODO: If one key is None and the other is an explicit
+      # incomplete key of the simplest form, this should be OK.
       return False
     # Ignore differences in values that are None.
     self_values = [(name, value)
@@ -148,14 +150,27 @@ class Model(object):
       for p in plist:
         db_name = p.name()
         if self._db_properties:
-          prop = self._db_properties.get(db_name)
-          if prop is None and '.' in db_name:
-            # Hackish approach to structured properties
+          if '.' in db_name:
             head, tail = db_name.split('.', 1)
             prop = self._db_properties.get(head)
+          else:
+            prop = self._db_properties.get(db_name)
           if prop is not None:
             prop.Deserialize(self, p)
             continue
+        cls = self.__class__
+        if self._db_properties is cls._db_properties:
+          self._db_properties = dict(cls._db_properties or ())
+        if self._properties is cls._properties:
+          self._properties = dict(cls._properties or ())
+        # TODO: Structured properties
+        prop = GenericProperty(db_name,
+                               repeated=p.multiple(),
+                               indexed=(plist is pb.property_list()))
+        prop.FixUp(str(prop))  # Use a unique string as Python name.
+        self._db_properties[db_name] = prop
+        self._properties[prop.name] = prop
+        prop.Deserialize(self, p)
 
   # TODO: Move db methods out of this class?
 
@@ -171,71 +186,6 @@ class Model(object):
 
   def delete(self):
     conn.delete([self.key()])
-
-# TODO: Remove the following after I've added orphan properties
-
-def _SerializeProperty(name, value, multiple=False):
-  assert isinstance(name, basestring)
-  if isinstance(name, unicode):
-    name = name.encode('utf8')
-  p = entity_pb.Property()
-  p.set_name(name)
-  p.set_multiple(multiple)  # Why on earth is this a required field?
-  v = p.mutable_value()  # a PropertyValue
-  # TODO: use a dict mapping types to functions
-  if isinstance(value, str):
-    v.set_stringvalue(value)
-  elif isinstance(value, unicode):
-    v.set_stringvalue(value.encode('utf8'))
-  elif isinstance(value, bool):  # Must test before int!
-    v.set_booleanvalue(value)
-  elif isinstance(value, (int, long)):
-    assert -2**63 <= value < 2**63
-    v.set_int64value(value)
-  elif isinstance(value, float):
-    v.set_doublevalue(value)
-  elif isinstance(value, Key):
-    # See datastore_types.PackKey
-    ref = value._Key__reference  # Don't copy
-    rv = v.mutable_referencevalue()  # A Reference
-    rv.set_app(ref.app())
-    if ref.has_name_space():
-      rv.set_name_space()
-    for elem in ref.path().element_list():
-      rv.add_pathelement().CopyFrom(elem)
-  elif isinstance(value, datetime.datetime):
-    assert value.tzinfo is None
-    ival = (long(calendar.timegm(value.timetuple()) * 1000000L) +
-            value.microsecond)
-    v.set_int64value(ival)
-    p.set_meaning(entity_pb.Property.GD_WHEN)
-  else:
-    # TODO: blob, blobkey, user, datetime, atom types, gdata types, geopt
-    assert False, type(value)
-  return p
-
-_EPOCH = datetime.datetime.utcfromtimestamp(0)
-
-def _DeserializeProperty(p):
-  v = p.value()
-  if v.has_stringvalue():
-    return v.stringvalue()
-  elif v.has_booleanvalue():
-    return v.booleanvalue()
-  elif v.has_int64value():
-    ival = v.int64value()
-    if p.meaning() == entity_pb.Property.GD_WHEN:
-      return _EPOCH + datetime.timedelta(microseconds=ival)
-    return ival
-  elif v.has_doublevalue():
-    return v.doublevalue()
-  elif v.has_referencevalue():
-    rv = v.referencevalue()
-    pairs = [(elem.type(), elem.id() or elem.name())
-             for elem in rv.pathelement_list()]
-    return Key(pairs=pairs)  # TODO: app, namespace
-  else:
-    assert False, str(v)
 
 # TODO: Use a metaclass to automatically call FixUpProperties()
 # TODO: More Property types
@@ -301,13 +251,13 @@ class Property(object):
       p.set_multiple(self.repeated)
       v = p.mutable_value()
       if val is not None:
-        self.DbSetValue(v, val)
+        self.DbSetValue(v, p, val)
 
   def Deserialize(self, entity, p, prefix=''):
     # entity <- p; p is a Property message
     # In this class, prefix is unused.
     v = p.value()
-    val = self.DbGetValue(v)
+    val = self.DbGetValue(v, p)
     if self.repeated:
       if self.name in entity._values:
         value = entity._values[self.name]
@@ -324,24 +274,24 @@ class Property(object):
 
 class IntegerProperty(Property):
 
-  def DbSetValue(self, v, value):
+  def DbSetValue(self, v, p, value):
     assert isinstance(value, (bool, int, long))
     v.set_int64value(value)
 
-  def DbGetValue(self, v):
+  def DbGetValue(self, v, p):
     if not v.has_int64value():
       return None
     return int(v.int64value())
 
 class StringProperty(Property):
 
-  def DbSetValue(self, v, value):
+  def DbSetValue(self, v, p, value):
     assert isinstance(value, basestring)
     if isinstance(value, unicode):
       value = value.encode('utf-8')
     v.set_stringvalue(value)
 
-  def DbGetValue(self, v):
+  def DbGetValue(self, v, p):
     if not v.has_stringvalue():
       return None
     raw = v.stringvalue()
@@ -361,11 +311,11 @@ class TextProperty(StringProperty):
 class BlobProperty(Property):
   indexed = False
 
-  def DbSetValue(self, v, value):
+  def DbSetValue(self, v, p, value):
     assert isinstance(value, str)
     v.set_stringvalue(value)
 
-  def DbGetValue(self, v):
+  def DbGetValue(self, v, p):
     if not v.has_stringvalue():
       return None
     return v.stringvalue()
@@ -373,7 +323,7 @@ class BlobProperty(Property):
 class KeyProperty(Property):
   # TODO: namespaces
 
-  def DbSetValue(self, v, value):
+  def DbSetValue(self, v, p, value):
     assert isinstance(value, Key)
     # See datastore_types.PackKey
     ref = value._Key__reference  # Don't copy
@@ -384,7 +334,7 @@ class KeyProperty(Property):
     for elem in ref.path().element_list():
       rv.add_pathelement().CopyFrom(elem)
 
-  def DbGetValue(self, v):
+  def DbGetValue(self, v, p):
     if not v.has_referencevalue():
       return None
     ref = entity_pb.Reference()
@@ -483,3 +433,80 @@ class StructuredProperty(Property):
         subentity = self.minimodelclass()
         entity._values[self.name] = subentity
     prop.Deserialize(subentity, p, prefix + tail + '.')
+
+_EPOCH = datetime.datetime.utcfromtimestamp(0)
+
+class GenericProperty(Property):
+
+  def DbGetValue(self, v, p):
+    # This is awkward but there seems to be no faster way to inspect
+    # what union member is present.  datastore_types.FromPropertyPb(),
+    # the undisputed authority, has a series of if-elif blocks.
+    if v.has_stringvalue():
+      sval = v.stringvalue()
+      if p.meaning() not in (entity_pb.Property.BLOB,
+                             entity_pb.Property.BYTESTRING):
+        try:
+          sval.decode('ascii')
+          # If this passes, don't return unicode.
+        except UnicodeDecodeError:
+          try:
+            sval = unicode(sval.decode('utf-8'))
+          except UnicodeDecodeError:
+            pass
+      return sval
+    elif v.has_int64value():
+      ival = v.int64value()
+      if p.meaning() == entity_pb.Property.GD_WHEN:
+        return _EPOCH + datetime.timedelta(microseconds=ival)
+      return ival
+    elif v.has_booleanvalue():
+      return v.booleanvalue()
+    elif v.has_doublevalue():
+      return v.doublevalue()
+    elif v.has_referencevalue():
+      rv = v.referencevalue()
+      pairs = [(elem.type(), elem.id() or elem.name())
+               for elem in rv.pathelement_list()]
+      return Key(pairs=pairs)  # TODO: app, namespace
+    elif v.has_pointvalue():
+      assert False, 'Points are not yet supported'
+    elif v.has_uservalue():
+      assert False, 'Users are not yet supported'
+    else:
+      # A missing value imples null.
+      return None
+
+  def DbSetValue(self, v, p, value):
+    # TODO: use a dict mapping types to functions
+    if isinstance(value, str):
+      v.set_stringvalue(value)
+      # TODO: Set meaning to BLOB if it's not UTF-8?
+    elif isinstance(value, unicode):
+      v.set_stringvalue(value.encode('utf8'))
+      p.set_meaning(entity_pb.Property.TEXT)
+    elif isinstance(value, bool):  # Must test before int!
+      v.set_booleanvalue(value)
+    elif isinstance(value, (int, long)):
+      assert -2**63 <= value < 2**63
+      v.set_int64value(value)
+    elif isinstance(value, float):
+      v.set_doublevalue(value)
+    elif isinstance(value, Key):
+      # See datastore_types.PackKey
+      ref = value._Key__reference  # Don't copy
+      rv = v.mutable_referencevalue()  # A Reference
+      rv.set_app(ref.app())
+      if ref.has_name_space():
+        rv.set_name_space()
+      for elem in ref.path().element_list():
+        rv.add_pathelement().CopyFrom(elem)
+    elif isinstance(value, datetime.datetime):
+      assert value.tzinfo is None
+      ival = (long(calendar.timegm(value.timetuple()) * 1000000L) +
+              value.microsecond)
+      v.set_int64value(ival)
+      p.set_meaning(entity_pb.Property.GD_WHEN)
+    else:
+      # TODO: point, user, blobkey, date, time, atom and gdata types
+      assert False, type(value)
