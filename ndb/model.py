@@ -46,8 +46,6 @@ class Model(object):
 
   # TODO: Prevent accidental attribute assignments
 
-  __slots__ = ['_values', '_key']
-
   _properties = None  # Set to a dict by FixUpProperties()
   _db_properties = None  # Set to a dict by FixUpProperties()
 
@@ -265,23 +263,23 @@ def _DeserializeProperty(p):
 # TODO: Use a metaclass to automatically call FixUpProperties()
 # TODO: More Property types
 # TODO: Generic properties (to be used by Expando models)
-# TODO: Decide on names starting with underscore
-# TODO: List properties (and Set and Dict)
-# TODO: Use a builder pattern in the [de]serialization API?
-# TODO: etc., etc., etc.
+# TODO: Split Property into Property and SimpleProperty
 
 class Property(object):
   # TODO: Separate 'simple' properties from base Property class
 
   indexed = True
+  repeated = False
 
-  def __init__(self, db_name=None, indexed=None):
+  def __init__(self, db_name=None, indexed=None, repeated=None):
     # Don't set self.name -- it's set by FixUp()
     if db_name:
       assert '.' not in db_name  # The '.' is used elsewhere.
     self.db_name = db_name
     if indexed is not None:
       self.indexed = indexed
+    if repeated is not None:
+      self.repeated = repeated
 
   def FixUp(self, name):
     self.name = name
@@ -289,6 +287,10 @@ class Property(object):
       self.db_name = name
 
   def SetValue(self, entity, value):
+    if self.repeated:
+      assert isinstance(value, list)
+    else:
+      assert not isinstance(value, list)
     # TODO: validation
     entity._values[self.name] = value
 
@@ -308,21 +310,39 @@ class Property(object):
   def Serialize(self, entity, pb, prefix=''):
     # entity -> pb; pb is an EntityProto message
     value = entity._values.get(self.name)
-    if self.indexed:
-      p = pb.add_property()
+    if self.repeated:
+      assert isinstance(value, list)
     else:
-      p = pb.add_raw_property()
-    p.set_name(prefix + self.db_name)
-    p.set_multiple(False)
-    v = p.mutable_value()
-    if value is not None:
-      self.DbSetValue(v, value)
+      assert not isinstance(value, list)
+      value = [value]
+    for val in value:
+      if self.indexed:
+        p = pb.add_property()
+      else:
+        p = pb.add_raw_property()
+      p.set_name(prefix + self.db_name)
+      p.set_multiple(self.repeated)
+      v = p.mutable_value()
+      if val is not None:
+        self.DbSetValue(v, val)
 
   def Deserialize(self, entity, p, prefix=''):
     # entity <- p; p is a Property message
     # In this class, prefix is unused.
     v = p.value()
-    value = self.DbGetValue(v)
+    val = self.DbGetValue(v)
+    if self.repeated:
+      if self.name in entity._values:
+        value = entity._values[self.name]
+        if not isinstance(value, list):
+          value = [value]
+        value.append(val)
+      else:
+        value = [val]
+    else:
+      # TODO: What if we don't have the repeated flag set, yet
+      # multiple values are read from the datastore?
+      value = val
     entity._values[self.name] = value
 
 class IntegerProperty(Property):
