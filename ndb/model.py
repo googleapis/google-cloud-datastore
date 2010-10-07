@@ -322,6 +322,8 @@ class IntegerProperty(Property):
     v.set_int64value(value)
 
   def DbGetValue(self, v):
+    if not v.has_int64value():
+      return None
     return int(v.int64value())
 
 class StringProperty(Property):
@@ -333,6 +335,8 @@ class StringProperty(Property):
     v.set_stringvalue(value)
 
   def DbGetValue(self, v):
+    if not v.has_stringvalue():
+      return None
     raw = v.stringvalue()
     try:
       raw.decode('ascii')
@@ -355,6 +359,8 @@ class BlobProperty(Property):
     v.set_stringvalue(value)
 
   def DbGetValue(self, v):
+    if not v.has_stringvalue():
+      return None
     return v.stringvalue()
 
 class KeyProperty(Property):
@@ -372,6 +378,8 @@ class KeyProperty(Property):
       rv.add_pathelement().CopyFrom(elem)
 
   def DbGetValue(self, v):
+    if not v.has_referencevalue():
+      return None
     ref = entity_pb.Reference()
     rv = v.referencevalue()
     if rv.has_app():

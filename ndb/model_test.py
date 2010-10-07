@@ -353,6 +353,12 @@ property <
 
 class ModelTests(unittest.TestCase):
 
+  def setUp(self):
+    model.kind_map.clear()
+
+  def tearDown(self):
+    model.kind_map.clear()
+
   def testKey(self):
     m = model.Model()
     self.assertEqual(m.key, None)
@@ -644,6 +650,32 @@ class ModelTests(unittest.TestCase):
       innerval = model.StringProperty(repeated=True)
     self.assertRaises(AssertionError, 
                       model.StructuredProperty, Inner, repeated=True)
+
+  def testNullProperties(self):
+    class Address(model.Model):
+      street = model.StringProperty()
+      city = model.StringProperty()
+      zip = model.IntegerProperty()
+    model.FixUpProperties(Address)
+    class Person(model.Model):
+      address = model.StructuredProperty(Address)
+      name = model.StringProperty()
+      k = model.KeyProperty()
+    model.FixUpProperties(Person)
+    k = model.Key(flat=['Person', 42])
+    p = Person()
+    self.assertEqual(p.address, None)
+    self.assertEqual(p.name, None)
+    self.assertEqual(p.k, None)
+    pb = p.ToPb()
+    q = Person()
+    q.FromPb(pb)
+    self.assertEqual(q.address, None)
+    self.assertEqual(q.name, None)
+    self.assertEqual(q.k, None)
+    # For comparison, remove None from q._values
+    clean = dict([(k, v) for k, v in q._values.iteritems() if v is not None])
+    self.assertEqual(clean,p._values)
 
 def main():
   unittest.main()
