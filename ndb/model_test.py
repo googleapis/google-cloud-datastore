@@ -259,6 +259,48 @@ property <
 >
 """
 
+MULTIINSTRUCT_PB = """\
+key <
+  app: "_"
+  path <
+    Element {
+      type: "Person"
+      id: 0
+    }
+  >
+>
+entity_group <
+>
+property <
+  name: "address.label"
+  value <
+    stringValue: "work"
+  >
+  multiple: false
+>
+property <
+  name: "address.line"
+  value <
+    stringValue: "345 Spear"
+  >
+  multiple: true
+>
+property <
+  name: "address.line"
+  value <
+    stringValue: "San Francisco"
+  >
+  multiple: true
+>
+property <
+  name: "name"
+  value <
+    stringValue: "Google"
+  >
+  multiple: false
+>
+"""
+
 class ModelTests(unittest.TestCase):
 
   def testOldProperties(self):
@@ -522,6 +564,27 @@ class ModelTests(unittest.TestCase):
     self.assertEqual(m.address, ['345 Spear', 'San Francisco'])
     pb = m.ToPb()
     self.assertEqual(str(pb), MULTI_PB)
+
+    m2 = Person()
+    m2.FromPb(pb)
+    self.assertEqual(m2, m)
+
+  def testMultipleInStructuredProperty(self):
+    class Address(model.Model):
+      label = model.StringProperty()
+      line = model.StringProperty(repeated=True)
+    class Person(model.Model):
+      name = model.StringProperty()
+      address = model.StructuredProperty(Address)
+    model.FixUpProperties(Person)
+
+    m = Person(name='Google',
+               address=Address(label='work',
+                               line=['345 Spear', 'San Francisco']))
+    m.key = model.Key(flat=['Person', None])
+    self.assertEqual(m.address.line, ['345 Spear', 'San Francisco'])
+    pb = m.ToPb()
+    self.assertEqual(str(pb), MULTIINSTRUCT_PB)
 
     m2 = Person()
     m2.FromPb(pb)
