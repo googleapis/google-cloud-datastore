@@ -74,6 +74,12 @@ class Model(object):
       assert isinstance(prop, Property)
       prop.SetValue(self, value)
 
+  def __repr__(self):
+    s = '%s(**%s)' % (self.__class__.__name__, self._values)
+    if self._key is not None:
+      s += '<key=%s>' % self._key
+    return s
+
   # TODO: Make a property 'kind'?
   @classmethod
   def getkind(cls):
@@ -193,7 +199,7 @@ def FakeProperty(self, p, db_name, head, indexed=True):
                            repeated=p.multiple(),
                            indexed=indexed)
   prop.FixUp(head)  # XXX str(id(prop)))  # Use a unique string as Python name.
-  self._db_properties[db_name] = prop
+  self._db_properties[prop.db_name] = prop
   self._properties[prop.name] = prop
   print 'return', prop
   return prop
@@ -221,9 +227,12 @@ class Property(object):
       self.repeated = repeated
 
   def __repr__(self):
-    return '%s(db_name=%r, indexed=%r, repeated=%r) # name=%r' % (
+    s = '%s(db_name=%r, indexed=%r, repeated=%r)' % (
       self.__class__.__name__,
-      self.db_name, self.indexed, self.repeated, self.name)
+      self.db_name, self.indexed, self.repeated)
+    if self.name != self.db_name:
+      s += '<name=%r>' % self.name
+    return s
 
   def FixUp(self, name):
     self.name = name
@@ -398,10 +407,12 @@ class StructuredProperty(Property):
     self.minimodelclass = minimodelclass
 
   def __repr__(self):
-    return '%s(%s, db_name=%r, indexed=%r, repeated=%r) # name=%r' % (
+    s = '%s(%s, db_name=%r, indexed=%r, repeated=%r)' % (
       self.__class__.__name__, self.minimodelclass.__name__,
-      self.db_name, self.indexed, self.repeated, self.name)
-    
+      self.db_name, self.indexed, self.repeated)
+    if self.name != self.db_name:
+      s += '<name=%r>' % self.name
+    return s
 
   def Serialize(self, entity, pb, prefix=''):
     # entity -> pb; pb is an EntityProto message
@@ -422,9 +433,13 @@ class StructuredProperty(Property):
     if cls._properties:
       # TODO: Sort by property declaration order
       items = sorted(cls._properties.iteritems())
-      for value in values:
-        for name, prop in items:
-          prop.Serialize(value, pb, prefix + self.db_name + '.')
+    elif entity._properties:
+      items = sorted(entity._properties.iteritems())
+    else:
+      items = ()
+    for value in values:
+      for name, prop in items:
+        prop.Serialize(value, pb, prefix + self.db_name + '.')
 
   def Deserialize(self, entity, p, prefix=''):
     db_name = p.name()
@@ -443,6 +458,7 @@ class StructuredProperty(Property):
         subentity = self.minimodelclass()
         entity._values[self.name] = subentity
       prop = FakeProperty(subentity, p, '.'.join(parts[n:]), next)
+      import pdb; pdb.set_trace()
     if self.repeated:
       if self.name in entity._values:
         values = entity._values[self.name]
