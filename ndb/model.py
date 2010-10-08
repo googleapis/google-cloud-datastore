@@ -82,7 +82,7 @@ class Model(object):
     s = '%s(%s)' % (self.__class__.__name__, ', '.join(args))
     return s
 
-  # TODO: Make a property 'kind'?
+  # TODO: Make kind a property also?
   @classmethod
   def getkind(cls):
     return cls.__name__
@@ -190,7 +190,6 @@ class Model(object):
                              repeated=p.multiple(),
                              indexed=indexed)
 
-    # TODO: This line is suspicious; does it work with repeated properties???
     prop.FixUp(str(id(prop)))  # Use a unique string as Python name.
 
     self._db_properties[prop.db_name] = prop
@@ -299,9 +298,9 @@ class Property(object):
       if val is not None:
         self.DbSetValue(v, p, val)
 
-  def Deserialize(self, entity, p, prefix=''):
+  def Deserialize(self, entity, p, depth=1):
     # entity <- p; p is a Property message
-    # In this class, prefix is unused.
+    # In this class, depth is unused.
     v = p.value()
     val = self.DbGetValue(v, p)
     if self.repeated:
@@ -473,15 +472,12 @@ class StructuredProperty(Property):
         for name, prop in litems:
           prop.Serialize(value, pb, prefix + self.db_name + '.')
 
-  def Deserialize(self, entity, p, prefix=''):
+  def Deserialize(self, entity, p, depth=1):
     # TODO: Refactor to share even more code with FromPb().
     db_name = p.name()
-    if prefix:
-      assert prefix.endswith('.')
-    n = prefix.count('.') + 1  # Nesting level
     parts = db_name.split('.')
-    assert len(parts) > n, (prefix, db_name, parts, n)
-    next = parts[n]
+    assert len(parts) > depth, (depth, db_name, parts)
+    next = parts[depth]
     prop = None
     if self.modelclass._db_properties:
       prop = self.modelclass._db_properties.get(next)
@@ -496,7 +492,7 @@ class StructuredProperty(Property):
       if subentity._db_properties:
         prop = subentity._db_properties.get(next)
       if prop is None:
-        prop = subentity.FakeProperty(p, '.'.join(parts[n:]), next)
+        prop = subentity.FakeProperty(p, '.'.join(parts[depth:]), next)
     if self.repeated:
       if self.name in entity._values:
         values = entity._values[self.name]
@@ -520,7 +516,7 @@ class StructuredProperty(Property):
       if subentity is None:
         subentity = self.modelclass()
         entity._values[self.name] = subentity
-    prop.Deserialize(subentity, p, prefix + next + '.')
+    prop.Deserialize(subentity, p, depth + 1)
 
 _EPOCH = datetime.datetime.utcfromtimestamp(0)
 
@@ -529,7 +525,8 @@ class GenericProperty(Property):
   def DbGetValue(self, v, p):
     # This is awkward but there seems to be no faster way to inspect
     # what union member is present.  datastore_types.FromPropertyPb(),
-    # the undisputed authority, has a series of if-elif blocks.
+    # the undisputed authority, has the same series of if-elif blocks.
+    # (We don't even want to think about multiple members... :-)
     if v.has_stringvalue():
       sval = v.stringvalue()
       if p.meaning() not in (entity_pb.Property.BLOB,
@@ -572,6 +569,7 @@ class GenericProperty(Property):
       # TODO: Set meaning to BLOB if it's not UTF-8?
     elif isinstance(value, unicode):
       v.set_stringvalue(value.encode('utf8'))
+      # TODO: I don't think this is correct; TEXT implies unindexed IIUC.
       p.set_meaning(entity_pb.Property.TEXT)
     elif isinstance(value, bool):  # Must test before int!
       v.set_booleanvalue(value)

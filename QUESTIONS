@@ -1,0 +1,10 @@
+Is 'repeated=True' a good enough substitute for ListProperty?
+Should there be a difference between None and unset?  
+Should kind be a @property?  What should it return for Model?
+Should the pb key be managed by ModelAdapter?
+Should FromPb become a class method?
+How to do Expando?
+How to do PolyModel?
+Do we need a metaclass, or is the auto-fixup in __init__ enough?
+Should we allow generic property values to be accessible as e.name?
+What to do with the db connection and methods?
