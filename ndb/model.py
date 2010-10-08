@@ -192,7 +192,6 @@ class Model(object):
 
     self._db_properties[prop.db_name] = prop
     self._properties[prop.name] = prop
-    print "FakeProperty() ->", prop
     return prop
 
   # TODO: Move db methods out of this class?
@@ -460,11 +459,16 @@ class StructuredProperty(Property):
     if self.modelclass._db_properties:
       prop = self.modelclass._db_properties.get(next)
     if prop is None:
+      assert not self.repeated  # TODO: Handle this case
       subentity = entity._values.get(self.name)
       if subentity is None:
         subentity = self.modelclass()
         entity._values[self.name] = subentity
-      prop = subentity.FakeProperty(p, '.'.join(parts[n:]), next)
+      prop = None
+      if subentity._db_properties:
+        prop = subentity._db_properties.get(next)
+      if prop is None:
+        prop = subentity.FakeProperty(p, '.'.join(parts[n:]), next)
     if self.repeated:
       if self.name in entity._values:
         values = entity._values[self.name]

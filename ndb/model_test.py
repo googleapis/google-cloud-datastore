@@ -698,7 +698,7 @@ class ModelTests(unittest.TestCase):
     model.FixUpProperties(Person)
     k = model.Key(flat=['Person', 42])
     p = Person(name='White House', k=k, age=[210, 211],
-               address=Address(line=['1600 Pennsylvania', 'Washongton, DC'],
+               address=Address(line=['1600 Pennsylvania', 'Washington, DC'],
 ##                                tags=[Tag(name='a', rating=1),
 ##                                      Tag(name='b', rating=2)],
                                zip=20500))
@@ -706,10 +706,6 @@ class ModelTests(unittest.TestCase):
     pb = p.ToPb()
     q = model.Model()
     q.FromPb(pb)
-    import pdb; pdb.set_trace()
-    print q._values
-    print q._properties
-    print q._db_properties
     pb = q.ToPb()
     self.assertEqual(pb, p.ToPb(),
                      str(q.ToPb()) + '\n**********\n' + str(p.ToPb()))
