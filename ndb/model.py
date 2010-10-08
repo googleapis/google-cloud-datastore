@@ -127,6 +127,7 @@ class Model(object):
 
   def ToPb(self):
     pb = entity_pb.EntityProto()
+
     # TODO: Move the key stuff into ModelAdapter.entity_to_pb()?
     key = self._key
     if key is None:
@@ -139,36 +140,59 @@ class Model(object):
     elem = ref.path().element(0)
     if elem.id() or elem.name():
       group.add_element().CopyFrom(elem)
+
     if self._properties:
       # TODO: Sort by property declaration order
       for name, prop in sorted(self._properties.iteritems()):
         prop.Serialize(self, pb)
+
     return pb
 
   # TODO: Make this a class method?
   def FromPb(self, pb):
-    # TODO: Move the key stuff into ModelAdapter.pb_to_entity()?
     assert not self._key
     assert not self._values
     assert isinstance(pb, entity_pb.EntityProto)
+
+    # TODO: Move the key stuff into ModelAdapter.pb_to_entity()?
     if pb.has_key():
       self._key = Key(reference=pb.key())
-    for plist in pb.property_list(), pb.raw_property_list():
+
+    indexed_properties = pb.property_list()
+    unindexed_properties = pb.raw_property_list()
+    for plist in [indexed_properties, unindexed_properties]:
       for p in plist:
-        # TODO: There's code to be shared here with
-        # StructuredProperty.Deserialize()
         db_name = p.name()
-        head = db_name
-        if '.' in db_name:
-          head, tail = db_name.split('.', 1)
+        parts = db_name.split('.', 1)
+        head = parts[0]
+        prop = None
         if self._db_properties:
           prop = self._db_properties.get(head)
-          if prop is not None:
-            prop.Deserialize(self, p)
-            continue
-        prop = FakeProperty(self, p, db_name, head,
-                            (plist is pb.property_list()))
+        if prop is None:
+          prop = self.FakeProperty(p, db_name, head,
+                                   (plist is indexed_properties))
         prop.Deserialize(self, p)
+
+  def FakeProperty(self, p, db_name, head, indexed=True):
+    cls = self.__class__
+    if self._db_properties is cls._db_properties:
+      self._db_properties = dict(cls._db_properties or ())
+    if self._properties is cls._properties:
+      self._properties = dict(cls._properties or ())
+
+    if head != db_name:
+      prop = StructuredProperty(Model, head)
+    else:
+      prop = GenericProperty(head,
+                             repeated=p.multiple(),
+                             indexed=indexed)
+
+    # TODO: This line is suspicious; does it work with repeated properties???
+    prop.FixUp(str(id(prop)))  # Use a unique string as Python name.
+
+    self._db_properties[prop.db_name] = prop
+    self._properties[prop.name] = prop
+    return prop
 
   # TODO: Move db methods out of this class?
 
@@ -184,24 +208,6 @@ class Model(object):
 
   def delete(self):
     conn.delete([self.key()])
-
-def FakeProperty(self, p, db_name, head, indexed=True):
-  cls = self.__class__
-  if self._db_properties is cls._db_properties:
-    self._db_properties = dict(cls._db_properties or ())
-  if self._properties is cls._properties:
-    self._properties = dict(cls._properties or ())
-  if '.' in db_name:
-    prop = StructuredProperty(Model, head)
-  else:
-    assert head == db_name
-    prop = GenericProperty(head,
-                           repeated=p.multiple(),
-                           indexed=indexed)
-  prop.FixUp(str(id(prop)))  # Use a unique string as Python name.
-  self._db_properties[prop.db_name] = prop
-  self._properties[prop.name] = prop
-  return prop
 
 # TODO: Use a metaclass to automatically call FixUpProperties()?
 # TODO: More Property types
@@ -457,7 +463,7 @@ class StructuredProperty(Property):
       if subentity is None:
         subentity = self.modelclass()
         entity._values[self.name] = subentity
-      prop = FakeProperty(subentity, p, '.'.join(parts[n:]), next)
+      prop = subentity.FakeProperty(p, '.'.join(parts[n:]), next)
     if self.repeated:
       if self.name in entity._values:
         values = entity._values[self.name]
