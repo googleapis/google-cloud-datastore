@@ -269,10 +269,7 @@ class Property(object):
     # entity -> pb; pb is an EntityProto message
     # TODO: None vs. empty list
     value = entity._values.get(self.name)
-    if self.repeated:
-      assert isinstance(value, list)
-    else:
-      assert not isinstance(value, list)
+    if not isinstance(value, list):
       value = [value]
     for val in value:
       if self.indexed:
@@ -299,9 +296,20 @@ class Property(object):
       else:
         value = [val]
     else:
-      # TODO: What if we don't have the repeated flag set, yet
-      # multiple values are read from the datastore?
-      value = val
+      if self.name not in entity._values:
+        value = val
+      else:
+        # Maybe upgrade to a list property.  Or ignore null.
+        oldval = entity._values[self.name]
+        if val is None:
+          value = oldval
+        elif oldval is None:
+          value = val
+        elif isinstance(oldval, list):
+          oldval.append(val)
+          value = oldval
+        else:
+          value = [oldval, val]
     entity._values[self.name] = value
 
 class IntegerProperty(Property):
