@@ -677,30 +677,30 @@ class ModelTests(unittest.TestCase):
     self.assertEqual(q.age, None)
     self.assertEqual(q.name, None)
     self.assertEqual(q.k, None)
-    self.assertEqual(p, q)
+    self.assertEqual(q, p)
 
   def testOrphanProperties(self):
     class Address(model.Model):
-##       street = model.StringProperty()
-##       city = model.StringProperty()
+      street = model.StringProperty()
+      city = model.StringProperty()
       zip = model.IntegerProperty()
     model.FixUpProperties(Address)
     class Person(model.Model):
       address = model.StructuredProperty(Address)
-##       age = model.IntegerProperty()
-##       name = model.StringProperty()
-##       k = model.KeyProperty()
+      age = model.IntegerProperty()
+      name = model.StringProperty()
+      k = model.KeyProperty()
     model.FixUpProperties(Person)
     k = model.Key(flat=['Person', 42])
-    p = Person(## XXX name='White House', k=k, age=210,
-               address=Address(#street='1600 Pennsylvania',
-                               zip=20500))
-    ##p.key = k
+    p = Person(name='White House', k=k, age=210,
+               address=Address(street='1600 Pennsylvania', zip=20500))
+    p.key = k
     pb = p.ToPb()
     q = model.Model()
     q.FromPb(pb)
-    self.assertEqual(p.ToPb(), q.ToPb(),
-                     str(p.ToPb()) + '\n**********\n' + str(q.ToPb()))
+    pb = q.ToPb()
+    self.assertEqual(pb, p.ToPb(),
+                     str(q.ToPb()) + '\n**********\n' + str(p.ToPb()))
 
 def main():
   unittest.main()

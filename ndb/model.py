@@ -185,7 +185,6 @@ class Model(object):
     conn.delete([self.key()])
 
 def FakeProperty(self, p, db_name, head, indexed=True):
-  print '------------\nFakeProperty: %r %r %r' % (p.name(), db_name, head)
   cls = self.__class__
   if self._db_properties is cls._db_properties:
     self._db_properties = dict(cls._db_properties or ())
@@ -198,10 +197,9 @@ def FakeProperty(self, p, db_name, head, indexed=True):
     prop = GenericProperty(head,
                            repeated=p.multiple(),
                            indexed=indexed)
-  prop.FixUp(head)  # XXX str(id(prop)))  # Use a unique string as Python name.
+  prop.FixUp(str(id(prop)))  # Use a unique string as Python name.
   self._db_properties[prop.db_name] = prop
   self._properties[prop.name] = prop
-  print 'return', prop
   return prop
 
 # TODO: Use a metaclass to automatically call FixUpProperties()
@@ -430,16 +428,16 @@ class StructuredProperty(Property):
     else:
       assert isinstance(value, cls)
       values = [value]
+    items = None
     if cls._properties:
       # TODO: Sort by property declaration order
       items = sorted(cls._properties.iteritems())
-    elif entity._properties:
-      items = sorted(entity._properties.iteritems())
-    else:
-      items = ()
     for value in values:
-      for name, prop in items:
-        prop.Serialize(value, pb, prefix + self.db_name + '.')
+      if items is None and value._properties:
+        items = sorted(value._properties.iteritems())
+      if items:
+        for name, prop in items:
+          prop.Serialize(value, pb, prefix + self.db_name + '.')
 
   def Deserialize(self, entity, p, prefix=''):
     db_name = p.name()
@@ -458,7 +456,6 @@ class StructuredProperty(Property):
         subentity = self.minimodelclass()
         entity._values[self.name] = subentity
       prop = FakeProperty(subentity, p, '.'.join(parts[n:]), next)
-      import pdb; pdb.set_trace()
     if self.repeated:
       if self.name in entity._values:
         values = entity._values[self.name]
