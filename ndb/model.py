@@ -60,13 +60,13 @@ class Model(object):
   # the non-_ version has been obscured by a property.
 
   # TODO: Distinguish between purposes: to call FromPb() or setvalue() etc.
-  # TODO: Support keyword args to initialize property values
-  def __init__(self, **kwds):
+  @datastore_rpc._positional(1)
+  def __init__(self, key=None, **kwds):
     cls = self.__class__
     if (cls is not Model and
         (cls._properties is None or cls._db_properties is None)):
       FixUpProperties(cls)
-    self._key = None
+    self._key = key
     self._values = {}
     for name, value in kwds.iteritems():
       prop = getattr(cls, name)
@@ -74,9 +74,12 @@ class Model(object):
       prop.SetValue(self, value)
 
   def __repr__(self):
-    s = '%s(**%s)' % (self.__class__.__name__, self._values)
+    args = []
     if self._key is not None:
-      s += '<key=%s>' % self._key
+      args.append('key=%r' % self._key)
+    for name_value in sorted(self._values.iteritems()):
+      args.append('%s=%r' % name_value)
+    s = '%s(%s)' % (self.__class__.__name__, ', '.join(args))
     return s
 
   # TODO: Make a property 'kind'?
@@ -216,27 +219,41 @@ class Model(object):
 class Property(object):
   # TODO: Separate 'simple' properties from base Property class
 
-  name = None
   db_name = None
+  name = None
   indexed = True
   repeated = False
 
-  def __init__(self, db_name=None, indexed=None, repeated=None):
-    # Don't set self.name -- it's set by FixUp()
-    if db_name:
+  _attributes = ['db_name', 'name', 'indexed', 'repeated']
+  _positional = 1
+
+  @datastore_rpc._positional(1 + _positional)
+  def __init__(self, db_name=None, name=None, indexed=None, repeated=None):
+    if db_name is not None:
       assert '.' not in db_name  # The '.' is used elsewhere.
-    self.db_name = db_name
+      self.db_name = db_name
+    if name is not None:
+      assert '.' not in name  # The '.' is used elsewhere.
+      self.name = name
     if indexed is not None:
       self.indexed = indexed
     if repeated is not None:
       self.repeated = repeated
 
   def __repr__(self):
-    s = '%s(db_name=%r, indexed=%r, repeated=%r)' % (
-      self.__class__.__name__,
-      self.db_name, self.indexed, self.repeated)
-    if self.name != self.db_name:
-      s += '<name=%r>' % self.name
+    args = []
+    cls = self.__class__
+    for i, attr in enumerate(self._attributes):
+      val = getattr(self, attr)
+      if val is not getattr(cls, attr):
+        if isinstance(val, type):
+          s = val.__name__
+        else:
+          s = repr(val)
+        if i >= cls._positional:
+          s = '%s=%s' % (attr, s)
+        args.append(s)
+    s = '%s(%s)' % (self.__class__.__name__, ', '.join(args))
     return s
 
   def FixUp(self, name):
@@ -409,8 +426,17 @@ def FixUpProperties(cls):
 
 class StructuredProperty(Property):
 
-  def __init__(self, modelclass, db_name=None, indexed=None, repeated=None):
-    super(StructuredProperty, self).__init__(db_name=db_name, indexed=indexed,
+  modelclass = None
+
+  _attributes = ['modelclass'] + Property._attributes
+  _positional = 2
+
+  @datastore_rpc._positional(1 + _positional)
+  def __init__(self, modelclass, db_name=None, name=None,
+               indexed=None, repeated=None):
+    super(StructuredProperty, self).__init__(db_name=db_name,
+                                             name=name,
+                                             indexed=indexed,
                                              repeated=repeated)
     if (modelclass is not Model and
       (modelclass._properties is None or modelclass._db_properties is None)):
@@ -418,14 +444,6 @@ class StructuredProperty(Property):
     if self.repeated:
       assert not modelclass._has_repeated
     self.modelclass = modelclass
-
-  def __repr__(self):
-    s = '%s(%s, db_name=%r, indexed=%r, repeated=%r)' % (
-      self.__class__.__name__, self.modelclass.__name__,
-      self.db_name, self.indexed, self.repeated)
-    if self.name != self.db_name:
-      s += '<name=%r>' % self.name
-    return s
 
   def Serialize(self, entity, pb, prefix=''):
     # entity -> pb; pb is an EntityProto message
@@ -456,6 +474,7 @@ class StructuredProperty(Property):
           prop.Serialize(value, pb, prefix + self.db_name + '.')
 
   def Deserialize(self, entity, p, prefix=''):
+    # TODO: Refactor to share even more code with FromPb().
     db_name = p.name()
     if prefix:
       assert prefix.endswith('.')
@@ -470,6 +489,7 @@ class StructuredProperty(Property):
       assert not self.repeated  # TODO: Handle this case
       subentity = entity._values.get(self.name)
       if subentity is None:
+        # TODO: Avoid repeating this code further below.
         subentity = self.modelclass()
         entity._values[self.name] = subentity
       prop = None

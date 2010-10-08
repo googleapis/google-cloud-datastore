@@ -1,2 +1,1 @@
-allow Person(key=Key(...))
-improve str/repr for Model and Property (make as short as possible)
+Clean up code around FakeProperty() more.

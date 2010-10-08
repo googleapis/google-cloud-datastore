@@ -709,6 +709,37 @@ class ModelTests(unittest.TestCase):
     self.assertEqual(pb, p.ToPb(),
                      "Actual:\n%s\nExpected:\n%s" % (q.ToPb(), p.ToPb()))
 
+  def testModelRepr(self):
+    class Address(model.Model):
+      street = model.StringProperty()
+      city = model.StringProperty()
+    class Person(model.Model):
+      name = model.StringProperty()
+      address = model.StructuredProperty(Address)
+
+    p = Person(name='Google', address=Address(street='345 Spear', city='SF'))
+    self.assertEqual(
+      repr(p),
+      "Person(address=Address(city='SF', street='345 Spear'), name='Google')")
+    p.key = model.Key(pairs=[('Person', 42)])
+    self.assertEqual(
+      repr(p),
+      "Person(key=Key(pairs=[('Person', 42)]), "
+      "address=Address(city='SF', street='345 Spear'), name='Google')")
+
+  def testPropertyRepr(self):
+    p = model.Property()
+    self.assertEqual(repr(p), 'Property()')
+    p = model.IntegerProperty('foo', name='bar', indexed=False, repeated=True)
+    self.assertEqual(repr(p),
+                     "IntegerProperty('foo', name='bar', "
+                     "indexed=False, repeated=True)")
+    class Address(model.Model):
+      street = model.StringProperty()
+      city = model.StringProperty()
+    p = model.StructuredProperty(Address, 'foo')
+    self.assertEqual(repr(p), "StructuredProperty(Address, 'foo')")
+
 def main():
   unittest.main()
 
