@@ -1,0 +1,3 @@
+add new approach for orphan properties
+allow Person(key=Key(...))
+add str/repr for Model and Property
