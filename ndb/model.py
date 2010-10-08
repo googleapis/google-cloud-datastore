@@ -165,16 +165,19 @@ class Model(object):
     unindexed_properties = pb.raw_property_list()
     for plist in [indexed_properties, unindexed_properties]:
       for p in plist:
-        db_name = p.name()
-        parts = db_name.split('.', 1)
-        head = parts[0]
-        prop = None
-        if self._db_properties:
-          prop = self._db_properties.get(head)
-        if prop is None:
-          prop = self.FakeProperty(p, db_name, head,
-                                   (plist is indexed_properties))
+        prop = self.GetPropertyFor(p, plist is indexed_properties)
         prop.Deserialize(self, p)
+
+  def GetPropertyFor(self, p, indexed=True):
+    db_name = p.name()
+    parts = db_name.split('.', 1)
+    head = parts[0]
+    prop = None
+    if self._db_properties:
+      prop = self._db_properties.get(head)
+    if prop is None:
+      prop = self.FakeProperty(p, db_name, head, indexed)
+    return prop
 
   def FakeProperty(self, p, db_name, head, indexed=True):
     cls = self.__class__
