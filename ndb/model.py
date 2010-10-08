@@ -428,15 +428,16 @@ class StructuredProperty(Property):
     else:
       assert isinstance(value, cls)
       values = [value]
-    items = None
+    gitems = None
     if cls._properties:
       # TODO: Sort by property declaration order
-      items = sorted(cls._properties.iteritems())
+      gitems = sorted(cls._properties.iteritems())
     for value in values:
-      if items is None and value._properties:
-        items = sorted(value._properties.iteritems())
-      if items:
-        for name, prop in items:
+      litems = gitems
+      if litems is None and value._properties:
+        litems = sorted(value._properties.iteritems())
+      if litems:
+        for name, prop in litems:
           prop.Serialize(value, pb, prefix + self.db_name + '.')
 
   def Deserialize(self, entity, p, prefix=''):
