@@ -748,6 +748,19 @@ class ModelTests(unittest.TestCase):
       name = model.StringProperty(repeated=True)
     p = Person()
     self.assertEqual(p.name, [])
+    pb = p.ToPb()
+    q = Person()
+    q.FromPb(pb)
+    self.assertEqual(q.name, [], str(pb))
+
+  def testEmptyListSerialized(self):
+    class Person(model.Model):
+      name = model.StringProperty(repeated=True)
+    p = Person()
+    pb = p.ToPb()
+    q = Person()
+    q.FromPb(pb)
+    self.assertEqual(q.name, [], str(pb))
 
 def main():
   unittest.main()

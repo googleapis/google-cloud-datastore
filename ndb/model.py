@@ -296,9 +296,10 @@ class Property(object):
 
   def Serialize(self, entity, pb, prefix=''):
     # entity -> pb; pb is an EntityProto message
-    # TODO: None vs. empty list
     value = entity._values.get(self.name)
-    if not isinstance(value, list):
+    if value is None and self.repeated:
+      value = []
+    elif not isinstance(value, list):
       value = [value]
     for val in value:
       if self.indexed:
