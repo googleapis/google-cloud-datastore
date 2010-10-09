@@ -1,6 +1,7 @@
 """Tests for model.py."""
 
 import base64
+import difflib
 import pickle
 import re
 import unittest
@@ -705,9 +706,11 @@ class ModelTests(unittest.TestCase):
     pb = p.ToPb()
     q = model.Model()
     q.FromPb(pb)
-    pb = q.ToPb()
-    self.assertEqual(pb, p.ToPb(),
-                     "Actual:\n%s\nExpected:\n%s" % (q.ToPb(), p.ToPb()))
+    qb = q.ToPb()
+    linesp = str(pb).splitlines(True)
+    linesq = str(qb).splitlines(True)
+    lines = difflib.unified_diff(linesp, linesq, 'Expected', 'Actual')
+    self.assertEqual(pb, qb, ''.join(lines))
 
   def testModelRepr(self):
     class Address(model.Model):

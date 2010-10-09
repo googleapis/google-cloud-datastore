@@ -146,7 +146,7 @@ class Model(object):
 
     if self._properties:
       # TODO: Sort by property declaration order
-      for name, prop in sorted(self._properties.iteritems()):
+      for name, prop in sorted(self._db_properties.iteritems()):
         prop.Serialize(self, pb)
 
     return pb
@@ -168,28 +168,34 @@ class Model(object):
         prop = self.GetPropertyFor(p, plist is indexed_properties)
         prop.Deserialize(self, p)
 
-  def GetPropertyFor(self, p, indexed=True):
+  def GetPropertyFor(self, p, indexed=True, depth=0):
     db_name = p.name()
-    parts = db_name.split('.', 1)
-    head = parts[0]
+    parts = db_name.split('.')
+    if len(parts) <= depth:
+      import pdb; pdb.set_trace()
+    assert len(parts) > depth, (p.name(), parts, depth)
+    next = parts[depth]
     prop = None
     if self._db_properties:
-      prop = self._db_properties.get(head)
+      prop = self._db_properties.get(next)
     if prop is None:
-      prop = self.FakeProperty(p, db_name, head, indexed)
+      prop = self.FakeProperty(p, next, indexed)
     return prop
 
-  def FakeProperty(self, p, db_name, head, indexed=True):
+  def FakeProperty(self, p, next, indexed=True):
     cls = self.__class__
     if self._db_properties is cls._db_properties:
       self._db_properties = dict(cls._db_properties or ())
     if self._properties is cls._properties:
       self._properties = dict(cls._properties or ())
 
-    if head != db_name:
-      prop = StructuredProperty(Model, head)
+    if p.name() != next and not p.name().endswith('.' + next):
+      prop = StructuredProperty(Model, next)
+      pid = str(id(prop))
+      assert pid not in self._values
+      self._values[pid] = Model()
     else:
-      prop = GenericProperty(head,
+      prop = GenericProperty(next,
                              repeated=p.multiple(),
                              indexed=indexed)
 
@@ -466,17 +472,28 @@ class StructuredProperty(Property):
     gitems = None
     if cls._properties:
       # TODO: Sort by property declaration order
-      gitems = sorted(cls._properties.iteritems())
+      gitems = sorted(cls._db_properties.iteritems())
     for value in values:
       litems = gitems
       if litems is None and value._properties:
-        litems = sorted(value._properties.iteritems())
+        litems = sorted(value._db_properties.iteritems())
       if litems:
         for name, prop in litems:
           prop.Serialize(value, pb, prefix + self.db_name + '.')
 
   def Deserialize(self, entity, p, depth=1):
-    # TODO: Refactor to share even more code with FromPb().
+    if not self.repeated:
+      subentity = entity._values.get(self.name)
+      if subentity is None:
+        subentity = self.modelclass()
+        entity._values[self.name] = subentity
+      assert isinstance(subentity, self.modelclass)
+      prop = subentity.GetPropertyFor(p, depth=depth)
+      prop.Deserialize(subentity, p, depth + 1)
+      return
+
+    # The repeated case is more complicated.
+    # TODO: Prove this won't happen for orphans.
     db_name = p.name()
     parts = db_name.split('.')
     assert len(parts) > depth, (depth, db_name, parts)
@@ -484,41 +501,25 @@ class StructuredProperty(Property):
     prop = None
     if self.modelclass._db_properties:
       prop = self.modelclass._db_properties.get(next)
-    if prop is None:
-      assert not self.repeated  # TODO: Handle this case
-      subentity = entity._values.get(self.name)
-      if subentity is None:
-        # TODO: Avoid repeating this code further below.
-        subentity = self.modelclass()
-        entity._values[self.name] = subentity
-      prop = None
-      if subentity._db_properties:
-        prop = subentity._db_properties.get(next)
-      if prop is None:
-        prop = subentity.FakeProperty(p, '.'.join(parts[depth:]), next)
-    if self.repeated:
-      if self.name in entity._values:
-        values = entity._values[self.name]
-        if not isinstance(values, list):
-          values = [values]
-      else:
-        values = []
-      entity._values[self.name] = values
-      # Find the first subentity that doesn't have a value for this
-      # property yet.
-      for sub in values:
-        assert isinstance(sub, self.modelclass)
-        if prop.name not in sub._values:
-          subentity = sub
-          break
-      else:
-        subentity = self.modelclass()
-        values.append(subentity)
+    assert prop is not None  # QED
+
+    if self.name in entity._values:
+      values = entity._values[self.name]
+      if not isinstance(values, list):
+        values = [values]
     else:
-      subentity = entity._values.get(self.name)
-      if subentity is None:
-        subentity = self.modelclass()
-        entity._values[self.name] = subentity
+      values = []
+    entity._values[self.name] = values
+    # Find the first subentity that doesn't have a value for this
+    # property yet.
+    for sub in values:
+      assert isinstance(sub, self.modelclass)
+      if prop.name not in sub._values:
+        subentity = sub
+        break
+    else:
+      subentity = self.modelclass()
+      values.append(subentity)
     prop.Deserialize(subentity, p, depth + 1)
 
 _EPOCH = datetime.datetime.utcfromtimestamp(0)

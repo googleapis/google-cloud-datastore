@@ -6,7 +6,7 @@ GAEPATH=$(GAE):$(GAE)/lib/yaml/lib
 test:
 	for i in `find . -name \*_test.py`; \
 	do \
-	  PYTHONPATH=$(GAEPATH):. python -m ndb.`basename $$i .py`; \
+	  PYTHONPATH=$(GAEPATH):. python -m ndb.`basename $$i .py` -v; \
 	done
 
 c cov cove cover coverage:
