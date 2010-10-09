@@ -5,8 +5,13 @@ Should kind be a @property?  What should it return for Model?
 Should the pb key be managed by ModelAdapter?
 Should FromPb become a class method?
 How to do Expando?
+  A: Start with tweaking the orphan code.
 How to do PolyModel?
 Do we need a metaclass, or is the auto-fixup in __init__ enough?
 Should we allow generic property values to be accessible as e.name?
+  A: Only in Expandos.
 What to do with the db connection and methods?
-How to support Flexidate? It is an immutable structure...!
+How to support deserializing Rafe's Flexidate? It is an immutable structure...!
+  A: Store a builder object in _values and change GetValue to turn that
+     into a Flexidate on first use.
+Rename Property (the Python class) to Field? The ambiguity drives me crazy!
