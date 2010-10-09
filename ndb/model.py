@@ -144,7 +144,7 @@ class Model(object):
     if elem.id() or elem.name():
       group.add_element().CopyFrom(elem)
 
-    if self._properties:
+    if self._db_properties:
       # TODO: Sort by property declaration order
       for name, prop in sorted(self._db_properties.iteritems()):
         prop.Serialize(self, pb)
@@ -475,12 +475,12 @@ class StructuredProperty(Property):
       assert isinstance(value, cls)
       values = [value]
     gitems = None
-    if cls._properties:
+    if cls._db_properties:
       # TODO: Sort by property declaration order
       gitems = sorted(cls._db_properties.iteritems())
     for value in values:
       litems = gitems
-      if litems is None and value._properties:
+      if litems is None and value._db_properties:
         litems = sorted(value._db_properties.iteritems())
       if litems:
         for name, prop in litems:

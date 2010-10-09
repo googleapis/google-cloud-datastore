@@ -1,1 +1,4 @@
-Rename *Property to *Field.
+Make more things functions (e.g. accessing kind_map, maybe _values).
+Do we even need _properties at all?
+Come up with a consistent naming scheme for Model methods, e.g. _foo_.
+Rename *Property to *Field?
