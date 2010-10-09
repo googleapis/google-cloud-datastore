@@ -1,6 +1,9 @@
 Is 'repeated=True' a good enough substitute for ListProperty?
+  (I think so.)
 What to do with repeated properties set to None?
+  (Shouldn't be possible.  If repeated the value should always be a list.)
 Should there be a difference between None and unset?  
+  (No.)
 Should kind be a @property?  What should it return for Model?
 Should the pb key be managed by ModelAdapter?
 Should FromPb become a class method?

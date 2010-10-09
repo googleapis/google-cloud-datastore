@@ -743,6 +743,12 @@ class ModelTests(unittest.TestCase):
     p = model.StructuredProperty(Address, 'foo')
     self.assertEqual(repr(p), "StructuredProperty(Address, 'foo')")
 
+  def testEmptyList(self):
+    class Person(model.Model):
+      name = model.StringProperty(repeated=True)
+    p = Person()
+    self.assertEqual(p.name, [])
+
 def main():
   unittest.main()
 

@@ -278,7 +278,11 @@ class Property(object):
     entity._values[self.name] = value
 
   def GetValue(self, entity):
-    return entity._values.get(self.name)
+     value = entity._values.get(self.name)
+     if value is None and self.repeated:
+       value = []
+       entity._values[self.name] = value
+     return value
 
   def __get__(self, obj, cls=None):
     if obj is None:
@@ -525,6 +529,8 @@ class StructuredProperty(Property):
 _EPOCH = datetime.datetime.utcfromtimestamp(0)
 
 class GenericProperty(Property):
+  # This is mainly used for orphans but can also be used explicitly
+  # for properties with dynalically-typed values, and in Expandos.
 
   def DbGetValue(self, v, p):
     # This is awkward but there seems to be no faster way to inspect
