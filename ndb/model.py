@@ -169,8 +169,6 @@ class Model(object):
   def GetPropertyFor(self, p, indexed=True, depth=0):
     db_name = p.name()
     parts = db_name.split('.')
-    if len(parts) <= depth:
-      import pdb; pdb.set_trace()
     assert len(parts) > depth, (p.name(), parts, depth)
     next = parts[depth]
     prop = None
