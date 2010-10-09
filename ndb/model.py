@@ -48,7 +48,6 @@ class Model(object):
 
   # Class variables updated by FixUpProperties()
   _properties = None
-  _db_properties = None
   _has_repeated = False
 
   # Defaults for instance variables.
@@ -63,8 +62,7 @@ class Model(object):
   @datastore_rpc._positional(1)
   def __init__(self, key=None, **kwds):
     cls = self.__class__
-    if (cls is not Model and
-        (cls._properties is None or cls._db_properties is None)):
+    if cls is not Model and cls._properties is None:
       FixUpProperties(cls)
     self._key = key
     self._values = {}
@@ -144,9 +142,9 @@ class Model(object):
     if elem.id() or elem.name():
       group.add_element().CopyFrom(elem)
 
-    if self._db_properties:
+    if self._properties:
       # TODO: Sort by property declaration order
-      for name, prop in sorted(self._db_properties.iteritems()):
+      for name, prop in sorted(self._properties.iteritems()):
         prop.Serialize(self, pb)
 
     return pb
@@ -176,16 +174,14 @@ class Model(object):
     assert len(parts) > depth, (p.name(), parts, depth)
     next = parts[depth]
     prop = None
-    if self._db_properties:
-      prop = self._db_properties.get(next)
+    if self._properties:
+      prop = self._properties.get(next)
     if prop is None:
       prop = self.FakeProperty(p, next, indexed)
     return prop
 
   def FakeProperty(self, p, next, indexed=True):
     cls = self.__class__
-    if self._db_properties is cls._db_properties:
-      self._db_properties = dict(cls._db_properties or ())
     if self._properties is cls._properties:
       self._properties = dict(cls._properties or ())
 
@@ -201,8 +197,7 @@ class Model(object):
 
     prop.FixUp(str(id(prop)))  # Use a unique string as Python name.
 
-    self._db_properties[prop.db_name] = prop
-    self._properties[prop.name] = prop
+    self._properties[prop.db_name] = prop
     return prop
 
   # TODO: Move db methods out of this class?
@@ -423,8 +418,7 @@ def FixUpProperties(cls):
   # NOTE: This may be called multiple times if properties are
   # dynamically added to the class.
   assert cls is not Model
-  cls._properties = {}  # Map of {name: Property}
-  cls._db_properties = {}  # Map of {db_name: Property}
+  cls._properties = {}  # Map of {db_name: Property}
   for name in set(dir(cls)):
     prop = getattr(cls, name, None)
     if isinstance(prop, Property):
@@ -432,8 +426,7 @@ def FixUpProperties(cls):
       prop.FixUp(name)
       if prop.repeated:
         cls._has_repeated = True
-      cls._properties[name] = prop
-      cls._db_properties[prop.db_name] = prop
+      cls._properties[prop.db_name] = prop
   if issubclass(cls, Model):
     kind_map[cls.getkind()] = cls
 
@@ -451,8 +444,7 @@ class StructuredProperty(Property):
                                              name=name,
                                              indexed=indexed,
                                              repeated=repeated)
-    if (modelclass is not Model and
-      (modelclass._properties is None or modelclass._db_properties is None)):
+    if modelclass is not Model and modelclass._properties is None:
       FixUpProperties(modelclass)
     if self.repeated:
       assert not modelclass._has_repeated
@@ -475,13 +467,13 @@ class StructuredProperty(Property):
       assert isinstance(value, cls)
       values = [value]
     gitems = None
-    if cls._db_properties:
+    if cls._properties:
       # TODO: Sort by property declaration order
-      gitems = sorted(cls._db_properties.iteritems())
+      gitems = sorted(cls._properties.iteritems())
     for value in values:
       litems = gitems
-      if litems is None and value._db_properties:
-        litems = sorted(value._db_properties.iteritems())
+      if litems is None and value._properties:
+        litems = sorted(value._properties.iteritems())
       if litems:
         for name, prop in litems:
           prop.Serialize(value, pb, prefix + self.db_name + '.')
@@ -504,8 +496,8 @@ class StructuredProperty(Property):
     assert len(parts) > depth, (depth, db_name, parts)
     next = parts[depth]
     prop = None
-    if self.modelclass._db_properties:
-      prop = self.modelclass._db_properties.get(next)
+    if self.modelclass._properties:
+      prop = self.modelclass._properties.get(next)
     assert prop is not None  # QED
 
     if self.name in entity._values:
