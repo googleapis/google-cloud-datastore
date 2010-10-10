@@ -62,7 +62,7 @@ class Model(object):
   def __init__(self, key=None, **kwds):
     cls = self.__class__
     if cls is not Model and cls._properties is None:
-      FixUpProperties(cls)
+      cls.FixUpProperties()
     self._key = key
     self._values = {}
     for name, value in kwds.iteritems():
@@ -196,6 +196,23 @@ class Model(object):
 
     self._properties[prop.name] = prop
     return prop
+
+  @classmethod
+  def FixUpProperties(cls):
+    # NOTE: This may be called multiple times if properties are
+    # dynamically added to the class.
+    assert cls is not Model
+    cls._properties = {}  # Map of {name: Property}
+    for name in set(dir(cls)):
+      prop = getattr(cls, name, None)
+      if isinstance(prop, Property):
+        assert not name.startswith('_')
+        prop.FixUp(name)
+        if prop.repeated:
+          cls._has_repeated = True
+        cls._properties[prop.name] = prop
+    if issubclass(cls, Model):
+      kind_map[cls.getkind()] = cls
 
   # TODO: Move db methods out of this class?
 
@@ -405,23 +422,6 @@ class KeyProperty(Property):
       path.add_element().CopyFrom(elem)
     return Key(reference=ref)
 
-# TODO: Make this a Model class method?
-def FixUpProperties(cls):
-  # NOTE: This may be called multiple times if properties are
-  # dynamically added to the class.
-  assert cls is not Model
-  cls._properties = {}  # Map of {name: Property}
-  for name in set(dir(cls)):
-    prop = getattr(cls, name, None)
-    if isinstance(prop, Property):
-      assert not name.startswith('_')
-      prop.FixUp(name)
-      if prop.repeated:
-        cls._has_repeated = True
-      cls._properties[prop.name] = prop
-  if issubclass(cls, Model):
-    kind_map[cls.getkind()] = cls
-
 class StructuredProperty(Property):
 
   modelclass = None
@@ -435,7 +435,7 @@ class StructuredProperty(Property):
                                              indexed=indexed,
                                              repeated=repeated)
     if modelclass is not Model and modelclass._properties is None:
-      FixUpProperties(modelclass)
+      modelclass.FixUpProperties()
     if self.repeated:
       assert not modelclass._has_repeated
     self.modelclass = modelclass
@@ -449,7 +449,7 @@ class StructuredProperty(Property):
       return
     cls = self.modelclass
     if cls._properties is None and cls is not Model:
-      FixUpProperties(cls)
+      cls.FixUpProperties()
     if self.repeated:
       assert isinstance(value, list)
       values = value
