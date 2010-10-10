@@ -3,7 +3,6 @@
 TODO: docstrings, style, asserts
 """
 
-import calendar
 import datetime
 import logging
 
@@ -215,7 +214,6 @@ class Model(object):
 
 # TODO: Use a metaclass to automatically call FixUpProperties()?
 # TODO: More Property types
-# TODO: Orphan properties
 
 class Property(object):
   # TODO: Separate 'simple' properties from base Property class
@@ -412,6 +410,7 @@ class KeyProperty(Property):
       path.add_element().CopyFrom(elem)
     return Key(reference=ref)
 
+# TODO: Make this a Model class method?
 def FixUpProperties(cls):
   # NOTE: This may be called multiple times if properties are
   # dynamically added to the class.
@@ -590,8 +589,8 @@ class GenericProperty(Property):
         rv.add_pathelement().CopyFrom(elem)
     elif isinstance(value, datetime.datetime):
       assert value.tzinfo is None
-      ival = (long(calendar.timegm(value.timetuple()) * 1000000L) +
-              value.microsecond)
+      dt = value - _EPOCH
+      ival = dt.microseconds + 1000000 * (dt.seconds + 24*3600 * dt.days)
       v.set_int64value(ival)
       p.set_meaning(entity_pb.Property.GD_WHEN)
     else:

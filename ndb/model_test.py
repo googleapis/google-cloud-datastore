@@ -1,6 +1,7 @@
 """Tests for model.py."""
 
 import base64
+import datetime
 import difflib
 import pickle
 import re
@@ -761,6 +762,15 @@ class ModelTests(unittest.TestCase):
     q = Person()
     q.FromPb(pb)
     self.assertEqual(q.name, [], str(pb))
+
+  def testDatetimeSerializing(self):
+    class Person(model.Model):
+      t = model.GenericProperty()
+    p = Person(t=datetime.datetime.utcnow())
+    pb = p.ToPb()
+    q = Person()
+    q.FromPb(pb)
+    self.assertEqual(p.t, q.t)
 
 def main():
   unittest.main()

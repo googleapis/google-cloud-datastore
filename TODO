@@ -1,3 +1,4 @@
 Make more things functions (e.g. accessing kind_map, maybe _values).
+Or, actually, (class) methods.
+
 Come up with a consistent naming scheme for Model methods, e.g. _foo_.
-Rename *Property to *Field?
