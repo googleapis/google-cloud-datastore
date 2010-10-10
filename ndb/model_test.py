@@ -384,7 +384,6 @@ class ModelTests(unittest.TestCase):
       p = model.IntegerProperty()
       q = model.StringProperty()
       k = model.KeyProperty()
-    MyModel.FixUpProperties()
 
     ent = MyModel()
     k = model.Key(flat=['MyModel', 42])
@@ -411,7 +410,6 @@ class ModelTests(unittest.TestCase):
     class MyModel(model.Model):
       t = model.TextProperty()
       b = model.BlobProperty()
-    MyModel.FixUpProperties()
 
     ent = MyModel()
     MyModel.t.SetValue(ent, u'Hello world\u1234')
@@ -436,7 +434,6 @@ class ModelTests(unittest.TestCase):
     class Person(model.Model):
       name = model.StringProperty()
       address = model.StructuredProperty(Address)
-    Person.FixUpProperties()
 
     p = Person()
     p.name = 'Google'
@@ -463,14 +460,12 @@ class ModelTests(unittest.TestCase):
     class Address(model.Model):
       street = model.StringProperty()
       city = model.StringProperty()
-    Address.FixUpProperties()
     class AddressPair(model.Model):
       home = model.StructuredProperty(Address)
       work = model.StructuredProperty(Address)
     class Person(model.Model):
       name = model.StringProperty()
       address = model.StructuredProperty(AddressPair)
-    Person.FixUpProperties()
 
     p = Person()
     p.name = 'Google'
@@ -498,7 +493,6 @@ class ModelTests(unittest.TestCase):
     Node.FixUpProperties()
     class Tree(model.Model):
       root = model.StructuredProperty(Node)
-    Tree.FixUpProperties()
 
     k = model.Key(flat=['Tree', None])
     tree = Tree()
@@ -521,7 +515,6 @@ class ModelTests(unittest.TestCase):
       pp = model.IntegerProperty('p')
       qq = model.StringProperty('q')
       kk = model.KeyProperty('k')
-    MyModel.FixUpProperties()
 
     ent = MyModel()
     k = model.Key(flat=['MyModel', 42])
@@ -548,14 +541,12 @@ class ModelTests(unittest.TestCase):
     class Address(model.Model):
       st = model.StringProperty('street')
       ci = model.StringProperty('city')
-    Address.FixUpProperties()
     class AddressPair(model.Model):
       ho = model.StructuredProperty(Address, 'home')
       wo = model.StructuredProperty(Address, 'work')
     class Person(model.Model):
       na = model.StringProperty('name')
       ad = model.StructuredProperty(AddressPair, 'address')
-    Person.FixUpProperties()
 
     p = Person()
     p.na = 'Google'
@@ -590,7 +581,6 @@ class ModelTests(unittest.TestCase):
     class Person(model.Model):
       name = model.StringProperty()
       address = model.StringProperty(repeated=True)
-    Person.FixUpProperties()
 
     m = Person(name='Google', address=['345 Spear', 'San Francisco'])
     m.key = model.Key(flat=['Person', None])
@@ -609,7 +599,6 @@ class ModelTests(unittest.TestCase):
     class Person(model.Model):
       name = model.StringProperty()
       address = model.StructuredProperty(Address)
-    Person.FixUpProperties()
 
     m = Person(name='Google',
                address=Address(label='work',
@@ -630,7 +619,6 @@ class ModelTests(unittest.TestCase):
     class Person(model.Model):
       name = model.StringProperty()
       address = model.StructuredProperty(Address, repeated=True)
-    Person.FixUpProperties()
 
     m = Person(name='Google',
                address=[Address(label='work', text='San Francisco'),
@@ -658,13 +646,11 @@ class ModelTests(unittest.TestCase):
       street = model.StringProperty()
       city = model.StringProperty()
       zip = model.IntegerProperty()
-    Address.FixUpProperties()
     class Person(model.Model):
       address = model.StructuredProperty(Address)
       age = model.IntegerProperty()
       name = model.StringProperty()
       k = model.KeyProperty()
-    Person.FixUpProperties()
     k = model.Key(flat=['Person', 42])
     p = Person()
     p.key = k
@@ -685,19 +671,16 @@ class ModelTests(unittest.TestCase):
     class Tag(model.Model):
       names = model.StringProperty(repeated=True)
       ratings = model.IntegerProperty(repeated=True)
-    Tag.FixUpProperties()
     class Address(model.Model):
       line = model.StringProperty(repeated=True)
       city = model.StringProperty()
       zip = model.IntegerProperty()
       tags = model.StructuredProperty(Tag)
-    Address.FixUpProperties()
     class Person(model.Model):
       address = model.StructuredProperty(Address)
       age = model.IntegerProperty(repeated=True)
       name = model.StringProperty()
       k = model.KeyProperty()
-    Person.FixUpProperties()
     k = model.Key(flat=['Person', 42])
     p = Person(name='White House', k=k, age=[210, 211],
                address=Address(line=['1600 Pennsylvania', 'Washington, DC'],
