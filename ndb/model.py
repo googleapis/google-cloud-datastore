@@ -601,9 +601,15 @@ class Expando(Model):
     return prop.GetValue(self)
 
   def __setattr__(self, name, value):
-    if name.startswith('_') or name in self._properties:
+    if name.startswith('_') or self._properties and name in self._properties:
       return super(Expando, self).__setattr__(name, value)
     self.CloneProperties()
     prop = GenericProperty(name)
     self._properties[name] = prop
     prop.SetValue(self, value)
+
+  @classmethod
+  def FixUpProperties(cls):
+    if cls is Expando:
+      return
+    super(Expando, cls).FixUpProperties()

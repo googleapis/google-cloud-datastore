@@ -359,6 +359,8 @@ class ModelTests(unittest.TestCase):
     model.kind_map.clear()
 
   def tearDown(self):
+    self.assertTrue(model.Model._properties is None)
+    self.assertTrue(model.Expando._properties is None)
     model.kind_map.clear()
 
   def testKey(self):
@@ -773,6 +775,15 @@ class ModelTests(unittest.TestCase):
     p.q = 'hello'
     pb = p.ToPb()
     self.assertEqual(str(pb), GOLDEN_PB)
+
+  def testExpandoSubclass(self):
+    class Person(model.Expando):
+      name = model.StringProperty()
+    p = Person()
+    p.name = 'Joe'
+    p.age = 7
+    self.assertEqual(p.name, 'Joe')
+    self.assertEqual(p.age, 7)
 
 def main():
   unittest.main()
