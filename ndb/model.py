@@ -166,8 +166,8 @@ class Model(object):
         prop.Deserialize(self, p)
 
   def GetPropertyFor(self, p, indexed=True, depth=0):
-    db_name = p.name()
-    parts = db_name.split('.')
+    name = p.name()
+    parts = name.split('.')
     assert len(parts) > depth, (p.name(), parts, depth)
     next = parts[depth]
     prop = None
@@ -194,7 +194,7 @@ class Model(object):
 
     prop.FixUp(str(id(prop)))  # Use a unique string as Python name.
 
-    self._properties[prop.db_name] = prop
+    self._properties[prop.name] = prop
     return prop
 
   # TODO: Move db methods out of this class?
@@ -218,19 +218,15 @@ class Model(object):
 class Property(object):
   # TODO: Separate 'simple' properties from base Property class
 
-  db_name = None
   name = None
   indexed = True
   repeated = False
 
-  _attributes = ['db_name', 'name', 'indexed', 'repeated']
+  _attributes = ['name', 'indexed', 'repeated']
   _positional = 1
 
   @datastore_rpc._positional(1 + _positional)
-  def __init__(self, db_name=None, name=None, indexed=None, repeated=None):
-    if db_name is not None:
-      assert '.' not in db_name  # The '.' is used elsewhere.
-      self.db_name = db_name
+  def __init__(self, name=None, indexed=None, repeated=None):
     if name is not None:
       assert '.' not in name  # The '.' is used elsewhere.
       self.name = name
@@ -256,9 +252,8 @@ class Property(object):
     return s
 
   def FixUp(self, name):
-    self.name = name
-    if self.db_name is None:
-      self.db_name = name
+    if self.name is None:
+      self.name = name
 
   def SetValue(self, entity, value):
     if self.repeated:
@@ -297,7 +292,7 @@ class Property(object):
         p = pb.add_property()
       else:
         p = pb.add_raw_property()
-      p.set_name(prefix + self.db_name)
+      p.set_name(prefix + self.name)
       p.set_multiple(self.repeated)
       v = p.mutable_value()
       if val is not None:
@@ -415,7 +410,7 @@ def FixUpProperties(cls):
   # NOTE: This may be called multiple times if properties are
   # dynamically added to the class.
   assert cls is not Model
-  cls._properties = {}  # Map of {db_name: Property}
+  cls._properties = {}  # Map of {name: Property}
   for name in set(dir(cls)):
     prop = getattr(cls, name, None)
     if isinstance(prop, Property):
@@ -423,7 +418,7 @@ def FixUpProperties(cls):
       prop.FixUp(name)
       if prop.repeated:
         cls._has_repeated = True
-      cls._properties[prop.db_name] = prop
+      cls._properties[prop.name] = prop
   if issubclass(cls, Model):
     kind_map[cls.getkind()] = cls
 
@@ -435,10 +430,8 @@ class StructuredProperty(Property):
   _positional = 2
 
   @datastore_rpc._positional(1 + _positional)
-  def __init__(self, modelclass, db_name=None, name=None,
-               indexed=None, repeated=None):
-    super(StructuredProperty, self).__init__(db_name=db_name,
-                                             name=name,
+  def __init__(self, modelclass, name=None, indexed=None, repeated=None):
+    super(StructuredProperty, self).__init__(name=name,
                                              indexed=indexed,
                                              repeated=repeated)
     if modelclass is not Model and modelclass._properties is None:
@@ -473,7 +466,7 @@ class StructuredProperty(Property):
         litems = sorted(value._properties.iteritems())
       if litems:
         for name, prop in litems:
-          prop.Serialize(value, pb, prefix + self.db_name + '.')
+          prop.Serialize(value, pb, prefix + self.name + '.')
 
   def Deserialize(self, entity, p, depth=1):
     if not self.repeated:
@@ -488,9 +481,9 @@ class StructuredProperty(Property):
 
     # The repeated case is more complicated.
     # TODO: Prove this won't happen for orphans.
-    db_name = p.name()
-    parts = db_name.split('.')
-    assert len(parts) > depth, (depth, db_name, parts)
+    name = p.name()
+    parts = name.split('.')
+    assert len(parts) > depth, (depth, name, parts)
     next = parts[depth]
     prop = None
     if self.modelclass._properties:

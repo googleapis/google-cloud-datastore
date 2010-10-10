@@ -734,10 +734,9 @@ class ModelTests(unittest.TestCase):
   def testPropertyRepr(self):
     p = model.Property()
     self.assertEqual(repr(p), 'Property()')
-    p = model.IntegerProperty('foo', name='bar', indexed=False, repeated=True)
+    p = model.IntegerProperty('foo', indexed=False, repeated=True)
     self.assertEqual(repr(p),
-                     "IntegerProperty('foo', name='bar', "
-                     "indexed=False, repeated=True)")
+                     "IntegerProperty('foo', indexed=False, repeated=True)")
     class Address(model.Model):
       street = model.StringProperty()
       city = model.StringProperty()
