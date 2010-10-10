@@ -177,11 +177,13 @@ class Model(object):
       prop = self.FakeProperty(p, next, indexed)
     return prop
 
-  def FakeProperty(self, p, next, indexed=True):
+  def CloneProperties(self):
     cls = self.__class__
     if self._properties is cls._properties:
       self._properties = dict(cls._properties or ())
 
+  def FakeProperty(self, p, next, indexed=True):
+    self.CloneProperties()
     if p.name() != next and not p.name().endswith('.' + next):
       prop = StructuredProperty(Model, next)
       pid = str(id(prop))
@@ -589,3 +591,19 @@ class GenericProperty(Property):
     else:
       # TODO: point, user, blobkey, date, time, atom and gdata types
       assert False, type(value)
+
+class Expando(Model):
+
+  def __getattr__(self, name):
+    prop = self._properties.get(name)
+    if prop is None:
+      return super(Expando, self).__getattribute__(name)
+    return prop.GetValue(self)
+
+  def __setattr__(self, name, value):
+    if name.startswith('_') or name in self._properties:
+      return super(Expando, self).__setattr__(name, value)
+    self.CloneProperties()
+    prop = GenericProperty(name)
+    self._properties[name] = prop
+    prop.SetValue(self, value)

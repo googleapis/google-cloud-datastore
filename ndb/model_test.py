@@ -754,6 +754,26 @@ class ModelTests(unittest.TestCase):
     q.FromPb(pb)
     self.assertEqual(p.t, q.t)
 
+  def testExpandoRead(self):
+    class Person(model.Model):
+      name = model.StringProperty()
+      city = model.StringProperty()
+    p = Person(name='Guido', city='SF')
+    pb = p.ToPb()
+    q = model.Expando()
+    q.FromPb(pb)
+    self.assertEqual(q.name, 'Guido')
+    self.assertEqual(q.city, 'SF')
+
+  def testExpandoWrite(self):
+    k = model.Key(flat=['Model', 42])
+    p = model.Expando(key=k)
+    p.k = k
+    p.p = 42
+    p.q = 'hello'
+    pb = p.ToPb()
+    self.assertEqual(str(pb), GOLDEN_PB)
+
 def main():
   unittest.main()
 
