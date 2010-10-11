@@ -25,5 +25,5 @@ c cov cove cover coverage:
 run serve:
 	dev_appserver.py .
 
-deploy:
+push deploy:
 	appcfg.py update .

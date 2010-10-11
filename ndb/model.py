@@ -237,7 +237,7 @@ class Model(object):
     return key
 
   def delete(self):
-    conn.delete([self.key()])
+    conn.delete([self.key])
 
 # TODO: Use a metaclass to automatically call FixUpProperties()?
 # TODO: More Property types

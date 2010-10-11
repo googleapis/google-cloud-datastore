@@ -38,7 +38,9 @@ ACCOUNT_PAGE = """
   <form method=POST action=/account>
     <!-- TODO: XSRF protection -->
     Email: %(email)s
-    <input type=submit value="%(action)s Account">
+    <input type=submit name=%(action)s value="%(action)s Account">
+    <input type=submit name=delete value="Delete Account">
+    <a href=/>back to home page</a>
   </form>
 </body>
 """
@@ -105,10 +107,17 @@ class HomePage(webapp.RequestHandler):
           account = Account.get(result.acct)
           if account is not None:
             author = account.email or str(account)
+        bodylines = []
+        for line in map(cgi.escape, result.body.splitlines()):
+          if not line:
+            bodylines.append('<p>')
+          else:
+            bodylines.append(line)
+        body = '\n'.join(bodylines)
         self.response.out.write('<hr>%s @ %s<p>%s</p>' %
                                 (cgi.escape(author),
                                  time.ctime(result.when),
-                                 cgi.escape(result.body)))
+                                 body))
 
   def post(self):
     user = users.get_current_user()
@@ -152,8 +161,14 @@ class AccountPage(webapp.RequestHandler):
     if user is None:
       self.redirect(users.create_login_url('/account'))
       return
+    if self.request.get('delete'):
+      account = GetAccountByUser(user)
+      if account is not None:
+        account.delete()
+      self.redirect('/account')
+      return
     account = GetAccountByUser(user, create=True)
-    self.redirect('/')
+    self.redirect('/account')
 
 urls = [
   ('/', HomePage),

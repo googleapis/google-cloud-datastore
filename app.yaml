@@ -1,5 +1,5 @@
 # Demo app.
-application: appengine-ndb-experiment
+application: ndb-experiment
 version: 1
 runtime: python
 api_version: 1
