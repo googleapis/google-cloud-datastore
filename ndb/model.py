@@ -13,8 +13,6 @@ from core import datastore_rpc
 # NOTE: Key is meant for export, too.
 from ndb.key import Key, _ReferenceFromPairs, _DefaultAppId
 
-kind_map = {}  # Dict mapping {kind: Model subclass}
-
 class ModelAdapter(datastore_rpc.AbstractAdapter):
 
   def pb_to_key(self, pb):
@@ -29,7 +27,7 @@ class ModelAdapter(datastore_rpc.AbstractAdapter):
       key = Key(reference=pb.key())  # TODO: Avoid doing this twice
       for kind, _ in key.pairs():
         pass  # As a side effect, set kind to the last kind, if any
-    modelclass = kind_map.get(kind, Model)
+    modelclass = Model._kind_map.get(kind, Model)
     ent = modelclass()
     ent.FromPb(pb)
     return ent
@@ -38,6 +36,7 @@ class ModelAdapter(datastore_rpc.AbstractAdapter):
     pb = ent.ToPb()
     return pb
 
+# TODO: Move or kill this?  Make it a method?
 conn = datastore_rpc.Connection(adapter=ModelAdapter())
 
 class Model(object):
@@ -48,6 +47,7 @@ class Model(object):
   # Class variables updated by FixUpProperties()
   _properties = None
   _has_repeated = False
+  _kind_map = {}  # Dict mapping {kind: Model subclass}
 
   # Defaults for instance variables.
   _key = None
@@ -81,8 +81,12 @@ class Model(object):
 
   # TODO: Make kind a property also?
   @classmethod
-  def getkind(cls):
+  def GetKind(cls):
     return cls.__name__
+
+  @classmethod
+  def GetKindMap(cls):
+    return cls._kind_map
 
   def _getkey(self):
     return self._key
@@ -91,7 +95,7 @@ class Model(object):
     if key is not None:
       assert isinstance(key, Key)
       if self.__class__ is not Model:
-        assert list(key.pairs())[-1][0] == self.getkind()
+        assert list(key.pairs())[-1][0] == self.GetKind()
     self._key = key
 
   def _delkey(self):
@@ -131,8 +135,8 @@ class Model(object):
     # TODO: Move the key stuff into ModelAdapter.entity_to_pb()?
     key = self._key
     if key is None:
-      ref = _ReferenceFromPairs([(self.getkind(), None)], pb.mutable_key())
-      ref.set_app(_DefaultAppId())
+      ref = _ReferenceFromPairs([(self.GetKind(), None)], pb.mutable_key())
+      ref.set_app(_DefaultAppId())  # TODO: Move into _ReferenceFromPairs?
     else:
       ref = key._Key__reference  # Don't copy
       pb.mutable_key().CopyFrom(ref)
@@ -213,8 +217,11 @@ class Model(object):
         if prop.repeated:
           cls._has_repeated = True
         cls._properties[prop.name] = prop
-    if issubclass(cls, Model):
-      kind_map[cls.getkind()] = cls
+    cls._kind_map[cls.GetKind()] = cls
+
+  @classmethod
+  def ResetKindMap(cls):
+    cls._kind_map.clear()
 
   # TODO: Move db methods out of this class?
 

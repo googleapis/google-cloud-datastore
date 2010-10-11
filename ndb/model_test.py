@@ -356,12 +356,12 @@ property <
 class ModelTests(unittest.TestCase):
 
   def setUp(self):
-    model.kind_map.clear()
+    model.Model.ResetKindMap()
 
   def tearDown(self):
     self.assertTrue(model.Model._properties is None)
     self.assertTrue(model.Expando._properties is None)
-    model.kind_map.clear()
+    model.Model.ResetKindMap()
 
   def testKey(self):
     m = model.Model()
@@ -401,7 +401,7 @@ class ModelTests(unittest.TestCase):
 
     ent = MyModel()
     ent.FromPb(pb)
-    self.assertEqual(ent.getkind(), 'MyModel')
+    self.assertEqual(ent.GetKind(), 'MyModel')
     k = model.Key(flat=['MyModel', 42])
     self.assertEqual(ent.key, k)
     self.assertEqual(MyModel.p.GetValue(ent), 42)
@@ -423,7 +423,7 @@ class ModelTests(unittest.TestCase):
 
     ent = MyModel()
     ent.FromPb(pb)
-    self.assertEqual(ent.getkind(), 'MyModel')
+    self.assertEqual(ent.GetKind(), 'MyModel')
     k = model.Key(flat=['MyModel', None])
     self.assertEqual(ent.key, k)
     self.assertEqual(MyModel.t.GetValue(ent), u'Hello world\u1234')
@@ -532,7 +532,7 @@ class ModelTests(unittest.TestCase):
 
     ent = MyModel()
     ent.FromPb(pb)
-    self.assertEqual(ent.getkind(), 'MyModel')
+    self.assertEqual(ent.GetKind(), 'MyModel')
     k = model.Key(flat=['MyModel', 42])
     self.assertEqual(ent.key, k)
     self.assertEqual(MyModel.pp.GetValue(ent), 42)
@@ -569,15 +569,15 @@ class ModelTests(unittest.TestCase):
     self.assertEqual(p.ad.wo.ci, 'San Francisco')
 
   def testKindMap(self):
-    model.kind_map.clear()
+    model.Model.ResetKindMap()
     class A1(model.Model):
       pass
     class A2(model.Model):
       pass
     A1.FixUpProperties()
-    self.assertEqual(model.kind_map, {'A1': A1})
+    self.assertEqual(model.Model.GetKindMap(), {'A1': A1})
     A2.FixUpProperties()
-    self.assertEqual(model.kind_map, {'A1': A1, 'A2': A2})
+    self.assertEqual(model.Model.GetKindMap(), {'A1': A1, 'A2': A2})
 
   def testMultipleProperty(self):
     class Person(model.Model):
