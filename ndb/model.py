@@ -72,6 +72,7 @@ class Model(object):
     cls = self.__class__
     self._key = key
     self._values = {}
+    # TODO: Factor out the following loop so Expando can override it.
     for name, value in kwds.iteritems():
       prop = getattr(cls, name)
       assert isinstance(prop, Property)
@@ -587,6 +588,8 @@ class GenericProperty(Property):
       assert False, type(value)
 
 class Expando(Model):
+
+  # TODO: Support Expando(attr1=val1, attr2=val2, ...).
 
   def __getattr__(self, name):
     prop = self._properties.get(name)
