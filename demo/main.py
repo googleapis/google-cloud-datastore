@@ -105,7 +105,9 @@ class HomePage(webapp.RequestHandler):
         account = None
         if result.acct is not None:
           account = Account.get(result.acct)
-          if account is not None:
+          if account is None:
+            author = 'withdrawn'
+          else:
             author = account.email or str(account)
         bodylines = []
         for line in map(cgi.escape, result.body.splitlines()):
