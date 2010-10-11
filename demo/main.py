@@ -29,9 +29,6 @@ class Message(model.Model):
   body = model.StringProperty()
   when = model.IntegerProperty()
 
-model.FixUpProperties(Message)
-  
-
 class HomePage(webapp.RequestHandler):
 
   def get(self):
@@ -39,7 +36,7 @@ class HomePage(webapp.RequestHandler):
     order = datastore_query.PropertyOrder(
       'when',
       datastore_query.PropertyOrder.DESCENDING)
-    query = datastore_query.Query(kind=Message.getkind(), order=order)
+    query = datastore_query.Query(kind=Message.GetKind(), order=order)
     for batch in query.run(model.conn):
       for result in batch.results:
         self.response.out.write('<hr>%s<p>%s</p>' %
