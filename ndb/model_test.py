@@ -359,8 +359,8 @@ class ModelTests(unittest.TestCase):
     model.Model.ResetKindMap()
 
   def tearDown(self):
-    self.assertTrue(model.Model._properties is None)
-    self.assertTrue(model.Expando._properties is None)
+    self.assertTrue(model.Model._properties == {})
+    self.assertTrue(model.Expando._properties == {})
     model.Model.ResetKindMap()
 
   def testKey(self):

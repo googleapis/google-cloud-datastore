@@ -152,10 +152,9 @@ class Model(object):
     if elem.id() or elem.name():
       group.add_element().CopyFrom(elem)
 
-    if self._properties:
-      # TODO: Sort by property declaration order
-      for name, prop in sorted(self._properties.iteritems()):
-        prop.Serialize(self, pb)
+    # TODO: Sort by property declaration order
+    for name, prop in sorted(self._properties.iteritems()):
+      prop.Serialize(self, pb)
 
     return pb
 
@@ -181,9 +180,7 @@ class Model(object):
     parts = name.split('.')
     assert len(parts) > depth, (p.name(), parts, depth)
     next = parts[depth]
-    prop = None
-    if self._properties:
-      prop = self._properties.get(next)
+    prop = self._properties.get(next)
     if prop is None:
       prop = self.FakeProperty(p, next, indexed)
     return prop
@@ -191,22 +188,17 @@ class Model(object):
   def CloneProperties(self):
     cls = self.__class__
     if self._properties is cls._properties:
-      self._properties = dict(cls._properties or ())
+      self._properties = dict(cls._properties)
 
   def FakeProperty(self, p, next, indexed=True):
     self.CloneProperties()
     if p.name() != next and not p.name().endswith('.' + next):
       prop = StructuredProperty(Model, next)
-      pid = str(id(prop))
-      assert pid not in self._values
-      self._values[pid] = Model()
+      self._values[prop.name] = Model()
     else:
       prop = GenericProperty(next,
                              repeated=p.multiple(),
                              indexed=indexed)
-
-    prop.FixUp(str(id(prop)))  # Use a unique string as Python name.
-
     self._properties[prop.name] = prop
     return prop
 
@@ -214,9 +206,9 @@ class Model(object):
   def FixUpProperties(cls):
     # NOTE: This is called by MetaModel, but may also be called manually
     # after dynamically updating a model class.
-    if cls.__name__ == 'Model':  # The Model class may not yet exist...
-      return
     cls._properties = {}  # Map of {name: Property}
+    if cls.__module__ == __name__:  # Skip the classes in *this* file.
+      return
     for name in set(dir(cls)):
       prop = getattr(cls, name, None)
       if isinstance(prop, Property):
@@ -470,12 +462,11 @@ class StructuredProperty(Property):
       assert isinstance(value, cls)
       values = [value]
     gitems = None
-    if cls._properties:
-      # TODO: Sort by property declaration order
-      gitems = sorted(cls._properties.iteritems())
+    # TODO: Sort by property declaration order
+    gitems = sorted(cls._properties.iteritems())
     for value in values:
       litems = gitems
-      if litems is None and value._properties:
+      if value._properties is not cls._properties:
         litems = sorted(value._properties.iteritems())
       if litems:
         for name, prop in litems:
@@ -498,9 +489,7 @@ class StructuredProperty(Property):
     parts = name.split('.')
     assert len(parts) > depth, (depth, name, parts)
     next = parts[depth]
-    prop = None
-    if self.modelclass._properties:
-      prop = self.modelclass._properties.get(next)
+    prop = self.modelclass._properties.get(next)
     assert prop is not None  # QED
 
     if self.name in entity._values:
@@ -612,15 +601,9 @@ class Expando(Model):
     return prop.GetValue(self)
 
   def __setattr__(self, name, value):
-    if name.startswith('_') or self._properties and name in self._properties:
+    if name.startswith('_') or name in self._properties:
       return super(Expando, self).__setattr__(name, value)
     self.CloneProperties()
     prop = GenericProperty(name)
     self._properties[name] = prop
     prop.SetValue(self, value)
-
-  @classmethod
-  def FixUpProperties(cls):
-    if cls.__name__ == 'Expando':  # The Expando class may not yet exist...
-      return
-    super(Expando, cls).FixUpProperties()
