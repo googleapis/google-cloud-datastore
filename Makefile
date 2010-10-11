@@ -1,17 +1,19 @@
 # Convenience to run tests and coverage.
 
+FLAGS=
 GAE=	/usr/local/google_appengine
 GAEPATH=$(GAE):$(GAE)/lib/yaml/lib
+TESTS=	`find . -name \*_test.py`
 
 test:
-	for i in `find . -name \*_test.py`; \
+	for i in $(TESTS); \
 	do \
-	  PYTHONPATH=$(GAEPATH):. python -m ndb.`basename $$i .py` -v; \
+	  PYTHONPATH=$(GAEPATH):. python -m ndb.`basename $$i .py` $(FLAGS); \
 	done
 
 c cov cove cover coverage:
 	coverage erase
-	for i in `find . -name \*_test.py`; \
+	for i in $(TESTS); \
 	do \
 	  PYTHONPATH=$(GAEPATH):. coverage run -p $$i; \
 	done

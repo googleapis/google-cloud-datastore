@@ -121,6 +121,7 @@ class Model(object):
       # TODO: If one key is None and the other is an explicit
       # incomplete key of the simplest form, this should be OK.
       return False
+    # TODO: Turn the rest of this into an Equivalent() method.
     # Ignore differences in values that are None.
     self_values = [(name, value)
                    for name, value in self._values.iteritems()
@@ -152,7 +153,6 @@ class Model(object):
     if elem.id() or elem.name():
       group.add_element().CopyFrom(elem)
 
-    # TODO: Sort by property declaration order
     for name, prop in sorted(self._properties.iteritems()):
       prop.Serialize(self, pb)
 
@@ -461,16 +461,10 @@ class StructuredProperty(Property):
     else:
       assert isinstance(value, cls)
       values = [value]
-    gitems = None
-    # TODO: Sort by property declaration order
-    gitems = sorted(cls._properties.iteritems())
     for value in values:
-      litems = gitems
-      if value._properties is not cls._properties:
-        litems = sorted(value._properties.iteritems())
-      if litems:
-        for name, prop in litems:
-          prop.Serialize(value, pb, prefix + self.name + '.')
+      # TODO: Avoid re-sorting for repeated values.
+      for name, prop in sorted(value._properties.iteritems()):
+        prop.Serialize(value, pb, prefix + self.name + '.')
 
   def Deserialize(self, entity, p, depth=1):
     if not self.repeated:
@@ -484,7 +478,7 @@ class StructuredProperty(Property):
       return
 
     # The repeated case is more complicated.
-    # TODO: Prove this won't happen for orphans.
+    # TODO: Prove we won't get here for orphans.
     name = p.name()
     parts = name.split('.')
     assert len(parts) > depth, (depth, name, parts)
