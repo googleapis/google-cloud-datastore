@@ -84,6 +84,14 @@ class Message(model.Model):
 class HomePage(webapp.RequestHandler):
 
   def get(self):
+    order = datastore_query.PropertyOrder(
+      'when',
+      datastore_query.PropertyOrder.DESCENDING)
+    query = datastore_query.Query(kind=Message.GetKind(), order=order)
+    rpc = query.run_async(
+      model.conn,
+      query_options=datastore_query.QueryOptions(batch_size=2))
+
     user = users.get_current_user()
     email = None
     account = None
@@ -95,11 +103,11 @@ class HomePage(webapp.RequestHandler):
               'logout': users.create_logout_url('/'),
               }
     self.response.out.write(HOME_PAGE % values)
-    order = datastore_query.PropertyOrder(
-      'when',
-      datastore_query.PropertyOrder.DESCENDING)
-    query = datastore_query.Query(kind=Message.GetKind(), order=order)
-    for batch in query.run(model.conn):
+
+    while rpc is not None:
+      batch = rpc.get_result()
+      logging.info("batch: %r; results = %r", batch, len(batch.results))
+      rpc = batch.next_batch_async()
       for result in batch.results:
         author = 'None'
         account = None
