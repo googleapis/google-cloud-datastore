@@ -39,8 +39,17 @@ class ModelAdapter(datastore_rpc.AbstractAdapter):
 # TODO: Move or kill this?  Make it a method?
 conn = datastore_rpc.Connection(adapter=ModelAdapter())
 
+class MetaModel(type):
+  """Metaclass for Model."""
+
+  def __init__(cls, name, bases, classdict):
+    super(MetaModel, cls).__init__(name, bases, classdict)
+    cls.FixUpProperties()
+
 class Model(object):
   """A mutable datastore entity."""
+
+  __metaclass__ = MetaModel
 
   # TODO: Prevent accidental attribute assignments
 
@@ -61,8 +70,6 @@ class Model(object):
   @datastore_rpc._positional(1)
   def __init__(self, key=None, **kwds):
     cls = self.__class__
-    if cls is not Model and cls._properties is None:
-      cls.FixUpProperties()
     self._key = key
     self._values = {}
     for name, value in kwds.iteritems():
@@ -205,9 +212,10 @@ class Model(object):
 
   @classmethod
   def FixUpProperties(cls):
-    # NOTE: This may be called multiple times if properties are
-    # dynamically added to the class.
-    assert cls is not Model
+    # NOTE: This is called by MetaModel, but may also be called manually
+    # after dynamically updating a model class.
+    if cls.__name__ == 'Model':  # The Model class may not yet exist...
+      return
     cls._properties = {}  # Map of {name: Property}
     for name in set(dir(cls)):
       prop = getattr(cls, name, None)
@@ -443,8 +451,6 @@ class StructuredProperty(Property):
     super(StructuredProperty, self).__init__(name=name,
                                              indexed=indexed,
                                              repeated=repeated)
-    if modelclass is not Model and modelclass._properties is None:
-      modelclass.FixUpProperties()
     if self.repeated:
       assert not modelclass._has_repeated
     self.modelclass = modelclass
@@ -457,8 +463,6 @@ class StructuredProperty(Property):
       # Skip structured values that are None.
       return
     cls = self.modelclass
-    if cls._properties is None and cls is not Model:
-      cls.FixUpProperties()
     if self.repeated:
       assert isinstance(value, list)
       values = value
@@ -617,6 +621,6 @@ class Expando(Model):
 
   @classmethod
   def FixUpProperties(cls):
-    if cls is Expando:
+    if cls.__name__ == 'Expando':  # The Expando class may not yet exist...
       return
     super(Expando, cls).FixUpProperties()

@@ -572,11 +572,9 @@ class ModelTests(unittest.TestCase):
     model.Model.ResetKindMap()
     class A1(model.Model):
       pass
+    self.assertEqual(model.Model.GetKindMap(), {'A1': A1})
     class A2(model.Model):
       pass
-    A1.FixUpProperties()
-    self.assertEqual(model.Model.GetKindMap(), {'A1': A1})
-    A2.FixUpProperties()
     self.assertEqual(model.Model.GetKindMap(), {'A1': A1, 'A2': A2})
 
   def testMultipleProperty(self):
