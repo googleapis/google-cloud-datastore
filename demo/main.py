@@ -147,19 +147,19 @@ class HomePage(webapp.RequestHandler):
       self.redirect('/')
       return
     user = users.get_current_user()
-    account = None
-    if user is not None:
-      account = GetAccountByUser(user, create=True)
     logging.info('body=%.100r', body)
     body = body.rstrip()
     if body:
       msg = Message()
       msg.body = body
       msg.when = int(time.time())
-      if account is not None:
-        msg.userid = account.userid
+      if user is not None:
+        msg.userid = user.user_id()
       # Write to datastore asynchronously.
       model.conn.async_put(None, [msg])
+      if user is not None:
+        # Check that the account exists and create it if necessary.
+        GetAccountByUser(user, create=True)
     self.redirect('/')
     WaitForRpcs()
 
