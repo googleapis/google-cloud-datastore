@@ -88,9 +88,9 @@ class HomePage(webapp.RequestHandler):
       'when',
       datastore_query.PropertyOrder.DESCENDING)
     query = datastore_query.Query(kind=Message.GetKind(), order=order)
-    rpc = query.run_async(
+    batcher = query.run(
       model.conn,
-      query_options=datastore_query.QueryOptions(batch_size=2))
+      query_options=datastore_query.QueryOptions(batch_size=3, limit=10))
 
     user = users.get_current_user()
     email = None
@@ -104,9 +104,8 @@ class HomePage(webapp.RequestHandler):
               }
     self.response.out.write(HOME_PAGE % values)
 
-    while rpc is not None:
-      batch = rpc.get_result()
-      logging.info("batch: %r; results = %r", batch, len(batch.results))
+    for batch in batcher:
+      logging.info("batch with %d results", len(batch.results))
       rpc = batch.next_batch_async()
       for result in batch.results:
         author = 'None'
