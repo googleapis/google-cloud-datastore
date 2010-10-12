@@ -109,7 +109,6 @@ class HomePage(webapp.RequestHandler):
       batch = rpc.get_result()
       rpc = batch.next_batch_async()
       logging.info("batch with %d results", len(batch.results))
-      rpc = batch.next_batch_async()
       for result in batch.results:
         author = 'None'
         account = None
