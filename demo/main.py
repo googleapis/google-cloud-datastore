@@ -7,6 +7,7 @@ from google.appengine.datastore import entity_pb
 from google.appengine.ext import webapp
 from google.appengine.ext.webapp import util
 
+import bpt
 from ndb import model
 from core import datastore_query
 
@@ -51,6 +52,13 @@ class Account(model.Model):
   email = model.StringProperty()
   userid = model.StringProperty()
 
+class Message(model.Model):
+  """A guestbook message."""
+
+  body = model.StringProperty()
+  when = model.IntegerProperty()
+  userid = model.StringProperty()
+
 def GetAccountByUser(user, create=False):
   """Find an account."""
   assert isinstance(user, users.User)
@@ -72,15 +80,17 @@ def GetAccountByUser(user, create=False):
   account = Account(key=model.Key(flat=['Account', user.user_id()]),
                     email=user.email(),
                     userid=user.user_id())
-  account.put()
+  # Write to datastore asynchronously.
+  model.conn.async_put(None, [account])
   return account
 
-class Message(model.Model):
-  """A guestbook message."""
-
-  body = model.StringProperty()
-  when = model.IntegerProperty()
-  userid = model.StringProperty()
+def WaitForRpcs():
+  rpcs = model.conn._get_pending_rpcs()
+  for rpc in rpcs:
+    try:
+      rpc.check_success()
+    except:
+      logging.exception('Async RPC exception')
 
 class HomePage(webapp.RequestHandler):
 
@@ -129,6 +139,7 @@ class HomePage(webapp.RequestHandler):
                                 (cgi.escape(author),
                                  time.ctime(result.when),
                                  body))
+    WaitForRpcs()
 
   def post(self):
     body = self.request.get('body')
@@ -147,9 +158,10 @@ class HomePage(webapp.RequestHandler):
       msg.when = int(time.time())
       if account is not None:
         msg.userid = account.userid
-      msg.put()
-      logging.info('key=%r', msg.key)
+      # Write to datastore asynchronously.
+      model.conn.async_put(None, [msg])
     self.redirect('/')
+    WaitForRpcs()
 
 class AccountPage(webapp.RequestHandler):
 
