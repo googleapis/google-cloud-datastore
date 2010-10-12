@@ -5,6 +5,7 @@ GAE=	/usr/local/google_appengine
 GAEPATH=$(GAE):$(GAE)/lib/yaml/lib
 TESTS=	`find . -name \*_test.py`
 PORT=	8080
+ADDRESS=localhost
 
 test:
 	for i in $(TESTS); \
@@ -24,7 +25,7 @@ c cov cove cover coverage:
 	echo "open file://`pwd`/htmlcov/index.html"
 
 serve:
-	dev_appserver.py . --port $(PORT)
+	dev_appserver.py . --port $(PORT) --address $(ADDRESS)
 
 deploy:
 	appcfg.py update .

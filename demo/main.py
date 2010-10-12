@@ -86,11 +86,16 @@ def GetAccountByUser(user, create=False):
 
 def WaitForRpcs():
   rpcs = model.conn._get_pending_rpcs()
-  for rpc in rpcs:
-    try:
-      rpc.check_success()
-    except:
-      logging.exception('Async RPC exception')
+  # TODO: use wait_any()?
+  while rpcs:
+    logging.info('Waiting for %d rpcs', len(rpcs))
+    for rpc in rpcs:
+      assert rpc.state < 2
+      try:
+        rpc.check_success()
+      except:
+        logging.exception('Async RPC exception')
+    rpcs = model.conn._get_pending_rpcs()
 
 class HomePage(webapp.RequestHandler):
 
@@ -99,9 +104,10 @@ class HomePage(webapp.RequestHandler):
       'when',
       datastore_query.PropertyOrder.DESCENDING)
     query = datastore_query.Query(kind=Message.GetKind(), order=order)
-    rpc = query.run_async(
+    query.run_async(
       model.conn,
-      query_options=datastore_query.QueryOptions(batch_size=3, limit=10))
+      datastore_query.QueryOptions(batch_size=3, limit=10,
+                                   on_completion=self._batch_callback))
 
     user = users.get_current_user()
     email = None
@@ -114,32 +120,37 @@ class HomePage(webapp.RequestHandler):
               'logout': users.create_logout_url('/'),
               }
     self.response.out.write(HOME_PAGE % values)
-
-    while rpc is not None:
-      batch = rpc.get_result()
-      rpc = batch.next_batch_async()
-      logging.info("batch with %d results", len(batch.results))
-      for result in batch.results:
-        author = 'None'
-        account = None
-        if result.userid is not None:
-          account = Account.get(model.Key(flat=['Account', result.userid]))
-          if account is None:
-            author = 'withdrawn'
-          else:
-            author = account.email or str(account)
-        bodylines = []
-        for line in map(cgi.escape, result.body.splitlines()):
-          if not line:
-            bodylines.append('<p>')
-          else:
-            bodylines.append(line)
-        body = '\n'.join(bodylines)
-        self.response.out.write('<hr>%s @ %s<p>%s</p>' %
-                                (cgi.escape(author),
-                                 time.ctime(result.when),
-                                 body))
     WaitForRpcs()
+
+  def _batch_callback(self, rpc):
+    batch = rpc.get_result()
+    batch.next_batch_async(
+      datastore_rpc.Configuration(on_completion=self._batch_callback))
+    logging.info('batch with %d results', len(batch.results))
+    todo = {}
+    for result in batch.results:
+      if result.userid is not None:
+        key = model.Key(flat=['Account', result.userid])
+        todo[key] = result
+      else:
+        self.response.out.write('<hr>Anonymous / %s<p>%s</p>' %
+                                (time.ctime(result.when),
+                                 cgi.escape(result.body)))
+    if todo:
+      def AccountsCallBack(rpc):
+        accounts = rpc.get_result()
+        for (key, result), account in zip(todo.items(), accounts):
+          if account is None:
+            author = 'Withdrawn'
+          else:
+            author = account.email
+          self.response.out.write('<hr>%s / %s<p>%s</p>' %
+                                  (cgi.escape(author),
+                                   time.ctime(result.when),
+                                   cgi.escape(result.body)))
+      model.conn.async_get(
+        datastore_rpc.Configuration(on_completion=AccountsCallBack),
+        todo.keys())
 
   def post(self):
     body = self.request.get('body')
