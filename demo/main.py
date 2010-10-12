@@ -24,7 +24,7 @@ function focus() {
 
   <form method=POST action=/>
     <!-- TODO: XSRF protection -->
-    <textarea id=body name=body rows=6 cols=60></textarea>
+    <input type=text id=body name=body size=60>
     <input type=submit>
   </form>
 </body>
@@ -69,7 +69,8 @@ def GetAccountByUser(user, create=False):
       return result
   if not create:
     return None
-  account = Account(email=user.email(),
+  account = Account(key=model.Key(flat=['Account', user.user_id()]),
+                    email=user.email(),
                     userid=user.user_id())
   account.put()
   return account
@@ -79,7 +80,7 @@ class Message(model.Model):
 
   body = model.StringProperty()
   when = model.IntegerProperty()
-  acct = model.KeyProperty()  # Account
+  userid = model.StringProperty()
 
 class HomePage(webapp.RequestHandler):
 
@@ -88,7 +89,7 @@ class HomePage(webapp.RequestHandler):
       'when',
       datastore_query.PropertyOrder.DESCENDING)
     query = datastore_query.Query(kind=Message.GetKind(), order=order)
-    batcher = query.run(
+    rpc = query.run_async(
       model.conn,
       query_options=datastore_query.QueryOptions(batch_size=3, limit=10))
 
@@ -104,14 +105,16 @@ class HomePage(webapp.RequestHandler):
               }
     self.response.out.write(HOME_PAGE % values)
 
-    for batch in batcher:
+    while rpc is not None:
+      batch = rpc.get_result()
+      rpc = batch.next_batch_async()
       logging.info("batch with %d results", len(batch.results))
       rpc = batch.next_batch_async()
       for result in batch.results:
         author = 'None'
         account = None
-        if result.acct is not None:
-          account = Account.get(result.acct)
+        if result.userid is not None:
+          account = Account.get(model.Key(flat=['Account', result.userid]))
           if account is None:
             author = 'withdrawn'
           else:
@@ -129,11 +132,14 @@ class HomePage(webapp.RequestHandler):
                                  body))
 
   def post(self):
+    body = self.request.get('body')
+    if not body.strip():
+      self.redirect('/')
+      return
     user = users.get_current_user()
     account = None
     if user is not None:
       account = GetAccountByUser(user, create=True)
-    body = self.request.get('body')
     logging.info('body=%.100r', body)
     body = body.rstrip()
     if body:
@@ -141,7 +147,7 @@ class HomePage(webapp.RequestHandler):
       msg.body = body
       msg.when = int(time.time())
       if account is not None:
-        msg.acct = account.key
+        msg.userid = account.userid
       msg.put()
       logging.info('key=%r', msg.key)
     self.redirect('/')
