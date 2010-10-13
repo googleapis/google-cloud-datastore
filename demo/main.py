@@ -9,6 +9,7 @@ from google.appengine.ext.webapp import util
 
 import bpt
 from ndb import model
+from core import datastore_rpc
 from core import datastore_query
 
 HOME_PAGE = """
@@ -86,13 +87,10 @@ def GetAccountByUser(user, create=False):
 
 def WaitForRpcs():
   rpcs = model.conn._get_pending_rpcs()
-  # TODO: use wait_any()?
   while rpcs:
-    logging.info('Waiting for %d rpcs', len(rpcs))
     for rpc in rpcs:
-      assert rpc.state < 2
       try:
-        rpc.check_success()
+        model.conn.check_rpc_success(rpc)
       except:
         logging.exception('Async RPC exception')
     rpcs = model.conn._get_pending_rpcs()
@@ -125,21 +123,28 @@ class HomePage(webapp.RequestHandler):
   def _batch_callback(self, rpc):
     batch = rpc.get_result()
     batch.next_batch_async(
-      datastore_rpc.Configuration(on_completion=self._batch_callback))
+      datastore_query.FetchOptions(on_completion=self._batch_callback))
     logging.info('batch with %d results', len(batch.results))
-    todo = {}
+    results = []
+    keys = set()
     for result in batch.results:
       if result.userid is not None:
         key = model.Key(flat=['Account', result.userid])
-        todo[key] = result
+        keys.add(key)
+        results.append(result)
       else:
         self.response.out.write('<hr>Anonymous / %s<p>%s</p>' %
                                 (time.ctime(result.when),
                                  cgi.escape(result.body)))
-    if todo:
+    if results:
       def AccountsCallBack(rpc):
         accounts = rpc.get_result()
-        for (key, result), account in zip(todo.items(), accounts):
+        uidmap = {}
+        for account in accounts:
+          if account is not None:
+            uidmap[account.userid] = account
+        for result in results:
+          account = uidmap.get(result.userid)
           if account is None:
             author = 'Withdrawn'
           else:
@@ -150,7 +155,7 @@ class HomePage(webapp.RequestHandler):
                                    cgi.escape(result.body)))
       model.conn.async_get(
         datastore_rpc.Configuration(on_completion=AccountsCallBack),
-        todo.keys())
+        list(keys))
 
   def post(self):
     body = self.request.get('body')
