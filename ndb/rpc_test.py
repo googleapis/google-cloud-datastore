@@ -62,6 +62,20 @@ class PendngTests(unittest.TestCase):
     self.assertEqual(rpc.state, 2)  # FINISHING
     self.assertEqual(len(self.pre_args), 1)
     self.assertEqual(len(self.post_args), 1)  # NAILED IT!
+    self.assertEqual(model.conn._get_pending_rpcs(), [])
+
+  def NastyCallback(self, rpc):
+    [ent] = rpc.get_result()
+    key = model.Key(flat=['Expando', 1])
+    newrpc = model.conn.async_get(None, [key])
+
+  def testCallHooks_Pending_CallbackAddsMore(self):
+    self.SetUpCallHooks()
+    conf = datastore_rpc.Configuration(on_completion=self.NastyCallback)
+    key = model.Key(flat=['Expando', 1])
+    rpc = model.conn.async_get(conf, [key])
+    model.conn._wait_for_all_pending_rpcs()
+    self.assertEqual(model.conn._get_pending_rpcs(), [])
 
 def main():
   unittest.main()

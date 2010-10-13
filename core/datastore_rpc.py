@@ -622,11 +622,13 @@ class BaseConnection(object):
   def _wait_for_all_pending_rpcs(self):
     """Wait for all currently pending RPCs to complete."""
     # XXX apiproxy_stub_map.UserRPC.wait_all(self.__pending_rpcs)
-    for rpc in self._get_pending_rpcs():
-      try:
-        self.check_rpc_success(rpc)
-      except:
-        logging.exception('Exception in unwaited-for RPC:')
+    while self.__pending_rpcs:
+      for rpc in list(self.__pending_rpcs):
+        try:
+          self.check_rpc_success(rpc)
+        except:
+          # XXX Should we really log this?
+          logging.exception('Exception in unwaited-for RPC:')
 
 
   def _check_entity_group(self, key_pbs):
