@@ -8,3 +8,7 @@ def webapp_add_wsgi_middleware(app):
   return app
 
 appstats_KEY_DISTANCE = 10
+
+appstats_FILTER_LIST = [
+  {'PATH_INFO': '!^/favicon\.ico$'},
+  ]
