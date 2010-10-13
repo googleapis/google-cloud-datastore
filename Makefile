@@ -3,7 +3,7 @@
 FLAGS=
 GAE=	/usr/local/google_appengine
 GAEPATH=$(GAE):$(GAE)/lib/yaml/lib
-TESTS=	`find . -name \*_test.py`
+TESTS=	`find ndb -name \*_test.py`
 PORT=	8080
 ADDRESS=localhost
 
