@@ -107,6 +107,7 @@ class HomePage(webapp.RequestHandler):
               'logout': users.create_logout_url('/'),
               }
     self.response.out.write(HOME_PAGE % values)
+    self.rest = []
     order = datastore_query.PropertyOrder(
       'when',
       datastore_query.PropertyOrder.DESCENDING)
@@ -119,6 +120,9 @@ class HomePage(webapp.RequestHandler):
     if user is not None:
       GetAccountByUser(user)
     WaitForRpcs()
+    self.rest.sort()
+    for key, text in self.rest:
+      self.response.out.write(text)
 
   def _batch_callback(self, rpc):
     batch = rpc.get_result()
@@ -133,11 +137,12 @@ class HomePage(webapp.RequestHandler):
         keys.add(key)
         results.append(result)
       else:
-        self.response.out.write('<hr>Anonymous / %s<p>%s</p>' %
-                                (time.ctime(result.when),
-                                 cgi.escape(result.body)))
+        self.rest.append((-result.when,
+                          '<hr>Anonymous / %s<p>%s</p>' %
+                          (time.ctime(result.when),
+                           cgi.escape(result.body))))
     if results:
-      def AccountsCallBack(rpc):
+      def AccountsCallBack(rpc):  # Closure over results.
         accounts = rpc.get_result()
         uidmap = {}
         for account in accounts:
@@ -149,10 +154,11 @@ class HomePage(webapp.RequestHandler):
             author = 'Withdrawn'
           else:
             author = account.email
-          self.response.out.write('<hr>%s / %s<p>%s</p>' %
-                                  (cgi.escape(author),
-                                   time.ctime(result.when),
-                                   cgi.escape(result.body)))
+          self.rest.append((-result.when,
+                            '<hr>%s / %s<p>%s</p>' %
+                            (cgi.escape(author),
+                             time.ctime(result.when),
+                             cgi.escape(result.body))))
       model.conn.async_get(
         datastore_rpc.Configuration(on_completion=AccountsCallBack),
         list(keys))
