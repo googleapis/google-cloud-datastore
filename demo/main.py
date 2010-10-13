@@ -98,6 +98,15 @@ def WaitForRpcs():
 class HomePage(webapp.RequestHandler):
 
   def get(self):
+    user = users.get_current_user()
+    email = None
+    if user is not None:
+      email = user.email()
+    values = {'email': email,
+              'login': users.create_login_url('/'),
+              'logout': users.create_logout_url('/'),
+              }
+    self.response.out.write(HOME_PAGE % values)
     order = datastore_query.PropertyOrder(
       'when',
       datastore_query.PropertyOrder.DESCENDING)
@@ -107,17 +116,8 @@ class HomePage(webapp.RequestHandler):
       datastore_query.QueryOptions(batch_size=3, limit=10,
                                    on_completion=self._batch_callback))
 
-    user = users.get_current_user()
-    email = None
-    account = None
     if user is not None:
-      email = user.email()
-      account = GetAccountByUser(user)
-    values = {'email': email,
-              'login': users.create_login_url('/'),
-              'logout': users.create_logout_url('/'),
-              }
-    self.response.out.write(HOME_PAGE % values)
+      GetAccountByUser(user)
     WaitForRpcs()
 
   def _batch_callback(self, rpc):
