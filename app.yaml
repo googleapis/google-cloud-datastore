@@ -1,0 +1,16 @@
+# Demo app.
+application: ndb-experiment
+version: 1
+runtime: python
+api_version: 1
+
+handlers:
+
+- url: /stats.*
+  script: $PYTHON_LIB/google/appengine/ext/appstats/ui.py
+
+- url: /_ah/stats.*
+  script: $PYTHON_LIB/google/appengine/ext/appstats/ui.py
+
+- url: /.*
+  script: demo/main.py
