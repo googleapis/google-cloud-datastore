@@ -627,12 +627,16 @@ class BaseConnection(object):
       try:
         rpc = apiproxy_stub_map.UserRPC.wait_any(self.__pending_rpcs)
       except Exception:
+        import logging; logging.debug('Exception in wait_any():',
+                                      exc_info=True)
         continue
       assert rpc.state == apiproxy_rpc.RPC.FINISHING
       if rpc in self.__pending_rpcs:
         try:
           self.check_rpc_success(rpc)
         except Exception:
+          import logging; logging.debug('Exception in check_rpc_success():',
+                                        exc_info=True)
           pass
 
 
