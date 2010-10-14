@@ -86,11 +86,7 @@ def GetAccountByUser(user, create=False):
   return account
 
 def WaitForRpcs():
-  rpcs = model.conn.get_pending_rpcs()
-  while rpcs:
-    for rpc in rpcs:
-      model.conn.check_rpc_success(rpc)
-    rpcs = model.conn.get_pending_rpcs()
+  model.conn.wait_for_all_pending_rpcs()
 
 class HomePage(webapp.RequestHandler):
 
