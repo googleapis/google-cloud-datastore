@@ -40,7 +40,6 @@ __all__ = ['ALL_READ_POLICIES',
            ]
 
 
-import logging
 import os
 
 from google.appengine.datastore import entity_pb
@@ -383,10 +382,7 @@ class MultiRpc(object):
 
     This mimics the UserRPC.wait() method.
     """
-    # XXX wait_all() requires SDK 1.3.8.
-    # apiproxy_stub_map.UserRPC.wait_all(self.__rpcs)
-    for rpc in self.__rpcs:
-      rpc.wait()
+    apiproxy_stub_map.UserRPC.wait_all(self.__rpcs)
 
   def check_success(self):
     """Check success of all wrapped RPCs, failing if any of the failed.
@@ -564,7 +560,7 @@ class BaseConnection(object):
         'invalid config argument (%r)' % (config,))
     self.__config = config
 
-    self.__pending_rpcs = []
+    self.__pending_rpcs = set()
 
 
   @property
@@ -584,7 +580,7 @@ class BaseConnection(object):
     The argument must be a UserRPC object, not a MultiRpc object.
     """
     assert not isinstance(rpc, MultiRpc)
-    self.__pending_rpcs.append(rpc)
+    self.__pending_rpcs.add(rpc)
 
   def _remove_pending(self, rpc):
     """Remove an RPC object from the list of pending RPCs.
@@ -598,37 +594,50 @@ class BaseConnection(object):
     else:
       try:
         self.__pending_rpcs.remove(rpc)
-      except ValueError:
+      except KeyError:
         pass
 
-  def _is_pending(self, rpc):
+  def is_pending(self, rpc):
     """Check whether an RPC object is currently pending.
+
+    Note that 'pending' in this context refers to an RPC associated
+    with this connection for which _remove_pending() hasn't been
+    called yet; normally this is called by check_rpc_success() which
+    itself is called by the various result hooks.  A pending RPC may
+    be in the RUNNING or FINISHING state.
 
     If the argument is a MultiRpc object, this returns true if at least
     one of its wrapped RPCs is pending.
     """
     if isinstance(rpc, MultiRpc):
       for wrapped_rpc in rpc._MultiRpc__rpcs:
-        if self._is_pending(wrapped_rpc):
+        if self.is_pending(wrapped_rpc):
           return True
       return False
     else:
       return rpc in self.__pending_rpcs
 
-  def _get_pending_rpcs(self):
+  def get_pending_rpcs(self):
     """Return (a copy of) the list of currently pending RPCs."""
-    return list(self.__pending_rpcs)
+    return set(self.__pending_rpcs)
 
-  def _wait_for_all_pending_rpcs(self):
+  def wait_for_all_pending_rpcs(self):
     """Wait for all currently pending RPCs to complete."""
-    # XXX apiproxy_stub_map.UserRPC.wait_all(self.__pending_rpcs)
     while self.__pending_rpcs:
-      for rpc in list(self.__pending_rpcs):
+      try:
+        rpc = apiproxy_stub_map.UserRPC.wait_any(self.__pending_rpcs)
+      except Exception:
+        import logging; logging.debug('Exception in wait_any():',
+                                      exc_info=True)
+        continue
+      assert rpc.state == apiproxy_rpc.RPC.FINISHING
+      if rpc in self.__pending_rpcs:
         try:
           self.check_rpc_success(rpc)
-        except:
-          # XXX Should we really log this?
-          logging.exception('Exception in unwaited-for RPC:')
+        except Exception:
+          import logging; logging.debug('Exception in check_rpc_success():',
+                                        exc_info=True)
+          pass
 
 
   def _check_entity_group(self, key_pbs):
@@ -777,6 +786,22 @@ class BaseConnection(object):
   MAX_PUT_ENTITIES = 500
   MAX_DELETE_KEYS = 500
 
+  def __generate_pb_lists(self, values, value_to_pb, base_size, max_count):
+    """Internal helper: repeatedly yield a list of protobufs to fit a batch."""
+    pbs = []
+    size = base_size
+    for value in values:
+      pb = value_to_pb(value)
+      incr_size = pb.lengthString(pb.ByteSize()) + 1
+      if (len(pbs) >= max_count or
+          (pbs and size + incr_size > self.MAX_RPC_BYTES)):
+        yield pbs
+        pbs = []
+        size = base_size
+      pbs.append(pb)
+      size += incr_size
+    yield pbs
+
   def get(self, keys):
     """Synchronous Get operation.
 
@@ -812,7 +837,8 @@ class BaseConnection(object):
     if isinstance(config, apiproxy_stub_map.UserRPC):
       pbsgen = [map(self.__adapter.key_to_pb, keys)]
     else:
-      pbsgen = self.__generate_key_pb_lists(keys, base_size)
+      pbsgen = self.__generate_pb_lists(keys, self.__adapter.key_to_pb,
+                                        base_size, self.MAX_GET_KEYS)
     for pbs in pbsgen:
       req = datastore_pb.GetRequest()
       req.CopyFrom(base_req)
@@ -826,28 +852,6 @@ class BaseConnection(object):
     if len(rpcs) == 1 and rpcs[0] is config:
       return config
     return MultiRpc(rpcs)
-
-
-  def __generate_key_pb_lists(self, keys, base_size):
-    """Internal helper: repeatedly yield a list of protobufs fit for a batch.
-
-    NOTE: the size is underestimated (space needed to store the read
-    policy and the transaction is not counted) but MAX_RPC_BYTES is a
-    little below the real limit, so it should all work out.
-    """
-    pbs = []
-    size = base_size
-    for key in keys:
-      pb = self.__adapter.key_to_pb(key)
-      incr_size = pb.lengthString(pb.ByteSize()) + 1
-      if (len(pbs) >= self.MAX_GET_KEYS or
-          (pbs and size + incr_size > self.MAX_RPC_BYTES)):
-        yield pbs
-        pbs = []
-        size = base_size
-      pbs.append(pb)
-      size += incr_size
-    yield pbs
 
   def __get_hook(self, rpc):
     """Internal method used as get_result_hook for Get operation."""
@@ -894,16 +898,29 @@ class BaseConnection(object):
     NOTE: If any of the entities has an incomplete key, this will
     *not* patch up those entities with the complete key.
     """
-    req = datastore_pb.PutRequest()
-    req.entity_list().extend(self.__adapter.entity_to_pb(e) for e in entities)
-    self._check_entity_group(e.key() for e in req.entity_list())
-    self._set_request_transaction(req)
-    resp = datastore_pb.PutResponse()
-    rpc = self.make_rpc_call(config, 'Put', req, resp,
-                             self.__put_hook, extra_hook)
-    if rpc is not config:
-      rpc = MultiRpc([rpc])
-    return rpc
+    base_req = datastore_pb.PutRequest()
+    base_size = base_req.ByteSize()
+    if isinstance(self, TransactionalConnection):
+      base_size += 1000
+    rpcs = []
+    if isinstance(config, apiproxy_stub_map.UserRPC):
+      pbsgen = [map(self.__adapter.entity_to_pb, entities)]
+    else:
+      pbsgen = self.__generate_pb_lists(entities, self.__adapter.entity_to_pb,
+                                        base_size, self.MAX_PUT_ENTITIES)
+    for pbs in pbsgen:
+      req = datastore_pb.PutRequest()
+      req.CopyFrom(base_req)
+      req.entity_list().extend(pbs)
+      self._check_entity_group(e.key() for e in req.entity_list())
+      self._set_request_transaction(req)
+      resp = datastore_pb.PutResponse()
+      rpc = self.make_rpc_call(config, 'Put', req, resp,
+                               self.__put_hook, extra_hook)
+      rpcs.append(rpc)
+    if len(rpcs) == 1 and rpcs[0] is config:
+      return config
+    return MultiRpc(rpcs)
 
   def __put_hook(self, rpc):
     """Internal method used as get_result_hook for Put operation."""
@@ -938,16 +955,29 @@ class BaseConnection(object):
     Returns:
       A MultiRpc object.
     """
-    req = datastore_pb.DeleteRequest()
-    req.key_list().extend(self.__adapter.key_to_pb(key) for key in keys)
-    self._check_entity_group(req.key_list())
-    self._set_request_transaction(req)
-    resp = datastore_pb.DeleteResponse()
-    rpc = self.make_rpc_call(config, 'Delete', req, resp,
-                             self.__delete_hook, extra_hook)
-    if rpc is not config:
-      rpc = MultiRpc([rpc])
-    return rpc
+    base_req = datastore_pb.DeleteRequest()
+    base_size = base_req.ByteSize()
+    if isinstance(self, TransactionalConnection):
+      base_size += 1000
+    rpcs = []
+    if isinstance(config, apiproxy_stub_map.UserRPC):
+      pbsgen = [map(self.__adapter.key_to_pb, keys)]
+    else:
+      pbsgen = self.__generate_pb_lists(keys, self.__adapter.key_to_pb,
+                                        base_size, self.MAX_DELETE_KEYS)
+    for pbs in pbsgen:
+      req = datastore_pb.DeleteRequest()
+      req.CopyFrom(base_req)
+      req.key_list().extend(self.__adapter.key_to_pb(key) for key in keys)
+      self._check_entity_group(req.key_list())
+      self._set_request_transaction(req)
+      resp = datastore_pb.DeleteResponse()
+      rpc = self.make_rpc_call(config, 'Delete', req, resp,
+                               self.__delete_hook, extra_hook)
+      rpcs.append(rpc)
+    if len(rpcs) == 1 and rpcs[0] is config:
+      return config
+    return MultiRpc(rpcs)
 
   def __delete_hook(self, rpc):
     """Internal method used as get_result_hook for Delete operation."""
@@ -1307,7 +1337,8 @@ class TransactionalConnection(BaseConnection):
     if self.__finished:
       raise datastore_errors.BadRequestError(
         'The transaction is already finished.')
-    self._wait_for_all_pending_rpcs()
+    self.wait_for_all_pending_rpcs()
+    assert not self.get_pending_rpcs()
     transaction = self.__transaction
     self.__finished = True
     self.__transaction = None

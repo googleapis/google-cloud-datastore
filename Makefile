@@ -25,7 +25,7 @@ c cov cove cover coverage:
 	echo "open file://`pwd`/htmlcov/index.html"
 
 serve:
-	dev_appserver.py . --port $(PORT) --address $(ADDRESS)
+	$(GAE)/dev_appserver.py . --port $(PORT) --address $(ADDRESS)
 
 deploy:
 	appcfg.py update .
