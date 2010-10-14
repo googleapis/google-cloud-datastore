@@ -86,14 +86,11 @@ def GetAccountByUser(user, create=False):
   return account
 
 def WaitForRpcs():
-  rpcs = model.conn._get_pending_rpcs()
+  rpcs = model.conn.get_pending_rpcs()
   while rpcs:
     for rpc in rpcs:
-      try:
-        model.conn.check_rpc_success(rpc)
-      except:
-        logging.exception('Async RPC exception')
-    rpcs = model.conn._get_pending_rpcs()
+      model.conn.check_rpc_success(rpc)
+    rpcs = model.conn.get_pending_rpcs()
 
 class HomePage(webapp.RequestHandler):
 
