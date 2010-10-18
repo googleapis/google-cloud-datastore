@@ -774,6 +774,20 @@ class ModelTests(unittest.TestCase):
     pb = p.ToPb()
     self.assertEqual(str(pb), GOLDEN_PB)
 
+  def testExpandoNested(self):
+    p = model.Expando()
+    nest = model.Expando()
+    nest.foo = 42
+    nest.bar = 'hello'
+    p.nest = nest
+    self.assertEqual(p.nest.foo, 42)
+    self.assertEqual(p.nest.bar, 'hello')
+    pb = p.ToPb()
+    q = model.Expando()
+    q.FromPb(pb)
+    self.assertEqual(q.nest.foo, 42)
+    self.assertEqual(q.nest.bar, 'hello')
+
   def testExpandoSubclass(self):
     class Person(model.Expando):
       name = model.StringProperty()
@@ -782,6 +796,26 @@ class ModelTests(unittest.TestCase):
     p.age = 7
     self.assertEqual(p.name, 'Joe')
     self.assertEqual(p.age, 7)
+
+  def testExpandoConstructor(self):
+    p = model.Expando(foo=42, bar='hello')
+    self.assertEqual(p.foo, 42)
+    self.assertEqual(p.bar, 'hello')
+    pb = p.ToPb()
+    q = model.Expando()
+    q.FromPb(pb)
+    self.assertEqual(q.foo, 42)
+    self.assertEqual(q.bar, 'hello')
+
+  def testExpandoNestedConstructor(self):
+    p = model.Expando(foo=42, bar=model.Expando(hello='hello'))
+    self.assertEqual(p.foo, 42)
+    self.assertEqual(p.bar.hello, 'hello')
+    pb = p.ToPb()
+    q = model.Expando()
+    q.FromPb(pb)
+    self.assertEqual(q.foo, 42)
+    self.assertEqual(q.bar.hello, 'hello')
 
 def main():
   unittest.main()

@@ -21,6 +21,8 @@ class Key(object):
     Key(urlsafe=<urlsafe base64 encoded serialized reference>)
 
   TODO: namespace, appid, parent
+  TODO: allow friendlier signature e.g. Key(kind, id) or even
+  Key(modelclass, id).
   """
 
   __slots__ = ['__reference']

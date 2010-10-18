@@ -26,8 +26,9 @@ class ModelAdapter(datastore_rpc.AbstractAdapter):
     if pb.has_key():
       key = Key(reference=pb.key())  # TODO: Avoid doing this twice
       for kind, _ in key.pairs():
-        pass  # As a side effect, set kind to the last kind, if any
-    modelclass = Model._kind_map.get(kind, Model)
+        pass  # As a side effect, set kind to the key's last kind
+    # When unpacking an unknown kind, default to Expando.
+    modelclass = Model._kind_map.get(kind, Expando)
     ent = modelclass()
     ent.FromPb(pb)
     return ent
@@ -66,15 +67,22 @@ class Model(object):
   # simple aliases. That way the _ version is still accessible even if
   # the non-_ version has been obscured by a property.
 
+  # TODO: Support things like Person(id=X) as a shortcut for
+  # Person(key=Key(pairs=[(Person.GetKind(), X)]).
+  # TODO: Add parent keyword so that Person(id=X, parent=Y) is the same as
+  # Person(key=Key(pairs=Y.pairs() + [(Person.GetKind(), X)])).
+
   # TODO: Distinguish between purposes: to call FromPb() or setvalue() etc.
   @datastore_rpc._positional(1)
   def __init__(self, key=None, **kwds):
-    cls = self.__class__
     self._key = key
     self._values = {}
-    # TODO: Factor out the following loop so Expando can override it.
+    self.SetAttributes(kwds)
+
+  def SetAttributes(self, kwds):
+    cls = self.__class__
     for name, value in kwds.iteritems():
-      prop = getattr(cls, name)
+      prop = getattr(cls, name)  # Raises AttributeError for unknown properties.
       assert isinstance(prop, Property)
       prop.SetValue(self, value)
 
@@ -138,6 +146,7 @@ class Model(object):
       return NotImplemented
     return not eq
 
+  # TODO: Refactor ToPb() so pb is an argument?
   def ToPb(self):
     pb = entity_pb.EntityProto()
 
@@ -194,8 +203,8 @@ class Model(object):
   def FakeProperty(self, p, next, indexed=True):
     self.CloneProperties()
     if p.name() != next and not p.name().endswith('.' + next):
-      prop = StructuredProperty(Model, next)
-      self._values[prop.name] = Model()
+      prop = StructuredProperty(Expando, next)
+      self._values[prop.name] = Expando()
     else:
       prop = GenericProperty(next,
                              repeated=p.multiple(),
@@ -510,7 +519,7 @@ _EPOCH = datetime.datetime.utcfromtimestamp(0)
 
 class GenericProperty(Property):
   # This is mainly used for orphans but can also be used explicitly
-  # for properties with dynalically-typed values, and in Expandos.
+  # for properties with dynamically-typed values, and in Expandos.
 
   def DbGetValue(self, v, p):
     # This is awkward but there seems to be no faster way to inspect
@@ -589,7 +598,9 @@ class GenericProperty(Property):
 
 class Expando(Model):
 
-  # TODO: Support Expando(attr1=val1, attr2=val2, ...).
+  def SetAttributes(self, kwds):
+    for name, value in kwds.iteritems():
+      setattr(self, name, value)
 
   def __getattr__(self, name):
     prop = self._properties.get(name)
@@ -601,6 +612,9 @@ class Expando(Model):
     if name.startswith('_') or name in self._properties:
       return super(Expando, self).__setattr__(name, value)
     self.CloneProperties()
-    prop = GenericProperty(name)
+    if isinstance(value, Model):
+      prop = StructuredProperty(Model, name)
+    else:
+      prop = GenericProperty(name)
     self._properties[name] = prop
     prop.SetValue(self, value)

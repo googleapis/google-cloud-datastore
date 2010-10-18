@@ -1,1 +1,11 @@
 Before spending more effort on model.py, write the trampoline & cache.
+
+Ideas:
+  - map(callback, query); possible notation:
+
+    @query.map(conn)  # Or @ndb.map(query, conn)
+    def _(ent):
+      # Does something with ent.
+      # May be a regular function or a generator:
+      #   yield <rpc> returns when result is ready
+      # And <rpc> may also be some other schedulable thingie
