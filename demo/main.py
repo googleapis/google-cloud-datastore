@@ -125,7 +125,7 @@ class HomePage(webapp.RequestHandler):
       'when',
       datastore_query.PropertyOrder.DESCENDING)
     query = datastore_query.Query(kind=Message.GetKind(), order=order)
-    options = datastore_query.QueryOptions(batch_size=3, limit=10)
+    options = datastore_query.QueryOptions(batch_size=13, limit=50)
     self.todo = []
     MapQuery(query, self._result_callback, model.conn, options)
 
@@ -144,7 +144,7 @@ class HomePage(webapp.RequestHandler):
     if result.userid is not None:
       key = model.Key(flat=['Account', result.userid])
       self.todo.append((key, result))
-      if len(self.todo) >= 3:
+      if len(self.todo) >= 7:
         self._flush_todo()
     else:
       self.rest.append((-result.when,
@@ -153,6 +153,7 @@ class HomePage(webapp.RequestHandler):
                          cgi.escape(result.body))))
 
   def _flush_todo(self):
+    logging.info('flushing %d todo entries', len(self.todo))
     entities = []
     keys = []
     for key, entity in self.todo:
