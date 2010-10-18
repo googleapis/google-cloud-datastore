@@ -40,6 +40,7 @@ __all__ = ['ALL_READ_POLICIES',
            ]
 
 
+import logging
 import os
 
 from google.appengine.datastore import entity_pb
@@ -627,17 +628,17 @@ class BaseConnection(object):
       try:
         rpc = apiproxy_stub_map.UserRPC.wait_any(self.__pending_rpcs)
       except Exception:
-        import logging; logging.debug('Exception in wait_any():',
-                                      exc_info=True)
+        logging.info('wait_for_all_pending_rpcs(): exception in wait_any()',
+                     exc_info=True)
         continue
       assert rpc.state == apiproxy_rpc.RPC.FINISHING
       if rpc in self.__pending_rpcs:
         try:
           self.check_rpc_success(rpc)
         except Exception:
-          import logging; logging.debug('Exception in check_rpc_success():',
-                                        exc_info=True)
-          pass
+          logging.info('wait_for_all_pending_rpcs(): '
+                       'exception in check_rpc_success()',
+                       exc_info=True)
 
 
   def _check_entity_group(self, key_pbs):
