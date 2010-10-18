@@ -1,5 +1,8 @@
 Before spending more effort on model.py, write the trampoline & cache.
 
+Ensure that Model and Key are pickled as pbs, so caching doesn't have
+to do anything special.
+
 Ideas:
   - map(callback, query); possible notation:
 

@@ -88,6 +88,26 @@ def GetAccountByUser(user, create=False):
 def WaitForRpcs():
   model.conn.wait_for_all_pending_rpcs()
 
+def MapQuery(query, entity_callback, connection, options=None):
+  # TODO: Move to another file.
+  # TODO: Make this into a (or add a separate) decorator so you can say:
+  #   @MapQuery(query, connections, options)
+  #   def entity_callback(entity):
+  #     ...process one entity...
+  # TODO: Add the possibility to make this a task.
+  def batch_callback(rpc):
+    # Closure over callback, options
+    batch = rpc.get_result()
+    next_rpc = batch.next_batch_async(options)
+    logging.info('batch with %d results, next_rpc=%r',
+                 len(batch.results), next_rpc)
+    for entity in batch.results:
+      entity_callback(entity)
+    # TODO: if next_rpc is None: signal end of Map, somehow.
+  options = datastore_query.QueryOptions(on_completion=batch_callback,
+                                         config=options)
+  query.run_async(connection, options)
+
 class HomePage(webapp.RequestHandler):
 
   def get(self):
@@ -105,56 +125,60 @@ class HomePage(webapp.RequestHandler):
       'when',
       datastore_query.PropertyOrder.DESCENDING)
     query = datastore_query.Query(kind=Message.GetKind(), order=order)
-    query.run_async(
-      model.conn,
-      datastore_query.QueryOptions(batch_size=3, limit=10,
-                                   on_completion=self._batch_callback))
+    options = datastore_query.QueryOptions(batch_size=3, limit=10)
+    self.todo = []
+    MapQuery(query, self._result_callback, model.conn, options)
 
     if user is not None:
       GetAccountByUser(user)
     WaitForRpcs()
+    while self.todo:
+      self._flush_todo()
+      WaitForRpcs()
     self.rest.sort()
     for key, text in self.rest:
       self.response.out.write(text)
 
-  def _batch_callback(self, rpc):
-    batch = rpc.get_result()
-    batch.next_batch_async(
-      datastore_query.FetchOptions(on_completion=self._batch_callback))
-    logging.info('batch with %d results', len(batch.results))
-    results = []
-    keys = set()
-    for result in batch.results:
-      if result.userid is not None:
-        key = model.Key(flat=['Account', result.userid])
-        keys.add(key)
-        results.append(result)
-      else:
+  def _result_callback(self, result):
+    # Callback called for each query result.  Updates self.todo.
+    if result.userid is not None:
+      key = model.Key(flat=['Account', result.userid])
+      self.todo.append((key, result))
+      if len(self.todo) >= 3:
+        self._flush_todo()
+    else:
+      self.rest.append((-result.when,
+                        'Anonymous / %s &mdash; %s<br>' %
+                        (time.ctime(result.when),
+                         cgi.escape(result.body))))
+
+  def _flush_todo(self):
+    entities = []
+    keys = []
+    for key, entity in self.todo:
+      keys.append(key)
+      entities.append(entity)
+    del self.todo[:len(keys)]
+    def AccountsCallBack(rpc):  # Closure over entities.
+      accounts = rpc.get_result()
+      uidmap = {}
+      for account in accounts:
+        if account is not None:
+          uidmap[account.userid] = account
+      for result in entities:
+        account = uidmap.get(result.userid)
+        if account is None:
+          author = 'Withdrawn'
+        else:
+          author = account.email
         self.rest.append((-result.when,
-                          '<hr>Anonymous / %s<p>%s</p>' %
-                          (time.ctime(result.when),
+                          '%s / %s &mdash; %s<br>' %
+                          (cgi.escape(author),
+                           time.ctime(result.when),
                            cgi.escape(result.body))))
-    if results:
-      def AccountsCallBack(rpc):  # Closure over results.
-        accounts = rpc.get_result()
-        uidmap = {}
-        for account in accounts:
-          if account is not None:
-            uidmap[account.userid] = account
-        for result in results:
-          account = uidmap.get(result.userid)
-          if account is None:
-            author = 'Withdrawn'
-          else:
-            author = account.email
-          self.rest.append((-result.when,
-                            '<hr>%s / %s<p>%s</p>' %
-                            (cgi.escape(author),
-                             time.ctime(result.when),
-                             cgi.escape(result.body))))
-      model.conn.async_get(
-        datastore_rpc.Configuration(on_completion=AccountsCallBack),
-        list(keys))
+    model.conn.async_get(
+      datastore_rpc.Configuration(on_completion=AccountsCallBack),
+      keys)
 
   def post(self):
     body = self.request.get('body')
@@ -209,6 +233,7 @@ class AccountPage(webapp.RequestHandler):
       self.redirect('/account')
       return
     account = GetAccountByUser(user, create=True)
+    WaitForRpcs()
     self.redirect('/account')
 
 urls = [
