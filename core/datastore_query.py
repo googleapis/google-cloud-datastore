@@ -279,148 +279,72 @@ class FetchOptions(datastore_rpc.Configuration):
 
   These options apply to any request that pulls results from a query.
 
+  This class reserves the right to define configuration options of any name
+  except those that start with 'user_'. External subclasses should only define
+  function or variables with names that start with in 'user_'.
+
+  Options are set by passing keyword arguments to the constructor corresponding
+  to the configuration options defined below and in datastore_rpc.Configuration.
+
   This object can be used as the default config for a datastore_rpc.Connection
-  but in that case some options will be ignored. See __new__ for details.
+  but in that case some options will be ignored, see option documentation below
+  for details.
   """
 
-  @datastore_rpc._positional(1)
-  def __new__(cls, config=None,
-              produce_cursors=None, offset=None, batch_size=None,
-              deadline=None, read_policy=None, on_completion=None):
-    """Immutable constructor.
-
-    All arguments should be specified as keyword arguments
-
-    Args:
-      config: Optional base configuration providing default values for
-        parameters left as None.
-      produce_cursors: If a Cursor should be returned with the fetched results.
-      offset: The number of results to skip before returning the first result.
-        Only applies to the first request it is used with and is ignored if
-        present on datastore_rpc.Connection.config.
-      batch_size: Optional number of results attempt to retrieve in a batch.
-      deadline: See datastore_rpc.Configuration.
-      read_policy: See datastore_rpc.Configuration.
-      on_completion: See datastore_rpc.Configuration.
-
-    Returns:
-      Either a new FetchOptions object or (if it would be equivalent)
-      the config argument unchanged, but never None.
+  @datastore_rpc.ConfigOption
+  def produce_cursors(value):
+    """If a Cursor should be returned with the fetched results.
 
     Raises:
-      BadArgumentError if any of the parameters or invalid.
+      BadArgumentError if value is not a bool.
     """
-    if isinstance(config, FetchOptions):
-      if cls is config.__class__ is FetchOptions and config._is_stronger(
-          produce_cursors=produce_cursors,
-          offset=offset,
-          batch_size=batch_size,
-          deadline=deadline,
-          read_policy=read_policy,
-          on_completion=on_completion):
-        return config
-      if produce_cursors is None:
-        produce_cursors = config.__produce_cursors
-      if offset is None:
-        offset = config.__offset
-      if batch_size is None:
-        batch_size = config.__batch_size
-
-    if produce_cursors is not None and not isinstance(produce_cursors, bool):
+    if not isinstance(value, bool):
       raise datastore_errors.BadArgumentError(
-          'produce_cursors argument should be bool (%r)' % (produce_cursors,))
-    datastore_types.ValidateInteger(offset,
+          'produce_cursors argument should be bool (%r)' % (value,))
+    return value
+
+  @datastore_rpc.ConfigOption
+  def offset(value):
+    """The number of results to skip before returning the first result.
+
+    Only applies to the first request it is used with and is ignored if present
+    on datastore_rpc.Connection.config.
+
+    Raises:
+      BadArgumentError if value is not a integer or is less than zero.
+    """
+    datastore_types.ValidateInteger(value,
                                     'offset',
                                     datastore_errors.BadArgumentError,
-                                    zero_ok=True,
-                                    empty_ok=True)
-    datastore_types.ValidateInteger(batch_size,
-                                    'batch_size',
-                                    datastore_errors.BadArgumentError,
-                                    empty_ok=True)
+                                    zero_ok=True)
+    return value
 
-    obj = super(FetchOptions, cls).__new__(cls, config=config,
-                                           deadline=deadline,
-                                           read_policy=read_policy,
-                                           on_completion=on_completion)
-    obj.__produce_cursors = produce_cursors
-    obj.__offset = offset
-    obj.__batch_size = batch_size
-    return obj
+  @datastore_rpc.ConfigOption
+  def batch_size(value):
+    """The number of results to attempt to retrieve in a batch.
 
-  def _is_stronger(self,
-                   produce_cursors=None, offset=None, batch_size=None,
-                   deadline=None, read_policy=None, on_completion=None):
-    return (
-        super(FetchOptions, self)._is_stronger(
-            deadline=deadline, read_policy=read_policy,
-            on_completion=on_completion) and
-        produce_cursors in (None, self.__produce_cursors) and
-        offset in (None, self.__offset) and
-        batch_size in (None, self.__batch_size))
-
-
-  def merge(self, config):
-    """Merge two configurations.
-
-    The configuration given as argument (if any) takes priority;
-    defaults are filled in from the current configuration.
-
-    Args:
-      config: Configuration providing overrides, or None (but cannot
-        be omitted).
-
-    Returns:
-      Either a new FetchOptions object or (if it would be equivalent)
-      self or the config argument unchanged, but never None.
+    Raises:
+      BadArgumentError if value is not a integer or is not greater than zero.
     """
-    if config is None or config is self:
-      return self
-
-    if (isinstance(config, FetchOptions) and
-        (self.__produce_cursors is None or
-         config.__produce_cursors is not None) and
-        (self.__offset is None or config.__offset is not None) and
-        (self.__batch_size is None or config.__batch_size is not None) and
-        (self.deadline is None or config.deadline is not None) and
-        (self.read_policy is None or config.read_policy is not None) and
-        (self.on_completion is None or config.on_completion is not None)):
-      return config
-
-    produce_cursors = getattr(config, 'produce_cursors', None)
-    offset = getattr(config, 'offset', None)
-    batch_size = getattr(config, 'batch_size', None)
-
-    if self._is_stronger(
-        produce_cursors=produce_cursors, offset=offset, batch_size=batch_size,
-        deadline=config.deadline, read_policy=config.read_policy,
-        on_completion=config.on_completion):
-      return self
-
-    return FetchOptions(
-        config=self,
-        produce_cursors=produce_cursors, offset=offset, batch_size=batch_size,
-        deadline=config.deadline, read_policy=config.read_policy,
-        on_completion=config.on_completion)
-
-  @property
-  def produce_cursors(self):
-    return self.__produce_cursors
-
-  @property
-  def offset(self):
-    return self.__offset
-
-  @property
-  def batch_size(self):
-    return self.__batch_size
+    datastore_types.ValidateInteger(value,
+                                    'batch_size',
+                                    datastore_errors.BadArgumentError)
+    return value
 
 
 class QueryOptions(FetchOptions):
   """An immutable class that contains all options for running a query.
 
+  This class reserves the right to define configuration options of any name
+  except those that start with 'user_'. External subclasses should only define
+  function or variables with names that start with in 'user_'.
+
+  Options are set by passing keyword arguments to the constructor corresponding
+  to the configuration options defined below and in FetchOptions and
+  datastore_rpc.Configuration.
+
   This object can be used as the default config for a datastore_rpc.Connection
-  but in that case some options will be ignored. See __new__ for details.
+  but in that case some options will be ignored, see below for details.
   """
 
   ORDER_FIRST = datastore_pb.Query.ORDER_FIRST
@@ -428,202 +352,85 @@ class QueryOptions(FetchOptions):
   FILTER_FIRST = datastore_pb.Query.FILTER_FIRST
   _HINTS = frozenset([ORDER_FIRST, ANCESTOR_FIRST, FILTER_FIRST])
 
-  @datastore_rpc._positional(1)
-  def __new__(cls, config=None,
-              keys_only=None, limit=None, prefetch_size=None,
-              start_cursor=None, end_cursor=None, hint=None,
-              produce_cursors=None, offset=None, batch_size=None,
-              deadline=None, read_policy=None, on_completion=None):
-    """Immutable constructor.
-
-    All arguments should be specified as keyword arguments
-
-    Args:
-      config: Optional base configuration providing default values for
-        parameters left as None.
-      keys_only: If the query should only return keys.
-      limit: Optional limit on the number of results to return.
-      prefetch_size: Optional number of results to attempt to return on the
-      initial request.
-      start_cursor: Optional cursor to use a start position. Ignored if present
-        on datastore_rpc.Connection.config.
-      end_cursor: Optional cursor to use as an end position. Ignored if present
-        on datastore_rpc.Connection.config.
-      hint: Optional hint on how the datastore should plan the query
-      produce_cursors: See FetchOptions.
-      offset: See FetchOptions.
-      batch_size: See FetchOptions.
-      deadline: See datastore_rpc.Configuration.
-      read_policy: See datastore_rpc.Configuration.
-      on_completion: See datastore_rpc.Configuration.
-
-    Returns:
-      Either a new QueryOptions object or (if it would be equivalent)
-      the config argument unchanged, but never None.
+  @datastore_rpc.ConfigOption
+  def keys_only(value):
+    """If the query should only return keys.
 
     Raises:
-      BadArgumentError if any of the parameters or invalid.
+      BadArgumentError if value is not a bool.
     """
-    if isinstance(config, QueryOptions):
-      if config.__class__ is cls is QueryOptions and config._is_stronger(
-          keys_only=keys_only, limit=limit, prefetch_size=prefetch_size,
-          start_cursor=start_cursor, end_cursor=end_cursor, hint=hint,
-          produce_cursors=produce_cursors, offset=offset, batch_size=batch_size,
-          deadline=deadline, read_policy=read_policy,
-          on_completion=on_completion):
-        return config
-      if keys_only is None:
-        keys_only = config.__keys_only
-      if limit is None:
-        limit = config.__limit
-      if prefetch_size is None:
-        prefetch_size = config.__prefetch_size
-      if start_cursor is None:
-        start_cursor = config.__start_cursor
-      if end_cursor is None:
-        end_cursor = config.__end_cursor
-      if hint is None:
-        hint = config.__hint
-
-    if keys_only is not None and not isinstance(keys_only, bool):
+    if not isinstance(value, bool):
       raise datastore_errors.BadArgumentError(
-          'keys_only argument should be bool (%r)' % (keys_only,))
-    datastore_types.ValidateInteger(limit,
+          'keys_only argument should be bool (%r)' % (value,))
+    return value
+
+  @datastore_rpc.ConfigOption
+  def limit(value):
+    """Limit on the number of results to return.
+
+    Raises:
+      BadArgumentError if value is not an integer or is less than zero.
+    """
+    datastore_types.ValidateInteger(value,
                                     'limit',
                                     datastore_errors.BadArgumentError,
-                                    empty_ok=True,
                                     zero_ok=True)
-    datastore_types.ValidateInteger(prefetch_size,
+    return value
+
+  @datastore_rpc.ConfigOption
+  def prefetch_size(value):
+    """Number of results to attempt to return on the initial request.
+
+    Raises:
+      BadArgumentError if value is not an integer or is not greater than zero.
+    """
+    datastore_types.ValidateInteger(value,
                                     'prefetch_size',
                                     datastore_errors.BadArgumentError,
-                                    empty_ok=True,
                                     zero_ok=True)
-    if start_cursor is not None and not isinstance(start_cursor, Cursor):
+    return value
+
+  @datastore_rpc.ConfigOption
+  def start_cursor(value):
+    """Cursor to use a start position.
+
+    Ignored if present on datastore_rpc.Connection.config.
+
+    Raises:
+      BadArgumentError if value is not a Cursor.
+    """
+    if not isinstance(value, Cursor):
       raise datastore_errors.BadArgumentError(
           'start_cursor argument should be datastore_query.Cursor (%r)' %
-          (start_cursor,))
+          (value,))
+    return value
 
-    if end_cursor is not None and not isinstance(end_cursor, Cursor):
+  @datastore_rpc.ConfigOption
+  def end_cursor(value):
+    """Cursor to use as an end position.
+
+    Ignored if present on datastore_rpc.Connection.config.
+
+    Raises:
+      BadArgumentError if value is not a Cursor.
+    """
+    if not isinstance(value, Cursor):
       raise datastore_errors.BadArgumentError(
           'end_cursor argument should be datastore_query.Cursor (%r)' %
-          (end_cursor,))
-    if hint is not None and hint not in QueryOptions._HINTS:
-      raise datastore_errors.BadArgumentError('Unknown query hint (%r)' %
-                                              (hint,))
+          (value,))
+    return value
 
-    obj = super(QueryOptions, cls).__new__(cls, config=config,
-                                           produce_cursors=produce_cursors,
-                                           offset=offset,
-                                           batch_size=batch_size,
-                                           deadline=deadline,
-                                           read_policy=read_policy,
-                                           on_completion=on_completion)
-    obj.__keys_only = keys_only
-    obj.__limit = limit
-    obj.__prefetch_size = prefetch_size
-    obj.__start_cursor = start_cursor
-    obj.__end_cursor = end_cursor
-    obj.__hint = hint
-    return obj
+  @datastore_rpc.ConfigOption
+  def hint(value):
+    """Hint on how the datastore should plan the query.
 
-  def _is_stronger(self,
-                   keys_only=None, limit=None, prefetch_size=None,
-                   start_cursor=None, end_cursor=None, hint=None,
-                   produce_cursors=None, offset=None, batch_size=None,
-                   deadline=None, read_policy=None, on_completion=None):
-    return (
-        super(QueryOptions, self)._is_stronger(
-            produce_cursors=produce_cursors, offset=offset,
-            batch_size=batch_size, deadline=deadline, read_policy=read_policy,
-            on_completion=on_completion) and
-        keys_only in (None, self.__keys_only) and
-        limit in (None, self.__limit) and
-        prefetch_size in (None, self.__prefetch_size) and
-        start_cursor in (None, self.__start_cursor) and
-        end_cursor in (None, self.__end_cursor) and
-        hint in (None, self.__hint))
-
-  def merge(self, config):
-    """Merge two configurations.
-
-    The configuration given as argument (if any) takes priority;
-    defaults are filled in from the current configuration.
-
-    Args:
-      config: Configuration providing overrides, or None (but cannot
-        be omitted).
-
-    Returns:
-      Either a new QueryOptions object or (if it would be equivalent)
-      self or the config argument unchanged, but never None.
+    Raises:
+      BadArgumentError if value is not a known hint.
     """
-    if config is None or config is self:
-      return self
-
-    if (isinstance(config, QueryOptions) and
-        (self.__keys_only is None or config.__keys_only is not None) and
-        (self.__limit is None or config.__limit is not None) and
-        (self.__prefetch_size is None or config.__prefetch_size is not None) and
-        (self.__start_cursor is None or config.__start_cursor is not None) and
-        (self.__end_cursor is None or config.__end_cursor is not None) and
-        (self.__hint is None or config.__hint is not None) and
-        (self.produce_cursors is None or config.produce_cursors is not None) and
-        (self.offset is None or config.offset is not None) and
-        (self.batch_size is None or config.batch_size is not None) and
-        (self.deadline is None or config.deadline is not None) and
-        (self.read_policy is None or config.read_policy is not None) and
-        (self.on_completion is None or config.on_completion is not None)):
-      return config
-
-    keys_only = getattr(config, 'keys_only', None)
-    limit = getattr(config, 'limit', None)
-    prefetch_size = getattr(config, 'prefetch_size', None)
-    start_cursor = getattr(config, 'start_cursor', None)
-    end_cursor = getattr(config, 'end_cursor', None)
-    hint = getattr(config, 'hint', None)
-    produce_cursors = getattr(config, 'produce_cursors', None)
-    offset = getattr(config, 'offset', None)
-    batch_size = getattr(config, 'batch_size', None)
-
-    if self._is_stronger(
-        keys_only=keys_only, limit=limit, prefetch_size=prefetch_size,
-        start_cursor=start_cursor, end_cursor=end_cursor, hint=hint,
-        produce_cursors=produce_cursors, offset=offset, batch_size=batch_size,
-        deadline=config.deadline, read_policy=config.read_policy,
-        on_completion=config.on_completion):
-      return self
-
-    return QueryOptions(
-        config=self,
-        keys_only=keys_only, limit=limit, prefetch_size=prefetch_size,
-        start_cursor=start_cursor, end_cursor=end_cursor, hint=hint,
-        produce_cursors=produce_cursors, offset=offset, batch_size=batch_size,
-        deadline=config.deadline, read_policy=config.read_policy,
-        on_completion=config.on_completion)
-
-  @property
-  def keys_only(self):
-    return self.__keys_only
-
-  @property
-  def limit(self):
-    return self.__limit
-
-  @property
-  def prefetch_size(self):
-    return self.__prefetch_size
-
-  @property
-  def start_cursor(self):
-    return self.__start_cursor
-
-  @property
-  def end_cursor(self):
-    return self.__end_cursor
-
-  @property
-  def hint(self):
-    return self.__hint
+    if value not in QueryOptions._HINTS:
+      raise datastore_errors.BadArgumentError('Unknown query hint (%r)' %
+                                              (value,))
+    return value
 
 
 class Cursor(object):
@@ -836,7 +643,7 @@ class Query(object):
 
     Returns:
       An async object that can be used to grab the first Batch. Additional
-      batches can be retrieved by calling Batch.next/next_async.
+      batches can be retrieved by calling Batch.next_batch/next_batch_async.
 
     Raises:
       BadArgumentError if any of the arguments are invalid.

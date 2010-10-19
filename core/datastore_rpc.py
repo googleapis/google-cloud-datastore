@@ -27,15 +27,14 @@ to be compatible) library to replace db.py is also under development.
 
 
 
-__all__ = ['ALL_READ_POLICIES',
-           'STRONG_CONSISTENCY',
-           'EVENTUAL_CONSISTENCY',
-           'AbstractAdapter',
-           'IdentityAdapter',
-           'Configuration',
-           'MultiRpc',
+__all__ = ['AbstractAdapter',
+           'BaseConfiguration',
            'BaseConnection',
+           'ConfigOption',
+           'Configuration',
            'Connection',
+           'IdentityAdapter',
+           'MultiRpc',
            'TransactionalConnection',
            ]
 
@@ -52,10 +51,6 @@ from google.appengine.api import datastore_errors
 from google.appengine.datastore import datastore_pb
 from google.appengine.runtime import apiproxy_errors
 
-
-STRONG_CONSISTENCY = 0
-EVENTUAL_CONSISTENCY = 1
-ALL_READ_POLICIES = frozenset((STRONG_CONSISTENCY, EVENTUAL_CONSISTENCY))
 
 _MAX_ID_BATCH_SIZE = 1000 * 1000 * 1000
 
@@ -149,46 +144,91 @@ class IdentityAdapter(AbstractAdapter):
   def entity_to_pb(self, entity):
     return entity
 
-class Configuration(object):
-  """Configuration parameters for datastore RPCs.
 
-  This include generic RPC parameters (deadline) but also
-  datastore-specific parameters (on_completion and read_policy).
+class ConfigOption(object):
+  """A descriptor for a Configuration option.
 
-  NOTE: There is a subtle but important difference between
-  UserRPC.callback and Configuration.on_completion: on_completion is
-  called with the RPC object as its first argument, where callback is
-  called without arguments.  (Because a Configuration's on_completion
-  function can be used with many UserRPC objects, it would be awkward
-  if it was called without passing the specific RPC.)
-
-  A Configuration object is considered immutable, and the constructor
-  avoids redundant copies.
+  This class is used to create a configuration option on a class that inherits
+  from BaseConfiguration. A validator function decorated with this class will
+  be converted to a read-only descriptor and BaseConfiguration will implement
+  constructor and merging logic for that configuration option. A validator
+  function takes a single non-None value to validate and either throws
+  an exception or returns that value (or an equivalent value). A validator is
+  called once at construction time, but only if a non-None value for the
+  configuration option is specified the constructor's keyword arguments.
   """
 
-  @_positional(1)
-  def __new__(cls,
-              deadline=None, on_completion=None, read_policy=None,
-              config=None):
+  def __init__(self, validator):
+    self.validator = validator
+
+  def __get__(self, obj, objtype):
+    if obj is None:
+      return self
+    return obj._values.get(self.validator.__name__, None)
+
+  def __set__(self, obj, value):
+    raise AttributeError('Configuration options are immutable (%s)' %
+                         (self.validator.__name__,))
+
+
+class _ConfigurationMetaClass(type):
+  """The metaclass for all Configuration types.
+
+  This class is needed to store a class specific list of all ConfigOptions in
+  cls._fields, and insert a __slots__ variable into the class dict before the
+  class is created to impose immutability.
+  """
+
+  def __new__(metaclass, classname, bases, classDict):
+    classDict['__slots__'] = ['_values']
+    cls = type.__new__(metaclass, classname, bases, classDict)
+    if object not in bases:
+      cls._fields = cls._fields.copy()
+      for field, value in cls.__dict__.iteritems():
+        if isinstance(value, ConfigOption):
+          if cls._fields.has_key(field):
+            raise TypeError('%s cannot be overridden (%s)' %
+                            (field, cls.__name__))
+          cls._fields[field] = value
+    return cls
+
+
+class BaseConfiguration(object):
+  """A base class for a configuration object.
+
+  Subclasses should provide validation functions for every configuration option
+  they accept. Any public function decorated with ConfigOption is assumed to be
+  a validation function for an option of the same name. All validation functions
+  take a single non-None value to validate and must throw an exception or return
+  the value to store.
+
+  This class forces subclasses to be immutable and exposes a read-only
+  property for every accepted configuration option. Configuration options set by
+  passing keyword arguments to the constructor. The constructor and merge
+  function are designed to avoid creating redundant copies and may return
+  the configuration objects passed to them if appropriate.
+
+  Setting an option to None is the same as not specifying the option except in
+  the case where the 'config' argument is given. In this case the value on
+  'config' of the same name is ignored. Options that are not specified will
+  return 'None' when accessed.
+  """
+
+  __metaclass__ = _ConfigurationMetaClass
+  _fields = {}
+
+  def __new__(cls, config=None, **kwargs):
     """Immutable constructor.
 
-    All arguments should be specified as keyword arguments.
-
-    NOTE: There is an important difference between explicitly
-    specifying a value equal to the system default (e.g. deadline=5)
-    and leaving a value set to None: when combining configurations
-    explicit values always take priority over None.
+    If 'config' is non-None all configuration options will default to the value
+    it contains unless the configuration option is explicitly set to 'None' in
+    the keyword arguments. If 'config' is None then all configuration options
+    default to None.
 
     Args:
-      deadline: Optional deadline; default None (which means the
-        system default deadline will be used, typically 5 seconds).
-      on_completion: Optional callback function; default None.  If
-        specified, it will be called with a UserRPC object as argument
-        when an RPC completes.
-      read_policy: Optional read policy; default None (which means the
-        system will use STRONG_CONSISTENCY).
       config: Optional base configuration providing default values for
-        parameters left None.
+        parameters not specified in the keyword arguments.
+      **kwargs: Configuration options to store on this object.
 
     Returns:
       Either a new Configuration object or (if it would be equivalent)
@@ -196,79 +236,59 @@ class Configuration(object):
     """
     if config is None:
       pass
-    elif isinstance(config, Configuration):
-      if (cls is Configuration is config.__class__ and
-          config._is_stronger(deadline=deadline,
-                              on_completion=on_completion,
-                              read_policy=read_policy)):
+    elif isinstance(config, BaseConfiguration):
+      if cls is config.__class__ and config._is_stronger(**kwargs):
         return config
-      if deadline is None:
-        deadline = config.__deadline
-      if on_completion is None:
-        on_completion = config.__on_completion
-      if read_policy is None:
-        read_policy = config.__read_policy
+
+      for key, value in config._values.iteritems():
+        kwargs.setdefault(key, value)
     else:
       raise datastore_errors.BadArgumentError(
         'config argument should be Configuration (%r)' % (config,))
 
-    if deadline is not None:
-      if not isinstance(deadline, (int, long, float)):
-        raise datastore_errors.BadArgumentError(
-          'deadline argument should be int/long/float (%r)' % (deadline,))
-      if deadline <= 0:
-        raise datastore_errors.BadArgumentError(
-          'deadline argument should be > 0 (%r)' % (deadline,))
-    if read_policy is not None:
-      if read_policy not in ALL_READ_POLICIES:
-        raise datastore_errors.BadArgumentError(
-          'read_policy argument invalid (%r)' % (read_policy,))
-
-    obj = super(Configuration, cls).__new__(cls)
-    obj.__deadline = deadline
-    obj.__on_completion = on_completion
-    obj.__read_policy = read_policy
+    obj = super(BaseConfiguration, cls).__new__(cls)
+    obj._values = {}
+    for key, value in kwargs.iteritems():
+      if value is not None:
+        try:
+          config_option = obj._fields[key]
+        except KeyError, err:
+          raise TypeError('Unknown configuration option (%s)' % err)
+        obj._values[key] = config_option.validator(value)
     return obj
 
-  def _is_stronger(self, deadline=None, on_completion=None, read_policy=None):
+  def _is_stronger(self, **kwargs):
     """Internal helper to ask whether a configuration is stronger than another.
 
-    Example: a configuration with deadline=5, on_configuration=None
-    and read_policy=EVENTUAL_CONSISTENCY is stronger than (deadline=5,
-    on_configuration=None, read_policy=None), but not stronger than
-    (deadline=10, on_configuration=None, read_policy=EVENTUAL_CONSISTENCY).
+    A configuration is stronger when every value it contains is equal to or
+    missing from the values in the kwargs.
+
+    Example: a configuration with:
+      (deadline=5, on_configuration=None, read_policy=EVENTUAL_CONSISTENCY)
+    is stronger than:
+      (deadline=5, on_configuration=None)
+    but not stronger than:
+      (deadline=5, on_configuration=None, read_policy=None)
+    or
+      (deadline=10, on_configuration=None, read_policy=None).
 
     More formally:
-      - Any value is stronger than None;
+      - Any value is stronger than an unset value;
       - Any value is stronger than itself.
-
-    All arguments should be specified as keyword arguments (but as
-    this is just an internal helper, we don't slow it down by trying
-    to enforce that).
-
-    Subclasses may extend this method by adding more keyword arguments.
-
-    Args:
-      deadline: Optional deadline; default None (which means the
-        system default deadline will be used, typically 5 seconds).
-      on_completion: Optional callback function; default None.  If
-        specified, it will be called with a UserRPC object as argument
-        when an RPC completes.
-      read_policy: Optional read policy; default None (which means the
-        system will use STRONG_CONSISTENCY).
 
     Returns:
       True if each of the self attributes is stronger than the
-      corresponding argument.
+    corresponding argument.
     """
-    return (deadline in (None, self.deadline) and
-            on_completion in (None, self.on_completion) and
-            read_policy in (None, self.read_policy))
+    for key, value in kwargs.iteritems():
+      if key not in self._values or value != self._values[key]:
+        return False
+    return True
 
   def merge(self, config):
     """Merge two configurations.
 
-    The configuration given as argument (if any) takes priority;
+    The configuration given as an argument (if any) takes priority;
     defaults are filled in from the current configuration.
 
     Args:
@@ -282,41 +302,84 @@ class Configuration(object):
     if config is None or config is self:
       return self
 
-    if ((self.__deadline is None or config.__deadline is not None) and
-        (self.__read_policy is None or config.__read_policy is not None) and
-        (self.__on_completion is None or config.__on_completion is not None)):
-      return config
+    if isinstance(config, self.__class__):
+      for key in self._values:
+        if key not in config._values:
+          break
+      else:
+        return config
 
-    if self._is_stronger(
-        deadline=config.__deadline, read_policy=config.__read_policy,
-        on_completion=config.__on_completion):
+    if self._is_stronger(**config._values):
       return self
 
-    return Configuration(
-        config=self,
-        deadline=config.deadline, read_policy=config.read_policy,
-        on_completion=config.on_completion)
+    return type(self)(config=self, **config._values)
 
 
-  @property
-  def deadline(self):
-    return self.__deadline
+class Configuration(BaseConfiguration):
+  """Configuration parameters for datastore RPCs.
 
-  @property
-  def on_completion(self):
-    return self.__on_completion
+  This class reserves the right to define configuration options of any name
+  except those that start with 'user_'. External subclasses should only define
+  function or variables with names that start with in 'user_'.
 
-  @property
-  def read_policy(self):
-    return self.__read_policy
+  The options defined on this class include generic RPC parameters (deadline)
+  but also datastore-specific parameters (on_completion and read_policy).
 
-  @property
-  def callback(self):
-    """Prevent mistaken attempts to get or set config.callback.
+  Options are set by passing keyword arguments to the constructor corresponding
+  to the configuration options defined below.
+  """
 
-    This prevents confusion between Configuration with UserRPC.
+  STRONG_CONSISTENCY = 0
+  EVENTUAL_CONSISTENCY = 1
+  ALL_READ_POLICIES = frozenset((STRONG_CONSISTENCY, EVENTUAL_CONSISTENCY))
+
+
+  @ConfigOption
+  def deadline(value):
+    """The deadline for any RPC issued.
+
+    If unset the system default will be used which is typically 5 seconds.
+
+    Raises:
+      BadArgumentError if value is not a number or is less than zero.
     """
-    raise AttributeError
+    if not isinstance(value, (int, long, float)):
+      raise datastore_errors.BadArgumentError(
+        'deadline argument should be int/long/float (%r)' % (value,))
+    if value <= 0:
+      raise datastore_errors.BadArgumentError(
+        'deadline argument should be > 0 (%r)' % (value,))
+    return value
+
+  @ConfigOption
+  def on_completion(value):
+    """A callback that is invoked when any RPC completes.
+
+    If specified, it will be called with a UserRPC object as argument when an
+    RPC completes.
+
+    NOTE: There is a subtle but important difference between
+    UserRPC.callback and Configuration.on_completion: on_completion is
+    called with the RPC object as its first argument, where callback is
+    called without arguments.  (Because a Configuration's on_completion
+    function can be used with many UserRPC objects, it would be awkward
+    if it was called without passing the specific RPC.)
+    """
+    return value
+
+  @ConfigOption
+  def read_policy(value):
+    """The read policy to use for any relevent RPC.
+
+    if unset STRONG_CONSISTENCY will be used.
+
+    Raises:
+      BadArgumentError if value is not a known read policy.
+    """
+    if value not in Configuration.ALL_READ_POLICIES:
+      raise datastore_errors.BadArgumentError(
+        'read_policy argument invalid (%r)' % (value,))
+    return value
 
 
 class MultiRpc(object):
@@ -711,7 +774,7 @@ class BaseConnection(object):
         (config,))
     if read_policy is None:
       read_policy = self.__config.read_policy
-    if read_policy == EVENTUAL_CONSISTENCY:
+    if read_policy == Configuration.EVENTUAL_CONSISTENCY:
       request.set_failover_ms(-1)
 
   def _set_request_transaction(self, request):
