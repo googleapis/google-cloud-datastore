@@ -381,6 +381,25 @@ class Configuration(BaseConfiguration):
         'read_policy argument invalid (%r)' % (value,))
     return value
 
+  @ConfigOption
+  def max_rpc_bytes(value):
+    """The maximum serialized size of a Get/Put/Delete without batching."""
+    return value
+
+  @ConfigOption
+  def max_get_keys(value):
+    """The maximum number of keys in a Get without batching."""
+    return value
+
+  @ConfigOption
+  def max_put_entities(value):
+    """The maximum number of entities in a Put without batching."""
+    return value
+
+  @ConfigOption
+  def max_delete_keys(value):
+    """The maximum number of keys in a Delete without batching."""
+    return value
 
 class MultiRpc(object):
   """A wrapper around multiple UserRPC objects.
@@ -850,15 +869,19 @@ class BaseConnection(object):
   MAX_PUT_ENTITIES = 500
   MAX_DELETE_KEYS = 500
 
-  def __generate_pb_lists(self, values, value_to_pb, base_size, max_count):
+  def __generate_pb_lists(self, values, value_to_pb, base_size, max_count,
+                          config):
     """Internal helper: repeatedly yield a list of protobufs to fit a batch."""
+    max_size = (isinstance(config, Configuration) and config.max_rpc_bytes or
+                self.__config.max_rpc_bytes or
+                self.MAX_RPC_BYTES)
     pbs = []
     size = base_size
     for value in values:
       pb = value_to_pb(value)
       incr_size = pb.lengthString(pb.ByteSize()) + 1
-      if (len(pbs) >= max_count or
-          (pbs and size + incr_size > self.MAX_RPC_BYTES)):
+      if (not isinstance(config, apiproxy_stub_map.UserRPC) and
+          (len(pbs) >= max_count or (pbs and size + incr_size > max_size))):
         yield pbs
         pbs = []
         size = base_size
@@ -898,11 +921,11 @@ class BaseConnection(object):
     if isinstance(self, TransactionalConnection):
       base_size += 1000
     rpcs = []
-    if isinstance(config, apiproxy_stub_map.UserRPC):
-      pbsgen = [map(self.__adapter.key_to_pb, keys)]
-    else:
-      pbsgen = self.__generate_pb_lists(keys, self.__adapter.key_to_pb,
-                                        base_size, self.MAX_GET_KEYS)
+    max_count = (isinstance(config, Configuration) and config.max_get_keys or
+                 self.__config.max_get_keys or
+                 self.MAX_GET_KEYS)
+    pbsgen = self.__generate_pb_lists(keys, self.__adapter.key_to_pb,
+                                      base_size, max_count, config)
     for pbs in pbsgen:
       req = datastore_pb.GetRequest()
       req.CopyFrom(base_req)
@@ -967,11 +990,12 @@ class BaseConnection(object):
     if isinstance(self, TransactionalConnection):
       base_size += 1000
     rpcs = []
-    if isinstance(config, apiproxy_stub_map.UserRPC):
-      pbsgen = [map(self.__adapter.entity_to_pb, entities)]
-    else:
-      pbsgen = self.__generate_pb_lists(entities, self.__adapter.entity_to_pb,
-                                        base_size, self.MAX_PUT_ENTITIES)
+    max_count = ((isinstance(config, Configuration) and
+                  config.max_put_entities) or
+                 self.__config.max_put_entities or
+                 self.MAX_PUT_ENTITIES)
+    pbsgen = self.__generate_pb_lists(entities, self.__adapter.entity_to_pb,
+                                      base_size, max_count, config)
     for pbs in pbsgen:
       req = datastore_pb.PutRequest()
       req.CopyFrom(base_req)
@@ -1024,11 +1048,12 @@ class BaseConnection(object):
     if isinstance(self, TransactionalConnection):
       base_size += 1000
     rpcs = []
-    if isinstance(config, apiproxy_stub_map.UserRPC):
-      pbsgen = [map(self.__adapter.key_to_pb, keys)]
-    else:
-      pbsgen = self.__generate_pb_lists(keys, self.__adapter.key_to_pb,
-                                        base_size, self.MAX_DELETE_KEYS)
+    max_count = ((isinstance(config, Configuration) and
+                  config.max_delete_keys) or
+                 self.__config.max_delete_keys or
+                 self.MAX_DELETE_KEYS)
+    pbsgen = self.__generate_pb_lists(keys, self.__adapter.key_to_pb,
+                                      base_size, max_count, config)
     for pbs in pbsgen:
       req = datastore_pb.DeleteRequest()
       req.CopyFrom(base_req)
@@ -1048,7 +1073,6 @@ class BaseConnection(object):
     self.check_rpc_success(rpc)
     if rpc.user_data is not None:
       rpc.user_data()
-
 
 
   def begin_transaction(self, app):
