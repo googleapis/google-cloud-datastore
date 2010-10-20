@@ -9,7 +9,7 @@ from google.appengine.datastore import entity_pb
 from core import datastore_rpc
 from ndb import key, model
 
-class PendngTests(unittest.TestCase):
+class PendingTests(unittest.TestCase):
   """Tests for the 'pending RPC' management."""
 
   def setUp(self):
