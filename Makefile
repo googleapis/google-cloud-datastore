@@ -10,6 +10,7 @@ ADDRESS=localhost
 test:
 	for i in $(TESTS); \
 	do \
+	  echo $$i; \
 	  PYTHONPATH=$(GAEPATH):. python -m ndb.`basename $$i .py` $(FLAGS); \
 	done
 
@@ -17,6 +18,7 @@ c cov cove cover coverage:
 	coverage erase
 	for i in $(TESTS); \
 	do \
+	  echo $$i; \
 	  PYTHONPATH=$(GAEPATH):. coverage run -p $$i; \
 	done
 	coverage combine
