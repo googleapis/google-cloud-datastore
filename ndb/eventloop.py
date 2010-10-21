@@ -70,6 +70,8 @@ class EventLoop(object):
           assert rpc in self.rpcs, (rpc, self.rpcs)
           self.rpcs.remove(rpc)
 
+
+_EVENT_LOOP_KEY = '__EVENT_LOOP__'
 _event_loop = None
 
 def get_event_loop():
@@ -81,14 +83,13 @@ def get_event_loop():
   """
   # TODO: Use thread-local storage?
   global _event_loop
-  key = '__EVENTLOOP__'
   ev = None
-  if os.getenv(key):
+  if os.getenv(_EVENT_LOOP_KEY):
     ev = _event_loop
   if ev is None:
     ev = EventLoop()
     _event_loop = ev
-    os.environ[key] = '1'
+    os.environ[_EVENT_LOOP_KEY] = '1'
   return ev
 
 def queue_task(*args, **kwds):
