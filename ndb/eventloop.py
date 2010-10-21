@@ -22,7 +22,7 @@ class EventLoop(object):
   def __init__(self):
     """Constructor."""
     self.queue = []
-    self.rpcs = set()
+    self.rpcs = {}
 
   def queue_task(self, delay, callable, *args, **kwds):
     """Schedule a function call at a specific time in the future."""
@@ -33,19 +33,21 @@ class EventLoop(object):
       when = delay
     bisect.insort(self.queue, (when, callable, args, kwds))
 
-  def queue_rpc(self, rpc):
-    """Schedule an RPC.
+  def queue_rpc(self, rpc, callable=None, *args, **kwds):
+    """Schedule an RPC with an optional callback.
 
     The caller must have previously sent the call to the service.
-    Callbacks are to be dealt with by the RPC world.
+    The optional callback is called with any further arguments.
     """
     if rpc is None:
       return
     assert rpc.state > 0  # TODO: Use apiproxy_rpc.RPC.*.
     if isinstance(rpc, datastore_rpc.MultiRpc):
-      self.rpcs.update(rpc.rpcs)
+      rpcs = rpc.rpcs
     else:
-      self.rpcs.add(rpc)
+      rpcs = [rpc]
+    for rpc in rpcs:
+      self.rpcs[rpc] = (callable, args, kwds)
 
   # TODO: A way to add a datastore Connection
 
@@ -60,7 +62,6 @@ class EventLoop(object):
           when, callable, args, kwds = self.queue.pop(0)
           callable(*args, **kwds)
           # TODO: What if it raises an exception?
-          # TODO: What if it returns a value other than None?
           continue
       if self.rpcs:
         rpc = datastore_rpc.MultiRpc.wait_any(self.rpcs)
@@ -68,7 +69,11 @@ class EventLoop(object):
           # Yes, wait_any() may return None even for a non-empty argument.
           # But no, it won't ever return an RPC not in its argument.
           assert rpc in self.rpcs, (rpc, self.rpcs)
-          self.rpcs.remove(rpc)
+          callable, args, kwds = self.rpcs[rpc]
+          del self.rpcs[rpc]
+          if callable is not None:
+            callable(*args, **kwds)
+            # TODO: Again, what about exceptions?
 
 
 _EVENT_LOOP_KEY = '__EVENT_LOOP__'

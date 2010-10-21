@@ -32,20 +32,50 @@ the following two equivalent:
 import types
 
 class Future(object):
+  """A Future has 0 or more callbacks.
+
+  The callbacks will be called when the result is ready.
+  """
 
   def __init__(self):
-    XXX
+    self.done = False
+    self.result = None
+    self.exception = None
+    self.callbacks = []
+
+  def add(self, callback):
+    if self.done:
+      callback(self)
+    else:
+      self.callbacks.append(callback)
+
+  def set_result(self, result):
+    assert not self.done
+    self.result = result
+    self.done = True
+    for callback in self.callbacks:
+      callback(self)  # TODO: What if it raises an exception?
+
+  def set_exception(self, exc):
+    # TODO: What about tracebacks?
+    assert isinstance(exc, BaseException)
+    assert not self.done
+    self.exception = exc
+    self.done = True
+    for callback in self.callbacks:
+      callback(self)
 
   def wait(self):
-    XXX
+    assert self.done  # TODO: How to wait until set_*() is called?
 
   def check_success(self):
     self.wait()
-    XXX  # May raise
+    if self.exception is not None:
+      raise self.exception
 
   def get_result(self):
     self.check_success()
-    return XXX
+    return self.result
 
 class Return(StopIteration):
   pass
@@ -71,26 +101,4 @@ def task(func):
 # The important lesson from Monocle is to separate the trampoline code
 # from the event loop.  In particular when PEP 380 goes live (alas,
 # not before Python 3.3), the trampoline will no longer be necessary,
-# but it has no bearing on the event loop.
-
-# XXX Where to put the event loop?  Ideally it ought to be independent
-# from tasks, futures and generators.  It should be possible to write
-# an alternative framework (e.g. one purely based on callbacks, or a
-# Monocle stack) that reuses our event loop.  The job of the event
-# loop is to keep track of asynchronous App Engine RPCs (in particular
-# urlfetch and datastore RPCs), intermingling these with time-based
-# events (e.g. call function F in 0.3 seconds) and and "explicit
-# wakeups".  The latter are best thought of as Futures; or like
-# Twisted Deferreds.  So for RPCs, you can tell the event loop "Here
-# are an RPC and a function; when the RPC completes, call the callback
-# function with some argument."  For timed calls, you can tell the
-# event loop "Here's a delay (or an absolute time?) and a function; at
-# the designated time call the function with some argument."  Finally
-# for futures I think that while the Future is on hold the event loop
-# won't know about it; when it is ready whoever signals it as ready
-# must tell the event loop to call the Future's callback ASAP.  But
-# how to block, waiting for a Future?  Ideally you should be in a
-# generator and yield the Future -- it will be returned to you when it
-# is ready using the above mechanism.  But if you aren't in a
-# generator we could invoke the nested event loop until this specific
-# Future is done.
+# but it has no bearing on the event loop.  I hope.
