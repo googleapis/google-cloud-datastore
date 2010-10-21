@@ -9,6 +9,7 @@ from google.appengine.ext.webapp import util
 
 import bpt
 from ndb import model
+from ndb import eventloop
 from core import datastore_rpc
 from core import datastore_query
 
@@ -82,11 +83,12 @@ def GetAccountByUser(user, create=False):
                     email=user.email(),
                     userid=user.user_id())
   # Write to datastore asynchronously.
-  model.conn.async_put(None, [account])
+  rpc = model.conn.async_put(None, [account])
+  eventloop.queue_rpc(rpc)
   return account
 
 def WaitForRpcs():
-  model.conn.wait_for_all_pending_rpcs()
+  eventloop.run()
 
 def MapQuery(query, entity_callback, connection, options=None):
   # TODO: Move to another file.
@@ -99,6 +101,7 @@ def MapQuery(query, entity_callback, connection, options=None):
     # Closure over callback, options
     batch = rpc.get_result()
     next_rpc = batch.next_batch_async(options)
+    eventloop.queue_rpc(next_rpc)
     logging.info('batch with %d results, next_rpc=%r',
                  len(batch.results), next_rpc)
     for entity in batch.results:
@@ -106,7 +109,8 @@ def MapQuery(query, entity_callback, connection, options=None):
     # TODO: if next_rpc is None: signal end of Map, somehow.
   options = datastore_query.QueryOptions(on_completion=batch_callback,
                                          config=options)
-  query.run_async(connection, options)
+  rpc = query.run_async(connection, options)
+  eventloop.queue_rpc(rpc)
 
 class HomePage(webapp.RequestHandler):
 
@@ -177,9 +181,10 @@ class HomePage(webapp.RequestHandler):
                           (cgi.escape(author),
                            time.ctime(result.when),
                            cgi.escape(result.body))))
-    model.conn.async_get(
+    rpc = model.conn.async_get(
       datastore_rpc.Configuration(on_completion=AccountsCallBack),
       keys)
+    eventloop.queue_rpc(rpc)
 
   def post(self):
     body = self.request.get('body')
@@ -196,7 +201,8 @@ class HomePage(webapp.RequestHandler):
       if user is not None:
         msg.userid = user.user_id()
       # Write to datastore asynchronously.
-      model.conn.async_put(None, [msg])
+      rpc = model.conn.async_put(None, [msg])
+      eventloop.queue_rpc(rpc)
       if user is not None:
         # Check that the account exists and create it if necessary.
         GetAccountByUser(user, create=True)

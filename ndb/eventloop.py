@@ -11,6 +11,7 @@ The API here is inspired by Monocle.
 """
 
 import bisect
+import os
 import time
 
 from core import datastore_rpc
@@ -38,6 +39,8 @@ class EventLoop(object):
     The caller must have previously sent the call to the service.
     Callbacks are to be dealt with by the RPC world.
     """
+    if rpc is None:
+      return
     assert rpc.state > 0  # TODO: Use apiproxy_rpc.RPC.*.
     if isinstance(rpc, datastore_rpc.MultiRpc):
       self.rpcs.update(rpc.rpcs)
@@ -66,3 +69,36 @@ class EventLoop(object):
           # But no, it won't ever return an RPC not in its argument.
           assert rpc in self.rpcs, (rpc, self.rpcs)
           self.rpcs.remove(rpc)
+
+_event_loop = None
+
+def get_event_loop():
+  """Return a singleton EventLoop instance.
+
+  A new singleton is created for each new HTTP request.  We determine
+  that we're in a new request by inspecting os.environ, which is reset
+  at the start of each request.
+  """
+  # TODO: Use thread-local storage?
+  global _event_loop
+  key = '__EVENTLOOP__'
+  ev = None
+  if os.getenv(key):
+    ev = _event_loop
+  if ev is None:
+    ev = EventLoop()
+    _event_loop = ev
+    os.environ[key] = '1'
+  return ev
+
+def queue_task(*args, **kwds):
+  ev = get_event_loop()
+  ev.queue_task(*args, **kwds)
+
+def queue_rpc(rpc):
+  ev = get_event_loop()
+  ev.queue_rpc(rpc)
+
+def run():
+  ev = get_event_loop()
+  ev.run()
