@@ -1,3 +1,7 @@
+Look at Monocle and borrow ideas from there.  E.g. they don't seem to
+have a global scheduler state (though maybe that's because they're
+using Twisted/Tornado/Asyncore).
+
 Before spending more effort on model.py, write the trampoline & cache.
 
 Ensure that Model and Key are pickled as pbs, so caching doesn't have
