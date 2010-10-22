@@ -35,6 +35,10 @@ class Future(object):
   """A Future has 0 or more callbacks.
 
   The callbacks will be called when the result is ready.
+
+  NOTE: This is somewhat inspired but not conformant to the Future interface
+  defined by PEP 3148.  It is also inspired (and tries to be somewhat
+  compatible with) the App Engine specific UserRPC and MultiRpc classes.
   """
 
   def __init__(self):
@@ -65,6 +69,15 @@ class Future(object):
     for callback in self.callbacks:
       callback(self)
 
+  @property
+  def state(self):
+    # This is just for compatibility with UserRPC and MultiRpc.
+    # A Future is considered running as soon as it is created.
+    if self.done:
+      return 2  # FINISHING
+    else:
+      return 1  # RUNNING
+
   def wait(self):
     assert self.done  # TODO: How to wait until set_*() is called?
 
@@ -76,6 +89,22 @@ class Future(object):
   def get_result(self):
     self.check_success()
     return self.result
+
+  @classmethod
+  def wait_any(cls, futures):
+    all = set(futures)
+    for f in all:
+      if f.state == 2:
+        return f
+    assert False, 'XXX what to do now?'
+
+  @classmethod
+  def wait_all(cls, futures):
+    todo = set(futures)
+    while todo:
+      f = cls.wait_any(todo)
+      if f is not None:
+        todo.remove(f)
 
 class Return(StopIteration):
   pass
@@ -102,3 +131,40 @@ def task(func):
 # from the event loop.  In particular when PEP 380 goes live (alas,
 # not before Python 3.3), the trampoline will no longer be necessary,
 # but it has no bearing on the event loop.  I hope.
+
+# XXX A task/coroutine/generator can yield the following things:
+# - Another task/coroutine/generator; this is entirely equivalent to
+#   "for x in g: yield x"; this is handled entirely by the @task wrapper.
+# - An RPC (or MultiRpc); it will be resumed when this completes;
+#   this does not use the RPC's callback mechanism.
+# - A Future; it will be resumed when the Future is done.
+#   This adds a callback to the Future which does roughly:
+#     def cb(f):
+#       assert f.done
+#       if f.exception is not None:
+#         g.throw(f)
+#       else:
+#         g.send(f.result)
+#   But when this raises an exception, that exception ought to be
+#   propagated back into whatever started *this* generator.
+
+# XXX A Future can be used in several ways:
+# - Yield it from a task/coroutine/generator; see above.
+# - Check (poll) its status via f.done, f.exception, f.result.
+# - Call its wait() method, perhaps indirectly via check_success()
+#   or get_result().  What does this do?  Invoke the event loop.
+# - Call the Future.wait_any() or Future.wait_all() method.
+#   This is supposed to wait for all Futures and RPCs in the argument
+#   list.  How does it do this?  By invoking the event loop.
+#   (Should we bother?)
+
+# XXX I still can't quite get my head around the intricacies of the
+# interaction between coroutines, futures, and the event loop, even
+# though I've implemented several of these before...  Maybe a starting
+# point would be to implement something that transparently does
+# *nothing* except converting "yield a generator g" into (almost just)
+# "for x in g: yield x" in such a way that this code can simply be
+# deleted once PEP 380 exists (and the code should be changed from
+# "yield g" to "yield from g").  A tricky detail may be to make it
+# easy to debug problems -- tracebacks involving generators generally
+# stink.
