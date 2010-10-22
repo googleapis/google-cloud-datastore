@@ -6,5 +6,6 @@
 .*@.*$
 index\.yaml$
 .coverage
+.idea
 htmlcov$
 .DS_Store$
