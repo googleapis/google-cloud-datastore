@@ -31,6 +31,9 @@ the following two equivalent:
 
 import types
 
+def is_generator(obj):
+  return isinstance(obj, types.GeneratorType)
+
 class Future(object):
   """A Future has 0 or more callbacks.
 
@@ -119,7 +122,7 @@ def task(func):
   def wrapper(*args, **kwds):
     try:
       result = func(*args, **kwds)
-      if isinstance(result, types.GeneratorType):
+      if is_generator(result):
         XXX
     except Exception:
       # NOTE: Don't catch BaseException or string exceptions or
@@ -179,41 +182,63 @@ def gwrap(func):
   """Decorator to emulate PEP 380 behavior.
 
   Inside a generator function wrapped in @gwrap, 'yield g', where g is
-  a generator object, should be equivalent to 'for x in g: yield x',
-  except that 'yield g' can also return a value, and that value is
-  whatever g passed as the argument to StopIteration when it stopped.
+  a generator object, is equivalent to 'for x in g: yield x', except
+  that 'yield g' can also return a value, and that value is whatever g
+  passed as the argument to StopIteration when it stopped.
+
+  The idea is that once PEP 380 is implemented, you can drop @gwrap,
+  replace 'yield g' with 'yield from g' and 'raise Return(x)' with
+  'return x', and everything will work exactly the same as before.
 
   NOTE: This is not quite the same as @task, which offers event loop
   integration.
   """
   def gwrap_wrapper(*args, **kwds):
-    g = func(*args, **kwds)  # If it fails in this stage, so be it.
-    if not isinstance(g, types.GeneratorType):
-      # If it doesn't return a generator object, return that.
-      # TODO: Does this deserve a warning?
-      raise Return(g)
-    # The following is several elaborations on "for x in g: yield x".
-    # The first elaboration is to pass values or exceptions received
-    # from yield back into g.  That's just part of a truly transparent
-    # wrapper for a generator.  The second elaboration is to enter
-    # a recursive loop when x is a generator.  That's part of emulating
-    # PEP 380 so that "yield g" is interpreted as "yield from g".
-    # The third elaboration is to pass values and exceptions up that
-    # chain.  This is where my brain keeps hurting.
-    to_send = None
-    to_throw = None
-    stack = [g]
+    """The wrapper function that is actually returned by gwrap()."""
+    # Call the wrapped function.  If it is a generator function, this
+    # returns a generator object.  If it raises an exception, let it
+    # percolate up unchanged.
+    gen = func(*args, **kwds)
+
+    # If that didn't return a generator object, pretend it was a
+    # generator that yielded no items.
+    if not is_generator(gen):
+      if gen is None:
+        return  # Don't bother creating a Return() if it returned None.
+      raise Return(gen)
+
+    # The following while loop elaborates on "for x in g: yield x":
+    #
+    # 1. Pass values or exceptions received from yield back into g.
+    #    That's just part of a truly transparent wrapper for a generator.
+    #
+    # 2. When x is a generator, loop over it in turn, using a stack to
+    #    avoid excessive recursion.  That's part of emulating PEP 380
+    #    so that "yield g" is interpreted as "yield from g" (which
+    #    roughly means "for x in g: yield x").
+    #
+    # 3. Pass values and exceptions up that stack.  This is where my
+    #    brain keeps hurting.
+
+    to_send = None  # What to send into the top generator.
+    to_throw = None  # What to throw into the top generator.
+    stack = [gen]  # Stack of generators.
     while stack:
-      g = stack[-1]
+      # Throw or send something into the current generator.
+      gen = stack[-1]
       try:
         if to_throw is not None:
-          g.throw(to_throw)
+          gen.throw(to_throw)
         else:
-          to_yield = g.send(to_send)
+          to_yield = gen.send(to_send)
+
       except StopIteration, err:
+        # The generator has no more items.  Pop it off the stack.
         stack.pop()
         if not stack:
-          raise
+          raise  # We're done.
+
+        # Prepare to send this value into the next generator on the stack.
         to_send = None
         if err.args:
           if len(err.args) == 1:
@@ -222,22 +247,44 @@ def gwrap(func):
             to_send = err.args
         to_throw = None
         continue
+
       except Exception, err:
+        # The generator raised an exception.  Pop it off the stack.
         stack.pop()
         if not stack:
-          raise
+          raise  # We're done.
+
+        # Prepare to throw this exception into the next generator on the stack.
         to_send = None
         to_throw = err
         continue
+
       else:
+        # The generator yielded a value.
         to_throw = None
         to_send = None
-        if not isinstance(to_yield, types.GeneratorType):
+        if not is_generator(to_yield):
+          # It yielded some plain value.  Yield this outwards.
+          # Whatever our yield returns or raises will be sent or thrown
+          # into the current generator.
+          # TODO: support "yield Return(...)" as an alternative for
+          # "raise Return(...)"?  Monocle users would like that.
           try:
+            # If the yield returns a value, prepare to send that into
+            # the current generator.
             to_send = yield to_yield
           except Exception, err:
+            # The yield raised an exception.  Prepare to throw it into
+            # the current generator.
             to_throw = err
+
         else:
+          # It yielded another generator.  Push it onto the stack.
+          # Note that this new generator is (assumed to be) in the
+          # "initial" state for generators, meaning that it hasn't
+          # executed any code in the generator function's body yet.
+          # In this state we may only call gen.next() or gen.send(None),
+          # so it's a good thing that to_send and to_throw are None.
           stack.append(to_yield)
 
   return gwrap_wrapper
