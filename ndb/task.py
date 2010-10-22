@@ -107,7 +107,13 @@ class Future(object):
         todo.remove(f)
 
 class Return(StopIteration):
-  pass
+  """Trivial StopIteration class, used to mark return values.
+
+  To use this, raise Return(<your return value>).  The semantics
+  are exactly the same as raise StopIteration(<your return value>)
+  but using Return clarifies that you are intending this to be the
+  return value of a coroutine.
+  """
 
 def task(func):
   def wrapper(*args, **kwds):
@@ -168,3 +174,70 @@ def task(func):
 # "yield g" to "yield from g").  A tricky detail may be to make it
 # easy to debug problems -- tracebacks involving generators generally
 # stink.
+
+def gwrap(func):
+  """Decorator to emulate PEP 380 behavior.
+
+  Inside a generator function wrapped in @gwrap, 'yield g', where g is
+  a generator object, should be equivalent to 'for x in g: yield x',
+  except that 'yield g' can also return a value, and that value is
+  whatever g passed as the argument to StopIteration when it stopped.
+
+  NOTE: This is not quite the same as @task, which offers event loop
+  integration.
+  """
+  def gwrap_wrapper(*args, **kwds):
+    g = func(*args, **kwds)  # If it fails in this stage, so be it.
+    if not isinstance(g, types.GeneratorType):
+      # If it doesn't return a generator object, return that.
+      # TODO: Does this deserve a warning?
+      raise Return(g)
+    # The following is several elaborations on "for x in g: yield x".
+    # The first elaboration is to pass values or exceptions received
+    # from yield back into g.  That's just part of a truly transparent
+    # wrapper for a generator.  The second elaboration is to enter
+    # a recursive loop when x is a generator.  That's part of emulating
+    # PEP 380 so that "yield g" is interpreted as "yield from g".
+    # The third elaboration is to pass values and exceptions up that
+    # chain.  This is where my brain keeps hurting.
+    to_send = None
+    to_throw = None
+    stack = [g]
+    while stack:
+      g = stack[-1]
+      try:
+        if to_throw is not None:
+          g.throw(to_throw)
+        else:
+          to_yield = g.send(to_send)
+      except StopIteration, err:
+        stack.pop()
+        if not stack:
+          raise
+        to_send = None
+        if err.args:
+          if len(err.args) == 1:
+            to_send = err.args[0]
+          else:
+            to_send = err.args
+        to_throw = None
+        continue
+      except Exception, err:
+        stack.pop()
+        if not stack:
+          raise
+        to_send = None
+        to_throw = err
+        continue
+      else:
+        to_throw = None
+        to_send = None
+        if not isinstance(to_yield, types.GeneratorType):
+          try:
+            to_send = yield to_yield
+          except Exception, err:
+            to_throw = err
+        else:
+          stack.append(to_yield)
+
+  return gwrap_wrapper
