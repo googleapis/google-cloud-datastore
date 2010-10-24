@@ -27,7 +27,6 @@ class TaskTests(unittest.TestCase):
       raise task.Return(a + b)
     @task.task
     def t2(n):
-      if False: yield  # Dummy to make a generator.  TODO: shouldn't need.
       raise task.Return(n)
     @task.task
     def t3(n):

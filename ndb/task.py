@@ -137,8 +137,10 @@ def task(func):
   def task_wrapper(*args, **kwds):
     """XXX Docstring"""
     fut = Future()
-    # TODO: Catch exceptions from func() call or not?
-    result = func(*args, **kwds)
+    try:
+      result = func(*args, **kwds)
+    except StopIteration, err:
+      result = get_value(err)
     if is_generator(result):
       eventloop.queue_task(0, help_task_along, result, fut)
     else:
@@ -146,6 +148,15 @@ def task(func):
     return fut
 
   return task_wrapper
+
+def get_value(err):
+  if not err.args:
+    result = None
+  elif len(err.args) == 1:
+    result = err.args[0]
+  else:
+    result = err.args
+  return result
 
 def help_task_along(gen, fut, val=None, exc=None):
   """XXX Docstring"""
@@ -156,12 +167,7 @@ def help_task_along(gen, fut, val=None, exc=None):
       value = gen.send(val)
 
   except StopIteration, err:
-    if not err.args:
-      result = None
-    elif len(err.args) == 1:
-      result = err.args[0]
-    else:
-      result = err.args
+    result = get_value(err)
     fut.set_result(result)
     return
 
