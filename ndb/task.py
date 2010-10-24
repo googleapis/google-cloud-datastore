@@ -32,6 +32,10 @@ the following two equivalent:
 import sys
 import types
 
+from google.appengine.api.apiproxy_stub_map import UserRPC
+
+from ndb import eventloop
+
 def is_generator(obj):
   return isinstance(obj, types.GeneratorType)
 
@@ -51,7 +55,7 @@ class Future(object):
     self.exception = None
     self.callbacks = []
 
-  def add(self, callback):
+  def add_done_callback(self, callback):
     if self.done:
       callback(self)
     else:
@@ -83,7 +87,15 @@ class Future(object):
       return 1  # RUNNING
 
   def wait(self):
-    assert self.done  # TODO: How to wait until set_*() is called?
+    if self.done:
+      return
+    ev = eventloop.get_event_loop()
+    while not self.done:
+      ev.run1()
+
+  def get_exception(self):
+    self.wait()
+    return self.exception
 
   def check_success(self):
     self.wait()
@@ -120,20 +132,72 @@ class Return(StopIteration):
   """
 
 def task(func):
-  def wrapper(*args, **kwds):
-    try:
-      result = func(*args, **kwds)
-      if is_generator(result):
-        XXX
-    except Exception:
-      # NOTE: Don't catch BaseException or string exceptions or
-      # exceptions not deriving from Exception.  BaseException
-      # deserves to quit the whole program, and string exceptions
-      # shouldn't be used at all (they're deprecated in Python 2.5 and
-      # cannot be raised in Python 2.6).  Exceptions not deriving from
-      # BaseException are theoretically still allowed, but they are
-      # not recommended.
-      XXX
+  """XXX Docstring"""
+
+  def task_wrapper(*args, **kwds):
+    """XXX Docstring"""
+    fut = Future()
+    # TODO: Catch exceptions from func() call or not?
+    result = func(*args, **kwds)
+    if is_generator(result):
+      eventloop.queue_task(0, help_task_along, result, fut)
+    else:
+      fut.set_result(result)
+    return fut
+
+  return task_wrapper
+
+def help_task_along(gen, fut, val=None, exc=None):
+  """XXX Docstring"""
+  try:
+    if exc is not None:
+      value = gen.throw(exc)
+    else:
+      value = gen.send(val)
+
+  except StopIteration, err:
+    if not err.args:
+      result = None
+    elif len(err.args) == 1:
+      result = err.args[0]
+    else:
+      result = err.args
+    fut.set_result(result)
+    return
+
+  except Exception, err:
+    fut.set_exception(err)
+    return
+
+  else:
+    if isinstance(value, UserRPC):
+      # TODO: Tail recursion if the RPC is already complete.
+      eventloop.queue_rpc(value, on_rpc_completion, value, gen, fut)
+      return
+    if isinstance(value, Future):
+      # TODO: Tail recursion if the Future is already done.
+      value.add_done_callback(
+          lambda val: on_future_completion(val, gen, fut))
+      return
+    if is_generator(value):
+      assert False  # TODO: emulate PEP 380 here.
+    assert False  # A task shouldn't yield plain values.
+
+def on_rpc_completion(rpc, gen, fut):
+  try:
+    result = rpc.get_result()
+  except Exception, err:
+    help_task_along(gen, fut, exc=err)
+  else:
+    help_task_along(gen, fut, result)
+
+def on_future_completion(future, gen, fut):
+  exc = future.get_exception()
+  if exc is not None:
+    help_task_along(gen, fut, exc=exc)
+  else:
+    val = future.get_result()  # This better not raise an exception.
+    help_task_along(gen, fut, val)
 
 # XXX Where to put the trampoline code?  Yielding a generator ought to
 # schedule that generator -- I've got code in the old NDB to do that.

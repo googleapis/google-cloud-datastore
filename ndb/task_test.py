@@ -20,7 +20,22 @@ class TaskTests(unittest.TestCase):
     self.ev = eventloop.get_event_loop()
 
   def testFuture(self):
-      f = task.Future()
+    @task.task
+    def t1():
+      a = yield t2(3)
+      b = yield t3(2)
+      raise task.Return(a + b)
+    @task.task
+    def t2(n):
+      if False: yield  # Dummy to make a generator.  TODO: shouldn't need.
+      raise task.Return(n)
+    @task.task
+    def t3(n):
+      return n
+    x = t1()
+    self.assertTrue(isinstance(x, task.Future))
+    y = x.get_result()
+    self.assertEqual(y, 5)
 
 class PEP380Tests(unittest.TestCase):
   """Test cases to verify the equivalence of yielding a generator to PEP 380.
