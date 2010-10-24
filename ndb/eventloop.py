@@ -126,9 +126,9 @@ def queue_task(*args, **kwds):
   ev = get_event_loop()
   ev.queue_task(*args, **kwds)
 
-def queue_rpc(rpc):
+def queue_rpc(rpc, callable=None, *args, **kwds):
   ev = get_event_loop()
-  ev.queue_rpc(rpc)
+  ev.queue_rpc(rpc, callable, *args, **kwds)
 
 def run():
   ev = get_event_loop()
