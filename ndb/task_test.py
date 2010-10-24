@@ -63,7 +63,7 @@ class PEP380Tests(unittest.TestCase):
       x = yield g2(a, b)
       y = yield g2(c, d)
       yield (x, y)
-    ## @task.gwrap
+    @task.gwrap
     def g2(a, b):
       for i in range(a, b):
         yield i

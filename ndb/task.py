@@ -29,6 +29,7 @@ the following two equivalent:
 (How does Monocle do the trampoline?  Does it use the Twisted reactor?)
 """
 
+import sys
 import types
 
 def is_generator(obj):
@@ -207,6 +208,12 @@ def gwrap(func):
         return  # Don't bother creating a Return() if it returned None.
       raise Return(gen)
 
+    # If this is an immediately recursive call to gwrap_wrapper(),
+    # yield out the generator to let the outer call handle things.
+    if sys._getframe(1).f_code is sys._getframe(0).f_code:
+      result = yield gen
+      raise Return(result)
+
     # The following while loop elaborates on "for x in g: yield x":
     #
     # 1. Pass values or exceptions received from yield back into g.
@@ -288,3 +295,48 @@ def gwrap(func):
           stack.append(to_yield)
 
   return gwrap_wrapper
+
+# XXX Well that was all very nice and all, but that's not how we're
+# going to get integration with the event loop.  But how?
+
+# XXX I've been thinking about it all wrong!  Here's the right
+# structure (and it probably resembles Monocle):
+
+# - A task is a (generator) function decorated with @task.
+
+# - Calling a task schedules the function for execution and returns a Future.
+
+# - A function implementing a task may:
+#   = yield a Future; this waits for the Future which returns f.get_result();
+#   = yield an RPC; this waits for the RPC and then returns rpc.get_result();
+#   = raise Return(result); this sets the outer Future's result;
+#   = raise StopIteration or return; this sets the outer Future's result;
+#   = raise another exception: this sets the outer Future's exception.
+
+# - If a function implementing a task is not a generator it will be
+#   immediately executed to completion and the task wrapper will
+#   return a Future that is already done.  (XXX Alternative behavior:
+#   it schedules the call to be run by the event loop.)
+
+# - Code not running in a task can call f.get_result() or f.wait() on
+#   a future.  This is implemented by a simple loop like the following:
+
+#     while not self.done:
+#       eventloop.run1()
+
+# - Here eventloop.run1() runs one "atomic" part of the event loop:
+#   = either it calls one immediately ready callback;
+#   = or it waits for the first RPC to complete;
+#   = or it sleeps until the first callback should be ready;
+#   = or it raises an exception indicating all queues are empty.
+
+# - It is possible but suboptimal to call rpc.get_result() or
+#   rpc.wait() directly on an RPC object since this will not allow
+#   other callbacks to run as they become ready.  Wrapping an RPC in a
+#   Future will take care of this issue.
+
+# - The important insight is that when a generator function
+#   implementing a task yields, raises or returns, there is always a
+#   wrapper that catches this event and either turns it into a
+#   callback sent to the event loop, or sets the result or exception
+#   for the task's Future.

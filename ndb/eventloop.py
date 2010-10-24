@@ -51,29 +51,54 @@ class EventLoop(object):
 
   # TODO: A way to add a datastore Connection
 
+  def run0(self):
+    """Run one item (a callback or an RPC wait_any).
+
+    Returns:
+      A time to sleep if something happened (may be 0);
+      None if all queues are empty.
+    """
+    delay = None
+    if self.queue:
+      delay = self.queue[0][0] - time.time()
+      if delay <= 0:
+        when, callable, args, kwds = self.queue.pop(0)
+        callable(*args, **kwds)
+        # TODO: What if it raises an exception?
+        return 0
+    if self.rpcs:
+      rpc = datastore_rpc.MultiRpc.wait_any(self.rpcs)
+      if rpc is not None:
+        # Yes, wait_any() may return None even for a non-empty argument.
+        # But no, it won't ever return an RPC not in its argument.
+        assert rpc in self.rpcs, (rpc, self.rpcs)
+        callable, args, kwds = self.rpcs[rpc]
+        del self.rpcs[rpc]
+        if callable is not None:
+          callable(*args, **kwds)
+          # TODO: Again, what about exceptions?
+      return 0
+    return delay
+
+  def run1(self):
+    """Run one item (a callback or an RPC wait_any) or sleep.
+
+    Returns:
+      True if something happened; False if all queues are empty.
+    """
+    delay = self.run0()
+    if delay is None:
+      return False
+    if delay > 0:
+      time.sleep(delay)
+    return True
+
   def run(self):
     """Run until there's nothing left to do."""
     # TODO: A way to stop running before the queue is empty.
-    # TODO: Run until a specific event (or RPC or time?).
-    while self.queue or self.rpcs:
-      if self.queue:
-        delay = self.queue[0][0] - time.time()
-        if delay <= 0:
-          when, callable, args, kwds = self.queue.pop(0)
-          callable(*args, **kwds)
-          # TODO: What if it raises an exception?
-          continue
-      if self.rpcs:
-        rpc = datastore_rpc.MultiRpc.wait_any(self.rpcs)
-        if rpc is not None:
-          # Yes, wait_any() may return None even for a non-empty argument.
-          # But no, it won't ever return an RPC not in its argument.
-          assert rpc in self.rpcs, (rpc, self.rpcs)
-          callable, args, kwds = self.rpcs[rpc]
-          del self.rpcs[rpc]
-          if callable is not None:
-            callable(*args, **kwds)
-            # TODO: Again, what about exceptions?
+    while True:
+      if not self.run1():
+        break
 
 
 _EVENT_LOOP_KEY = '__EVENT_LOOP__'
@@ -108,3 +133,11 @@ def queue_rpc(rpc):
 def run():
   ev = get_event_loop()
   ev.run()
+
+def run1():
+  ev = get_event_loop()
+  ev.run1()
+
+def run0():
+  ev = get_event_loop()
+  ev.run0()
