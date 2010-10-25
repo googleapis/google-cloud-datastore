@@ -1,3 +1,5 @@
+"""A simple guestbook app to test parts of NDB end-to-end."""
+
 import cgi
 import logging
 import time
@@ -7,11 +9,13 @@ from google.appengine.datastore import entity_pb
 from google.appengine.ext import webapp
 from google.appengine.ext.webapp import util
 
-import bpt
-from ndb import model
-from ndb import eventloop
-from core import datastore_rpc
 from core import datastore_query
+from core import datastore_rpc
+
+import bpt
+from ndb import eventloop
+from ndb import model
+from ndb import tasks
 
 HOME_PAGE = """
 <script>
@@ -61,7 +65,43 @@ class Message(model.Model):
   when = model.IntegerProperty()
   userid = model.StringProperty()
 
-def GetAccountByUser(user, create=False):
+def WaitForRpcs():
+  eventloop.run()
+
+def MapQuery(query, entity_callback, connection, options=None):
+  # Returns a Future whose result will be the total entity count once
+  # the last callback has been run (or started, if it's a task).
+  # TODO: Move to another file.
+  # TODO: Make this into a (or add a separate) decorator?  So you can say:
+  #   @MapQuery(query, connection, options)
+  #   def entity_callback(entity):
+  #     ...process one entity...
+  count_future = tasks.Future()
+  count = [0]  # Mutable counter that can be updated from a nested function.
+  ev = eventloop.get_event_loop()
+
+  def batch_callback(rpc):
+    # TODO: Make this a task.
+    # Closure over callback, options
+    batch = rpc.get_result()
+    count[0] += len(batch.results)
+    next_rpc = batch.next_batch_async(options)
+    ev.queue_rpc(next_rpc)
+    logging.info('batch with %d results, next_rpc=%r',
+                 len(batch.results), next_rpc)
+    for entity in batch.results:
+      entity_callback(entity)
+    if next_rpc is None:
+      count_future.set_result(count[0])
+
+  options = datastore_query.QueryOptions(on_completion=batch_callback,
+                                         config=options)
+  rpc = query.run_async(connection, options)
+  ev.queue_rpc(rpc)
+  return count_future
+
+@tasks.task
+def AsyncGetAccountByUser(user, create=False):
   """Find an account."""
   assert isinstance(user, users.User)
   assert user.user_id() is not None
@@ -73,44 +113,35 @@ def GetAccountByUser(user, create=False):
   pred = datastore_query.PropertyFilter('=', prop)
   query = datastore_query.Query(kind=Account.GetKind(),
                                 filter_predicate=pred)
-  for batch in query.run(model.conn):
-    for result in batch.results:
-      assert isinstance(result, Account)
-      return result
+
+  hit_future = tasks.Future()
+
+  def result_callback(result):
+    assert isinstance(result, Account)
+    if not hit_future.done():
+      hit_future.set_result(result)
+
+  count_future = MapQuery(query, result_callback, model.conn)
+  count = yield count_future
+  assert isinstance(count, int)
+  if count:
+    result = yield hit_future
+    assert isinstance(result, Account)
+    raise tasks.Return(result)
   if not create:
-    return None
+    return  # None
+
   account = Account(key=model.Key(flat=['Account', user.user_id()]),
                     email=user.email(),
                     userid=user.user_id())
   # Write to datastore asynchronously.
   rpc = model.conn.async_put(None, [account])
-  eventloop.queue_rpc(rpc)
-  return account
+  eventloop.queue_rpc(rpc)  # Make sure rpc completes before we exit.
+  raise tasks.Return(account)
 
-def WaitForRpcs():
-  eventloop.run()
-
-def MapQuery(query, entity_callback, connection, options=None):
-  # TODO: Move to another file.
-  # TODO: Make this into a (or add a separate) decorator so you can say:
-  #   @MapQuery(query, connections, options)
-  #   def entity_callback(entity):
-  #     ...process one entity...
-  # TODO: Add the possibility to make this a task.
-  def batch_callback(rpc):
-    # Closure over callback, options
-    batch = rpc.get_result()
-    next_rpc = batch.next_batch_async(options)
-    eventloop.queue_rpc(next_rpc)
-    logging.info('batch with %d results, next_rpc=%r',
-                 len(batch.results), next_rpc)
-    for entity in batch.results:
-      entity_callback(entity)
-    # TODO: if next_rpc is None: signal end of Map, somehow.
-  options = datastore_query.QueryOptions(on_completion=batch_callback,
-                                         config=options)
-  rpc = query.run_async(connection, options)
-  eventloop.queue_rpc(rpc)
+def GetAccountByUser(user, create=False):
+  fut = AsyncGetAccountByUser(user, create)
+  return fut.get_result()
 
 class HomePage(webapp.RequestHandler):
 
