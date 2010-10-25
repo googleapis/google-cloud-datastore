@@ -81,11 +81,39 @@ def MapQuery(query, entity_callback, connection, options=None):
     count += len(batch.results)
   raise tasks.Return(count)
 
+def MapQueryToGenerator(query, generator, connection, options=None):
+  # TODO: Make this into a task.
+  assert tasks.is_generator(generator), '%r is not a generator' % generator
+  # "Prime" the generator.  (TODO: does PEP 380 explain this?)
+  generator.next()
+  map_future = MapQuery(query, generator.send, connection, options)
+  our_future = tasks.Future()
+
+  def callback(fut):
+    # When map_future completes, extract a return value from the
+    # generator and set it as our own future's result.
+    assert fut is map_future, (fut, map_future)
+    try:
+      generator.throw(GeneratorExit)
+    except StopIteration, err:
+      value = tasks.get_value(err)
+      our_future.set_result(value)
+    except GeneratorExit:
+      our_future.set_result(None)
+    except Exception, err:
+      our_future.set_exception(err)
+    else:
+      our_future.set_exception(RuntimeError(
+        'Throwing GeneratorExit into it did not stop the generator'))
+
+  map_future.add_done_callback(callback)
+  return our_future
+
 @tasks.task
 def AsyncGetAccountByUser(user, create=False):
   """Find an account."""
-  assert isinstance(user, users.User)
-  assert user.user_id() is not None
+  assert isinstance(user, users.User), '%r is not a User' % user
+  assert user.user_id() is not None, 'user_id is None'
   prop = entity_pb.Property()
   prop.set_name(Account.userid.name)
   prop.set_multiple(False)
@@ -98,17 +126,21 @@ def AsyncGetAccountByUser(user, create=False):
   hit_future = tasks.Future()
 
   def result_callback(result):
-    assert isinstance(result, Account)
+    assert isinstance(result, Account), '%r is not an Account [1]' % result
     if not hit_future.done():
       hit_future.set_result(result)
 
-  count_future = MapQuery(query, result_callback, model.conn)
-  count = yield count_future
-  assert isinstance(count, int)
-  if count:
-    result = yield hit_future
-    assert isinstance(result, Account)
+  def accumulator():
+    while True:
+      result = yield
+      assert isinstance(result, Account), '%r is not an Account [2]' % result
+      raise tasks.Return(result)
+
+  f = MapQueryToGenerator(query, accumulator(), model.conn)
+  result = yield f
+  if result is not None:
     raise tasks.Return(result)
+
   if not create:
     return  # None
 
