@@ -6,12 +6,13 @@ GAEPATH=$(GAE):$(GAE)/lib/yaml/lib
 TESTS=	`find ndb -name [a-z]\*_test.py`
 PORT=	8080
 ADDRESS=localhost
+PYTHON= python -Wignore
 
 test:
 	for i in $(TESTS); \
 	do \
 	  echo $$i; \
-	  PYTHONPATH=$(GAEPATH):. python -m ndb.`basename $$i .py` $(FLAGS); \
+	  PYTHONPATH=$(GAEPATH):. $(PYTHON) -m ndb.`basename $$i .py` $(FLAGS); \
 	done
 
 c cov cove cover coverage:
