@@ -25,10 +25,17 @@ class TaskTests(unittest.TestCase):
 
   def testFuture_Constructor(self):
     f = tasks.Future()
-    self.assertEqual(f.done, False)
     self.assertEqual(f.result, None)
     self.assertEqual(f.exception, None)
     self.assertEqual(f.callbacks, [])
+
+  def testFuture_Done_State(self):
+    f = tasks.Future()
+    self.assertFalse(f.done())
+    self.assertEqual(f.state, f.RUNNING)
+    f.set_result(42)
+    self.assertTrue(f.done())
+    self.assertEqual(f.state, f.FINISHING)
 
   def testFuture_SetResult(self):
     f = tasks.Future()
@@ -41,7 +48,7 @@ class TaskTests(unittest.TestCase):
     f = tasks.Future()
     err = RuntimeError(42)
     f.set_exception(err)
-    self.assertEqual(f.done, True)
+    self.assertEqual(f._done, True)
     self.assertEqual(f.exception, err)
     self.assertEqual(f.result, None)
     self.assertEqual(f.get_exception(), err)
@@ -66,7 +73,31 @@ class TaskTests(unittest.TestCase):
     f.add_done_callback(self.universal_callback)
     f.set_exception(RuntimeError(42))
     self.assertEqual(self.log, [(f,)])
-    self.assertEqual(f.done, True)
+    self.assertEqual(f._done, True)
+
+  def create_futures(self):
+    self.futs = []
+    for i in range(5):
+      f = tasks.Future()
+      f.add_done_callback(self.universal_callback)
+      def wake(fut, result):
+        fut.set_result(result)
+      self.ev.queue_task(i*0.01, wake, f, i)
+      self.futs.append(f)
+    return set(self.futs)
+
+  def testFuture_WaitAny(self):
+    self.assertEqual(tasks.Future.wait_any([]), None)
+    todo = self.create_futures()
+    while todo:
+      f = tasks.Future.wait_any(todo)
+      todo.remove(f)
+    self.assertEqual(self.log, [(f,) for f in self.futs])
+
+  def testFuture_WaitAll(self):
+    todo = self.create_futures()
+    tasks.Future.wait_all(todo)
+    self.assertEqual(self.log, [(f,) for f in self.futs])
 
   def testBasicTasks(self):
     @tasks.task

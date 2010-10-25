@@ -61,6 +61,7 @@ the task into a generator.
 import types
 
 from google.appengine.api.apiproxy_stub_map import UserRPC
+from google.appengine.api.apiproxy_rpc import RPC
 
 from ndb import eventloop
 
@@ -77,49 +78,56 @@ class Future(object):
   compatible with) the App Engine specific UserRPC and MultiRpc classes.
   """
 
+  IDLE = RPC.IDLE
+  RUNNING = RPC.RUNNING
+  FINISHING = RPC.FINISHING
+
   def __init__(self):
     # TODO: Make done a method, to match PEP 3148?
-    self.done = False
+    self._done = False
     self.result = None
     self.exception = None
     self.callbacks = []
 
   def add_done_callback(self, callback):
-    if self.done:
+    if self._done:
       callback(self)
     else:
       self.callbacks.append(callback)
 
   def set_result(self, result):
-    assert not self.done
+    assert not self._done
     self.result = result
-    self.done = True
+    self._done = True
     for callback in self.callbacks:
       callback(self)  # TODO: What if it raises an exception?
 
   def set_exception(self, exc):
     # TODO: What about tracebacks?
     assert isinstance(exc, BaseException)
-    assert not self.done
+    assert not self._done
     self.exception = exc
-    self.done = True
+    self._done = True
     for callback in self.callbacks:
       callback(self)
+
+  def done(self):
+    return self._done
 
   @property
   def state(self):
     # This is just for compatibility with UserRPC and MultiRpc.
     # A Future is considered running as soon as it is created.
-    if self.done:
-      return 2  # FINISHING
+    if self._done:
+      return self.FINISHING
     else:
-      return 1  # RUNNING
+      return self.RUNNING
 
   def wait(self):
-    if self.done:
+    if self._done:
       return
     ev = eventloop.get_event_loop()
-    while not self.done:
+    while not self._done:
       ev.run1()
 
   def get_exception(self):
@@ -142,9 +150,10 @@ class Future(object):
     ev = eventloop.get_event_loop()
     while all:
       for f in all:
-        if f.state == 2:  # FINISHING
+        if f.state == cls.FINISHING:
           return f
       ev.run1()
+    return None
 
   @classmethod
   def wait_all(cls, futures):
@@ -152,10 +161,7 @@ class Future(object):
     all = set(futures)
     ev = eventloop.get_event_loop()
     while all:
-      for f in all:
-        if f.state == 2:  # FINISHING
-          all.remove(f)
-          continue  # TODO: Make this less O(N**2)
+      all = set(f for f in all if f.state == cls.RUNNING)
       ev.run1()
 
 class Return(StopIteration):
