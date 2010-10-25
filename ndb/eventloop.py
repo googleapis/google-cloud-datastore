@@ -14,7 +14,13 @@ import bisect
 import os
 import time
 
+from google.appengine.api.apiproxy_rpc import RPC
+
 from core import datastore_rpc
+
+IDLE = RPC.IDLE
+RUNNING = RPC.RUNNING
+FINISHING = RPC.FINISHING
 
 class EventLoop(object):
   """An event loop."""
@@ -41,7 +47,7 @@ class EventLoop(object):
     """
     if rpc is None:
       return
-    assert rpc.state > 0  # TODO: Use apiproxy_rpc.RPC.*.
+    assert rpc.state in (RUNNING, FINISHING), rpc.state
     if isinstance(rpc, datastore_rpc.MultiRpc):
       rpcs = rpc.rpcs
     else:
