@@ -68,37 +68,18 @@ class Message(model.Model):
 def WaitForRpcs():
   eventloop.run()
 
+@tasks.task
 def MapQuery(query, entity_callback, connection, options=None):
-  # Returns a Future whose result will be the total entity count once
-  # the last callback has been run (or started, if it's a task).
-  # TODO: Move to another file.
-  # TODO: Make this into a (or add a separate) decorator?  So you can say:
-  #   @MapQuery(query, connection, options)
-  #   def entity_callback(entity):
-  #     ...process one entity...
-  count_future = tasks.Future()
-  count = [0]  # Mutable counter that can be updated from a nested function.
-  ev = eventloop.get_event_loop()
-
-  def batch_callback(rpc):
-    # TODO: Make this a task.
-    # Closure over callback, options
-    batch = rpc.get_result()
-    count[0] += len(batch.results)
-    next_rpc = batch.next_batch_async(options)
-    ev.queue_rpc(next_rpc)
-    logging.info('batch with %d results, next_rpc=%r',
-                 len(batch.results), next_rpc)
+  count = 0
+  rpc = query.run_async(connection, options)
+  while rpc is not None:
+    batch = yield rpc
+    rpc = batch.next_batch_async(options)
+    logging.info('batch with %d results, next_rpc=%r', len(batch.results), rpc)
     for entity in batch.results:
       entity_callback(entity)
-    if next_rpc is None:
-      count_future.set_result(count[0])
-
-  options = datastore_query.QueryOptions(on_completion=batch_callback,
-                                         config=options)
-  rpc = query.run_async(connection, options)
-  ev.queue_rpc(rpc)
-  return count_future
+    count += len(batch.results)
+  raise tasks.Return(count)
 
 @tasks.task
 def AsyncGetAccountByUser(user, create=False):
