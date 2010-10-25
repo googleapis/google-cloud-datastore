@@ -1,8 +1,15 @@
 """A task decorator.
 
-This decorates a generator function so that when it is called, a
-Future is returned while the generator is executed by the event loop.
-For example:
+Tasks are a way to write concurrently running functions without
+threads; tasks are executed by an event loop and can suspend
+themselves blocking for I/O or some other operation using a yield
+statement.  The notion of a blocking operation is abstracted into the
+Future class, but a task may also yield an RPC in order to wait for
+that RPC to complete.
+
+The @task decorator wraps generator function so that when it is
+called, a Future is returned while the generator is executed by the
+event loop.  For example:
 
   @task
   def foo():
@@ -16,8 +23,9 @@ For example:
     print x
 
 Note that blocking until the Future's result is available using
-get_result() is somewhat inefficient; in most cases such code should
-be rewritten as a task instead:
+get_result() is somewhat inefficient (though not vastly -- it is not
+busy-waiting).  In most cases such code should be rewritten as a task
+instead:
 
   @task
   def main_task():
@@ -50,7 +58,6 @@ suspend -- there's no need to insert a dummy yield in order to make
 the task into a generator.
 """
 
-import sys
 import types
 
 from google.appengine.api.apiproxy_stub_map import UserRPC
@@ -71,6 +78,7 @@ class Future(object):
   """
 
   def __init__(self):
+    # TODO: Make done a method, to match PEP 3148?
     self.done = False
     self.result = None
     self.exception = None
@@ -129,19 +137,26 @@ class Future(object):
 
   @classmethod
   def wait_any(cls, futures):
+    # TODO: Flatten MultiRpcs.
     all = set(futures)
-    for f in all:
-      if f.state == 2:
-        return f
-    assert False, 'XXX what to do now?'
+    ev = eventloop.get_event_loop()
+    while all:
+      for f in all:
+        if f.state == 2:  # FINISHING
+          return f
+      ev.run1()
 
   @classmethod
   def wait_all(cls, futures):
-    todo = set(futures)
-    while todo:
-      f = cls.wait_any(todo)
-      if f is not None:
-        todo.remove(f)
+    # TODO: Flatten MultiRpcs.
+    all = set(futures)
+    ev = eventloop.get_event_loop()
+    while all:
+      for f in all:
+        if f.state == 2:  # FINISHING
+          all.remove(f)
+          continue  # TODO: Make this less O(N**2)
+      ev.run1()
 
 class Return(StopIteration):
   """Trivial StopIteration class, used to mark return values.
@@ -231,28 +246,23 @@ def on_future_completion(future, gen, fut):
 # A task/coroutine/generator can yield the following things:
 # - Another task/coroutine/generator; this is entirely equivalent to
 #   "for x in g: yield x"; this is handled entirely by the @task wrapper.
-# - An RPC (or MultiRpc); it will be resumed when this completes;
-#   this does not use the RPC's callback mechanism.
-# - A Future; it will be resumed when the Future is done.
-#   This adds a callback to the Future which does roughly:
-#     def cb(f):
-#       assert f.done
-#       if f.exception is not None:
-#         g.throw(f)
-#       else:
-#         g.send(f.result)
-#   But when this raises an exception, that exception ought to be
-#   propagated back into whatever started *this* generator.
+#   (Actually, not.  @task returns a function that when called returns
+#   a Future.  You can use the pep380 module's @gwrap decorator to support
+#   yielding bare generators though.)
+# - An RPC (or MultiRpc); the task will be resumed when this completes.
+#   This does not use the RPC's callback mechanism.
+# - A Future; the task will be resumed when the Future is done.
+#   This uses the Future's callback mechanism.
 
 # A Future can be used in several ways:
-# - Yield it from a task/coroutine/generator; see above.
-# - Check (poll) its status via f.done, f.exception, f.result.
+# - Yield it from a task; see above.
+# - Check (poll) its status via f.done.
 # - Call its wait() method, perhaps indirectly via check_success()
-#   or get_result().  What does this do?  Invoke the event loop.
+#   or get_result().  This invokes the event loop.
 # - Call the Future.wait_any() or Future.wait_all() method.
-#   This is supposed to wait for all Futures and RPCs in the argument
-#   list.  How does it do this?  By invoking the event loop.
-#   (Should we bother?)
+#   This is waits for any or all Futures and RPCs in the argument list.
+
+# XXX HIRO XXX
 
 # - A task is a (generator) function decorated with @task.
 
