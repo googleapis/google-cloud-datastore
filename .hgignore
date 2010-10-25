@@ -8,3 +8,4 @@ index\.yaml$
 .coverage
 htmlcov$
 .DS_Store$
+workspace.xml$
