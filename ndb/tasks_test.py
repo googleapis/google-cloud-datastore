@@ -1,4 +1,4 @@
-"""Tests for task.py."""
+"""Tests for tasks.py."""
 
 import os
 import time
@@ -18,8 +18,57 @@ class TaskTests(unittest.TestCase):
     if eventloop._EVENT_LOOP_KEY in os.environ:
       del os.environ[eventloop._EVENT_LOOP_KEY]
     self.ev = eventloop.get_event_loop()
+    self.log = []
 
-  def testFuture(self):
+  def universal_callback(self, *args):
+    self.log.append(args)
+
+  def testFuture_Constructor(self):
+    f = tasks.Future()
+    self.assertEqual(f.done, False)
+    self.assertEqual(f.result, None)
+    self.assertEqual(f.exception, None)
+    self.assertEqual(f.callbacks, [])
+
+  def testFuture_SetResult(self):
+    f = tasks.Future()
+    f.set_result(42)
+    self.assertEqual(f.result, 42)
+    self.assertEqual(f.exception, None)
+    self.assertEqual(f.get_result(), 42)
+
+  def testFuture_SetException(self):
+    f = tasks.Future()
+    err = RuntimeError(42)
+    f.set_exception(err)
+    self.assertEqual(f.done, True)
+    self.assertEqual(f.exception, err)
+    self.assertEqual(f.result, None)
+    self.assertEqual(f.get_exception(), err)
+    self.assertRaises(RuntimeError, f.get_result)
+
+  def testFuture_AddDoneCallback_SetResult(self):
+    f = tasks.Future()
+    f.add_done_callback(self.universal_callback)
+    self.assertEqual(self.log, [])  # Nothing happened yet.
+    f.set_result(42)
+    self.assertEqual(self.log, [(f,)])
+
+  def testFuture_SetResult_AddDoneCallback(self):
+    f = tasks.Future()
+    f.set_result(42)
+    self.assertEqual(f.result, 42)
+    f.add_done_callback(self.universal_callback)
+    self.assertEqual(self.log, [(f,)])
+
+  def testFuture_AddDoneCallback_SetException(self):
+    f = tasks.Future()
+    f.add_done_callback(self.universal_callback)
+    f.set_exception(RuntimeError(42))
+    self.assertEqual(self.log, [(f,)])
+    self.assertEqual(f.done, True)
+
+  def testBasicTasks(self):
     @tasks.task
     def t1():
       a = yield t2(3)
