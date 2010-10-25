@@ -12,6 +12,7 @@ from core import datastore_rpc
 from ndb import eventloop
 from ndb import tasks
 from ndb import model
+from ndb.tasks import Future
 
 class TaskTests(unittest.TestCase):
 
@@ -110,7 +111,7 @@ class TaskTests(unittest.TestCase):
       self.assertEqual(tasks.get_value(r2), (42, 'hello'))
       self.assertEqual(tasks.get_value(r3), (1, 2, 3))
 
-  def testBasicTasks(self):
+  def testTasks_Basic(self):
     @tasks.task
     def t1():
       a = yield t2(3)
@@ -127,12 +128,31 @@ class TaskTests(unittest.TestCase):
     y = x.get_result()
     self.assertEqual(y, 5)
 
+  def testTasks_Raising(self):
+    @tasks.task
+    def t1():
+      f = t2(True)
+      try:
+        a = yield f
+      except RuntimeError, err:
+        self.assertEqual(f.get_exception(), err)
+        raise tasks.Return(str(err))
+    @tasks.task
+    def t2(error):
+      if error:
+        raise RuntimeError('hello')
+      else:
+        yield tasks.Future()
+    x = t1()
+    y = x.get_result()
+    self.assertEqual(y, 'hello')
+
   def set_up_datastore(self):
     apiproxy_stub_map.apiproxy = apiproxy_stub_map.APIProxyStubMap()
     stub = datastore_file_stub.DatastoreFileStub('_', None)
     apiproxy_stub_map.apiproxy.RegisterStub('datastore_v3', stub)
 
-  def testTasksWithRpcs(self):
+  def testTasks_YieldRpcs(self):
     self.set_up_datastore()
     conn = model.conn
     @tasks.task
