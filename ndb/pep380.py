@@ -2,7 +2,7 @@
 
 import sys
 
-from ndb.task import is_generator, Return
+from ndb.tasks import is_generator, Return
 
 def gwrap(func):
   """Decorator to emulate PEP 380 behavior.

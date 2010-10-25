@@ -3,7 +3,7 @@
 import unittest
 
 from ndb import pep380
-from ndb import task
+from ndb import tasks
 
 class PEP380Tests(unittest.TestCase):
   """Test cases to verify the equivalence of yielding a generator to PEP 380.
@@ -50,7 +50,7 @@ class PEP380Tests(unittest.TestCase):
     def g2(a, b):
       for i in range(a, b):
         yield i
-      raise task.Return(b - a)
+      raise tasks.Return(b - a)
     actual = []
     for val in g1(0, 3, 5, 7):
       actual.append(val)

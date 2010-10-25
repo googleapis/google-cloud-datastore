@@ -10,7 +10,7 @@ from google.appengine.api import datastore_file_stub
 from core import datastore_rpc
 
 from ndb import eventloop
-from ndb import task
+from ndb import tasks
 
 class TaskTests(unittest.TestCase):
 
@@ -20,19 +20,19 @@ class TaskTests(unittest.TestCase):
     self.ev = eventloop.get_event_loop()
 
   def testFuture(self):
-    @task.task
+    @tasks.task
     def t1():
       a = yield t2(3)
       b = yield t3(2)
-      raise task.Return(a + b)
-    @task.task
+      raise tasks.Return(a + b)
+    @tasks.task
     def t2(n):
-      raise task.Return(n)
-    @task.task
+      raise tasks.Return(n)
+    @tasks.task
     def t3(n):
       return n
     x = t1()
-    self.assertTrue(isinstance(x, task.Future))
+    self.assertTrue(isinstance(x, tasks.Future))
     y = x.get_result()
     self.assertEqual(y, 5)
 
