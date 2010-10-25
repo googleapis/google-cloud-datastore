@@ -4,6 +4,7 @@ FLAGS=
 GAE=	/usr/local/google_appengine
 GAEPATH=$(GAE):$(GAE)/lib/yaml/lib
 TESTS=	`find ndb -name [a-z]\*_test.py`
+NONTESTS=`find ndb -name [a-z]\*.py ! -name \*_test.py`
 PORT=	8080
 ADDRESS=localhost
 PYTHON= python -Wignore
@@ -23,8 +24,8 @@ c cov cove cover coverage:
 	  PYTHONPATH=$(GAEPATH):. coverage run -p $$i; \
 	done
 	coverage combine
-	coverage html ndb/*.py
-	coverage report -m ndb/*py
+	coverage html $(NONTESTS)
+	coverage report -m $(NONTESTS)
 	echo "open file://`pwd`/htmlcov/index.html"
 
 serve:
