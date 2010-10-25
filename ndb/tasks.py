@@ -63,9 +63,15 @@ import types
 from google.appengine.api.apiproxy_stub_map import UserRPC
 from google.appengine.api.apiproxy_rpc import RPC
 
+from core import datastore_rpc
 from ndb import eventloop
 
 def is_generator(obj):
+  """Helper to test for a generator object.
+
+  NOTE: This tests for the (iterable) object returned by calling a
+  generator function, not for a generator function.
+  """
   return isinstance(obj, types.GeneratorType)
 
 class Future(object):
@@ -78,37 +84,40 @@ class Future(object):
   compatible with) the App Engine specific UserRPC and MultiRpc classes.
   """
 
-  IDLE = RPC.IDLE
-  RUNNING = RPC.RUNNING
-  FINISHING = RPC.FINISHING
+  # Constants for state property.
+  IDLE = RPC.IDLE  # Not yet running (unused)
+  RUNNING = RPC.RUNNING  # Not yet completed.
+  FINISHING = RPC.FINISHING  # Completed.
+
+  # XXX Add docstrings to all methods.  Separate PEP 3148 API from RPC API.
 
   def __init__(self):
     # TODO: Make done a method, to match PEP 3148?
     self._done = False
-    self.result = None
-    self.exception = None
-    self.callbacks = []
+    self._result = None
+    self._exception = None
+    self._callbacks = []
 
   def add_done_callback(self, callback):
     if self._done:
       callback(self)
     else:
-      self.callbacks.append(callback)
+      self._callbacks.append(callback)
 
   def set_result(self, result):
     assert not self._done
-    self.result = result
+    self._result = result
     self._done = True
-    for callback in self.callbacks:
+    for callback in self._callbacks:
       callback(self)  # TODO: What if it raises an exception?
 
   def set_exception(self, exc):
     # TODO: What about tracebacks?
     assert isinstance(exc, BaseException)
     assert not self._done
-    self.exception = exc
+    self._exception = exc
     self._done = True
-    for callback in self.callbacks:
+    for callback in self._callbacks:
       callback(self)
 
   def done(self):
@@ -132,16 +141,16 @@ class Future(object):
 
   def get_exception(self):
     self.wait()
-    return self.exception
+    return self._exception
 
   def check_success(self):
     self.wait()
-    if self.exception is not None:
-      raise self.exception
+    if self._exception is not None:
+      raise self._exception
 
   def get_result(self):
     self.check_success()
-    return self.result
+    return self._result
 
   @classmethod
   def wait_any(cls, futures):
@@ -164,16 +173,15 @@ class Future(object):
       all = set(f for f in all if f.state == cls.RUNNING)
       ev.run1()
 
+# Alias for StopIteration used to mark return values.
+# To use this, raise Return(<your return value>).  The semantics
+# are exactly the same as raise StopIteration(<your return value>)
+# but using Return clarifies that you are intending this to be the
+# return value of a task.
 Return = StopIteration
-"""Trivial StopIteration class, used to mark return values.
-
-To use this, raise Return(<your return value>).  The semantics
-are exactly the same as raise StopIteration(<your return value>)
-but using Return clarifies that you are intending this to be the
-return value of a coroutine.
-"""
 
 def get_value(err):
+  # XXX Docstring
   if not err.args:
     result = None
   elif len(err.args) == 1:
@@ -183,10 +191,10 @@ def get_value(err):
   return result
 
 def task(func):
-  """XXX Docstring"""
+  # XXX Docstring
 
   def task_wrapper(*args, **kwds):
-    """XXX Docstring"""
+    # XXX Docstring
     fut = Future()
     try:
       result = func(*args, **kwds)
@@ -201,7 +209,7 @@ def task(func):
   return task_wrapper
 
 def help_task_along(gen, fut, val=None, exc=None):
-  """XXX Docstring"""
+  # XXX Docstring
   try:
     if exc is not None:
       value = gen.throw(exc)
@@ -218,6 +226,13 @@ def help_task_along(gen, fut, val=None, exc=None):
     return
 
   else:
+    if isinstance(value, datastore_rpc.MultiRpc):
+      # TODO: Tail recursion if the RPC is already complete.
+      if len(value.rpcs) == 1:
+        value = value.rpcs[0]
+        # Fall through to next isinstance test.
+      else:
+        assert False  # TODO: Support MultiRpc using MultiFuture.
     if isinstance(value, UserRPC):
       # TODO: Tail recursion if the RPC is already complete.
       eventloop.queue_rpc(value, on_rpc_completion, value, gen, fut)
@@ -228,7 +243,7 @@ def help_task_along(gen, fut, val=None, exc=None):
           lambda val: on_future_completion(val, gen, fut))
       return
     if is_generator(value):
-      assert False  # TODO: emulate PEP 380 here.
+      assert False  # TODO: emulate PEP 380 here?
     assert False  # A task shouldn't yield plain values.
 
 def on_rpc_completion(rpc, gen, fut):

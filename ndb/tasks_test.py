@@ -11,6 +11,7 @@ from core import datastore_rpc
 
 from ndb import eventloop
 from ndb import tasks
+from ndb import model
 
 class TaskTests(unittest.TestCase):
 
@@ -25,9 +26,9 @@ class TaskTests(unittest.TestCase):
 
   def testFuture_Constructor(self):
     f = tasks.Future()
-    self.assertEqual(f.result, None)
-    self.assertEqual(f.exception, None)
-    self.assertEqual(f.callbacks, [])
+    self.assertEqual(f._result, None)
+    self.assertEqual(f._exception, None)
+    self.assertEqual(f._callbacks, [])
 
   def testFuture_Done_State(self):
     f = tasks.Future()
@@ -40,17 +41,17 @@ class TaskTests(unittest.TestCase):
   def testFuture_SetResult(self):
     f = tasks.Future()
     f.set_result(42)
-    self.assertEqual(f.result, 42)
-    self.assertEqual(f.exception, None)
+    self.assertEqual(f._result, 42)
+    self.assertEqual(f._exception, None)
     self.assertEqual(f.get_result(), 42)
 
   def testFuture_SetException(self):
     f = tasks.Future()
     err = RuntimeError(42)
     f.set_exception(err)
-    self.assertEqual(f._done, True)
-    self.assertEqual(f.exception, err)
-    self.assertEqual(f.result, None)
+    self.assertEqual(f.done(), True)
+    self.assertEqual(f._exception, err)
+    self.assertEqual(f._result, None)
     self.assertEqual(f.get_exception(), err)
     self.assertRaises(RuntimeError, f.get_result)
 
@@ -64,7 +65,7 @@ class TaskTests(unittest.TestCase):
   def testFuture_SetResult_AddDoneCallback(self):
     f = tasks.Future()
     f.set_result(42)
-    self.assertEqual(f.result, 42)
+    self.assertEqual(f.get_result(), 42)
     f.add_done_callback(self.universal_callback)
     self.assertEqual(self.log, [(f,)])
 
@@ -73,7 +74,7 @@ class TaskTests(unittest.TestCase):
     f.add_done_callback(self.universal_callback)
     f.set_exception(RuntimeError(42))
     self.assertEqual(self.log, [(f,)])
-    self.assertEqual(f._done, True)
+    self.assertEqual(f.done(), True)
 
   def create_futures(self):
     self.futs = []
@@ -125,6 +126,25 @@ class TaskTests(unittest.TestCase):
     self.assertTrue(isinstance(x, tasks.Future))
     y = x.get_result()
     self.assertEqual(y, 5)
+
+  def set_up_datastore(self):
+    apiproxy_stub_map.apiproxy = apiproxy_stub_map.APIProxyStubMap()
+    stub = datastore_file_stub.DatastoreFileStub('_', None)
+    apiproxy_stub_map.apiproxy.RegisterStub('datastore_v3', stub)
+
+  def testTasksWithRpcs(self):
+    self.set_up_datastore()
+    conn = model.conn
+    @tasks.task
+    def main_task():
+      rpc1 = conn.async_get(None, [])
+      rpc2 = conn.async_put(None, [])
+      res1 = yield rpc1
+      res2 = yield rpc2
+      raise tasks.Return(res1, res2)
+    f = main_task()
+    result = f.get_result()
+    self.assertEqual(result, ([], []))
 
 def main():
   unittest.main()
