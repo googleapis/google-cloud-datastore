@@ -164,14 +164,23 @@ class Future(object):
       all = set(f for f in all if f.state == cls.RUNNING)
       ev.run1()
 
-class Return(StopIteration):
-  """Trivial StopIteration class, used to mark return values.
+Return = StopIteration
+"""Trivial StopIteration class, used to mark return values.
 
-  To use this, raise Return(<your return value>).  The semantics
-  are exactly the same as raise StopIteration(<your return value>)
-  but using Return clarifies that you are intending this to be the
-  return value of a coroutine.
-  """
+To use this, raise Return(<your return value>).  The semantics
+are exactly the same as raise StopIteration(<your return value>)
+but using Return clarifies that you are intending this to be the
+return value of a coroutine.
+"""
+
+def get_value(err):
+  if not err.args:
+    result = None
+  elif len(err.args) == 1:
+    result = err.args[0]
+  else:
+    result = err.args
+  return result
 
 def task(func):
   """XXX Docstring"""
@@ -190,15 +199,6 @@ def task(func):
     return fut
 
   return task_wrapper
-
-def get_value(err):
-  if not err.args:
-    result = None
-  elif len(err.args) == 1:
-    result = err.args[0]
-  else:
-    result = err.args
-  return result
 
 def help_task_along(gen, fut, val=None, exc=None):
   """XXX Docstring"""
