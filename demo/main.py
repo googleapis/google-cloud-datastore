@@ -149,7 +149,7 @@ def AsyncGetAccountByUser(user, create=False):
                     userid=user.user_id())
   # Write to datastore asynchronously.
   rpc = model.conn.async_put(None, [account])
-  eventloop.queue_rpc(rpc)  # Make sure rpc completes before we exit.
+  eventloop.queue_rpc(rpc, rpc.check_success)
   raise tasks.Return(account)
 
 def GetAccountByUser(user, create=False):
