@@ -63,7 +63,7 @@ class PEP380Tests(unittest.TestCase):
       try:
         while True:
           total += (yield)
-      finally:
+      except GeneratorExit:
         raise pep380.Return(total)
     gen = foo()
     gen.next()
@@ -76,6 +76,20 @@ class PEP380Tests(unittest.TestCase):
     gen.send(3)
     val = pep380.gclose(gen)
     self.assertEqual(val, 3)
+
+  def testGClose_Vanilla(self):
+    def vanilla():
+      yield 1
+    v = vanilla()
+    self.assertEqual(pep380.gclose(v), None)
+    v = vanilla()
+    v.next()
+    self.assertEqual(pep380.gclose(v), None)
+    v = vanilla()
+    v.next()
+    self.assertRaises(StopIteration, v.next)
+    self.assertEqual(pep380.gclose(v), None)
+    
 
 def main():
   unittest.main()

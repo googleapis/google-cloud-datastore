@@ -126,6 +126,7 @@ def gclose(gen):
     gen.throw(GeneratorExit)
   except StopIteration, err:
     return get_value(err)
+  except GeneratorExit:
+    pass
   # Note: other exceptions are passed out untouched.
-  else:
-    return None
+  return None
