@@ -96,7 +96,7 @@ def MapQueryToGenerator(query, generator, connection, options=None):
     try:
       generator.throw(GeneratorExit)
     except StopIteration, err:
-      value = tasks.get_value(err)
+      value = tasks.get_return_value(err)
       our_future.set_result(value)
     except GeneratorExit:
       our_future.set_result(None)

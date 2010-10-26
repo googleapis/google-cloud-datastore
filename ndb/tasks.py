@@ -180,7 +180,7 @@ class Future(object):
 # return value of a task.
 Return = StopIteration
 
-def get_value(err):
+def get_return_value(err):
   # XXX Docstring
   if not err.args:
     result = None
@@ -199,7 +199,7 @@ def task(func):
     try:
       result = func(*args, **kwds)
     except StopIteration, err:
-      result = get_value(err)
+      result = get_return_value(err)
     if is_generator(result):
       eventloop.queue_task(0, help_task_along, result, fut)
     else:
@@ -217,7 +217,7 @@ def help_task_along(gen, fut, val=None, exc=None):
       value = gen.send(val)
 
   except StopIteration, err:
-    result = get_value(err)
+    result = get_return_value(err)
     fut.set_result(result)
     return
 

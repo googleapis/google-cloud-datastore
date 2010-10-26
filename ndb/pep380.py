@@ -2,7 +2,7 @@
 
 import sys
 
-from ndb.tasks import is_generator, Return, get_value
+from ndb.tasks import is_generator, Return, get_return_value
 
 def gwrap(func):
   """Decorator to emulate PEP 380 behavior.
@@ -71,7 +71,7 @@ def gwrap(func):
           raise  # We're done.
 
         # Prepare to send this value into the next generator on the stack.
-        to_send = get_value(err)
+        to_send = get_return_value(err)
         to_throw = None
         continue
 
@@ -125,7 +125,7 @@ def gclose(gen):
   try:
     gen.throw(GeneratorExit)
   except StopIteration, err:
-    return get_value(err)
+    return get_return_value(err)
   except GeneratorExit:
     pass
   # Note: other exceptions are passed out untouched.

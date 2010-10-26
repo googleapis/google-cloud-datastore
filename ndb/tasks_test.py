@@ -106,10 +106,10 @@ class TaskTests(unittest.TestCase):
       r1 = tasks.Return(42)
       r2 = tasks.Return(42, 'hello')
       r3 = tasks.Return((1, 2, 3))
-      self.assertEqual(tasks.get_value(r0), None)
-      self.assertEqual(tasks.get_value(r1), 42)
-      self.assertEqual(tasks.get_value(r2), (42, 'hello'))
-      self.assertEqual(tasks.get_value(r3), (1, 2, 3))
+      self.assertEqual(tasks.get_return_value(r0), None)
+      self.assertEqual(tasks.get_return_value(r1), 42)
+      self.assertEqual(tasks.get_return_value(r2), (42, 'hello'))
+      self.assertEqual(tasks.get_return_value(r3), (1, 2, 3))
 
   def testTasks_Basic(self):
     @tasks.task
