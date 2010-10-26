@@ -246,7 +246,7 @@ class HomePage(webapp.RequestHandler):
         msg.userid = user.user_id()
       # Write to datastore asynchronously.
       rpc = model.conn.async_put(None, [msg])
-      eventloop.queue_rpc(rpc)
+      eventloop.queue_rpc(rpc, rpc.check_success)
       if user is not None:
         # Check that the account exists and create it if necessary.
         GetAccountByUser(user, create=True)
