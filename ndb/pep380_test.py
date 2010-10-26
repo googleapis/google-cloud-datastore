@@ -3,7 +3,6 @@
 import unittest
 
 from ndb import pep380
-from ndb import tasks
 
 class PEP380Tests(unittest.TestCase):
   """Test cases to verify the equivalence of yielding a generator to PEP 380.
@@ -50,12 +49,33 @@ class PEP380Tests(unittest.TestCase):
     def g2(a, b):
       for i in range(a, b):
         yield i
-      raise tasks.Return(b - a)
+      raise pep380.Return(b - a)
     actual = []
     for val in g1(0, 3, 5, 7):
       actual.append(val)
     expected = [0, 1, 2,  5, 6, (3, 2)]
     self.assertEqual(actual, expected)
+
+  def testGClose(self):
+    @pep380.gwrap
+    def foo():
+      total = 0
+      try:
+        while True:
+          total += (yield)
+      finally:
+        raise pep380.Return(total)
+    gen = foo()
+    gen.next()
+    gen.send(3)
+    gen.send(2)
+    val = pep380.gclose(gen)
+    self.assertEqual(val, 5)
+    gen = foo()
+    gen.next()
+    gen.send(3)
+    val = pep380.gclose(gen)
+    self.assertEqual(val, 3)
 
 def main():
   unittest.main()

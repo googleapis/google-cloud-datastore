@@ -2,7 +2,7 @@
 
 import sys
 
-from ndb.tasks import is_generator, Return
+from ndb.tasks import is_generator, Return, get_value
 
 def gwrap(func):
   """Decorator to emulate PEP 380 behavior.
@@ -71,12 +71,7 @@ def gwrap(func):
           raise  # We're done.
 
         # Prepare to send this value into the next generator on the stack.
-        to_send = None
-        if err.args:
-          if len(err.args) == 1:
-            to_send = err.args[0]
-          else:
-            to_send = err.args
+        to_send = get_value(err)
         to_throw = None
         continue
 
@@ -105,9 +100,10 @@ def gwrap(func):
             # If the yield returns a value, prepare to send that into
             # the current generator.
             to_send = yield to_yield
-          except Exception, err:
+          except (Exception, GeneratorExit), err:
             # The yield raised an exception.  Prepare to throw it into
-            # the current generator.
+            # the current generator.  (GeneratorExit sometimes inherits
+            # from BaseException, but we do want to catch it.)
             to_throw = err
 
         else:
@@ -120,3 +116,16 @@ def gwrap(func):
           stack.append(to_yield)
 
   return gwrap_wrapper
+
+def gclose(gen):
+  """Substitute for gen.close() that returns a value."""
+  # TODO: Tweak the result of gwrap() to return an object that defines
+  # a close method that works this way?
+  assert is_generator(gen), '%r is not a generator' % g
+  try:
+    gen.throw(GeneratorExit)
+  except StopIteration, err:
+    return get_value(err)
+  # Note: other exceptions are passed out untouched.
+  else:
+    return None
