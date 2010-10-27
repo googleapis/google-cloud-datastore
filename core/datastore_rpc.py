@@ -48,6 +48,7 @@ from google.appengine.api import api_base_pb
 from google.appengine.api import apiproxy_rpc
 from google.appengine.api import apiproxy_stub_map
 from google.appengine.api import datastore_errors
+from google.appengine.api import datastore_types
 from google.appengine.datastore import datastore_pb
 from google.appengine.runtime import apiproxy_errors
 
@@ -330,8 +331,31 @@ class Configuration(BaseConfiguration):
   """
 
   STRONG_CONSISTENCY = 0
+  """A read consistency that will return up to date results."""
+
   EVENTUAL_CONSISTENCY = 1
-  ALL_READ_POLICIES = frozenset((STRONG_CONSISTENCY, EVENTUAL_CONSISTENCY))
+  """A read consistency that allows requests to return possibly stale results.
+
+  This read_policy tends to be faster and less prone to unavailability/timeouts.
+  May return transactionally inconsistent results in rare cases.
+  """
+
+  APPLY_ALL_JOBS_CONSISTENCY = 2
+  """A read consistency that aggressively tries to find write jobs to apply.
+
+  Use of this read policy is strongly discouraged.
+
+  This read_policy tends to be more costly and is only useful in a few specific
+  cases. It is equivalent to splitting a request by entity group and wrapping
+  each batch in a separate transaction. Cannot be used with non-ancestor
+  queries.
+  """
+
+
+  ALL_READ_POLICIES = frozenset((STRONG_CONSISTENCY,
+                                 EVENTUAL_CONSISTENCY,
+                                 APPLY_ALL_JOBS_CONSISTENCY,
+                                 ))
 
 
   @ConfigOption
@@ -384,21 +408,33 @@ class Configuration(BaseConfiguration):
   @ConfigOption
   def max_rpc_bytes(value):
     """The maximum serialized size of a Get/Put/Delete without batching."""
+    if not (isinstance(value, (int, long)) and value > 0):
+      raise datastore_errors.BadArgumentError(
+        'max_rpc_bytes should be a positive integer')
     return value
 
   @ConfigOption
   def max_get_keys(value):
     """The maximum number of keys in a Get without batching."""
+    if not (isinstance(value, (int, long)) and value > 0):
+      raise datastore_errors.BadArgumentError(
+        'max_get_keys should be a positive integer')
     return value
 
   @ConfigOption
   def max_put_entities(value):
     """The maximum number of entities in a Put without batching."""
+    if not (isinstance(value, (int, long)) and value > 0):
+      raise datastore_errors.BadArgumentError(
+        'max_put_entities should be a positive integer')
     return value
 
   @ConfigOption
   def max_delete_keys(value):
     """The maximum number of keys in a Delete without batching."""
+    if not (isinstance(value, (int, long)) and value > 0):
+      raise datastore_errors.BadArgumentError(
+        'max_delete_keys should be a positive integer')
     return value
 
 class MultiRpc(object):
@@ -618,6 +654,9 @@ class BaseConnection(object):
   assertion.
   """
 
+  STANDARD_DATASTORE = 0
+  HIGH_REPLICATION_DATASTORE = 1
+
   @_positional(1)
   def __init__(self, adapter=None, config=None):
     """Constructor.
@@ -704,6 +743,13 @@ class BaseConnection(object):
     """Return (a copy of) the list of currently pending RPCs."""
     return set(self.__pending_rpcs)
 
+  def get_datastore_type(self, app=None):
+    """Returns the type of datastore of the given application."""
+    app = datastore_types.ResolveAppId(app)
+    if app.startswith('s~'):
+      return BaseConnection.HIGH_REPLICATION_DATASTORE
+    return BaseConnection.STANDARD_DATASTORE
+
   def wait_for_all_pending_rpcs(self):
     """Wait for all currently pending RPCs to complete."""
     while self.__pending_rpcs:
@@ -778,7 +824,7 @@ class BaseConnection(object):
       request: A protobuf with a failover_ms field.
       config: Optional Configuration object.
     """
-    if not hasattr(request, 'set_failover_ms'):
+    if not (hasattr(request, 'set_failover_ms') and hasattr(request, 'strong')):
       raise datastore_errors.BadRequestError(
           'read_policy is only supported on read operations.')
     if isinstance(config, apiproxy_stub_map.UserRPC):
@@ -793,7 +839,11 @@ class BaseConnection(object):
         (config,))
     if read_policy is None:
       read_policy = self.__config.read_policy
-    if read_policy == Configuration.EVENTUAL_CONSISTENCY:
+
+    if read_policy == Configuration.APPLY_ALL_JOBS_CONSISTENCY:
+      request.set_strong(True)
+    elif read_policy == Configuration.EVENTUAL_CONSISTENCY:
+      request.set_strong(False)
       request.set_failover_ms(-1)
 
   def _set_request_transaction(self, request):
@@ -889,6 +939,10 @@ class BaseConnection(object):
       size += incr_size
     yield pbs
 
+  def _get_base_size(self, base_req):
+    """Internal helper: return request size in bytes."""
+    return base_req.ByteSize()
+
   def get(self, keys):
     """Synchronous Get operation.
 
@@ -917,9 +971,7 @@ class BaseConnection(object):
     """
     base_req = datastore_pb.GetRequest()
     self._set_request_read_policy(base_req, config)
-    base_size = base_req.ByteSize()
-    if isinstance(self, TransactionalConnection):
-      base_size += 1000
+    base_size = self._get_base_size(base_req)
     rpcs = []
     max_count = (isinstance(config, Configuration) and config.max_get_keys or
                  self.__config.max_get_keys or
@@ -986,9 +1038,7 @@ class BaseConnection(object):
     *not* patch up those entities with the complete key.
     """
     base_req = datastore_pb.PutRequest()
-    base_size = base_req.ByteSize()
-    if isinstance(self, TransactionalConnection):
-      base_size += 1000
+    base_size = self._get_base_size(base_req)
     rpcs = []
     max_count = ((isinstance(config, Configuration) and
                   config.max_put_entities) or
@@ -1044,9 +1094,7 @@ class BaseConnection(object):
       A MultiRpc object.
     """
     base_req = datastore_pb.DeleteRequest()
-    base_size = base_req.ByteSize()
-    if isinstance(self, TransactionalConnection):
-      base_size += 1000
+    base_size = self._get_base_size(base_req)
     rpcs = []
     max_count = ((isinstance(config, Configuration) and
                   config.max_delete_keys) or
@@ -1271,6 +1319,16 @@ class TransactionalConnection(BaseConnection):
             'Entity group app (%s) does not match transaction app (%s)' %
             (self.__entity_group_pb.app(), transaction.app()))
     self.__finished = False
+
+  def _get_base_size(self, base_req):
+    """Internal helper: return size in bytes plus room for transaction."""
+    trans = self.__transaction
+    if trans is None:
+      incr_size = 1000
+    else:
+      incr_size = trans.lengthString(trans.ByteSize()) + 1
+    return (super(TransactionalConnection, self)._get_base_size(base_req) +
+            incr_size)
 
   @property
   def finished(self):
