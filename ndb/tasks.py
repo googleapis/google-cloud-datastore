@@ -58,6 +58,8 @@ suspend -- there's no need to insert a dummy yield in order to make
 the task into a generator.
 """
 
+import os
+import sys
 import types
 
 from google.appengine.api.apiproxy_stub_map import UserRPC
@@ -97,6 +99,25 @@ class Future(object):
     self._result = None
     self._exception = None
     self._callbacks = []
+    frame = sys._getframe(1)
+    code = frame.f_code
+    self._lineno = frame.f_lineno
+    self._filename = code.co_filename
+    self._funcname = code.co_name
+
+  def __repr__(self):
+    if self._done:
+      if self._exception is not None:
+        state = 'exception %s: %s' % (self._exception.__class__.__name__,
+                                   self._exception)
+      else:
+        state = 'result %r' % self._result
+    else:
+      state = 'pending'
+    return '<%s %0x created by %s(%s:%s) %s>' % (
+      self.__class__.__name__, id(self),
+      self._funcname, os.path.basename(self._filename),
+      self._lineno, state)
 
   def add_done_callback(self, callback):
     if self._done:
