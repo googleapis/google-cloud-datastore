@@ -137,7 +137,7 @@ def AsyncGetAccountByUser(user, create=False):
       raise tasks.Return(result)
 
   f = MapQueryToGenerator(query, accumulator(), model.conn)
-  result = yield f
+  result = yield f  # XXX Somehow this doesn't get the proper value?!
   if result is not None:
     raise tasks.Return(result)
 
@@ -175,11 +175,12 @@ class HomePage(webapp.RequestHandler):
     query = datastore_query.Query(kind=Message.GetKind(), order=order)
     options = datastore_query.QueryOptions(batch_size=13, limit=50)
     self.todo = []
-    MapQuery(query, self._result_callback, model.conn, options)
+    fut = MapQuery(query, self._result_callback, model.conn, options)
 
     if user is not None:
       GetAccountByUser(user)
     WaitForRpcs()
+    fut.check_success()
     while self.todo:
       self._flush_todo()
       WaitForRpcs()
