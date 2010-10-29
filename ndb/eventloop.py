@@ -32,6 +32,8 @@ class EventLoop(object):
 
   def queue_task(self, delay, callable, *args, **kwds):
     """Schedule a function call at a specific time in the future."""
+    if delay is None:
+      when = 0
     if delay < 1e9:
       when = delay + time.time()
     else:
@@ -67,7 +69,7 @@ class EventLoop(object):
     delay = None
     if self.queue:
       delay = self.queue[0][0] - time.time()
-      if delay <= 0:
+      if delay is None or delay <= 0:
         when, callable, args, kwds = self.queue.pop(0)
         callable(*args, **kwds)
         # TODO: What if it raises an exception?
