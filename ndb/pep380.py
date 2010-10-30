@@ -122,12 +122,12 @@ def gclose(gen):
   # TODO: Tweak the result of gwrap() to return an object that defines
   # a close method that works this way?
   assert is_generator(gen), '%r is not a generator' % g
-  try:
-    gen.throw(GeneratorExit)
-  except StopIteration, err:
-    return get_return_value(err)
-  except GeneratorExit:
-    pass
-  # Note: other exceptions are passed out untouched.
-  # TODO: Balk if throw() yielded another value.
-  return None
+  # Throw GeneratorExit until it obeys.
+  while True:
+    try:
+      gen.throw(GeneratorExit)
+    except StopIteration, err:
+      return get_return_value(err)
+    except GeneratorExit:
+      return None
+    # Note: other exceptions are passed out untouched.

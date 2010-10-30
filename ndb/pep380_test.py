@@ -89,7 +89,19 @@ class PEP380Tests(unittest.TestCase):
     v.next()
     self.assertRaises(StopIteration, v.next)
     self.assertEqual(pep380.gclose(v), None)
-    
+
+  def testGClose_KeepTrying(self):
+    def hard_to_get():
+      for i in range(5):
+        try:
+          yield i
+        except GeneratorExit:
+          continue
+      raise pep380.Return(42)
+    gen = hard_to_get()
+    self.assertEqual(gen.next(), 0)
+    self.assertEqual(gen.next(), 1)
+    self.assertEqual(pep380.gclose(gen), 42)
 
 def main():
   unittest.main()
