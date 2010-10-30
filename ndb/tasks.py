@@ -114,7 +114,7 @@ class Future(object):
         state = 'result %r' % self._result
     else:
       state = 'pending'
-    return '<%s %0x created by %s(%s:%s) %s>' % (
+    return '<%s %x created by %s(%s:%s) %s>' % (
       self.__class__.__name__, id(self),
       self._funcname, os.path.basename(self._filename),
       self._lineno, state)

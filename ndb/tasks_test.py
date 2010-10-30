@@ -1,6 +1,7 @@
 """Tests for tasks.py."""
 
 import os
+import re
 import time
 import unittest
 
@@ -30,6 +31,19 @@ class TaskTests(unittest.TestCase):
     self.assertEqual(f._result, None)
     self.assertEqual(f._exception, None)
     self.assertEqual(f._callbacks, [])
+
+  def testFuture_Repr(self):
+    f = tasks.Future()
+    prefix = (r'<Future [\da-f]+ created by '
+              r'testFuture_Repr\(tasks_test.py:\d+\) ')
+    self.assertTrue(re.match(prefix + r'pending>$', repr(f)), repr(f))
+    f.set_result('abc')
+    self.assertTrue(re.match(prefix + r'result \'abc\'>$', repr(f)), repr(f))
+    f = tasks.Future()
+    f.set_exception(RuntimeError('abc'))
+    self.assertTrue(re.match(prefix + r'exception RuntimeError: abc>$',
+                             repr(f)),
+                    repr(f))
 
   def testFuture_Done_State(self):
     f = tasks.Future()
