@@ -129,4 +129,5 @@ def gclose(gen):
   except GeneratorExit:
     pass
   # Note: other exceptions are passed out untouched.
+  # TODO: Balk if throw() yielded another value.
   return None

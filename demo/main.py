@@ -93,6 +93,7 @@ def MapQueryToGenerator(query, generator, connection, options=None):
     # When map_future completes, extract a return value from the
     # generator and set it as our own future's result.
     assert fut is map_future, (fut, map_future)
+    # TODO: Use pep380.gclose().
     try:
       generator.throw(GeneratorExit)
     except StopIteration, err:
@@ -136,8 +137,18 @@ def AsyncGetAccountByUser(user, create=False):
       assert isinstance(result, Account), '%r is not an Account [2]' % result
       raise tasks.Return(result)
 
-  f = MapQueryToGenerator(query, accumulator(), model.conn)
-  result = yield f  # XXX Somehow this doesn't get the proper value?!
+  if False:
+    # XXX This code is broken
+    f = MapQueryToGenerator(query, accumulator(), model.conn)
+    result = yield f  # XXX Somehow this doesn't get the proper value?!
+  else:
+    # This code works
+    f = MapQuery(query, result_callback, model.conn)
+    count = f.get_result()
+    result = None
+    if count:
+      result = hit_future.get_result()
+
   if result is not None:
     raise tasks.Return(result)
 
