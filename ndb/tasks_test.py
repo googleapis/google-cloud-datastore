@@ -115,7 +115,20 @@ class TaskTests(unittest.TestCase):
     tasks.Future.wait_all(todo)
     self.assertEqual(self.log, [(f,) for f in self.futs])
 
-  def testGetValue(self):
+  def testSleep(self):
+    log = []
+    @tasks.task
+    def foo():
+      log.append(time.time())
+      yield tasks.sleep(0.1)
+      log.append(time.time())
+    foo()
+    eventloop.run()
+    t0, t1 = log
+    dt = t1-t0
+    self.assertAlmostEqual(dt, 0.1, places=2)
+
+  def testGetReturnValue(self):
       r0 = tasks.Return()
       r1 = tasks.Return(42)
       r2 = tasks.Return(42, 'hello')

@@ -60,6 +60,7 @@ the task into a generator.
 
 import os
 import sys
+import time
 import types
 
 from google.appengine.api.apiproxy_stub_map import UserRPC
@@ -193,6 +194,16 @@ class Future(object):
     while all:
       all = set(f for f in all if f.state == cls.RUNNING)
       ev.run1()
+
+def sleep(dt):
+  """Public function to sleep some time.
+
+  Example:
+    yield tasks.sleep(0.5)  # Sleep for half a sec.
+  """
+  fut = Future()
+  eventloop.queue_task(dt, fut.set_result, None)
+  return fut
 
 # Alias for StopIteration used to mark return values.
 # To use this, raise Return(<your return value>).  The semantics
