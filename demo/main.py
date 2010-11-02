@@ -81,7 +81,9 @@ def MapQuery(query, entity_callback, connection, options=None):
       logging.info('Calling %s(%r)', entity_callback.__name__, entity)
       try:
         entity_callback(entity)
-      except Exception, err:
+      except (StopIteration, GeneratorExit):
+        raise  # Don't log these
+      except Exception:
         logging.exception('entity callback %s raised', entity_callback.__name__)
         raise
     count += len(batch.results)
@@ -336,6 +338,7 @@ class AccountPage(webapp.RequestHandler):
       self.redirect('/account')
       return
     account = GetAccountByUser(user, create=True)
+    assert isinstance(account, Account), account
     WaitForRpcs()
     self.redirect('/account')
 
