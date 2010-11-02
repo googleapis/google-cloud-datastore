@@ -58,7 +58,6 @@ suspend -- there's no need to insert a dummy yield in order to make
 the task into a generator.
 """
 
-import logging
 import os
 import sys
 import types
@@ -260,7 +259,6 @@ def help_task_along(gen, fut, val=None, exc=None, tb=None):
 
   except Exception, err:
     _, _, tb = sys.exc_info()
-    logging.exception('help_task_along: task raised an exception')
     fut.set_exception(err, tb)
     return
 
