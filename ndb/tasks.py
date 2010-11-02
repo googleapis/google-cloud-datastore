@@ -85,6 +85,8 @@ class Future(object):
   defined by PEP 3148.  It is also inspired (and tries to be somewhat
   compatible with) the App Engine specific UserRPC and MultiRpc classes.
   """
+  # TODO: Trim the API; there are too many ways to do the same thing.
+  # TODO: Compare to Monocle's much simpler Callback class.
 
   # Constants for state property.
   IDLE = RPC.IDLE  # Not yet running (unused)
@@ -100,7 +102,7 @@ class Future(object):
     self._exception = None
     self._traceback = None
     self._callbacks = []
-    frame = sys._getframe(1)
+    frame = sys._getframe(1)  # TODO: if it's in this file, go deeper.
     code = frame.f_code
     self._lineno = frame.f_lineno
     self._filename = code.co_filename
@@ -214,6 +216,9 @@ def sleep(dt):
 # are exactly the same as raise StopIteration(<your return value>)
 # but using Return clarifies that you are intending this to be the
 # return value of a task.
+# TODO: According to Monocle authors Steve and Greg Hazel, Twisted
+# used an exception to signal a return value from a generator early
+# on, and they found out it was error-prone.  Should I worry?
 Return = StopIteration
 
 def get_return_value(err):
