@@ -171,12 +171,35 @@ class ConfigOption(object):
     raise AttributeError('Configuration options are immutable (%s)' %
                          (self.validator.__name__,))
 
+  def __call__(self, *args):
+    """Gets the first non-None value for this option from the given args.
+
+    Args:
+      *arg: Any number of configuration objects or None values.
+
+    Returns:
+      The first value for this ConfigOption found in the given configuration
+    objects or None.
+
+    Raises:
+      datastore_errors.BadArgumentError if a given in object is not a
+    configuration object.
+    """
+    for config in args:
+      if isinstance(config, self._cls):
+        if self.validator.__name__ in config._values:
+          return config._values[self.validator.__name__]
+      elif config is not None and not isinstance(config, BaseConfiguration):
+        raise datastore_errors.BadArgumentError(
+            'invalid config argument (%r)' % (config,))
+    return None
+
 
 class _ConfigurationMetaClass(type):
   """The metaclass for all Configuration types.
 
   This class is needed to store a class specific list of all ConfigOptions in
-  cls._fields, and insert a __slots__ variable into the class dict before the
+  cls._options, and insert a __slots__ variable into the class dict before the
   class is created to impose immutability.
   """
 
@@ -184,13 +207,14 @@ class _ConfigurationMetaClass(type):
     classDict['__slots__'] = ['_values']
     cls = type.__new__(metaclass, classname, bases, classDict)
     if object not in bases:
-      cls._fields = cls._fields.copy()
-      for field, value in cls.__dict__.iteritems():
+      cls._options = cls._options.copy()
+      for option, value in cls.__dict__.iteritems():
         if isinstance(value, ConfigOption):
-          if cls._fields.has_key(field):
+          if cls._options.has_key(option):
             raise TypeError('%s cannot be overridden (%s)' %
-                            (field, cls.__name__))
-          cls._fields[field] = value
+                            (option, cls.__name__))
+          cls._options[option] = value
+          value._cls = cls
     return cls
 
 
@@ -216,7 +240,7 @@ class BaseConfiguration(object):
   """
 
   __metaclass__ = _ConfigurationMetaClass
-  _fields = {}
+  _options = {}
 
   def __new__(cls, config=None, **kwargs):
     """Immutable constructor.
@@ -238,7 +262,7 @@ class BaseConfiguration(object):
     if config is None:
       pass
     elif isinstance(config, BaseConfiguration):
-      if cls is config.__class__ and config._is_stronger(**kwargs):
+      if cls is config.__class__ and config.__is_stronger(**kwargs):
         return config
 
       for key, value in config._values.iteritems():
@@ -252,13 +276,27 @@ class BaseConfiguration(object):
     for key, value in kwargs.iteritems():
       if value is not None:
         try:
-          config_option = obj._fields[key]
+          config_option = obj._options[key]
         except KeyError, err:
           raise TypeError('Unknown configuration option (%s)' % err)
         obj._values[key] = config_option.validator(value)
     return obj
 
-  def _is_stronger(self, **kwargs):
+  def __eq__(self, other):
+    if self is other:
+      return True
+    if (not isinstance(other, self.__class__) and
+        not isinstance(self, other.__class__)):
+      return NotImplemented
+    return self._values == other._values
+
+  def __ne__(self, other):
+    equal = self.__eq__(other)
+    if equal is NotImplemented:
+      return equal
+    return not equal
+
+  def __is_stronger(self, **kwargs):
     """Internal helper to ask whether a configuration is stronger than another.
 
     A configuration is stronger when every value it contains is equal to or
@@ -310,10 +348,13 @@ class BaseConfiguration(object):
       else:
         return config
 
-    if self._is_stronger(**config._values):
+    if self.__is_stronger(**config._values):
       return self
 
-    return type(self)(config=self, **config._values)
+    obj = type(self)()
+    obj._values = self._values.copy()
+    obj._values.update(config._values)
+    return obj
 
 
 class Configuration(BaseConfiguration):
@@ -797,15 +838,8 @@ class BaseConnection(object):
         call to the server but does not wait.  To wait for the call to
         finish and get the result, call rpc.get_result().
     """
-    deadline = None
-    on_completion = None
-    if config is not None:
-      deadline = config.deadline
-      on_completion = config.on_completion
-    if deadline is None:
-      deadline = self.__config.deadline
-    if on_completion is None:
-      on_completion = self.__config.on_completion
+    deadline = Configuration.deadline(config, self.__config)
+    on_completion = Configuration.on_completion(config, self.__config)
     callback = None
     if on_completion is not None:
       def callback():
@@ -826,26 +860,21 @@ class BaseConnection(object):
     """
     if not (hasattr(request, 'set_failover_ms')
 ##            and hasattr(request, 'strong')
-    ):
+):
       raise datastore_errors.BadRequestError(
           'read_policy is only supported on read operations.')
     if isinstance(config, apiproxy_stub_map.UserRPC):
       read_policy = getattr(config, 'read_policy', None)
-    elif isinstance(config, Configuration):
-      read_policy = config.read_policy
-    elif config is None:
-      read_policy = None
     else:
-      raise datastore_errors.BadArgumentError(
-        '_set_request_read_policy invalid config argument (%r)' %
-        (config,))
+      read_policy = Configuration.read_policy(config)
+
     if read_policy is None:
       read_policy = self.__config.read_policy
 
     if read_policy == Configuration.APPLY_ALL_JOBS_CONSISTENCY:
       request.set_strong(True)
     elif read_policy == Configuration.EVENTUAL_CONSISTENCY:
-      ##request.set_strong(False)
+##      request.set_strong(False)
       request.set_failover_ms(-1)
 
   def _set_request_transaction(self, request):
