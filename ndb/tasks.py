@@ -61,7 +61,6 @@ the task into a generator.
 import logging
 import os
 import sys
-import time
 import types
 
 from google.appengine.api.apiproxy_stub_map import UserRPC
