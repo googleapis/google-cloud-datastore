@@ -255,7 +255,7 @@ class HomePage(webapp.RequestHandler):
     rpc = model.conn.async_get(
       datastore_rpc.Configuration(on_completion=AccountsCallBack),
       keys)
-    eventloop.queue_rpc(rpc)
+    eventloop.queue_rpc(rpc, rpc.check_success)
 
   def post(self):
     body = self.request.get('body')
