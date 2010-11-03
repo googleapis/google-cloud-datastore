@@ -129,6 +129,39 @@ class TaskTests(unittest.TestCase):
     dt = t1-t0
     self.assertAlmostEqual(dt, 0.1, places=2)
 
+  def testMultiFuture(self):
+    @tasks.task
+    def foo(dt):
+      yield tasks.sleep(dt)
+      raise tasks.Return('foo-%s' % dt)
+    @tasks.task
+    def bar(n):
+      for i in range(n):
+        yield tasks.sleep(0.01)
+      raise tasks.Return('bar-%d' % n)
+    bar5 = bar(5)
+    futs = [foo(0.05), foo(0.01), foo(0.03), bar(3), bar5, bar5]
+    mfut = tasks.MultiFuture()
+    for fut in futs:
+      mfut.add_dependent(fut)
+    mfut.complete()
+    completed = mfut.get_result()
+    self.assertEqual(set(r.get_result() for r in completed),
+                     set(['foo-0.01', 'foo-0.03', 'foo-0.05',
+                          'bar-3', 'bar-5']))
+
+  def testMultiFuture_PreCompleted(self):
+    @tasks.task
+    def foo():
+      yield tasks.sleep(0.01)
+    mfut = tasks.MultiFuture()
+    dep = foo()
+    dep.wait()
+    mfut.add_dependent(dep)
+    mfut.complete()
+    self.assertTrue(mfut.done())
+    self.assertEqual(mfut.get_result(), [dep])
+
   def testGetReturnValue(self):
       r0 = tasks.Return()
       r1 = tasks.Return(42)

@@ -211,6 +211,60 @@ def sleep(dt):
   eventloop.queue_task(dt, fut.set_result, None)
   return fut
 
+class MultiFuture(Future):
+  """A Future that depends on multiple other Futures.
+
+  The protocol from the caller's POV is:
+
+    mf = MultiFuture()
+    mf.add_dependent(<some other Future>)
+    mf.add_dependent(<some other Future>)
+      .
+      . (More mf.add_dependent() calls)
+      .
+    mf.complete()  # No more dependents will be added.
+      .
+      . (Time passes)
+      .
+    completed = mf.get_result()
+
+  Now, completed is a list of all dependent Futures in the order in
+  which they completed.  (TODO: Is this the best result value?)
+
+  Adding the same dependent multiple times is a no-op.
+
+  Callbacks can be added at any point.
+
+  From a dependent Future POV, there's nothing to be done: a callback
+  is automatically added to each dependent Future which will signal
+  its completion to the MultiFuture.
+  """
+
+  def __init__(self):
+    super(MultiFuture, self).__init__()
+    self._dependents = set()
+    self._full = False
+    self._results = []
+
+  def complete(self):
+    assert not self._full
+    self._full = True
+    if not self._dependents:
+      self.set_result(self._results)
+
+  def add_dependent(self, fut):
+    assert isinstance(fut, Future)
+    assert not self._full
+    if fut not in self._dependents:
+      self._dependents.add(fut)
+      fut.add_done_callback(self.signal_dependent_done)
+
+  def signal_dependent_done(self, fut):
+    self._results.append(fut)
+    self._dependents.remove(fut)
+    if self._full and not self._dependents:
+      self.set_result(self._results)
+
 # Alias for StopIteration used to mark return values.
 # To use this, raise Return(<your return value>).  The semantics
 # are exactly the same as raise StopIteration(<your return value>)
