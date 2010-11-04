@@ -240,17 +240,22 @@ class MultiFuture(Future):
   its completion to the MultiFuture.
   """
 
-  def __init__(self):
+  def __init__(self, reducer=None, initial=None):
     super(MultiFuture, self).__init__()
     self._dependents = set()
     self._full = False
-    self._results = []
+    self._reducer = reducer
+    self._result = initial
+    if reducer is None:
+      assert initial is None, initial  # If no reducer, can't use initial.
+      self._result = []
 
+  # TODO: Rename this method?  (But to what?)
   def complete(self):
     assert not self._full
     self._full = True
     if not self._dependents:
-      self.set_result(self._results)
+      self.set_result(self._result)
 
   def add_dependent(self, fut):
     assert isinstance(fut, Future)
@@ -260,10 +265,17 @@ class MultiFuture(Future):
       fut.add_done_callback(self.signal_dependent_done)
 
   def signal_dependent_done(self, fut):
-    self._results.append(fut)
+    self.process_value(fut)
     self._dependents.remove(fut)
     if self._full and not self._dependents:
-      self.set_result(self._results)
+      self.set_result(self._result)
+
+  def process_value(self, val):
+    # Typically, val is a Future; but this can also be called directly.
+    if self._reducer is None:
+      self._result.append(val)
+    else:
+      self._result = self._reducer(self._result, val)
 
 # Alias for StopIteration used to mark return values.
 # To use this, raise Return(<your return value>).  The semantics
@@ -344,6 +356,7 @@ def help_task_along(gen, fut, val=None, exc=None, tb=None):
       value.add_done_callback(
           lambda val: on_future_completion(val, gen, fut))
       return
+    # TODO: if isinstance(value, (list, tuple)) -> create a MultiFuture?
     if is_generator(value):
       assert False  # TODO: emulate PEP 380 here?
     assert False  # A task shouldn't yield plain values.

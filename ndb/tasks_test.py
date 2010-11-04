@@ -150,6 +150,22 @@ class TaskTests(unittest.TestCase):
                      set(['foo-0.01', 'foo-0.03', 'foo-0.05',
                           'bar-3', 'bar-5']))
 
+  def testMultiFuture_Reducer(self):
+    @tasks.task
+    def foo(i):
+      yield tasks.sleep(0.001)
+      raise tasks.Return(i)
+    def reducer(result, fut):
+      assert fut.done()
+      val = fut.get_result()
+      return result + val
+    mfut = tasks.MultiFuture(reducer, 0)
+    for i in range(10):
+      mfut.add_dependent(foo(i))
+    mfut.complete()
+    val = mfut.get_result()
+    self.assertEqual(val, sum(range(10)))
+
   def testMultiFuture_PreCompleted(self):
     @tasks.task
     def foo():
