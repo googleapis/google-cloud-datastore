@@ -243,6 +243,18 @@ class TaskTests(unittest.TestCase):
     result = f.get_result()
     self.assertEqual(result, ([], []))
 
+  def testTask_YieldTuple(self):
+    @tasks.task
+    def fib(n):
+      if n <= 1:
+        raise tasks.Return(n)
+      a, b = yield fib(n - 1), fib(n - 2)
+      # print 'fib(%r) = %r + %r = %r' % (n, a, b, a + b)
+      raise tasks.Return(a + b)
+    fut = fib(10)
+    val = fut.get_result()
+    self.assertEqual(val, 55)
+
 class TracebackTests(unittest.TestCase):
   """Checks that errors result in reasonable tracebacks."""
 

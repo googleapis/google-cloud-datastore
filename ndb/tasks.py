@@ -356,7 +356,19 @@ def help_task_along(gen, fut, val=None, exc=None, tb=None):
       value.add_done_callback(
           lambda val: on_future_completion(val, gen, fut))
       return
-    # TODO: if isinstance(value, (list, tuple)) -> create a MultiFuture?
+    if isinstance(value, (tuple, list)):
+      # Arrange for yield to return a list of results (not Futures).
+      # TODO: If any of the Futures has an exception, things go bad.
+      def reducer(state, subfuture):
+        state.append(subfuture.get_result())
+        return state
+      mfut = MultiFuture(reducer, [])
+      for subfuture in value:
+        mfut.add_dependent(subfuture)
+      mfut.complete()
+      mfut.add_done_callback(
+        lambda val: on_future_completion(val, gen, fut))
+      return
     if is_generator(value):
       assert False  # TODO: emulate PEP 380 here?
     assert False  # A task shouldn't yield plain values.
