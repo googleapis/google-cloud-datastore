@@ -1,0 +1,60 @@
+Introduction
+------------
+
+In this project I am going to develop a new, experimental datastore
+API for the Google App Engine Python runtime. I am doing this as a
+Google employee but using an open source development style as I
+believe this project will benefit from early user feedback.
+
+Eventually, when the project is sufficiently mature, the code will
+(hopefully) become a standard component of the App Engine Python SDK
+and the Python runtime. Until then, however, the way to use this code
+is to check it out from the repository and copy it into your
+application.
+
+Until the code is integrated into the SDK and runtime, I am not going
+to worry about backwards compatibility between versions of this
+experimental code. You are not required to check out the trunk,
+however I do not plan to fix bugs in older branches.
+
+--Guido van Rossum <guido@google.com>
+
+
+Overview
+--------
+
+Right now there is only the 'core' directory.  This contains two
+modules, datastore_rpc and datastore_query, which will likely be
+released (moved into the google/appengine/datastore directory) as part
+of the 1.4.0 App Engine release.  These modules support asynchronous
+access to the datastore API.  However these are not the code I am
+talking about above; that code has yet to be written, and will be in a
+separate subdirectory, tentatively named 'ndb'.
+
+How To
+------
+
+You need to separately download and install the App Engine Python SDK,
+version 1.3.8 or later.  NOTE: previous versions don't work!!!!!!!!!
+(If you don't know where to find that you are not ready to play with
+this code. :-) Assuming the SDK lives at /usr/local/google_appengine,
+you need to add that directory to your $PYTHONPATH environment
+variable.  You should then be able to run something like this:
+
+  >>> from core import datastore_query
+
+If this works your setup is correct.
+
+To run the tests, use
+
+  make test
+
+To run the tests with coverage, use
+
+  make coverage
+
+To run the demo app on localhost:8080, use
+
+  make serve
+
+See the Makefile for more details.  Sorry, Windows users.
