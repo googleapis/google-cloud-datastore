@@ -103,7 +103,9 @@ class Future(object):
     self._exception = None
     self._traceback = None
     self._callbacks = []
-    frame = sys._getframe(1)  # TODO: if it's in this file, go deeper.
+    frame = sys._getframe()
+    while frame.f_code.co_filename == __file__:
+      frame = frame.f_back
     code = frame.f_code
     self._lineno = frame.f_lineno
     self._filename = code.co_filename
