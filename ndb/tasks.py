@@ -104,7 +104,8 @@ class Future(object):
     self._traceback = None
     self._callbacks = []
     frame = sys._getframe()
-    while frame.f_code.co_filename == __file__:
+    this_file = __file__.rstrip('co')  # .py[co] -> .py
+    while frame.f_code.co_filename == this_file:
       frame = frame.f_back
     code = frame.f_code
     self._lineno = frame.f_lineno
