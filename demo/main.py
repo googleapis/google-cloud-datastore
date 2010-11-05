@@ -15,6 +15,7 @@ from core import datastore_rpc
 from core import monkey
 
 import bpt
+from ndb import context
 from ndb import eventloop
 from ndb import model
 from ndb import tasks
@@ -71,72 +72,7 @@ def WaitForRpcs():
   eventloop.run()
 
 @tasks.task
-def MapQuery(query, entity_callback, connection, options=None):
-  count = 0
-  rpc = query.run_async(connection, options)
-  while rpc is not None:
-    batch = yield rpc
-    rpc = batch.next_batch_async(options)
-    logging.info('batch with %d results, next_rpc=%r', len(batch.results), rpc)
-    for entity in batch.results:
-      try:
-        entity_callback(entity)
-      except (StopIteration, GeneratorExit):
-        raise  # Don't log these
-      except Exception:
-        logging.exception('entity callback %s raised', entity_callback.__name__)
-        raise
-    count += len(batch.results)
-  raise tasks.Return(count)
-
-def MapQueryToGenerator(query, generator, connection, options=None):
-  # TODO: Make this into a task.
-  assert tasks.is_generator(generator), '%r is not a generator' % generator
-  # "Prime" the generator.  (TODO: does PEP 380 explain this?)
-  generator.next()
-  our_future = tasks.Future()
-  def wrap_send(val):
-    try:
-      value = generator.send(val)
-    except StopIteration, err:
-      result = tasks.get_return_value(err)
-      our_future.set_result(result)
-      raise
-    except Exception:
-      t, v, tb = sys.exc_info()
-      our_future.set_exception(v, tb)
-      raise
-    else:
-      return value
-  map_future = MapQuery(query, wrap_send, connection, options)
-
-  def callback(fut):
-    # When map_future completes, extract a return value from the
-    # generator and set it as our own future's result.
-    assert fut is map_future, (fut, map_future)
-    if fut.get_exception():
-      logging.exception('map_future: raised %r', fut)
-    # TODO: Use pep380.gclose().
-    try:
-      value = generator.throw(GeneratorExit)
-    except StopIteration, err:
-      value = tasks.get_return_value(err)
-      our_future.set_result(value)
-    except GeneratorExit:
-      if not our_future.done():
-        our_future.set_result(None)
-    except Exception, err:
-      _, _, tb = sys.exc_info()
-      our_future.set_exception(err, tb)
-    else:
-      our_future.set_exception(RuntimeError(
-        'Throwing GeneratorExit into it did not stop the generator'))
-
-  map_future.add_done_callback(callback)
-  return our_future
-
-@tasks.task
-def AsyncGetAccountByUser(user, create=False):
+def AsyncGetAccountByUser(context, user, create=False):
   """Find an account."""
   assert isinstance(user, users.User), '%r is not a User' % user
   assert user.user_id() is not None, 'user_id is None'
@@ -148,25 +84,17 @@ def AsyncGetAccountByUser(user, create=False):
   pred = datastore_query.PropertyFilter('=', prop)
   query = datastore_query.Query(kind=Account.GetKind(),
                                 filter_predicate=pred)
+  options = datastore_query.QueryOptions(limit=1)
 
-  hit_future = tasks.Future()
-
-  def result_callback(result):
-    assert isinstance(result, Account), '%r is not an Account [1]' % result
-    if not hit_future.done():
-      hit_future.set_result(result)
-
-  def accumulator():
-    while True:
-      result = yield
-      assert isinstance(result, Account), '%r is not an Account [2]' % result
-      raise tasks.Return(result)
-
-  f = MapQueryToGenerator(query, accumulator(), model.conn)
-  result = yield f
-
-  if result is not None:
-    raise tasks.Return(result)
+  def callback(entity):
+    return entity  # TODO: This should be the default callback?
+  fut1, fut2 = context.map_query(query, callback, options)
+  res1, res2 = yield fut1, fut2
+  assert len(res1) == res2
+  if res1:
+    account = res1[0]
+    assert isinstance(account, Account)
+    raise tasks.Return(account)
 
   if not create:
     return  # None
@@ -175,17 +103,17 @@ def AsyncGetAccountByUser(user, create=False):
                     email=user.email(),
                     userid=user.user_id())
   # Write to datastore asynchronously.
-  rpc = model.conn.async_put(None, [account])
-  eventloop.queue_rpc(rpc, rpc.check_success)
+  context.put(account)  # Don't wait
   raise tasks.Return(account)
 
-def GetAccountByUser(user, create=False):
-  fut = AsyncGetAccountByUser(user, create)
+def GetAccountByUser(context, user, create=False):
+  fut = AsyncGetAccountByUser(context, user, create)
   return fut.get_result()
 
 class HomePage(webapp.RequestHandler):
 
   def get(self):
+    ctx = context.Context()
     user = users.get_current_user()
     email = None
     if user is not None:
@@ -202,12 +130,12 @@ class HomePage(webapp.RequestHandler):
     query = datastore_query.Query(kind=Message.GetKind(), order=order)
     options = datastore_query.QueryOptions(batch_size=13, limit=50)
     self.todo = []
-    fut = MapQuery(query, self._result_callback, model.conn, options)
-
+    fut1, fut2 = ctx.map_query(query, self._result_callback, options)
     if user is not None:
-      GetAccountByUser(user)
+      GetAccountByUser(ctx, user)  # XXX unused?
     WaitForRpcs()
-    fut.check_success()
+    fut1.check_success()
+    fut2.check_success()
     while self.todo:
       self._flush_todo()
       WaitForRpcs()
@@ -259,6 +187,7 @@ class HomePage(webapp.RequestHandler):
     eventloop.queue_rpc(rpc, rpc.check_success)
 
   def post(self):
+    ctx = context.Context()
     body = self.request.get('body')
     if not body.strip():
       self.redirect('/')
@@ -277,19 +206,20 @@ class HomePage(webapp.RequestHandler):
       eventloop.queue_rpc(rpc, rpc.check_success)
       if user is not None:
         # Check that the account exists and create it if necessary.
-        GetAccountByUser(user, create=True)
+        GetAccountByUser(ctx, user, create=True)
     self.redirect('/')
     WaitForRpcs()
 
 class AccountPage(webapp.RequestHandler):
 
   def get(self):
+    ctx = context.Context()
     user = users.get_current_user()
     if user is None:
       self.redirect(users.create_login_url('/account'))
       return
     email = user.email()
-    account = GetAccountByUser(user)
+    account = GetAccountByUser(ctx, user)
     action = 'Create'
     if account is not None:
       action = 'Update'
@@ -301,17 +231,18 @@ class AccountPage(webapp.RequestHandler):
     self.response.out.write(ACCOUNT_PAGE % values)
 
   def post(self):
+    ctx = context.Context()
     user = users.get_current_user()
     if user is None:
       self.redirect(users.create_login_url('/account'))
       return
     if self.request.get('delete'):
-      account = GetAccountByUser(user)
+      account = GetAccountByUser(ctx, user)
       if account is not None:
-        account.delete()
+        ctx.delete(account.key).check_success()
       self.redirect('/account')
       return
-    account = GetAccountByUser(user, create=True)
+    account = GetAccountByUser(ctx, user, create=True)
     assert isinstance(account, Account), account
     WaitForRpcs()
     self.redirect('/account')

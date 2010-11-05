@@ -1,5 +1,7 @@
 """Context class."""
 
+import logging
+
 from ndb import model, tasks, eventloop
 
 class AutoBatcher(object):
@@ -24,6 +26,7 @@ class AutoBatcher(object):
     # We cannot postpone the inevitable any longer.
     assert self._todo
     args = [arg for (fut, arg) in self._todo]
+    logging.info('AutoBatcher(%s): %d items', self._method.__name__, len(args))
     rpc = self._method(self._options, args)
     eventloop.queue_rpc(rpc, self._rpc_callback, rpc, self._todo)
     self._todo = []  # Get ready for the next batch
