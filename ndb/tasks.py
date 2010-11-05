@@ -33,11 +33,12 @@ instead:
     x = yield f
     print x
 
-Tasks can be scheduled using the event loop:
+Calling a task automatically schedules it with the event loop:
 
   def main():
-    eventloop.queue_task(0, main_task)  # Calls foo after 0 seconds delay
+    f = main_task()
     eventloop.run()  # Run until no tasks left to do
+    assert f.done()
 
 As a special feature, if the wrapped function is not a generator
 function, its return value is returned via the Future.  This makes the
@@ -50,7 +51,7 @@ following two equivalent:
   @task
   def foo():
     if False: yield  # The presence of 'yield' makes foo a generator
-    raise StopIteration(42)  # Or, after PEP 380, return 42
+    raise Return(42)  # Or, after PEP 380, return 42
 
 This feature (inspired by Monocle) is handy in case you are
 implementing an interface that expects tasks but you have no need to
@@ -107,6 +108,9 @@ class Future(object):
     self._lineno = frame.f_lineno
     self._filename = code.co_filename
     self._funcname = code.co_name
+
+  # TODO: Add a __del__ that complains if neither get_exception() nor
+  # check_success() was ever called?  What if it's not even done?
 
   def __repr__(self):
     if self._done:
@@ -314,7 +318,7 @@ def task(func):
       # the "raise Return(...)" idiom, we'll extract the return value.
       result = get_return_value(err)
     if is_generator(result):
-      eventloop.queue_task(0, help_task_along, result, fut)
+      eventloop.queue_task(None, help_task_along, result, fut)
     else:
       fut.set_result(result)
     return fut

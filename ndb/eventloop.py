@@ -30,11 +30,12 @@ class EventLoop(object):
     self.queue = []
     self.rpcs = {}
 
+  # TODO: Rename to queue_callback?
   def queue_task(self, delay, callable, *args, **kwds):
     """Schedule a function call at a specific time in the future."""
     if delay is None:
       when = 0
-    if delay < 1e9:
+    elif delay < 1e9:
       when = delay + time.time()
     else:
       # Times over a billion seconds are assumed to be absolute.
