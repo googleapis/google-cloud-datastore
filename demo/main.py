@@ -28,7 +28,7 @@ function focus() {
 }
 </script>
 <body onload=focus()>
-  Logged in as <a href="/account">%(email)s</a> |
+  Logged in as <a href="/account">%(nickname)s</a> |
   <a href="%(login)s">login</a> |
   <a href="%(logout)s">logout</a>
 
@@ -42,12 +42,13 @@ function focus() {
 
 ACCOUNT_PAGE = """
 <body>
-  Logged in as <a href="/account">%(email)s</a> |
+  Logged in as <a href="/account">%(nickname)s</a> |
   <a href="%(logout)s">logout</a>
 
   <form method=POST action=/account>
     <!-- TODO: XSRF protection -->
     Email: %(email)s
+    <input type=text name=nickname size=20 value=%(nickname)s>
     <input type=submit name=%(action)s value="%(action)s Account">
     <input type=submit name=delete value="Delete Account">
     <a href=/>back to home page</a>
@@ -60,6 +61,7 @@ class Account(model.Model):
 
   email = model.StringProperty()
   userid = model.StringProperty()
+  nickname = model.StringProperty()
 
 class Message(model.Model):
   """A guestbook message."""
@@ -72,7 +74,7 @@ def WaitForRpcs():
   eventloop.run()
 
 @tasks.task
-def AsyncGetAccountByUser(context, user, create=False):
+def AsyncGetAccountByUser(context, user, create=False, nickname=None):
   """Find an account."""
   assert isinstance(user, users.User), '%r is not a User' % user
   assert user.user_id() is not None, 'user_id is None'
@@ -102,12 +104,14 @@ def AsyncGetAccountByUser(context, user, create=False):
   account = Account(key=model.Key(flat=['Account', user.user_id()]),
                     email=user.email(),
                     userid=user.user_id())
+  if nickname:
+    account.nickname = nickname
   # Write to datastore asynchronously.
   context.put(account)  # Don't wait
   raise tasks.Return(account)
 
-def GetAccountByUser(context, user, create=False):
-  fut = AsyncGetAccountByUser(context, user, create)
+def GetAccountByUser(context, user, create=False, nickname=None):
+  fut = AsyncGetAccountByUser(context, user, create, nickname)
   return fut.get_result()
 
 class HomePage(webapp.RequestHandler):
@@ -116,10 +120,17 @@ class HomePage(webapp.RequestHandler):
     self.ctx = context.Context()
     user = users.get_current_user()
     email = None
+    nickname = 'Anonymous'
     if user is not None:
       email = user.email()
-      # TODO: Use GetAccountByUser() for this too.
+      account = GetAccountByUser(self.ctx, user)
+      if account is None:
+        nickname = 'Withdrawn'
+      else:
+        email = account.email
+        nickname = account.nickname or account.email
     values = {'email': email,
+              'nickname': nickname,
               'login': users.create_login_url('/'),
               'logout': users.create_logout_url('/'),
               }
@@ -147,7 +158,7 @@ class HomePage(webapp.RequestHandler):
       if account is None:
         author = 'Withdrawn'
       else:
-        author = account.email
+        author = account.nickname or account.email
     else:
       author = 'Anonymous'
     raise tasks.Return((-result.when,
@@ -197,9 +208,12 @@ class AccountPage(webapp.RequestHandler):
     email = user.email()
     account = GetAccountByUser(ctx, user)
     action = 'Create'
+    nickname = 'Withdrawn'
     if account is not None:
       action = 'Update'
+      nickname = account.nickname or account.email
     values = {'email': email,
+              'nickname': nickname,
               'action': action,
               'login': users.create_login_url('/account'),
               'logout': users.create_logout_url('/'),
@@ -218,10 +232,12 @@ class AccountPage(webapp.RequestHandler):
         ctx.delete(account.key).check_success()
       self.redirect('/account')
       return
-    f = AsyncGetAccountByUser(ctx, user, create=True)
-    logging.info('f before: %s', f)
-    f.check_success()
-    logging.info('f after: %s', f)
+    nickname = self.request.get('nickname')
+    account = GetAccountByUser(ctx, user, create=True)  ##, nickname=nickname)
+    if nickname and account.nickname != nickname:
+      account.nickname = nickname
+      f = ctx.put(account)
+      f.check_success()
     self.redirect('/account')
     WaitForRpcs()  # Ensure Account gets written.
 
