@@ -163,6 +163,7 @@ class HomePage(webapp.RequestHandler):
       self.redirect('/')
       return
     user = users.get_current_user()
+    futs = []
     logging.info('body=%.100r', body)
     body = body.rstrip()
     if body:
@@ -172,13 +173,18 @@ class HomePage(webapp.RequestHandler):
       if user is not None:
         msg.userid = user.user_id()
       # Write to datastore asynchronously.
-      rpc = model.conn.async_put(None, [msg])
-      eventloop.queue_rpc(rpc, rpc.check_success)
+      f = ctx.put(msg)
+      futs.append(f)
       if user is not None:
         # Check that the account exists and create it if necessary.
-        GetAccountByUser(ctx, user, create=True)
+        f = AsyncGetAccountByUser(ctx, user, create=True)
+        futs.append(f)
     self.redirect('/')
-    WaitForRpcs()
+    for f in futs:
+      logging.info('f before: %s', f)
+      f.check_success()
+      logging.info('f after: %s', f)
+    WaitForRpcs()  # Ensure Account gets written.
 
 class AccountPage(webapp.RequestHandler):
 
@@ -212,10 +218,12 @@ class AccountPage(webapp.RequestHandler):
         ctx.delete(account.key).check_success()
       self.redirect('/account')
       return
-    account = GetAccountByUser(ctx, user, create=True)
-    assert isinstance(account, Account), account
-    WaitForRpcs()
+    f = AsyncGetAccountByUser(ctx, user, create=True)
+    logging.info('f before: %s', f)
+    f.check_success()
+    logging.info('f after: %s', f)
     self.redirect('/account')
+    WaitForRpcs()  # Ensure Account gets written.
 
 urls = [
   ('/', HomePage),
