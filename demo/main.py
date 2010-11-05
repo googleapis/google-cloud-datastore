@@ -28,7 +28,7 @@ function focus() {
 }
 </script>
 <body onload=focus()>
-  Logged in as <a href="/account">%(nickname)s</a> |
+  Nickname: <a href="/account">%(nickname)s</a> |
   <a href="%(login)s">login</a> |
   <a href="%(logout)s">logout</a>
 
@@ -42,7 +42,7 @@ function focus() {
 
 ACCOUNT_PAGE = """
 <body>
-  Logged in as <a href="/account">%(nickname)s</a> |
+  Nickname: <a href="/account">%(nickname)s</a> |
   <a href="%(logout)s">logout</a>
 
   <form method=POST action=/account>
@@ -116,8 +116,8 @@ def GetAccountByUser(context, user, create=False, nickname=None):
 
 class HomePage(webapp.RequestHandler):
 
+  @context.add_context
   def get(self):
-    self.ctx = context.Context()
     user = users.get_current_user()
     email = None
     nickname = 'Anonymous'
@@ -167,8 +167,8 @@ class HomePage(webapp.RequestHandler):
                          time.ctime(result.when),
                          cgi.escape(result.body))))
 
+  @context.add_context
   def post(self):
-    ctx = context.Context()
     body = self.request.get('body')
     if not body.strip():
       self.redirect('/')
@@ -184,11 +184,11 @@ class HomePage(webapp.RequestHandler):
       if user is not None:
         msg.userid = user.user_id()
       # Write to datastore asynchronously.
-      f = ctx.put(msg)
+      f = self.ctx.put(msg)
       futs.append(f)
       if user is not None:
         # Check that the account exists and create it if necessary.
-        f = AsyncGetAccountByUser(ctx, user, create=True)
+        f = AsyncGetAccountByUser(self.ctx, user, create=True)
         futs.append(f)
     self.redirect('/')
     for f in futs:
@@ -199,14 +199,14 @@ class HomePage(webapp.RequestHandler):
 
 class AccountPage(webapp.RequestHandler):
 
+  @context.add_context
   def get(self):
-    ctx = context.Context()
     user = users.get_current_user()
     if user is None:
       self.redirect(users.create_login_url('/account'))
       return
     email = user.email()
-    account = GetAccountByUser(ctx, user)
+    account = GetAccountByUser(self.ctx, user)
     action = 'Create'
     nickname = 'Withdrawn'
     if account is not None:
@@ -220,23 +220,23 @@ class AccountPage(webapp.RequestHandler):
               }
     self.response.out.write(ACCOUNT_PAGE % values)
 
+  @context.add_context
   def post(self):
-    ctx = context.Context()
     user = users.get_current_user()
     if user is None:
       self.redirect(users.create_login_url('/account'))
       return
     if self.request.get('delete'):
-      account = GetAccountByUser(ctx, user)
+      account = GetAccountByUser(self.ctx, user)
       if account is not None:
-        ctx.delete(account.key).check_success()
+        self.ctx.delete(account.key).check_success()
       self.redirect('/account')
       return
     nickname = self.request.get('nickname')
-    account = GetAccountByUser(ctx, user, create=True)  ##, nickname=nickname)
+    account = GetAccountByUser(self.ctx, user, create=True)  ##, nickname=nickname)
     if nickname and account.nickname != nickname:
       account.nickname = nickname
-      f = ctx.put(account)
+      f = self.ctx.put(account)
       f.check_success()
     self.redirect('/account')
     WaitForRpcs()  # Ensure Account gets written.
