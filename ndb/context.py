@@ -82,3 +82,10 @@ class Context(object):
 
   # TODO: allocate_ids().
   # TODO: begin/commit/rollback transaction.
+
+def add_context(func):
+  """Decorator that adds a fresh Context as self.ctx."""
+  def add_context_wrapper(self, *args):
+    self.ctx = Context()
+    return func(self, *args)
+  return add_context_wrapper

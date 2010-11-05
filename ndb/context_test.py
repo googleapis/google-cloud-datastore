@@ -137,6 +137,17 @@ class TaskTests(unittest.TestCase):
     self.assertEqual(res1, [1, 2, 3])
     self.assertEqual(res2, 3)
 
+  def testAddContextDecorator(self):
+    class Demo(object):
+      @context.add_context
+      def method(self, arg):
+        return (self.ctx, arg)
+    a = Demo()
+    self.assertFalse(hasattr(a, 'ctx'))
+    ctx, arg = a.method(42)
+    self.assertTrue(isinstance(ctx, context.Context))
+    self.assertEqual(arg, 42)
+
 
 def main():
   unittest.main()
