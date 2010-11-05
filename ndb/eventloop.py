@@ -11,6 +11,7 @@ The API here is inspired by Monocle.
 """
 
 import bisect
+import logging
 import os
 import time
 
@@ -72,12 +73,14 @@ class EventLoop(object):
       delay = self.queue[0][0] - time.time()
       if delay is None or delay <= 0:
         when, callable, args, kwds = self.queue.pop(0)
+        logging.debug('event: %s', callable.__name__)
         callable(*args, **kwds)
         # TODO: What if it raises an exception?
         return 0
     if self.rpcs:
       rpc = datastore_rpc.MultiRpc.wait_any(self.rpcs)
       if rpc is not None:
+        logging.debug('rpc: %s', rpc.method)
         # Yes, wait_any() may return None even for a non-empty argument.
         # But no, it won't ever return an RPC not in its argument.
         assert rpc in self.rpcs, (rpc, self.rpcs)
