@@ -42,8 +42,11 @@ class AutoBatcher(object):
 
 class Context(object):
 
-  def __init__(self, auto_batcher_class=AutoBatcher):
-    self._conn = model.conn  # TODO: Move conn out of model
+  def __init__(self, conn=None, auto_batcher_class=AutoBatcher):
+    if conn is None:
+      conn = model.conn  # TODO: Get rid of this?
+    self._conn = conn
+    self._auto_batcher_class = auto_batcher_class
     self._get_batcher = auto_batcher_class(self._conn.async_get)
     self._put_batcher = auto_batcher_class(self._conn.async_put)
     self._delete_batcher = auto_batcher_class(self._conn.async_delete)
@@ -81,8 +84,56 @@ class Context(object):
     return mfut, helper()
 
   # TODO: allocate_ids().
-  # TODO: begin/commit/rollback transaction.
+  
+  def async_transaction(self, callback, retry=3):
+    # Will invoke callback(ctx) one or more times with ctx set to a new,
+    # transactional Context.  Returns a Future.  Callback must be a task.
+    @tasks.task
+    def try_several_times():
+      for i in range(1 + max(0, retry)):
+        tconn = self._conn.new_transaction()
+        tctx = self.__class__(conn=tconn,
+                              auto_batcher_class=self._auto_batcher_class)
+        fut = callback(tctx)
+        assert isinstance(fut, tasks.Future)
+        try:
+          result = yield fut
+        except Exception, err:
+          yield tconn.async_rollback(None)  # TODO: Don't block???
+          raise
+        else:
+          ok = yield tconn.async_commit(None)
+          if ok:
+            raise tasks.Return(result)
+      # Out of retries
+      raise RuntimeError('Transaction retried too many times')  # XXX
+    return try_several_times()
 
+  @tasks.task
+  def get_or_insert(self, model_class, name, parent=None, **kwds):
+    assert isinstance(name, basestring) and name
+    if parent is None:
+      pairs = []
+    else:
+      pairs = list(parent.pairs())
+    pairs.append((model_class.GetKind(), name))
+    key = model.Key(pairs=pairs)
+    ent = yield self.get(key)
+    if ent is None:
+      @tasks.task
+      def txn(ctx):
+        ent = yield ctx.get(key)
+        if ent is None:
+          ent = model_class(**kwds)  # TODO: Check for forbidden keys
+          ent.key = key
+          yield ctx.put(ent)
+        raise tasks.Return(ent)
+      fut = self.async_transaction(txn)
+      ent = yield fut
+    raise tasks.Return(ent)
+    
+
+# TODO: Is this a good idea?
 def add_context(func):
   """Decorator that adds a fresh Context as self.ctx."""
   def add_context_wrapper(self, *args):

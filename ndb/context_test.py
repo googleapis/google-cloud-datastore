@@ -40,7 +40,7 @@ class TaskTests(unittest.TestCase):
     self.set_up_eventloop()
     self.set_up_datastore()
     MyAutoBatcher.reset_log()
-    self.ctx = context.Context(MyAutoBatcher)
+    self.ctx = context.Context(auto_batcher_class=MyAutoBatcher)
 
   def set_up_eventloop(self):
     if eventloop._EVENT_LOOP_KEY in os.environ:
@@ -136,6 +136,17 @@ class TaskTests(unittest.TestCase):
     res1, res2 = foo().get_result()
     self.assertEqual(res1, [1, 2, 3])
     self.assertEqual(res2, 3)
+
+  def testContext_GetOrInsert(self):
+    class Mod(model.Model):
+      data = model.StringProperty()
+    @tasks.task
+    def foo():
+      ent = yield self.ctx.get_or_insert(Mod, 'a', data='hello')
+      assert isinstance(ent, Mod)
+      ent2 = yield self.ctx.get_or_insert(Mod, 'a', data='hello')
+      assert ent2 == ent
+    foo().check_success()
 
   def testAddContextDecorator(self):
     class Demo(object):
