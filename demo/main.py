@@ -113,78 +113,48 @@ def GetAccountByUser(context, user, create=False):
 class HomePage(webapp.RequestHandler):
 
   def get(self):
-    ctx = context.Context()
+    self.ctx = context.Context()
     user = users.get_current_user()
     email = None
     if user is not None:
       email = user.email()
+      # TODO: Use GetAccountByUser() for this too.
     values = {'email': email,
               'login': users.create_login_url('/'),
               'logout': users.create_logout_url('/'),
               }
     self.response.out.write(HOME_PAGE % values)
-    self.rest = []
     order = datastore_query.PropertyOrder(
       'when',
       datastore_query.PropertyOrder.DESCENDING)
     query = datastore_query.Query(kind=Message.GetKind(), order=order)
     options = datastore_query.QueryOptions(batch_size=13, limit=50)
-    self.todo = []
-    fut1, fut2 = ctx.map_query(query, self._result_callback, options)
-    if user is not None:
-      GetAccountByUser(ctx, user)  # XXX unused?
-    WaitForRpcs()
-    fut1.check_success()
-    fut2.check_success()
-    while self.todo:
-      self._flush_todo()
-      WaitForRpcs()
-    self.rest.sort()
-    for key, text in self.rest:
+    fut1, fut2 = self.ctx.map_query(query, self._result_callback, options)
+    futures = fut1.get_result()
+    size = fut2.get_result()
+    assert len(futures) == size
+    results = [f.get_result() for f in futures]
+    results.sort()
+    for key, text in results:
       self.response.out.write(text)
 
+  @tasks.task
   def _result_callback(self, result):
-    # Callback called for each query result.  Updates self.todo.
+    # Task started for each query result.
     if result.userid is not None:
       key = model.Key(flat=['Account', result.userid])
-      self.todo.append((key, result))
-      if len(self.todo) >= 7:
-        self._flush_todo()
+      account = yield self.ctx.get(key)
+      if account is None:
+        author = 'Withdrawn'
+      else:
+        author = account.email
     else:
-      self.rest.append((-result.when,
-                        'Anonymous / %s &mdash; %s<br>' %
-                        (time.ctime(result.when),
+      author = 'Anonymous'
+    raise tasks.Return((-result.when,
+                        '%s / %s &mdash; %s<br>' %
+                        (cgi.escape(author),
+                         time.ctime(result.when),
                          cgi.escape(result.body))))
-
-  def _flush_todo(self):
-    logging.info('flushing %d todo entries', len(self.todo))
-    entities = []
-    keys = []
-    for key, entity in self.todo:
-      keys.append(key)
-      entities.append(entity)
-    del self.todo[:len(keys)]
-    def AccountsCallBack(rpc):  # Closure over entities.
-      accounts = rpc.get_result()
-      uidmap = {}
-      for account in accounts:
-        if account is not None:
-          uidmap[account.userid] = account
-      for result in entities:
-        account = uidmap.get(result.userid)
-        if account is None:
-          author = 'Withdrawn'
-        else:
-          author = account.email
-        self.rest.append((-result.when,
-                          '%s / %s &mdash; %s<br>' %
-                          (cgi.escape(author),
-                           time.ctime(result.when),
-                           cgi.escape(result.body))))
-    rpc = model.conn.async_get(
-      datastore_rpc.Configuration(on_completion=AccountsCallBack),
-      keys)
-    eventloop.queue_rpc(rpc, rpc.check_success)
 
   def post(self):
     ctx = context.Context()

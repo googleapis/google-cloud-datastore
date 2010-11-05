@@ -118,7 +118,7 @@ class Future(object):
         state = 'exception %s: %s' % (self._exception.__class__.__name__,
                                    self._exception)
       else:
-        state = 'result %r' % self._result
+        state = 'result %r' % (self._result,)
     else:
       state = 'pending'
     return '<%s %x created by %s(%s:%s) %s>' % (
