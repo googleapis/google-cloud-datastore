@@ -8,6 +8,7 @@ class AutoBatcher(object):
 
   def __init__(self, method, options=None):
     self._todo = []
+    self._running = set()  # Set of Futures representing issued RPCs.
     self._method = method  # conn.async_get, conn.async_put, conn.async_delete
     self._options = options  # datastore_rpc.Configuration
 
@@ -23,15 +24,20 @@ class AutoBatcher(object):
     return fut
 
   def _callback(self):
+    if not self._todo:
+      return
     # We cannot postpone the inevitable any longer.
-    assert self._todo
     args = [arg for (fut, arg) in self._todo]
     logging.info('AutoBatcher(%s): %d items', self._method.__name__, len(args))
     rpc = self._method(self._options, args)
-    eventloop.queue_rpc(rpc, self._rpc_callback, rpc, self._todo)
+    running = tasks.Future()
+    self._running.add(running)
+    eventloop.queue_rpc(rpc, self._rpc_callback, rpc, self._todo, running)
     self._todo = []  # Get ready for the next batch
 
-  def _rpc_callback(self, rpc, todo):
+  def _rpc_callback(self, rpc, todo, running):
+    running.set_result(None)
+    self._running.remove(running)
     values = rpc.get_result()  # TODO: What if it raises?
     if values is None:  # For delete
       for fut, arg in todo:
@@ -39,6 +45,14 @@ class AutoBatcher(object):
     else:
       for (fut, arg), val in zip(todo, values):
         fut.set_result(val)
+
+  @tasks.task
+  def flush(self):
+    while self._todo or self._running:
+      if self._todo:
+        self._callback()
+      for running in frozenset(self._running):
+        yield running
 
 class Context(object):
 
@@ -85,29 +99,35 @@ class Context(object):
 
   # TODO: allocate_ids().
   
-  def async_transaction(self, callback, retry=3):
+  @tasks.task
+  def transaction(self, callback, retry=3):
     # Will invoke callback(ctx) one or more times with ctx set to a new,
     # transactional Context.  Returns a Future.  Callback must be a task.
-    @tasks.task
-    def try_several_times():
-      for i in range(1 + max(0, retry)):
-        tconn = self._conn.new_transaction()
-        tctx = self.__class__(conn=tconn,
-                              auto_batcher_class=self._auto_batcher_class)
-        fut = callback(tctx)
-        assert isinstance(fut, tasks.Future)
+    yield (self._get_batcher.flush(),
+           self._put_batcher.flush(),
+           self._delete_batcher.flush())
+    for i in range(1 + max(0, retry)):
+      tconn = self._conn.new_transaction()
+      tctx = self.__class__(conn=tconn,
+                            auto_batcher_class=self._auto_batcher_class)
+      fut = callback(tctx)
+      assert isinstance(fut, tasks.Future)
+      try:
         try:
           result = yield fut
-        except Exception, err:
-          yield tconn.async_rollback(None)  # TODO: Don't block???
-          raise
-        else:
-          ok = yield tconn.async_commit(None)
-          if ok:
-            raise tasks.Return(result)
-      # Out of retries
-      raise RuntimeError('Transaction retried too many times')  # XXX
-    return try_several_times()
+        finally:
+          yield (self._get_batcher.flush(),
+                 self._put_batcher.flush(),
+                 self._delete_batcher.flush())
+      except Exception, err:
+        yield tconn.async_rollback(None)  # TODO: Don't block???
+        raise
+      else:
+        ok = yield tconn.async_commit(None)
+        if ok:
+          raise tasks.Return(result)
+    # Out of retries
+    raise RuntimeError('Transaction retried too many times')  # XXX
 
   @tasks.task
   def get_or_insert(self, model_class, name, parent=None, **kwds):
@@ -128,8 +148,7 @@ class Context(object):
           ent.key = key
           yield ctx.put(ent)
         raise tasks.Return(ent)
-      fut = self.async_transaction(txn)
-      ent = yield fut
+      ent = yield self.transaction(txn)
     raise tasks.Return(ent)
     
 
