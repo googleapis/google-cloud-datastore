@@ -47,7 +47,10 @@ class EventLoop(object):
     """Schedule an RPC with an optional callback.
 
     The caller must have previously sent the call to the service.
-    The optional callback is called with any further arguments.
+    The optional callback is called with the remaining arguments.
+
+    NOTE: If the rpc is a MultiRpc, the callback will be called once
+    for each sub-RPC.  TODO: Is this a good idea?
     """
     if rpc is None:
       return
