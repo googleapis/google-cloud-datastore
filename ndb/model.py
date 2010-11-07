@@ -223,6 +223,7 @@ class Model(object):
       prop = getattr(cls, name, None)
       if isinstance(prop, Property):
         assert not name.startswith('_')
+        # TODO: Tell prop the class, for error message.
         prop.FixUp(name)
         if prop.repeated:
           cls._has_repeated = True
@@ -367,7 +368,7 @@ class Property(object):
 class IntegerProperty(Property):
 
   def DbSetValue(self, v, p, value):
-    assert isinstance(value, (bool, int, long))
+    assert isinstance(value, (bool, int, long)), (self.name)
     v.set_int64value(value)
 
   def DbGetValue(self, v, p):
