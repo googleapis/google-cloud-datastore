@@ -2,6 +2,8 @@
 
 import logging
 
+from core import datastore_rpc
+
 from ndb import model, tasks, eventloop
 
 class AutoBatcher(object):
@@ -54,6 +56,7 @@ class AutoBatcher(object):
       for running in frozenset(self._running):
         yield running
 
+# TODO: Rename?  To what?  Session???
 class Context(object):
 
   def __init__(self, conn=None, auto_batcher_class=AutoBatcher):
@@ -100,14 +103,23 @@ class Context(object):
   # TODO: allocate_ids().
   
   @tasks.task
-  def transaction(self, callback, retry=3):
+  def transaction(self, callback, retry=3, entity_group=None):
     # Will invoke callback(ctx) one or more times with ctx set to a new,
     # transactional Context.  Returns a Future.  Callback must be a task.
+    if entity_group is not None:
+      app = entity_group._Key__reference.app()
+    else:
+      app = model._DefaultAppId()
     yield (self._get_batcher.flush(),
            self._put_batcher.flush(),
            self._delete_batcher.flush())
     for i in range(1 + max(0, retry)):
-      tconn = self._conn.new_transaction()
+      transaction = yield self._conn.async_begin_transaction(None, app)
+      tconn = datastore_rpc.TransactionalConnection(
+        adapter=self._conn.adapter,
+        config=self._conn.config,
+        transaction=transaction,
+        entity_group=entity_group)
       tctx = self.__class__(conn=tconn,
                             auto_batcher_class=self._auto_batcher_class)
       fut = callback(tctx)
