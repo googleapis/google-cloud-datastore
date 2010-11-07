@@ -14,7 +14,6 @@ from core import datastore_query
 from core import datastore_rpc
 from core import monkey
 
-import bpt
 from ndb import context
 from ndb import eventloop
 from ndb import model
@@ -56,190 +55,159 @@ ACCOUNT_PAGE = """
 </body>
 """
 
+
 class Account(model.Model):
-  """A user."""
+  """User account."""
 
   email = model.StringProperty()
   userid = model.StringProperty()
   nickname = model.StringProperty()
 
+
 class Message(model.Model):
-  """A guestbook message."""
+  """Guestbook message."""
 
   body = model.StringProperty()
   when = model.IntegerProperty()
   userid = model.StringProperty()
 
-def WaitForRpcs():
-  eventloop.run()
+
+def taskify(func):
+  """Decorator to run a function as a task when called.
+
+  Use this to wrap a request handler function that will be called by
+  some web application framework (e.g. a Django view function or a
+  webapp.RequestHandler.get method).
+  """
+  taskfunc = tasks.task(func)
+  def taskify_wrapper(*args):
+    return taskfunc(*args).get_result()
+  return taskify_wrapper
+
+
+def account_key(userid):
+  return model.Key(flat=['Account', userid])
+
+
+def get_account(ctx, userid):
+  """Return a Future for an Account."""
+  return ctx.get(account_key(userid))
+
 
 @tasks.task
-def AsyncGetAccountByUser(context, user, create=False, nickname=None):
-  """Find an account."""
-  assert isinstance(user, users.User), '%r is not a User' % user
-  assert user.user_id() is not None, 'user_id is None'
-  prop = entity_pb.Property()
-  prop.set_name(Account.userid.name)
-  prop.set_multiple(False)
-  pval = prop.mutable_value()
-  pval.set_stringvalue(user.user_id())
-  pred = datastore_query.PropertyFilter('=', prop)
-  query = datastore_query.Query(kind=Account.GetKind(),
-                                filter_predicate=pred)
-  options = datastore_query.QueryOptions(limit=1)
+def get_nickname(ctx, userid):
+  """Return a Future for a nickname from an account."""
+  account = yield get_account(ctx, userid)
+  if not account:
+    nickname = 'Unknown'
+  else:
+    nickname = account.nickname or account.email
+  raise tasks.Return(nickname)
 
-  def callback(entity):
-    return entity  # TODO: This should be the default callback?
-  fut1, fut2 = context.map_query(query, callback, options)
-  res1, res2 = yield fut1, fut2
-  assert len(res1) == res2
-  if res1:
-    account = res1[0]
-    assert isinstance(account, Account)
-    raise tasks.Return(account)
-
-  if not create:
-    return  # None
-
-  account = Account(key=model.Key(flat=['Account', user.user_id()]),
-                    email=user.email(),
-                    userid=user.user_id())
-  if nickname:
-    account.nickname = nickname
-  # Write to datastore asynchronously.
-  context.put(account)  # Don't wait
-  raise tasks.Return(account)
-
-def GetAccountByUser(context, user, create=False, nickname=None):
-  fut = AsyncGetAccountByUser(context, user, create, nickname)
-  return fut.get_result()
 
 class HomePage(webapp.RequestHandler):
 
   @context.add_context
+  @taskify
   def get(self):
-    user = users.get_current_user()
-    email = None
     nickname = 'Anonymous'
+    user = users.get_current_user()
     if user is not None:
-      email = user.email()
-      account = GetAccountByUser(self.ctx, user)
-      if account is None:
-        nickname = 'Withdrawn'
-      else:
-        email = account.email
-        nickname = account.nickname or account.email
-    values = {'email': email,
-              'nickname': nickname,
+      nickname = yield get_nickname(self.ctx, user.user_id())
+    values = {'nickname': nickname,
               'login': users.create_login_url('/'),
               'logout': users.create_logout_url('/'),
               }
     self.response.out.write(HOME_PAGE % values)
+    query, options = self._make_query()
+    ffuts, fcount = self.ctx.map_query(query, self._callback, options)
+    # TODO: Yielding as a tuple returns values in the wrong order!
+    futs = yield ffuts
+    count = yield fcount
+    assert len(futs) == count
+    pairs = [f.get_result() for f in futs]
+    pairs.sort()
+    for key, text in pairs:
+      self.response.out.write(text)
+
+  def _make_query(self):
     order = datastore_query.PropertyOrder(
       'when',
       datastore_query.PropertyOrder.DESCENDING)
     query = datastore_query.Query(kind=Message.GetKind(), order=order)
-    options = datastore_query.QueryOptions(batch_size=13, limit=50)
-    fut1, fut2 = self.ctx.map_query(query, self._result_callback, options)
-    futures = fut1.get_result()
-    size = fut2.get_result()
-    assert len(futures) == size
-    results = [f.get_result() for f in futures]
-    results.sort()
-    for key, text in results:
-      self.response.out.write(text)
+    options = datastore_query.QueryOptions(batch_size=13, limit=7)
+    return query, options
 
   @tasks.task
-  def _result_callback(self, result):
-    # Task started for each query result.
-    if result.userid is not None:
-      key = model.Key(flat=['Account', result.userid])
-      account = yield self.ctx.get(key)
-      if account is None:
-        author = 'Withdrawn'
-      else:
-        author = account.nickname or account.email
-    else:
-      author = 'Anonymous'
-    raise tasks.Return((-result.when,
-                        '%s / %s &mdash; %s<br>' %
-                        (cgi.escape(author),
-                         time.ctime(result.when),
-                         cgi.escape(result.body))))
+  def _callback(self, message):
+    nickname = 'Anonymous'
+    if message.userid:
+      nickname = yield get_nickname(self.ctx, message.userid)
+    text = '%s - %s - %s<br>' % (cgi.escape(nickname),
+                                 time.ctime(message.when),
+                                 cgi.escape(message.body))
+    raise tasks.Return((-message.when, text))
 
+  @taskify
   @context.add_context
   def post(self):
-    body = self.request.get('body')
-    if not body.strip():
-      self.redirect('/')
-      return
-    user = users.get_current_user()
-    futs = []
-    logging.info('body=%.100r', body)
-    body = body.rstrip()
+    # TODO: XSRF protection.
+    body = self.request.get('body', '').strip()
     if body:
-      msg = Message()
-      msg.body = body
-      msg.when = int(time.time())
-      if user is not None:
-        msg.userid = user.user_id()
-      # Write to datastore asynchronously.
-      f = self.ctx.put(msg)
-      futs.append(f)
-      if user is not None:
-        # Check that the account exists and create it if necessary.
-        f = AsyncGetAccountByUser(self.ctx, user, create=True)
-        futs.append(f)
+      userid = None
+      user = users.get_current_user()
+      if user:
+        userid = user.user_id()
+      message = Message(body=body, when=int(time.time()), userid=userid)
+      yield self.ctx.put(message)  # Synchronous.
     self.redirect('/')
-    for f in futs:
-      logging.info('f before: %s', f)
-      f.check_success()
-      logging.info('f after: %s', f)
-    WaitForRpcs()  # Ensure Account gets written.
+
 
 class AccountPage(webapp.RequestHandler):
-
+  
+  @taskify
   @context.add_context
   def get(self):
     user = users.get_current_user()
-    if user is None:
+    if not user:
       self.redirect(users.create_login_url('/account'))
       return
     email = user.email()
-    account = GetAccountByUser(self.ctx, user)
     action = 'Create'
-    nickname = 'Withdrawn'
-    if account is not None:
+    nickname = yield get_nickname(self.ctx, user.user_id())
+    if nickname != 'Unknown':
       action = 'Update'
-      nickname = account.nickname or account.email
     values = {'email': email,
               'nickname': nickname,
-              'action': action,
-              'login': users.create_login_url('/account'),
+              'login': users.create_login_url('/'),
               'logout': users.create_logout_url('/'),
+              'action': action,
               }
     self.response.out.write(ACCOUNT_PAGE % values)
 
   @context.add_context
+  @taskify
   def post(self):
+    # TODO: XSRF protection.
     user = users.get_current_user()
-    if user is None:
+    if not user:
       self.redirect(users.create_login_url('/account'))
       return
+    account = yield get_account(self.ctx, user.user_id())
     if self.request.get('delete'):
-      account = GetAccountByUser(self.ctx, user)
-      if account is not None:
-        self.ctx.delete(account.key).check_success()
+      if account:
+        yield self.ctx.delete(account.key)
       self.redirect('/account')
       return
+    if not account:
+      account = Account(key=account_key(user.user_id()),
+                        email=user.email(), userid=user.user_id())
     nickname = self.request.get('nickname')
-    account = GetAccountByUser(self.ctx, user, create=True)  ##, nickname=nickname)
-    if nickname and account.nickname != nickname:
+    if nickname and nickname != 'Unknown':
       account.nickname = nickname
-      f = self.ctx.put(account)
-      f.check_success()
+    yield self.ctx.put(account)
     self.redirect('/account')
-    WaitForRpcs()  # Ensure Account gets written.
+
 
 urls = [
   ('/', HomePage),
@@ -248,8 +216,10 @@ urls = [
 
 app = webapp.WSGIApplication(urls)
 
+
 def main():
   util.run_wsgi_app(app)
+
 
 if __name__ == '__main__':
   main()
