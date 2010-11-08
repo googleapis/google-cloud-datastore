@@ -46,8 +46,9 @@ ACCOUNT_PAGE = """
 
   <form method=POST action=/account>
     <!-- TODO: XSRF protection -->
-    Email: %(email)s
-    <input type=text name=nickname size=20 value=%(nickname)s>
+    Email: %(email)s<br>
+    New nickname:
+    <input type=text name=nickname size=20 value=%(proposed_nickname)s><br>
     <input type=submit name=%(action)s value="%(action)s Account">
     <input type=submit name=delete value="Delete Account">
     <a href=/>back to home page</a>
@@ -99,7 +100,7 @@ def get_nickname(ctx, userid):
   """Return a Future for a nickname from an account."""
   account = yield get_account(ctx, userid)
   if not account:
-    nickname = 'Unknown'
+    nickname = 'Unregistered'
   else:
     nickname = account.nickname or account.email
   raise tasks.Return(nickname)
@@ -171,11 +172,17 @@ class AccountPage(webapp.RequestHandler):
       return
     email = user.email()
     action = 'Create'
-    nickname = yield get_nickname(self.ctx, user.user_id())
-    if nickname != 'Unknown':
+    account, nickname = yield (get_account(self.ctx, user.user_id()),
+                               get_nickname(self.ctx, user.user_id()))
+    if account is not None:
       action = 'Update'
+    if account:
+      proposed_nickname = account.nickname or account.email
+    else:
+      proposed_nickname = email
     values = {'email': email,
               'nickname': nickname,
+              'proposed_nickname': proposed_nickname,
               'login': users.create_login_url('/'),
               'logout': users.create_logout_url('/'),
               'action': action,
@@ -200,7 +207,7 @@ class AccountPage(webapp.RequestHandler):
       account = Account(key=account_key(user.user_id()),
                         email=user.email(), userid=user.user_id())
     nickname = self.request.get('nickname')
-    if nickname and nickname != 'Unknown':
+    if nickname:
       account.nickname = nickname
     yield self.ctx.put(account)
     self.redirect('/account')
