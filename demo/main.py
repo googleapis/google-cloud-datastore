@@ -132,7 +132,7 @@ class HomePage(webapp.RequestHandler):
       'when',
       datastore_query.PropertyOrder.DESCENDING)
     query = datastore_query.Query(kind=Message.GetKind(), order=order)
-    options = datastore_query.QueryOptions(batch_size=13, limit=7)
+    options = datastore_query.QueryOptions(batch_size=13, limit=43)
     return query, options
 
   @tasks.task

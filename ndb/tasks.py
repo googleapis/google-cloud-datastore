@@ -369,6 +369,7 @@ def help_task_along(gen, fut, val=None, exc=None, tb=None):
       # keep track of the indexes separately.  (We can't store the
       # indexes on the Futures because the same Future may be involved
       # in multiple yields simultaneously.)
+      # TODO: Maybe not use MultiFuture, or do it another way?
       indexes = {}
       for index, subfuture in enumerate(value):
         indexes[subfuture] = index
