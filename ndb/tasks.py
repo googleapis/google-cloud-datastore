@@ -365,16 +365,24 @@ def help_task_along(gen, fut, val=None, exc=None, tb=None):
       return
     if isinstance(value, (tuple, list)):
       # Arrange for yield to return a list of results (not Futures).
-      # TODO: If any of the Futures has an exception, things go bad.
+      # Since the subfutures may not finish in the given order, we
+      # keep track of the indexes separately.  (We can't store the
+      # indexes on the Futures because the same Future may be involved
+      # in multiple yields simultaneously.)
+      indexes = {}
+      for index, subfuture in enumerate(value):
+        indexes[subfuture] = index
       def reducer(state, subfuture):
-        state.append(subfuture.get_result())
+        # TODO: If any of the Futures has an exception, things go bad.
+        state[indexes[subfuture]] = subfuture.get_result()
         return state
-      mfut = MultiFuture(reducer, [])
+      mfut = MultiFuture(reducer, [None] * len(value))
       for subfuture in value:
         mfut.add_dependent(subfuture)
       mfut.complete()
-      mfut.add_done_callback(
-        lambda val: on_future_completion(val, gen, fut))
+      def ohohoh(val):
+        on_future_completion(val, gen, fut)
+      mfut.add_done_callback(ohohoh)
       return
     if is_generator(value):
       assert False  # TODO: emulate PEP 380 here?

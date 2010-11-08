@@ -250,6 +250,7 @@ class TaskTests(unittest.TestCase):
         raise tasks.Return(n)
       a, b = yield fib(n - 1), fib(n - 2)
       # print 'fib(%r) = %r + %r = %r' % (n, a, b, a + b)
+      self.assertTrue(a >= b, (a, b))
       raise tasks.Return(a + b)
     fut = fib(10)
     val = fut.get_result()

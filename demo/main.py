@@ -120,10 +120,7 @@ class HomePage(webapp.RequestHandler):
               }
     self.response.out.write(HOME_PAGE % values)
     query, options = self._make_query()
-    ffuts, fcount = self.ctx.map_query(query, self._callback, options)
-    # TODO: Yielding as a tuple returns values in the wrong order!
-    futs = yield ffuts
-    count = yield fcount
+    futs, count = yield self.ctx.map_query(query, self._callback, options)
     assert len(futs) == count
     pairs = [f.get_result() for f in futs]
     pairs.sort()
