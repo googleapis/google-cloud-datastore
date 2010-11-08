@@ -101,7 +101,7 @@ class Context(object):
     return mfut, helper()
 
   # TODO: allocate_ids().
-  
+
   @tasks.task
   def transaction(self, callback, retry=3, entity_group=None):
     # Will invoke callback(ctx) one or more times with ctx set to a new,
@@ -162,7 +162,7 @@ class Context(object):
         raise tasks.Return(ent)
       ent = yield self.transaction(txn)
     raise tasks.Return(ent)
-    
+
 
 # TODO: Is this a good idea?
 def add_context(func):

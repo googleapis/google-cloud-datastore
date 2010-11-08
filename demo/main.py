@@ -161,7 +161,7 @@ class HomePage(webapp.RequestHandler):
 
 
 class AccountPage(webapp.RequestHandler):
-  
+
   @taskify
   @context.add_context
   def get(self):
