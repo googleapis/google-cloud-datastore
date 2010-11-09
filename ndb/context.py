@@ -111,6 +111,11 @@ class Context(object):
     if key in self._cache:
       self._cache[key] = None
 
+  @tasks.task
+  def allocate_ids(self, key, size=None, max=None):
+    lo_hi = yield self._conn.async_allocate_ids(None, key, size, max)
+    raise tasks.Return(lo_hi)
+
   def map_query(self, query, callback,
                 options=None, reducer=None, initial=None):
     mfut = tasks.MultiFuture(reducer, initial)

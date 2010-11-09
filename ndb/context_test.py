@@ -162,6 +162,16 @@ class TaskTests(unittest.TestCase):
       self.assertTrue(results[1] is ent2)
     foo().check_success()
 
+  def testContext_AllocateIds(self):
+    @tasks.task
+    def foo():
+      key = model.Key(flat=('Foo', 1))
+      lo_hi = yield self.ctx.allocate_ids(key, size=10)
+      self.assertEqual(lo_hi, (1, 10))
+      lo_hi = yield self.ctx.allocate_ids(key, max=20)
+      self.assertEqual(lo_hi, (11, 20))
+    foo().check_success()
+
   def testContext_MapQuery(self):
     @tasks.task
     def callback(ent):
@@ -195,6 +205,7 @@ class TaskTests(unittest.TestCase):
     self.assertEqual(res2, 3)
 
   def testContext_GetOrInsert(self):
+    # This also tests Context.transaction()
     class Mod(model.Model):
       data = model.StringProperty()
     @tasks.task
