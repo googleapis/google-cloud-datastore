@@ -111,10 +111,33 @@ class TaskTests(unittest.TestCase):
       key1 = model.Key(flat=('Foo', 1))
       ent1 = model.Expando(key=key1, foo=42, bar='hello')
       key = yield self.ctx.put(ent1)
-      self.assertTrue(key1 in self.ctx._cache)
+      self.assertTrue(key1 in self.ctx._cache)  # Whitebox.
       a = yield self.ctx.get(key1)
       b = yield self.ctx.get(key1)
       self.assertTrue(a is b)
+      yield self.ctx.delete(key1)
+      self.assertTrue(self.ctx._cache[key] is None)  # Whitebox.
+      a = yield self.ctx.get(key1)
+      self.assertTrue(a is None)
+    foo().check_success()
+
+  def testContext_CachePolicy(self):
+    def should_cache(key, entity):
+      return False
+    @tasks.task
+    def foo():
+      key1 = model.Key(flat=('Foo', 1))
+      ent1 = model.Expando(key=key1, foo=42, bar='hello')
+      key = yield self.ctx.put(ent1)
+      self.assertTrue(key1 not in self.ctx._cache)  # Whitebox.
+      a = yield self.ctx.get(key1)
+      b = yield self.ctx.get(key1)
+      self.assertTrue(a is not b)
+      yield self.ctx.delete(key1)
+      self.assertTrue(key not in self.ctx._cache)  # Whitebox.
+      a = yield self.ctx.get(key1)
+      self.assertTrue(a is None)
+    self.ctx.set_cache_policy(should_cache)
     foo().check_success()
 
   def testContext_MapQuery(self):
