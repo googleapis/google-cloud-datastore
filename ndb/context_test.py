@@ -204,6 +204,23 @@ class TaskTests(unittest.TestCase):
     self.assertEqual(res1, [1, 2, 3])
     self.assertEqual(res2, 3)
 
+  def testContext_TransactionFailed(self):
+    @tasks.task
+    def foo():
+      key = model.Key(flat=('Foo', 1))
+      ent = model.Expando(key=key, bar=1)
+      yield self.ctx.put(ent)
+      @tasks.task
+      def callback(ctx):
+        self.assertTrue(key not in ctx._cache)  # Whitebox.
+        e = yield ctx.get(key)
+        self.assertTrue(key in ctx._cache)  # Whitebox.
+        e.bar = 2
+        yield ctx.put(e)
+      yield self.ctx.transaction(callback)
+      self.assertEqual(self.ctx._cache[key].bar, 2)
+    foo().check_success()
+
   def testContext_GetOrInsert(self):
     # This also tests Context.transaction()
     class Mod(model.Model):

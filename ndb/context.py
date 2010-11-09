@@ -1,6 +1,9 @@
 """Context class."""
 
 import logging
+import sys
+
+from google.appengine.api import datastore_errors
 
 from core import datastore_rpc
 
@@ -155,8 +158,6 @@ class Context(object):
 
     return mfut, helper()
 
-  # TODO: allocate_ids().
-
   @tasks.task
   def transaction(self, callback, retry=3, entity_group=None):
     # Will invoke callback(ctx) one or more times with ctx set to a new,
@@ -183,18 +184,21 @@ class Context(object):
         try:
           result = yield fut
         finally:
-          yield (self._get_batcher.flush(),
-                 self._put_batcher.flush(),
-                 self._delete_batcher.flush())
+          yield (tctx._get_batcher.flush(),
+                 tctx._put_batcher.flush(),
+                 tctx._delete_batcher.flush())
       except Exception, err:
+        t, e, tb = sys.exc_info()
         yield tconn.async_rollback(None)  # TODO: Don't block???
-        raise
+        raise t, e, tb
       else:
         ok = yield tconn.async_commit(None)
         if ok:
+          self._cache.update(tctx._cache)
           raise tasks.Return(result)
     # Out of retries
-    raise RuntimeError('Transaction retried too many times')  # XXX
+    raise datastore_errors.TransactionFailedError(
+      'The transaction could not be committed. Please try again.')
 
   @tasks.task
   def get_or_insert(self, model_class, name, parent=None, **kwds):
