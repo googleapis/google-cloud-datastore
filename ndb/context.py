@@ -98,6 +98,9 @@ class Context(object):
   @tasks.task
   def put(self, entity):
     key = yield self._put_batcher.add(entity)
+    if entity.key != key:
+      logging.info('replacing key %s with %s', entity.key, key)
+      entity.key = key
     if self.should_cache(key, entity):
       self._cache[key] = entity
     raise tasks.Return(key)
@@ -120,7 +123,22 @@ class Context(object):
         batch = yield rpc
         rpc = batch.next_batch_async(options)
         for ent in batch.results:
-          # TODO: Unify with cache.
+          key = ent.key
+          if key in self._cache:
+            if self._cache[key] is None:
+              # This is a weird case.  Apparently this entity was
+              # deleted concurrently with the query.  Let's just
+              # pretend he delete happened first.
+              logging.info('Conflict: entity %s was deleted', key)
+              continue
+            # Replace the entity the callback will see with the one
+            # from the cache.
+            if ent != self._cache[key]:
+              logging.info('Conflict: entity %s was modified', key)
+            ent = self._cache[key]
+          else:
+            if self.should_cache(key, ent):
+              self._cache[key] = ent
           count += 1
           val = callback(ent)  # TODO: If this raises something, log and ignore
           if isinstance(val, tasks.Future):

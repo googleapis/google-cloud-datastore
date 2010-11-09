@@ -140,6 +140,28 @@ class TaskTests(unittest.TestCase):
     self.ctx.set_cache_policy(should_cache)
     foo().check_success()
 
+  def testContext_CacheQuery(self):
+    @tasks.task
+    def foo():
+      key1 = model.Key(flat=('Foo', 1))
+      key2 = model.Key(flat=('Foo', 2))
+      ent1 = model.Expando(key=key1, foo=42, bar='hello')
+      ent2 = model.Expando(key=key2, foo=1, bar='world')
+      key1a, key2a = yield self.ctx.put(ent1),  self.ctx.put(ent2)
+      self.assertTrue(key1 in self.ctx._cache)  # Whitebox.
+      self.assertTrue(key2 in self.ctx._cache)  # Whitebox.
+      self.assertEqual(key1, key1a)
+      self.assertEqual(key2, key2a)
+      def callback(ent):
+        return ent
+      query = datastore_query.Query(app='_', kind='Foo')
+      results, count = yield self.ctx.map_query(query, callback)
+      self.assertEqual(results, [ent1, ent2])
+      self.assertEqual(count, 2)
+      self.assertTrue(results[0] is ent1)
+      self.assertTrue(results[1] is ent2)
+    foo().check_success()
+
   def testContext_MapQuery(self):
     @tasks.task
     def callback(ent):
