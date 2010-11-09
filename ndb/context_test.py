@@ -105,6 +105,18 @@ class TaskTests(unittest.TestCase):
     foo().check_success()
     self.assertEqual(len(MyAutoBatcher._log), 1)
 
+  def testContext_Cache(self):
+    @tasks.task
+    def foo():
+      key1 = model.Key(flat=('Foo', 1))
+      ent1 = model.Expando(key=key1, foo=42, bar='hello')
+      key = yield self.ctx.put(ent1)
+      self.assertTrue(key1 in self.ctx._cache)
+      a = yield self.ctx.get(key1)
+      b = yield self.ctx.get(key1)
+      self.assertTrue(a is b)
+    foo().check_success()
+
   def testContext_MapQuery(self):
     @tasks.task
     def callback(ent):

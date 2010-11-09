@@ -67,15 +67,46 @@ class Context(object):
     self._get_batcher = auto_batcher_class(self._conn.async_get)
     self._put_batcher = auto_batcher_class(self._conn.async_put)
     self._delete_batcher = auto_batcher_class(self._conn.async_delete)
+    self._cache = {}
+    self._cache_policy = None
 
+  def set_cache_policy(self, func):
+    self._cache_policy = func
+
+  def should_cache(self, key, entity):
+    if self._cache_policy is None:
+      return True
+    return self._cache_policy(key, entity)
+
+  # TODO: What about conflicting requests to different autobatchers,
+  # e.g. task A calls get() on a given key while task B calls
+  # delete()?  The outcome is nondeterministic, depending on which
+  # autobatcher gets run first.  Maybe we should just flag such
+  # conflicts as errors, with an overridable policy to resolve them
+  # differently?
+
+  @tasks.task
   def get(self, key):
-      return self._get_batcher.add(key)
+    if key in self._cache:
+      entity = self._cache[key]  # May be None, meaning "doesn't exist".
+    else:
+      entity = yield self._get_batcher.add(key)
+      if self.should_cache(key, entity):
+        self._cache[key] = entity
+    raise tasks.Return(entity)
 
-  def put(self, ent):
-      return self._put_batcher.add(ent)
+  @tasks.task
+  def put(self, entity):
+    key = yield self._put_batcher.add(entity)
+    if self.should_cache(key, entity):
+      self._cache[key] = entity
+    raise tasks.Return(key)
 
+  @tasks.task
   def delete(self, key):
-      return self._delete_batcher.add(key)
+    yield self._delete_batcher.add(key)
+    if key in self._cache:
+      self._cache[key] = None
 
   def map_query(self, query, callback,
                 options=None, reducer=None, initial=None):
@@ -89,6 +120,7 @@ class Context(object):
         batch = yield rpc
         rpc = batch.next_batch_async(options)
         for ent in batch.results:
+          # TODO: Unify with cache.
           count += 1
           val = callback(ent)  # TODO: If this raises something, log and ignore
           if isinstance(val, tasks.Future):
