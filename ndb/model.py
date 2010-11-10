@@ -109,7 +109,7 @@ class Model(object):
 
   def _setkey(self, key):
     if key is not None:
-      assert isinstance(key, Key)
+      assert isinstance(key, Key), repr(key)
       if self.__class__ is not Model:
         assert list(key.pairs())[-1][0] == self.GetKind()
     self._key = key
