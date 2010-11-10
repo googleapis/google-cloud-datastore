@@ -286,8 +286,8 @@ class TracebackTests(unittest.TestCase):
       self.assertEqual(str(err), 'hello')
       tbframes = []
       while tb is not None:
-        # It's okay if some help_task_along frames are present.
-        if tb.tb_frame.f_code.co_name != 'help_task_along':
+        # It's okay if some _help_task_along frames are present.
+        if tb.tb_frame.f_code.co_name != '_help_task_along':
           tbframes.append(tb.tb_frame)
         tb = tb.tb_next
       self.assertEqual(frames, tbframes)

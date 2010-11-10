@@ -321,14 +321,14 @@ def task(func):
       # the "raise Return(...)" idiom, we'll extract the return value.
       result = get_return_value(err)
     if is_generator(result):
-      eventloop.queue_task(None, help_task_along, result, fut)
+      eventloop.queue_task(None, _help_task_along, result, fut)
     else:
       fut.set_result(result)
     return fut
 
   return task_wrapper
 
-def help_task_along(gen, fut, val=None, exc=None, tb=None):
+def _help_task_along(gen, fut, val=None, exc=None, tb=None):
   # XXX Docstring
   try:
     if exc is not None:
@@ -356,12 +356,12 @@ def help_task_along(gen, fut, val=None, exc=None, tb=None):
         assert False  # TODO: Support MultiRpc using MultiFuture.
     if isinstance(value, UserRPC):
       # TODO: Tail recursion if the RPC is already complete.
-      eventloop.queue_rpc(value, on_rpc_completion, value, gen, fut)
+      eventloop.queue_rpc(value, _on_rpc_completion, value, gen, fut)
       return
     if isinstance(value, Future):
       # TODO: Tail recursion if the Future is already done.
       value.add_done_callback(
-          lambda val: on_future_completion(val, gen, fut))
+          lambda val: _on_future_completion(val, gen, fut))
       return
     if isinstance(value, (tuple, list)):
       # Arrange for yield to return a list of results (not Futures).
@@ -382,29 +382,29 @@ def help_task_along(gen, fut, val=None, exc=None, tb=None):
         mfut.add_dependent(subfuture)
       mfut.complete()
       def ohohoh(val):
-        on_future_completion(val, gen, fut)
+        _on_future_completion(val, gen, fut)
       mfut.add_done_callback(ohohoh)
       return
     if is_generator(value):
       assert False  # TODO: emulate PEP 380 here?
     assert False  # A task shouldn't yield plain values.
 
-def on_rpc_completion(rpc, gen, fut):
+def _on_rpc_completion(rpc, gen, fut):
   try:
     result = rpc.get_result()
   except Exception, err:
     _, _, tb = sys.exc_info()
-    help_task_along(gen, fut, exc=err, tb=tb)
+    _help_task_along(gen, fut, exc=err, tb=tb)
   else:
-    help_task_along(gen, fut, result)
+    _help_task_along(gen, fut, result)
 
-def on_future_completion(future, gen, fut):
+def _on_future_completion(future, gen, fut):
   exc = future.get_exception()
   if exc is not None:
-    help_task_along(gen, fut, exc=exc, tb=future.get_traceback())
+    _help_task_along(gen, fut, exc=exc, tb=future.get_traceback())
   else:
     val = future.get_result()  # This better not raise an exception.
-    help_task_along(gen, fut, val)
+    _help_task_along(gen, fut, val)
 
 # TODO: Rework the following into documentation.
 
