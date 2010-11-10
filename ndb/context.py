@@ -4,6 +4,7 @@ import logging
 import sys
 
 from google.appengine.api import datastore_errors
+from google.appengine.api import memcache
 
 from core import datastore_rpc
 
@@ -11,10 +12,10 @@ from ndb import model, tasks, eventloop
 
 class AutoBatcher(object):
 
-  def __init__(self, method):
-    self._todo = []
-    self._method = method  # conn.async_get, conn.async_put, conn.async_delete
-    self._running = None
+  def __init__(self, todo_task):
+    self._todo_task = todo_task  # Task called with list of (future, arg) pairs
+    self._todo = []  # List of (future, arg) pairs
+    self._running = None  # Currently running task, if any
 
   def add(self, arg):
     fut = tasks.Future()
@@ -27,7 +28,8 @@ class AutoBatcher(object):
     self._todo.append((fut, arg))
     return fut
 
-  def _callback(self):
+  def _callback(self, unused=None):
+    # The unused argument is for add_done_callback(self._callback) below.
     if not self._todo:
       return
     if self._running is not None:
@@ -40,19 +42,12 @@ class AutoBatcher(object):
     # We cannot postpone the inevitable any longer.
     todo = self._todo
     self._todo = []  # Get ready for the next batch
-    self._running = self._rpc_task(todo)
-
-  @tasks.task
-  def _rpc_task(self, todo):
-    args = [arg for (fut, arg) in todo]
-    logging.info('AutoBatcher(%s): %d items', self._method.__name__, len(args))
-    values = yield self._method(None, args)
-    if values is None:  # For delete
-      for fut, arg in todo:
-        fut.set_result(None)
-    else:
-      for (fut, arg), val in zip(todo, values):
-        fut.set_result(val)
+    logging.info('AutoBatcher(%s): %d items',
+                 self._todo_task.__name__, len(todo))
+    self._running = self._todo_task(todo)
+    # Add a callback to the Future to propagate exceptions,
+    # since this Future is not normally checked otherwise.
+    self._running.add_done_callback(lambda fut: fut.check_success())
 
   @tasks.task
   def flush(self):
@@ -73,11 +68,75 @@ class Context(object):
       conn = model.conn  # TODO: Get rid of this?
     self._conn = conn
     self._auto_batcher_class = auto_batcher_class
-    self._get_batcher = auto_batcher_class(self._conn.async_get)
-    self._put_batcher = auto_batcher_class(self._conn.async_put)
-    self._delete_batcher = auto_batcher_class(self._conn.async_delete)
+    self._get_batcher = auto_batcher_class(self._get_task)
+    self._put_batcher = auto_batcher_class(self._put_task)
+    self._delete_batcher = auto_batcher_class(self._delete_task)
     self._cache = {}
     self._cache_policy = None
+
+  @tasks.task
+  def flush(self):
+    yield (self._get_batcher.flush(),
+           self._put_batcher.flush(),
+           self._delete_batcher.flush())
+
+  @tasks.task
+  def _get_task(self, todo):
+    assert todo
+    # First check memcache.
+    keymap = {}
+    for fut, key in todo:
+      keymap[key.urlsafe()] = fut, key
+    results = memcache.get_multi(keymap.keys())
+    for mkey, pb in results.iteritems():
+      fut, key = keymap[mkey]
+      ent = self._conn.adapter.pb_to_entity(pb)
+      fut.set_result(ent)
+      del keymap[mkey]
+    # Go to the datastore if anything left in keymap.
+    if keymap:
+      todo = keymap.values()
+      keys = [key for (_, key) in todo]
+      results = yield self._conn.async_get(None, keys)
+      for ent, (fut, _) in zip(results, todo):
+        fut.set_result(ent)
+
+  @tasks.task
+  def _put_task(self, todo):
+    assert todo
+    ents = [ent for (_, ent) in todo]
+    results = yield self._conn.async_put(None, ents)
+    for key, (fut, ent) in zip(results, todo):
+      if key != ent.key:
+        assert ent.key is None or not list(ent.key.flat())[-1]
+        ent.key = key
+      fut.set_result(key)
+    # Now update memcache.
+    # TODO: Could we update memcache *before* calling async_put()?
+    mapping = {}
+    for _, ent in todo:
+      pb = self._conn.adapter.entity_to_pb(ent)
+      mapping[ent.key.urlsafe()] = pb
+    failures = memcache.set_multi(mapping)
+    if failures:
+      badkeys = []
+      for failure in failures:
+        badkeys.append(mapping[failure].key)
+      logging.info('memcache failed to set %d out of %d keys: %s',
+                   len(failures), len(mapping), badkeys)
+
+  @tasks.task
+  def _delete_task(self, todo):
+    assert todo
+    keys = [key for (_, key) in todo]
+    yield self._conn.async_delete(None, keys)
+    for fut, _ in todo:
+      fut.set_result(None)
+    # Now update memcache.
+    memkeys = [key.urlsafe() for key in keys]
+    memcache.delete_multi(memkeys)
+    # The value returned by delete_multi() is pretty much useless, it
+    # could be the keys were never cached in the first place.
 
   def set_cache_policy(self, func):
     self._cache_policy = func
@@ -172,9 +231,7 @@ class Context(object):
       app = entity_group._Key__reference.app()
     else:
       app = model._DefaultAppId()
-    yield (self._get_batcher.flush(),
-           self._put_batcher.flush(),
-           self._delete_batcher.flush())
+    yield self.flush()
     for i in range(1 + max(0, retry)):
       transaction = yield self._conn.async_begin_transaction(None, app)
       tconn = datastore_rpc.TransactionalConnection(
@@ -190,9 +247,7 @@ class Context(object):
         try:
           result = yield fut
         finally:
-          yield (tctx._get_batcher.flush(),
-                 tctx._put_batcher.flush(),
-                 tctx._delete_batcher.flush())
+          yield tctx.flush()
       except Exception, err:
         t, e, tb = sys.exc_info()
         yield tconn.async_rollback(None)  # TODO: Don't block???

@@ -8,6 +8,7 @@ import unittest
 
 from google.appengine.api import apiproxy_stub_map
 from google.appengine.api import datastore_file_stub
+from google.appengine.api.memcache import memcache_stub
 
 from core import datastore_rpc
 from core import datastore_query
@@ -26,10 +27,10 @@ class MyAutoBatcher(context.AutoBatcher):
   def reset_log(cls):
     cls._log = []
 
-  def __init__(self, method):
+  def __init__(self, todo_task):
     def wrap(*args):
-      self.__class__._log.append(wrap)
-      return method(*args)
+      self.__class__._log.append(args)
+      return todo_task(*args)
     super(MyAutoBatcher, self).__init__(wrap)
 
 
@@ -37,7 +38,7 @@ class TaskTests(unittest.TestCase):
 
   def setUp(self):
     self.set_up_eventloop()
-    self.set_up_datastore()
+    self.set_up_stubs()
     MyAutoBatcher.reset_log()
     self.ctx = context.Context(auto_batcher_class=MyAutoBatcher)
 
@@ -47,10 +48,12 @@ class TaskTests(unittest.TestCase):
     self.ev = eventloop.get_event_loop()
     self.log = []
 
-  def set_up_datastore(self):
+  def set_up_stubs(self):
     apiproxy_stub_map.apiproxy = apiproxy_stub_map.APIProxyStubMap()
-    stub = datastore_file_stub.DatastoreFileStub('_', None)
-    apiproxy_stub_map.apiproxy.RegisterStub('datastore_v3', stub)
+    ds_stub = datastore_file_stub.DatastoreFileStub('_', None)
+    apiproxy_stub_map.apiproxy.RegisterStub('datastore_v3', ds_stub)
+    mc_stub = memcache_stub.MemcacheServiceStub()
+    apiproxy_stub_map.apiproxy.RegisterStub('memcache', mc_stub)
 
   def testContext_AutoBatcher_Get(self):
     @tasks.task
