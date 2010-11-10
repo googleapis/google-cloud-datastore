@@ -11,11 +11,10 @@ from ndb import model, tasks, eventloop
 
 class AutoBatcher(object):
 
-  def __init__(self, method, options=None):
+  def __init__(self, method):
     self._todo = []
-    self._running = set()  # Set of Futures representing issued RPCs.
     self._method = method  # conn.async_get, conn.async_put, conn.async_delete
-    self._options = options  # datastore_rpc.Configuration
+    self._running = None
 
   def add(self, arg):
     fut = tasks.Future()
@@ -31,19 +30,23 @@ class AutoBatcher(object):
   def _callback(self):
     if not self._todo:
       return
+    if self._running is not None:
+      # Another callback may still be running.
+      if not self._running.done():
+        # Wait for it to complete first, then try again.
+        self._running.add_done_callback(self._callback)
+        return
+      self._running = None
     # We cannot postpone the inevitable any longer.
-    args = [arg for (fut, arg) in self._todo]
-    logging.info('AutoBatcher(%s): %d items', self._method.__name__, len(args))
-    rpc = self._method(self._options, args)
-    running = tasks.Future()
-    self._running.add(running)
-    eventloop.queue_rpc(rpc, self._rpc_callback, rpc, self._todo, running)
+    todo = self._todo
     self._todo = []  # Get ready for the next batch
+    self._running = self._rpc_task(todo)
 
-  def _rpc_callback(self, rpc, todo, running):
-    running.set_result(None)
-    self._running.remove(running)
-    values = rpc.get_result()  # TODO: What if it raises?
+  @tasks.task
+  def _rpc_task(self, todo):
+    args = [arg for (fut, arg) in todo]
+    logging.info('AutoBatcher(%s): %d items', self._method.__name__, len(args))
+    values = yield self._method(None, args)
     if values is None:  # For delete
       for fut, arg in todo:
         fut.set_result(None)
@@ -53,11 +56,14 @@ class AutoBatcher(object):
 
   @tasks.task
   def flush(self):
-    while self._todo or self._running:
-      if self._todo:
+    while self._running or self._todo:
+      if self._running:
+        if self._running.done():
+          self._running = None
+        else:
+          yield self._running
+      else:
         self._callback()
-      for running in frozenset(self._running):
-        yield running
 
 # TODO: Rename?  To what?  Session???
 class Context(object):

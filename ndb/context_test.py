@@ -26,12 +26,11 @@ class MyAutoBatcher(context.AutoBatcher):
   def reset_log(cls):
     cls._log = []
 
-  def __init__(self, method, options=None):
-    super(MyAutoBatcher, self).__init__(method, options)
-
-  def _rpc_callback(self, *args):
-    self._log.append(args)
-    super(MyAutoBatcher, self)._rpc_callback(*args)
+  def __init__(self, method):
+    def wrap(*args):
+      self.__class__._log.append(wrap)
+      return method(*args)
+    super(MyAutoBatcher, self).__init__(wrap)
 
 
 class TaskTests(unittest.TestCase):
