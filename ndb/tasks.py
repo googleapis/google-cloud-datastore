@@ -59,6 +59,7 @@ suspend -- there's no need to insert a dummy yield in order to make
 the task into a generator.
 """
 
+import logging
 import os
 import sys
 import types
@@ -140,7 +141,11 @@ class Future(object):
     self._result = result
     self._done = True
     for callback in self._callbacks:
-      callback(self)  # TODO: What if it raises an exception?
+      try:
+        callback(self)
+      except Exception, err:
+        logging.exception('Exception in %s', callback.__name__)
+        raise
 
   def set_exception(self, exc, tb=None):
     assert isinstance(exc, BaseException)
