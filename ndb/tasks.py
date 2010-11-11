@@ -95,6 +95,8 @@ class Future(object):
   RUNNING = RPC.RUNNING  # Not yet completed.
   FINISHING = RPC.FINISHING  # Completed.
 
+  _all_pending = set()  # Set of all pending Future instances.
+
   # XXX Add docstrings to all methods.  Separate PEP 3148 API from RPC API.
 
   def __init__(self, info=None):
@@ -107,6 +109,8 @@ class Future(object):
     self._traceback = None
     self._callbacks = []
     self._where = utils.get_stack()
+    logging.debug('_all_pending: add %s', self)
+    self._all_pending.add(self)
 
   # TODO: Add a __del__ that complains if neither get_exception() nor
   # check_success() was ever called?  What if it's not even done?
@@ -132,6 +136,25 @@ class Future(object):
   def dump(self):
     return '%s\nCreated by %s' % (self, '\n called by '.join(self._where))
 
+  @classmethod
+  def clear_all_pending(cls):
+    if cls._all_pending:
+      logging.info('_all_pending: clear %s', cls._all_pending)
+    else:
+      logging.debug('_all_pending: clear no-op')
+    cls._all_pending.clear()
+
+  @classmethod
+  def dump_all_pending(cls, verbose=False):
+    all = []
+    for fut in cls._all_pending:
+      if verbose:
+        line = fut.dump()
+      else:
+        line = str(fut)
+      all.append(line)
+    return '\n'.join(all)
+
   def add_done_callback(self, callback):
     if self._done:
       callback(self)
@@ -142,12 +165,14 @@ class Future(object):
     assert not self._done
     self._result = result
     self._done = True
+    logging.debug('_all_pending: remove successful %s', self)
+    self._all_pending.remove(self)
     for callback in self._callbacks:
       try:
         callback(self)
       except Exception, err:
         logging.exception('Exception in %s', callback.__name__)
-        raise
+        ##??XXX raise
 
   def set_exception(self, exc, tb=None):
     assert isinstance(exc, BaseException)
@@ -155,6 +180,11 @@ class Future(object):
     self._exception = exc
     self._traceback = tb
     self._done = True
+    if self in self._all_pending:
+      logging.debug('_all_pending: remove failing %s', self)
+      self._all_pending.remove(self)
+    else:
+      logging.debug('_all_pending: not found %s', self)
     for callback in self._callbacks:
       callback(self)
 
@@ -176,7 +206,11 @@ class Future(object):
     ev = eventloop.get_event_loop()
     while not self._done:
       if not ev.run1():
-        logging.info('Deadlock in %s', self.dump())
+        logging.info('Deadlock in %s', self)
+        logging.info('All pending Futures:\n%s', self.dump_all_pending())
+        if logging.getLogger().level <= logging.DEBUG:
+          logging.debug('All pending Futures (verbose):\n%s',
+                        self.dump_all_pending(verbose=True))
         self.set_exception(RuntimeError('Deadlock waiting for %s' % self))
 
   def get_exception(self):
@@ -265,6 +299,15 @@ class MultiFuture(Future):
     if reducer is None:
       assert initial is None, initial  # If no reducer, can't use initial.
       self._result = []
+
+  def __repr__(self):
+    line = super(MultiFuture, self).__repr__()
+    if self._full:
+      line = line[:1] + 'Full ' + line[2:]
+    lines = [line]
+    for fut in self._dependents:
+      lines.append(repr(fut))
+    return '\n waiting for '.join(lines)
 
   # TODO: Rename this method?  (But to what?)
   def complete(self):

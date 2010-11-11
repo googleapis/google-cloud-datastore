@@ -17,8 +17,11 @@ class AutoBatcher(object):
     self._todo = []  # List of (future, arg) pairs
     self._running = None  # Currently running task, if any
 
+  def __repr__(self):
+    return '%s(%s)' % (self.__class__.__name__, self._todo_task.__name__)
+
   def add(self, arg):
-    fut = tasks.Future()
+    fut = tasks.Future('%s.add(%s)' % (self, arg))
     if not self._todo:  # Schedule the callback
       # We use the fact that regular tasks are queued at time None,
       # which puts them at absolute time 0 (i.e. ASAP -- still on a
@@ -287,12 +290,12 @@ class Context(object):
     raise tasks.Return(ent)
 
 
-# TODO: Is this a good idea?
-def add_context(func):
-  """Decorator that adds a fresh Context as self.ctx."""
+def toplevel(func):
+  """Decorator that adds a fresh Context as self.ctx *and* taskifies it."""
   @utils.wrapping(func)
   def add_context_wrapper(self, *args):
     __ndb_debug__ = utils.func_info(func)
+    tasks.Future.clear_all_pending()
     self.ctx = Context()
-    return func(self, *args)
+    return tasks.taskify(func)(self, *args)
   return add_context_wrapper

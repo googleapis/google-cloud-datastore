@@ -95,8 +95,7 @@ def get_nickname(ctx, userid):
 
 class HomePage(webapp.RequestHandler):
 
-  @context.add_context
-  @tasks.taskify
+  @context.toplevel
   def get(self):
     nickname = 'Anonymous'
     user = users.get_current_user()
@@ -133,8 +132,7 @@ class HomePage(webapp.RequestHandler):
                                  cgi.escape(message.body))
     raise tasks.Return((-message.when, text))
 
-  @tasks.taskify
-  @context.add_context
+  @context.toplevel
   def post(self):
     # TODO: XSRF protection.
     body = self.request.get('body', '').strip()
@@ -150,8 +148,7 @@ class HomePage(webapp.RequestHandler):
 
 class AccountPage(webapp.RequestHandler):
 
-  @tasks.taskify
-  @context.add_context
+  @context.toplevel
   def get(self):
     user = users.get_current_user()
     if not user:
@@ -176,8 +173,7 @@ class AccountPage(webapp.RequestHandler):
               }
     self.response.out.write(ACCOUNT_PAGE % values)
 
-  @context.add_context
-  @tasks.taskify
+  @context.toplevel
   def post(self):
     # TODO: XSRF protection.
     user = users.get_current_user()
