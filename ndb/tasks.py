@@ -308,7 +308,7 @@ class MultiFuture(Future):
     # from Future.__init__().  Beware.
     line = super(MultiFuture, self).__repr__()
     if self._full:
-      line = line[:1] + 'Full ' + line[2:]
+      line = line[:1] + 'Full ' + line[1:]
     lines = [line]
     for fut in self._dependents:
       lines.append(repr(fut))
