@@ -8,6 +8,7 @@ import unittest
 
 from google.appengine.api import apiproxy_stub_map
 from google.appengine.api import datastore_file_stub
+from google.appengine.api import memcache
 from google.appengine.api.memcache import memcache_stub
 
 from core import datastore_rpc
@@ -140,6 +141,25 @@ class TaskTests(unittest.TestCase):
       a = yield self.ctx.get(key1)
       self.assertTrue(a is None)
     self.ctx.set_cache_policy(should_cache)
+    foo().check_success()
+
+  def testContext_Memcache(self):
+    @tasks.task
+    def foo():
+      key1 = model.Key(flat=('Foo', 1))
+      key2 = model.Key(flat=('Foo', 2))
+      ent1 = model.Expando(key=key1, foo=42, bar='hello')
+      ent2 = model.Expando(key=key2, foo=1, bar='world')
+      k1, k2 = yield self.ctx.put(ent1), self.ctx.put(ent2)
+      self.assertEqual(k1, key1)
+      self.assertEqual(k2, key2)
+      yield tasks.sleep(0.01)  # Let other task complete.
+      keys = [k1.urlsafe(), k2.urlsafe()]
+      results = memcache.get_multi(keys)
+      self.assertEqual(
+        results,
+        {key1.urlsafe(): self.ctx._conn.adapter.entity_to_pb(ent1),
+         key2.urlsafe(): self.ctx._conn.adapter.entity_to_pb(ent2)})
     foo().check_success()
 
   def testContext_CacheQuery(self):
