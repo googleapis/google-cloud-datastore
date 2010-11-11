@@ -247,6 +247,72 @@ class Future(object):
       all = set(f for f in all if f.state == cls.RUNNING)
       ev.run1()
 
+  def _help_task_along(fut, gen, val=None, exc=None, tb=None):
+    # XXX Docstring
+    info = utils.gen_info(gen)
+    __ndb_debug__ = info
+    try:
+      if exc is not None:
+        logging.debug('Throwing %s(%s) into %s',
+                      exc.__class__.__name__, exc, info)
+        value = gen.throw(exc.__class__, exc, tb)
+      else:
+        logging.debug('Sending %r to %s', val, info)
+        value = gen.send(val)
+
+    except StopIteration, err:
+      result = get_return_value(err)
+      logging.debug('%s returned %r', info, result)
+      fut.set_result(result)
+      return
+
+    except Exception, err:
+      _, _, tb = sys.exc_info()
+      logging.debug('%s raised %s(%s)', info, err.__class__.__name__, err)
+      fut.set_exception(err, tb)
+      return
+
+    else:
+      logging.debug('%s yielded %r', info, value)
+      if isinstance(value, datastore_rpc.MultiRpc):
+        # TODO: Tail recursion if the RPC is already complete.
+        if len(value.rpcs) == 1:
+          value = value.rpcs[0]
+          # Fall through to next isinstance test.
+        else:
+          assert False  # TODO: Support MultiRpc using MultiFuture.
+      if isinstance(value, UserRPC):
+        # TODO: Tail recursion if the RPC is already complete.
+        eventloop.queue_rpc(value, _on_rpc_completion, value, gen, fut)
+        return
+      if isinstance(value, Future):
+        # TODO: Tail recursion if the Future is already done.
+        value.add_callback(_on_future_completion, value, gen, fut)
+        return
+      if isinstance(value, (tuple, list)):
+        # Arrange for yield to return a list of results (not Futures).
+        # Since the subfutures may not finish in the given order, we
+        # keep track of the indexes separately.  (We can't store the
+        # indexes on the Futures because the same Future may be involved
+        # in multiple yields simultaneously.)
+        # TODO: Maybe not use MultiFuture, or do it another way?
+        indexes = {}
+        for index, subfuture in enumerate(value):
+          indexes[subfuture] = index
+        def reducer(state, subfuture):
+          # TODO: If any of the Futures has an exception, things go bad.
+          state[indexes[subfuture]] = subfuture.get_result()
+          return state
+        mfut = MultiFuture('yield %d items' % len(value), reducer, [None] * len(value))
+        for subfuture in value:
+          mfut.add_dependent(subfuture)
+        mfut.complete()
+        mfut.add_callback(_on_future_completion, mfut, gen, fut)
+        return
+      if is_generator(value):
+        assert False  # TODO: emulate PEP 380 here?
+      assert False  # A task shouldn't yield plain values.
+
 def sleep(dt):
   """Public function to sleep some time.
 
@@ -376,95 +442,29 @@ def task(func):
       # the "raise Return(...)" idiom, we'll extract the return value.
       result = get_return_value(err)
     if is_generator(result):
-      eventloop.queue_task(None, _help_task_along, result, fut)
+      eventloop.queue_task(None, fut._help_task_along, result)
     else:
       fut.set_result(result)
     return fut
 
   return task_wrapper
 
-def _help_task_along(gen, fut, val=None, exc=None, tb=None):
-  # XXX Docstring
-  info = utils.gen_info(gen)
-  __ndb_debug__ = info
-  try:
-    if exc is not None:
-      logging.debug('Throwing %s(%s) into %s',
-                    exc.__class__.__name__, exc, info)
-      value = gen.throw(exc.__class__, exc, tb)
-    else:
-      logging.debug('Sending %r to %s', val, info)
-      value = gen.send(val)
-
-  except StopIteration, err:
-    result = get_return_value(err)
-    logging.debug('%s returned %r', info, result)
-    fut.set_result(result)
-    return
-
-  except Exception, err:
-    _, _, tb = sys.exc_info()
-    logging.debug('%s raised %s(%s)', info, err.__class__.__name__, err)
-    fut.set_exception(err, tb)
-    return
-
-  else:
-    logging.debug('%s yielded %r', info, value)
-    if isinstance(value, datastore_rpc.MultiRpc):
-      # TODO: Tail recursion if the RPC is already complete.
-      if len(value.rpcs) == 1:
-        value = value.rpcs[0]
-        # Fall through to next isinstance test.
-      else:
-        assert False  # TODO: Support MultiRpc using MultiFuture.
-    if isinstance(value, UserRPC):
-      # TODO: Tail recursion if the RPC is already complete.
-      eventloop.queue_rpc(value, _on_rpc_completion, value, gen, fut)
-      return
-    if isinstance(value, Future):
-      # TODO: Tail recursion if the Future is already done.
-      value.add_callback(_on_future_completion, value, gen, fut)
-      return
-    if isinstance(value, (tuple, list)):
-      # Arrange for yield to return a list of results (not Futures).
-      # Since the subfutures may not finish in the given order, we
-      # keep track of the indexes separately.  (We can't store the
-      # indexes on the Futures because the same Future may be involved
-      # in multiple yields simultaneously.)
-      # TODO: Maybe not use MultiFuture, or do it another way?
-      indexes = {}
-      for index, subfuture in enumerate(value):
-        indexes[subfuture] = index
-      def reducer(state, subfuture):
-        # TODO: If any of the Futures has an exception, things go bad.
-        state[indexes[subfuture]] = subfuture.get_result()
-        return state
-      mfut = MultiFuture('yield %d items' % len(value), reducer, [None] * len(value))
-      for subfuture in value:
-        mfut.add_dependent(subfuture)
-      mfut.complete()
-      mfut.add_callback(_on_future_completion, mfut, gen, fut)
-      return
-    if is_generator(value):
-      assert False  # TODO: emulate PEP 380 here?
-    assert False  # A task shouldn't yield plain values.
-
 def _on_rpc_completion(rpc, gen, fut):
   try:
     result = rpc.get_result()
   except Exception, err:
     _, _, tb = sys.exc_info()
-    _help_task_along(gen, fut, exc=err, tb=tb)
+    fut._help_task_along(gen, exc=err, tb=tb)
   else:
-    _help_task_along(gen, fut, result)
+    fut._help_task_along(gen, result)
 
 def _on_future_completion(future, gen, fut):
   exc = future.get_exception()
   if exc is not None:
-    _help_task_along(gen, fut, exc=exc, tb=future.get_traceback())
+    fut._help_task_along(gen, exc=exc, tb=future.get_traceback())
   else:
     val = future.get_result()  # This better not raise an exception.
-    _help_task_along(gen, fut, val)
+    fut._help_task_along(gen, val)
 
 def taskify(func):
   """Decorator to run a function as a task when called.
