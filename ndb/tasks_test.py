@@ -159,7 +159,7 @@ class TaskTests(unittest.TestCase):
       assert fut.done()
       val = fut.get_result()
       return result + val
-    mfut = tasks.MultiFuture(reducer, 0)
+    mfut = tasks.MultiFuture(None, reducer, 0)
     for i in range(10):
       mfut.add_dependent(foo(i))
     mfut.complete()

@@ -68,7 +68,7 @@ from google.appengine.api.apiproxy_stub_map import UserRPC
 from google.appengine.api.apiproxy_rpc import RPC
 
 from core import datastore_rpc
-from ndb import eventloop
+from ndb import eventloop, utils
 
 def is_generator(obj):
   """Helper to test for a generator object.
@@ -97,21 +97,16 @@ class Future(object):
 
   # XXX Add docstrings to all methods.  Separate PEP 3148 API from RPC API.
 
-  def __init__(self):
+  def __init__(self, info=None):
     # TODO: Make done a method, to match PEP 3148?
+    __ndb_debug__ = 'SKIP'  # Hide this frame from self._where
+    self._info = info  # Info from the caller about this Future's purpose.
     self._done = False
     self._result = None
     self._exception = None
     self._traceback = None
     self._callbacks = []
-    here = globals()
-    frame = sys._getframe()
-    while frame.f_globals is here:
-      frame = frame.f_back
-    code = frame.f_code
-    self._lineno = frame.f_lineno
-    self._filename = code.co_filename
-    self._funcname = code.co_name
+    self._where = utils.get_stack()
 
   # TODO: Add a __del__ that complains if neither get_exception() nor
   # check_success() was ever called?  What if it's not even done?
@@ -125,10 +120,17 @@ class Future(object):
         state = 'result %r' % (self._result,)
     else:
       state = 'pending'
-    return '<%s %x created by %s(%s:%s) %s>' % (
-      self.__class__.__name__, id(self),
-      self._funcname, os.path.basename(self._filename),
-      self._lineno, state)
+    line = '?'
+    for line in self._where:
+      if 'ndb/tasks.py' not in line:
+        break
+    if self._info:
+      line += ' for %s;' % self._info
+    return '<%s %x created by %s %s>' % (
+      self.__class__.__name__, id(self), line, state)
+
+  def dump(self):
+    return '%s\nCreated by %s' % (self, '\n called by '.join(self._where))
 
   def add_done_callback(self, callback):
     if self._done:
@@ -174,7 +176,8 @@ class Future(object):
     ev = eventloop.get_event_loop()
     while not self._done:
       if not ev.run1():
-        raise RuntimeError('Empty queues waiting for %s' % self)
+        logging.info('Deadlock in %s', self.dump())
+        self.set_exception(RuntimeError('Deadlock waiting for %s' % self))
 
   def get_exception(self):
     self.wait()
@@ -220,7 +223,7 @@ def sleep(dt):
   Example:
     yield tasks.sleep(0.5)  # Sleep for half a sec.
   """
-  fut = Future()
+  fut = Future('sleep(%.3f)' % dt)
   eventloop.queue_task(dt, fut.set_result, None)
   return fut
 
@@ -253,8 +256,8 @@ class MultiFuture(Future):
   its completion to the MultiFuture.
   """
 
-  def __init__(self, reducer=None, initial=None):
-    super(MultiFuture, self).__init__()
+  def __init__(self, info=None, reducer=None, initial=None):
+    super(MultiFuture, self).__init__(info)
     self._dependents = set()
     self._full = False
     self._reducer = reducer
@@ -313,13 +316,15 @@ def get_return_value(err):
 def task(func):
   # XXX Docstring
 
+  @utils.wrapping(func)
   def task_wrapper(*args, **kwds):
     # XXX Docstring
 
     # TODO: make most of this a public function so you can take a bare
     # generator and turn it into a task dynamically.  (Monocle has
     # this I believe.)
-    fut = Future()
+    # __ndb_debug__ = utils.func_info(func)
+    fut = Future('task %s' % utils.func_info(func))
     try:
       result = func(*args, **kwds)
     except StopIteration, err:
@@ -390,7 +395,7 @@ def _help_task_along(gen, fut, val=None, exc=None, tb=None):
         # TODO: If any of the Futures has an exception, things go bad.
         state[indexes[subfuture]] = subfuture.get_result()
         return state
-      mfut = MultiFuture(reducer, [None] * len(value))
+      mfut = MultiFuture('yield %d items' % len(value), reducer, [None] * len(value))
       for subfuture in value:
         mfut.add_dependent(subfuture)
       mfut.complete()
@@ -426,8 +431,10 @@ def taskify(func):
   some web application framework (e.g. a Django view function or a
   webapp.RequestHandler.get method).
   """
-  taskfunc = task(func)
+  @utils.wrapping(func)
   def taskify_wrapper(*args):
+    __ndb_debug__ = utils.func_info(func)
+    taskfunc = task(func)
     return taskfunc(*args).get_result()
   return taskify_wrapper
 

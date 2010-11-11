@@ -8,7 +8,7 @@ from google.appengine.api import memcache
 
 from core import datastore_rpc
 
-from ndb import model, tasks, eventloop
+from ndb import model, tasks, eventloop, utils
 
 class AutoBatcher(object):
 
@@ -189,7 +189,7 @@ class Context(object):
 
   def map_query(self, query, callback,
                 options=None, reducer=None, initial=None):
-    mfut = tasks.MultiFuture(reducer, initial)
+    mfut = tasks.MultiFuture('map_query', reducer, initial)
 
     @tasks.task
     def helper():
@@ -290,7 +290,9 @@ class Context(object):
 # TODO: Is this a good idea?
 def add_context(func):
   """Decorator that adds a fresh Context as self.ctx."""
+  @utils.wrapping(func)
   def add_context_wrapper(self, *args):
+    __ndb_debug__ = utils.func_info(func)
     self.ctx = Context()
     return func(self, *args)
   return add_context_wrapper
