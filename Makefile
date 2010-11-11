@@ -31,5 +31,8 @@ c cov cove cover coverage:
 serve:
 	$(GAE)/dev_appserver.py . --port $(PORT) --address $(ADDRESS)
 
+debug:
+	$(GAE)/dev_appserver.py . --port $(PORT) --address $(ADDRESS) --debug
+
 deploy:
 	appcfg.py update .
