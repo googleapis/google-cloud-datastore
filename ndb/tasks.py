@@ -247,9 +247,7 @@ class Future(object):
       all = set(f for f in all if f.state == cls.RUNNING)
       ev.run1()
 
-  # TODO: s/fut/self/
-
-  def _help_task_along(fut, gen, val=None, exc=None, tb=None):
+  def _help_task_along(self, gen, val=None, exc=None, tb=None):
     # XXX Docstring
     info = utils.gen_info(gen)
     __ndb_debug__ = info
@@ -265,13 +263,13 @@ class Future(object):
     except StopIteration, err:
       result = get_return_value(err)
       logging.debug('%s returned %r', info, result)
-      fut.set_result(result)
+      self.set_result(result)
       return
 
     except Exception, err:
       _, _, tb = sys.exc_info()
       logging.debug('%s raised %s(%s)', info, err.__class__.__name__, err)
-      fut.set_exception(err, tb)
+      self.set_exception(err, tb)
       return
 
     else:
@@ -285,11 +283,11 @@ class Future(object):
           assert False  # TODO: Support MultiRpc using MultiFuture.
       if isinstance(value, UserRPC):
         # TODO: Tail recursion if the RPC is already complete.
-        eventloop.queue_rpc(value, fut._on_rpc_completion, value, gen)
+        eventloop.queue_rpc(value, self._on_rpc_completion, value, gen)
         return
       if isinstance(value, Future):
         # TODO: Tail recursion if the Future is already done.
-        value.add_callback(fut._on_future_completion, value, gen)
+        value.add_callback(self._on_future_completion, value, gen)
         return
       if isinstance(value, (tuple, list)):
         # Arrange for yield to return a list of results (not Futures).
@@ -309,28 +307,28 @@ class Future(object):
         for subfuture in value:
           mfut.add_dependent(subfuture)
         mfut.complete()
-        mfut.add_callback(fut._on_future_completion, mfut, gen)
+        mfut.add_callback(self._on_future_completion, mfut, gen)
         return
       if is_generator(value):
         assert False  # TODO: emulate PEP 380 here?
       assert False  # A task shouldn't yield plain values.
 
-  def _on_rpc_completion(fut, rpc, gen):
+  def _on_rpc_completion(self, rpc, gen):
     try:
       result = rpc.get_result()
     except Exception, err:
       _, _, tb = sys.exc_info()
-      fut._help_task_along(gen, exc=err, tb=tb)
+      self._help_task_along(gen, exc=err, tb=tb)
     else:
-      fut._help_task_along(gen, result)
+      self._help_task_along(gen, result)
 
-  def _on_future_completion(fut, future, gen):
+  def _on_future_completion(self, future, gen):
     exc = future.get_exception()
     if exc is not None:
-      fut._help_task_along(gen, exc=exc, tb=future.get_traceback())
+      self._help_task_along(gen, exc=exc, tb=future.get_traceback())
     else:
       val = future.get_result()  # This better not raise an exception.
-      fut._help_task_along(gen, val)
+      self._help_task_along(gen, val)
 
 def sleep(dt):
   """Public function to sleep some time.
