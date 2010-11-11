@@ -157,7 +157,7 @@ class Future(object):
 
   def add_done_callback(self, callback):
     if self._done:
-      callback(self)
+      eventloop.queue_task(None, callback, self)
     else:
       self._callbacks.append(callback)
 
@@ -168,11 +168,7 @@ class Future(object):
     logging.debug('_all_pending: remove successful %s', self)
     self._all_pending.remove(self)
     for callback in self._callbacks:
-      try:
-        callback(self)
-      except Exception, err:
-        logging.exception('Exception in %s', callback.__name__)
-        raise
+      eventloop.queue_task(None, callback, self)
 
   def set_exception(self, exc, tb=None):
     assert isinstance(exc, BaseException)
@@ -186,7 +182,7 @@ class Future(object):
     else:
       logging.debug('_all_pending: not found %s', self)
     for callback in self._callbacks:
-      callback(self)
+      eventloop.queue_task(None, callback, self)
 
   def done(self):
     return self._done

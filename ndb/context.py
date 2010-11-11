@@ -65,7 +65,7 @@ class AutoBatcher(object):
         else:
           yield self._running
       else:
-        self._callback()
+        self._autobatcher_callback()
 
 # TODO: Rename?  To what?  Session???
 class Context(object):
@@ -95,6 +95,7 @@ class Context(object):
     memkeymap = dict((key, key.urlsafe()) for key in keys)
     results = memcache.get_multi(memkeymap.values())
     leftover = []
+##    del todo[1:]  # Uncommenting this creates an interesting bug.
     for fut, key in todo:
       mkey = memkeymap[key]
       if mkey in results:

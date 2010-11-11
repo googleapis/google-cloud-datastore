@@ -76,6 +76,7 @@ class TaskTests(unittest.TestCase):
     f.add_done_callback(self.universal_callback)
     self.assertEqual(self.log, [])  # Nothing happened yet.
     f.set_result(42)
+    eventloop.run()
     self.assertEqual(self.log, [(f,)])
 
   def testFuture_SetResult_AddDoneCallback(self):
@@ -83,12 +84,14 @@ class TaskTests(unittest.TestCase):
     f.set_result(42)
     self.assertEqual(f.get_result(), 42)
     f.add_done_callback(self.universal_callback)
+    eventloop.run()
     self.assertEqual(self.log, [(f,)])
 
   def testFuture_AddDoneCallback_SetException(self):
     f = tasks.Future()
     f.add_done_callback(self.universal_callback)
     f.set_exception(RuntimeError(42))
+    eventloop.run()
     self.assertEqual(self.log, [(f,)])
     self.assertEqual(f.done(), True)
 
@@ -109,6 +112,7 @@ class TaskTests(unittest.TestCase):
     while todo:
       f = tasks.Future.wait_any(todo)
       todo.remove(f)
+    eventloop.run()
     self.assertEqual(self.log, [(f,) for f in self.futs])
 
   def testFuture_WaitAll(self):
@@ -175,6 +179,7 @@ class TaskTests(unittest.TestCase):
     dep.wait()
     mfut.add_dependent(dep)
     mfut.complete()
+    eventloop.run()
     self.assertTrue(mfut.done())
     self.assertEqual(mfut.get_result(), [dep])
 
