@@ -24,19 +24,19 @@ class AutoBatcher(object):
       # which puts them at absolute time 0 (i.e. ASAP -- still on a
       # FIFO basis).  Callbacks explicitly scheduled with a delay of 0
       # are only run after all immediately runnable tasks have run.
-      eventloop.queue_task(0, self._callback)
+      eventloop.queue_task(0, self._autobatcher_callback)
     self._todo.append((fut, arg))
     return fut
 
-  def _callback(self, unused=None):
-    # The unused argument is for add_done_callback(self._callback) below.
+  def _autobatcher_callback(self, unused=None):
+    # The unused argument is so we can be used as a Future's done callback.
     if not self._todo:
       return
     if self._running is not None:
       # Another callback may still be running.
       if not self._running.done():
         # Wait for it to complete first, then try again.
-        self._running.add_done_callback(self._callback)
+        self._running.add_done_callback(self._autobatcher_callback)
         return
       self._running = None
     # We cannot postpone the inevitable any longer.
@@ -47,13 +47,17 @@ class AutoBatcher(object):
     self._running = self._todo_task(todo)
     # Add a callback to the Future to propagate exceptions,
     # since this Future is not normally checked otherwise.
-    self._running.add_done_callback(lambda fut: fut.check_success())
+    def fire_and_forget(fut):
+      logging.debug('fire_and_forget: %s', fut)
+      fut.check_success()
+    self._running.add_done_callback(fire_and_forget)
 
   @tasks.task
   def flush(self):
     while self._running or self._todo:
       if self._running:
         if self._running.done():
+          self._running.check_success()
           self._running = None
         else:
           yield self._running
