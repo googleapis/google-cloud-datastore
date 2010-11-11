@@ -91,10 +91,12 @@ class Context(object):
   def _get_task(self, todo):
     assert todo
     # First check memcache.
-    mkeys = [key.urlsafe() for _, key in todo]
-    results = memcache.get_multi(mkeys)
+    keys = set(key for _, key in todo)
+    memkeymap = dict((key, key.urlsafe()) for key in keys)
+    results = memcache.get_multi(memkeymap.values())
     leftover = []
-    for mkey, (fut, key) in zip(mkeys, todo):
+    for fut, key in todo:
+      mkey = memkeymap[key]
       if mkey in results:
         pb = results[mkey]
         ent = self._conn.adapter.pb_to_entity(pb)
@@ -110,6 +112,8 @@ class Context(object):
   @tasks.task
   def _put_task(self, todo):
     assert todo
+    # TODO: What if the same entity is being put twice?
+    # TODO: What if two entities with the same key are being put?
     ents = [ent for (_, ent) in todo]
     results = yield self._conn.async_put(None, ents)
     for key, (fut, ent) in zip(results, todo):
@@ -119,6 +123,7 @@ class Context(object):
       fut.set_result(key)
     # Now update memcache.
     # TODO: Could we update memcache *before* calling async_put()?
+    # (Hm, not for new entities but possibly for updated ones.)
     mapping = {}
     for _, ent in todo:
       pb = self._conn.adapter.entity_to_pb(ent)
@@ -134,7 +139,7 @@ class Context(object):
   @tasks.task
   def _delete_task(self, todo):
     assert todo
-    keys = [key for (_, key) in todo]
+    keys = set(key for (_, key) in todo)
     yield self._conn.async_delete(None, keys)
     for fut, _ in todo:
       fut.set_result(None)
@@ -175,6 +180,7 @@ class Context(object):
     if entity.key != key:
       logging.info('replacing key %s with %s', entity.key, key)
       entity.key = key
+    # TODO: For updated entities, could we update the cache first?
     if self.should_cache(key, entity):
       self._cache[key] = entity
     raise tasks.Return(key)
