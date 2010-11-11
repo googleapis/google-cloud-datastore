@@ -21,7 +21,7 @@ def get_stack(limit=10):
     locals = frame.f_locals
     ndb_debug = locals.get('__ndb_debug__')
     if ndb_debug != 'SKIP':
-      line = code_info(frame.f_code, frame.f_lineno)
+      line = frame_info(frame)
       if ndb_debug is not None:
         line += ' # ' + str(ndb_debug)
       lines.append(line)
@@ -31,6 +31,27 @@ def get_stack(limit=10):
 def func_info(func, lineno=None):
   code = func.func_code
   return code_info(code, lineno)
+
+def gen_info(gen):
+  frame = gen.gi_frame
+  if gen.gi_running:
+    prefix = 'running generator '
+  elif frame:
+    if frame.f_lasti < 0:
+      prefix = 'initial generator '
+    else:
+      prefix = 'suspended generator '
+  else:
+    prefix = 'terminated generator '
+  if frame:
+    return prefix + frame_info(frame)
+  code = getattr(gen, 'gi_code', None)
+  if code:
+    return prefix + code_info(code)
+  return prefix + hex(id(gen))
+
+def frame_info(frame):
+  return code_info(frame.f_code, frame.f_lineno)
 
 def code_info(code, lineno=None):
   funcname = code.co_name

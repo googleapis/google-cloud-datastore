@@ -172,7 +172,7 @@ class Future(object):
         callback(self)
       except Exception, err:
         logging.exception('Exception in %s', callback.__name__)
-        ##??XXX raise
+        raise
 
   def set_exception(self, exc, tb=None):
     assert isinstance(exc, BaseException)
@@ -290,10 +290,13 @@ class MultiFuture(Future):
   its completion to the MultiFuture.
   """
 
+  # TODO: Make this return the list of dependents in the order ADDED.
+  # TODO: Do we really need reducer and initial?
+
   def __init__(self, info=None, reducer=None, initial=None):
-    super(MultiFuture, self).__init__(info)
-    self._dependents = set()
     self._full = False
+    self._dependents = set()
+    super(MultiFuture, self).__init__(info)
     self._reducer = reducer
     self._result = initial
     if reducer is None:
@@ -301,6 +304,8 @@ class MultiFuture(Future):
       self._result = []
 
   def __repr__(self):
+    # TODO: This may be invoked before __init__() returns,
+    # from Future.__init__().  Beware.
     line = super(MultiFuture, self).__repr__()
     if self._full:
       line = line[:1] + 'Full ' + line[2:]
@@ -384,30 +389,31 @@ def task(func):
 
 def _help_task_along(gen, fut, val=None, exc=None, tb=None):
   # XXX Docstring
+  info = utils.gen_info(gen)
+  __ndb_debug__ = info
   try:
     if exc is not None:
       logging.debug('Throwing %s(%s) into %s',
-                    exc.__class__.__name__, exc, gen)
+                    exc.__class__.__name__, exc, info)
       value = gen.throw(exc.__class__, exc, tb)
     else:
-      logging.debug('Sending %r to %s', val, gen)
+      logging.debug('Sending %r to %s', val, info)
       value = gen.send(val)
 
   except StopIteration, err:
     result = get_return_value(err)
-    logging.debug('%s returned %r', gen, result)
+    logging.debug('%s returned %r', info, result)
     fut.set_result(result)
     return
 
   except Exception, err:
     _, _, tb = sys.exc_info()
-    logging.debug('%s raised %s(%s)',
-                  gen, err.__class__.__name__, err)
+    logging.debug('%s raised %s(%s)', info, err.__class__.__name__, err)
     fut.set_exception(err, tb)
     return
 
   else:
-    logging.debug('%s yielded %r', gen, value)
+    logging.debug('%s yielded %r', info, value)
     if isinstance(value, datastore_rpc.MultiRpc):
       # TODO: Tail recursion if the RPC is already complete.
       if len(value.rpcs) == 1:
