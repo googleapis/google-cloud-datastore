@@ -73,19 +73,6 @@ class Message(model.Model):
   userid = model.StringProperty()
 
 
-def taskify(func):
-  """Decorator to run a function as a task when called.
-
-  Use this to wrap a request handler function that will be called by
-  some web application framework (e.g. a Django view function or a
-  webapp.RequestHandler.get method).
-  """
-  taskfunc = tasks.task(func)
-  def taskify_wrapper(*args):
-    return taskfunc(*args).get_result()
-  return taskify_wrapper
-
-
 def account_key(userid):
   return model.Key(flat=['Account', userid])
 
@@ -109,7 +96,7 @@ def get_nickname(ctx, userid):
 class HomePage(webapp.RequestHandler):
 
   @context.add_context
-  @taskify
+  @tasks.taskify
   def get(self):
     nickname = 'Anonymous'
     user = users.get_current_user()
@@ -121,7 +108,7 @@ class HomePage(webapp.RequestHandler):
               }
     self.response.out.write(HOME_PAGE % values)
     query, options = self._make_query()
-    futs, count = yield self.ctx.map_query(query, self._callback, options)
+    futs, count = yield self.ctx.map_query(query, self._hp_callback, options)
     assert len(futs) == count
     pairs = [f.get_result() for f in futs]
     pairs.sort()
@@ -137,7 +124,7 @@ class HomePage(webapp.RequestHandler):
     return query, options
 
   @tasks.task
-  def _callback(self, message):
+  def _hp_callback(self, message):
     nickname = 'Anonymous'
     if message.userid:
       nickname = yield get_nickname(self.ctx, message.userid)
@@ -146,7 +133,7 @@ class HomePage(webapp.RequestHandler):
                                  cgi.escape(message.body))
     raise tasks.Return((-message.when, text))
 
-  @taskify
+  @tasks.taskify
   @context.add_context
   def post(self):
     # TODO: XSRF protection.
@@ -163,7 +150,7 @@ class HomePage(webapp.RequestHandler):
 
 class AccountPage(webapp.RequestHandler):
 
-  @taskify
+  @tasks.taskify
   @context.add_context
   def get(self):
     user = users.get_current_user()
@@ -190,7 +177,7 @@ class AccountPage(webapp.RequestHandler):
     self.response.out.write(ACCOUNT_PAGE % values)
 
   @context.add_context
-  @taskify
+  @tasks.taskify
   def post(self):
     # TODO: XSRF protection.
     user = users.get_current_user()
