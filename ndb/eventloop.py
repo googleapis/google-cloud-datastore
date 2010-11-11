@@ -151,8 +151,8 @@ def run():
 
 def run1():
   ev = get_event_loop()
-  ev.run1()
+  return ev.run1()
 
 def run0():
   ev = get_event_loop()
-  ev.run0()
+  return ev.run0()
