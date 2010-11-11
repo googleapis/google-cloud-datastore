@@ -173,7 +173,8 @@ class Future(object):
       return
     ev = eventloop.get_event_loop()
     while not self._done:
-      ev.run1()
+      if not ev.run1():
+        raise RuntimeError('Empty queues waiting for %s' % self)
 
   def get_exception(self):
     self.wait()
@@ -337,21 +338,28 @@ def _help_task_along(gen, fut, val=None, exc=None, tb=None):
   # XXX Docstring
   try:
     if exc is not None:
+      logging.debug('Throwing %s(%s) into %s',
+                    exc.__class__.__name__, exc, gen)
       value = gen.throw(exc.__class__, exc, tb)
     else:
+      logging.debug('Sending %r to %s', val, gen)
       value = gen.send(val)
 
   except StopIteration, err:
     result = get_return_value(err)
+    logging.debug('%s returned %r', gen, result)
     fut.set_result(result)
     return
 
   except Exception, err:
     _, _, tb = sys.exc_info()
+    logging.debug('%s raised %s(%s)',
+                  gen, err.__class__.__name__, err)
     fut.set_exception(err, tb)
     return
 
   else:
+    logging.debug('%s yielded %r', gen, value)
     if isinstance(value, datastore_rpc.MultiRpc):
       # TODO: Tail recursion if the RPC is already complete.
       if len(value.rpcs) == 1:
@@ -410,6 +418,18 @@ def _on_future_completion(future, gen, fut):
   else:
     val = future.get_result()  # This better not raise an exception.
     _help_task_along(gen, fut, val)
+
+def taskify(func):
+  """Decorator to run a function as a task when called.
+
+  Use this to wrap a request handler function that will be called by
+  some web application framework (e.g. a Django view function or a
+  webapp.RequestHandler.get method).
+  """
+  taskfunc = task(func)
+  def taskify_wrapper(*args):
+    return taskfunc(*args).get_result()
+  return taskify_wrapper
 
 # TODO: Rework the following into documentation.
 
