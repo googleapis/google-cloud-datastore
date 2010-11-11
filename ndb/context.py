@@ -88,21 +88,20 @@ class Context(object):
   def _get_task(self, todo):
     assert todo
     # First check memcache.
-    keymap = {}
-    for fut, key in todo:
-      keymap[key.urlsafe()] = fut, key
-    results = memcache.get_multi(keymap.keys())
-    for mkey, pb in results.iteritems():
-      fut, key = keymap[mkey]
-      ent = self._conn.adapter.pb_to_entity(pb)
-      fut.set_result(ent)
-      del keymap[mkey]
-    # Go to the datastore if anything left in keymap.
-    if keymap:
-      todo = keymap.values()
-      keys = [key for (_, key) in todo]
+    mkeys = [key.urlsafe() for _, key in todo]
+    results = memcache.get_multi(mkeys)
+    leftover = []
+    for mkey, (fut, key) in zip(mkeys, todo):
+      if mkey in results:
+        pb = results[mkey]
+        ent = self._conn.adapter.pb_to_entity(pb)
+        fut.set_result(ent)
+      else:
+        leftover.append((fut, key))
+    if leftover:
+      keys = [key for (_, key) in leftover]
       results = yield self._conn.async_get(None, keys)
-      for ent, (fut, _) in zip(results, todo):
+      for ent, (fut, _) in zip(results, leftover):
         fut.set_result(ent)
 
   @tasks.task
