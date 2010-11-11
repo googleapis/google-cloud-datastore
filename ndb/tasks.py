@@ -155,11 +155,11 @@ class Future(object):
       all.append(line)
     return '\n'.join(all)
 
-  def add_done_callback(self, callback):
+  def add_callback(self, callback, *args, **kwds):
     if self._done:
-      eventloop.queue_task(None, callback, self)
+      eventloop.queue_task(None, callback, *args, **kwds)
     else:
-      self._callbacks.append(callback)
+      self._callbacks.append((callback, args, kwds))
 
   def set_result(self, result):
     assert not self._done
@@ -167,8 +167,8 @@ class Future(object):
     self._done = True
     logging.debug('_all_pending: remove successful %s', self)
     self._all_pending.remove(self)
-    for callback in self._callbacks:
-      eventloop.queue_task(None, callback, self)
+    for callback, args, kwds  in self._callbacks:
+      eventloop.queue_task(None, callback, *args, **kwds)
 
   def set_exception(self, exc, tb=None):
     assert isinstance(exc, BaseException)
@@ -181,8 +181,8 @@ class Future(object):
       self._all_pending.remove(self)
     else:
       logging.debug('_all_pending: not found %s', self)
-    for callback in self._callbacks:
-      eventloop.queue_task(None, callback, self)
+    for callback, args, kwds in self._callbacks:
+      eventloop.queue_task(None, callback, *args, **kwds)
 
   def done(self):
     return self._done
@@ -322,7 +322,7 @@ class MultiFuture(Future):
     assert not self._full
     if fut not in self._dependents:
       self._dependents.add(fut)
-      fut.add_done_callback(self.signal_dependent_done)
+      fut.add_callback(self.signal_dependent_done, fut)
 
   def signal_dependent_done(self, fut):
     self.process_value(fut)
@@ -423,8 +423,7 @@ def _help_task_along(gen, fut, val=None, exc=None, tb=None):
       return
     if isinstance(value, Future):
       # TODO: Tail recursion if the Future is already done.
-      value.add_done_callback(
-          lambda val: _on_future_completion(val, gen, fut))
+      value.add_callback(_on_future_completion, value, gen, fut)
       return
     if isinstance(value, (tuple, list)):
       # Arrange for yield to return a list of results (not Futures).
@@ -444,9 +443,7 @@ def _help_task_along(gen, fut, val=None, exc=None, tb=None):
       for subfuture in value:
         mfut.add_dependent(subfuture)
       mfut.complete()
-      def ohohoh(val):
-        _on_future_completion(val, gen, fut)
-      mfut.add_done_callback(ohohoh)
+      mfut.add_callback(_on_future_completion, mfut, gen, fut)
       return
     if is_generator(value):
       assert False  # TODO: emulate PEP 380 here?

@@ -26,6 +26,8 @@ FINISHING = RPC.FINISHING
 class EventLoop(object):
   """An event loop."""
 
+  # TODO: Use a separate queue for tasks with delay=None.
+
   def __init__(self):
     """Constructor."""
     self.queue = []

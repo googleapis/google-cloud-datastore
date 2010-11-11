@@ -208,7 +208,7 @@ class TaskTests(unittest.TestCase):
       res2 = yield fut2
       raise tasks.Return([res1, res2])
     res1, res2 = foo().get_result()
-    self.assertEqual(res1, [1, 2, 3])
+    self.assertEqual(set(res1), set([1, 2, 3]))
     self.assertEqual(res2, 3)
 
   def testContext_MapQuery_NonTaskCallback(self):

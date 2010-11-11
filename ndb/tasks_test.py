@@ -73,7 +73,7 @@ class TaskTests(unittest.TestCase):
 
   def testFuture_AddDoneCallback_SetResult(self):
     f = tasks.Future()
-    f.add_done_callback(self.universal_callback)
+    f.add_callback(self.universal_callback, f)
     self.assertEqual(self.log, [])  # Nothing happened yet.
     f.set_result(42)
     eventloop.run()
@@ -83,13 +83,13 @@ class TaskTests(unittest.TestCase):
     f = tasks.Future()
     f.set_result(42)
     self.assertEqual(f.get_result(), 42)
-    f.add_done_callback(self.universal_callback)
+    f.add_callback(self.universal_callback, f)
     eventloop.run()
     self.assertEqual(self.log, [(f,)])
 
   def testFuture_AddDoneCallback_SetException(self):
     f = tasks.Future()
-    f.add_done_callback(self.universal_callback)
+    f.add_callback(self.universal_callback, f)
     f.set_exception(RuntimeError(42))
     eventloop.run()
     self.assertEqual(self.log, [(f,)])
@@ -99,7 +99,7 @@ class TaskTests(unittest.TestCase):
     self.futs = []
     for i in range(5):
       f = tasks.Future()
-      f.add_done_callback(self.universal_callback)
+      f.add_callback(self.universal_callback, f)
       def wake(fut, result):
         fut.set_result(result)
       self.ev.queue_task(i*0.01, wake, f, i)

@@ -31,15 +31,14 @@ class AutoBatcher(object):
     self._todo.append((fut, arg))
     return fut
 
-  def _autobatcher_callback(self, unused=None):
-    # The unused argument is so we can be used as a Future's done callback.
+  def _autobatcher_callback(self):
     if not self._todo:
       return
     if self._running is not None:
       # Another callback may still be running.
       if not self._running.done():
         # Wait for it to complete first, then try again.
-        self._running.add_done_callback(self._autobatcher_callback)
+        self._running.add_callback(self._autobatcher_callback)
         return
       self._running = None
     # We cannot postpone the inevitable any longer.
@@ -50,10 +49,7 @@ class AutoBatcher(object):
     self._running = self._todo_task(todo)
     # Add a callback to the Future to propagate exceptions,
     # since this Future is not normally checked otherwise.
-    def fire_and_forget(fut):
-      logging.debug('fire_and_forget: %s', fut)
-      fut.check_success()
-    self._running.add_done_callback(fire_and_forget)
+    self._running.add_callback(self._running.check_success)
 
   @tasks.task
   def flush(self):
