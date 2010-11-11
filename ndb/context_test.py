@@ -257,7 +257,7 @@ class TaskTests(unittest.TestCase):
 
   def testAddContextDecorator(self):
     class Demo(object):
-      @context.add_context
+      @context.toplevel
       def method(self, arg):
         return (self.ctx, arg)
     a = Demo()
