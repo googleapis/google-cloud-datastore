@@ -163,7 +163,7 @@ class HomePage(webapp.RequestHandler):
           if m:
             title = m.group(1)
           summary = UrlSummary(key=key, url=url, title=title,
-                               when=int(time.time()))
+                               when=time.time())
           yield self.ctx.put(summary)
       hover = ''
       if summary.title:
@@ -185,7 +185,7 @@ class HomePage(webapp.RequestHandler):
       user = users.get_current_user()
       if user:
         userid = user.user_id()
-      message = Message(body=body, when=int(time.time()), userid=userid)
+      message = Message(body=body, when=time.time(), userid=userid)
       yield self.ctx.put(message)  # Synchronous.
     self.redirect('/')
 
