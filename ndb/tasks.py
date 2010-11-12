@@ -99,6 +99,8 @@ class Future(object):
 
   # XXX Add docstrings to all methods.  Separate PEP 3148 API from RPC API.
 
+  _geninfo = None  # Extra info about suspended generator.
+
   def __init__(self, info=None):
     # TODO: Make done a method, to match PEP 3148?
     __ndb_debug__ = 'SKIP'  # Hide this frame from self._where
@@ -131,6 +133,8 @@ class Future(object):
         break
     if self._info:
       line += ' for %s;' % self._info
+    if self._geninfo:
+      line += ' %s;' % self._geninfo
     return '<%s %x created by %s %s>' % (
       self.__class__.__name__, id(self), line, state)
 
@@ -298,6 +302,7 @@ class Future(object):
         # TODO: Tail recursion if the Future is already done.
         assert not self._next, self._next
         self._next = value
+        self._geninfo = utils.gen_info(gen)
         logging.debug('%s is now blocked waiting for %s', self, value)
         value.add_callback(self._on_future_completion, value, gen)
         return
@@ -315,7 +320,8 @@ class Future(object):
           # TODO: If any of the Futures has an exception, things go bad.
           state[indexes[subfuture]] = subfuture.get_result()
           return state
-        mfut = MultiFuture('yield %d items' % len(value), reducer, [None] * len(value))
+        info = 'multi-yield from ' + utils.gen_info(gen)
+        mfut = MultiFuture(info, reducer, [None] * len(value))
         for subfuture in value:
           mfut.add_dependent(subfuture)
         mfut.complete()
@@ -337,6 +343,7 @@ class Future(object):
   def _on_future_completion(self, future, gen):
     if self._next is future:
       self._next = None
+      self._geninfo = None
       logging.debug('%s is no longer blocked waiting for %s', self, future)
     exc = future.get_exception()
     if exc is not None:
@@ -401,8 +408,6 @@ class MultiFuture(Future):
     # TODO: This may be invoked before __init__() returns,
     # from Future.__init__().  Beware.
     line = super(MultiFuture, self).__repr__()
-    if self._full:
-      line = line[:1] + 'Full ' + line[1:]
     lines = [line]
     for fut in self._dependents:
       lines.append(fut.dump_stack().replace('\n', '\n  '))
