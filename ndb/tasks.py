@@ -111,6 +111,7 @@ class Future(object):
     self._where = utils.get_stack()
     logging.debug('_all_pending: add %s', self)
     self._all_pending.add(self)
+    self._next = None  # Links suspended Futures together in a stack.
 
   # TODO: Add a __del__ that complains if neither get_exception() nor
   # check_success() was ever called?  What if it's not even done?
@@ -134,7 +135,15 @@ class Future(object):
       self.__class__.__name__, id(self), line, state)
 
   def dump(self):
-    return '%s\nCreated by %s' % (self, '\n called by '.join(self._where))
+    return '%s\nCreated by %s' % (self.dump_stack(), '\n called by '.join(self._where))
+
+  def dump_stack(self):
+    lines = []
+    fut = self
+    while fut is not None:
+      lines.append(str(fut))
+      fut = fut._next
+    return '\n waiting for '.join(lines)
 
   @classmethod
   def clear_all_pending(cls):
@@ -149,9 +158,9 @@ class Future(object):
     all = []
     for fut in cls._all_pending:
       if verbose:
-        line = fut.dump()
+        line = fut.dump() + ('\n' + '-'*40)
       else:
-        line = str(fut)
+        line = fut.dump_stack()
       all.append(line)
     return '\n'.join(all)
 
@@ -287,6 +296,9 @@ class Future(object):
         return
       if isinstance(value, Future):
         # TODO: Tail recursion if the Future is already done.
+        assert not self._next, self._next
+        self._next = value
+        logging.debug('%s is now blocked waiting for %s', self, value)
         value.add_callback(self._on_future_completion, value, gen)
         return
       if isinstance(value, (tuple, list)):
@@ -323,11 +335,14 @@ class Future(object):
       self._help_task_along(gen, result)
 
   def _on_future_completion(self, future, gen):
+    if self._next is future:
+      self._next = None
+      logging.debug('%s is no longer blocked waiting for %s', self, future)
     exc = future.get_exception()
     if exc is not None:
       self._help_task_along(gen, exc=exc, tb=future.get_traceback())
     else:
-      val = future.get_result()  # This better not raise an exception.
+      val = future.get_result()  # This won't raise an exception.
       self._help_task_along(gen, val)
 
 def sleep(dt):
@@ -390,7 +405,7 @@ class MultiFuture(Future):
       line = line[:1] + 'Full ' + line[1:]
     lines = [line]
     for fut in self._dependents:
-      lines.append(repr(fut))
+      lines.append(fut.dump_stack().replace('\n', '\n  '))
     return '\n waiting for '.join(lines)
 
   # TODO: Rename this method?  (But to what?)
