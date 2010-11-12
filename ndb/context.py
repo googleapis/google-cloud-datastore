@@ -1,5 +1,8 @@
 """Context class."""
 
+# TODO: Handle things like request size limits.  E.g. what if we've
+# batched up 1000 entities to put and now the memcache call fails?
+
 import logging
 import sys
 
