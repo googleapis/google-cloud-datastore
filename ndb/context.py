@@ -76,6 +76,8 @@ class Context(object):
     self._delete_batcher = auto_batcher_class(self._delete_task)
     self._cache = {}
     self._cache_policy = None
+    self._memcache_policy = None
+    # TODO: Also add a way to compute the memcache expiration time.
 
   @tasks.task
   def flush(self):
@@ -88,22 +90,25 @@ class Context(object):
     assert todo
     # First check memcache.
     keys = set(key for _, key in todo)
-    memkeymap = dict((key, key.urlsafe()) for key in keys)
-    results = memcache.get_multi(memkeymap.values())
-    leftover = []
-##    del todo[1:]  # Uncommenting this creates an interesting bug.
-    for fut, key in todo:
-      mkey = memkeymap[key]
-      if mkey in results:
-        pb = results[mkey]
-        ent = self._conn.adapter.pb_to_entity(pb)
-        fut.set_result(ent)
-      else:
-        leftover.append((fut, key))
-    if leftover:
-      keys = [key for (_, key) in leftover]
+    memkeymap = dict((key, key.urlsafe())
+                     for key in keys if self.should_memcache(key))
+    if memkeymap:
+      results = memcache.get_multi(memkeymap.values())
+      leftover = []
+##      del todo[1:]  # Uncommenting this creates an interesting bug.
+      for fut, key in todo:
+        mkey = memkeymap[key]
+        if mkey in results:
+          pb = results[mkey]
+          ent = self._conn.adapter.pb_to_entity(pb)
+          fut.set_result(ent)
+        else:
+          leftover.append((fut, key))
+      todo = leftover
+    if todo:
+      keys = [key for (_, key) in todo]
       results = yield self._conn.async_get(None, keys)
-      for ent, (fut, _) in zip(results, leftover):
+      for ent, (fut, _) in zip(results, todo):
         fut.set_result(ent)
 
   @tasks.task
@@ -123,15 +128,19 @@ class Context(object):
     # (Hm, not for new entities but possibly for updated ones.)
     mapping = {}
     for _, ent in todo:
-      pb = self._conn.adapter.entity_to_pb(ent)
-      mapping[ent.key.urlsafe()] = pb
-    failures = memcache.set_multi(mapping)
-    if failures:
-      badkeys = []
-      for failure in failures:
-        badkeys.append(mapping[failure].key)
-      logging.info('memcache failed to set %d out of %d keys: %s',
-                   len(failures), len(mapping), badkeys)
+      if self.should_memcache(ent.key):
+        pb = self._conn.adapter.entity_to_pb(ent)
+        mapping[ent.key.urlsafe()] = pb
+    if mapping:
+      # TODO: Optionally set the memcache expiration time;
+      # maybe configurable based on key (or even entity).
+      failures = memcache.set_multi(mapping)
+      if failures:
+        badkeys = []
+        for failure in failures:
+          badkeys.append(mapping[failure].key)
+        logging.info('memcache failed to set %d out of %d keys: %s',
+                     len(failures), len(mapping), badkeys)
 
   @tasks.task
   def _delete_task(self, todo):
@@ -141,18 +150,27 @@ class Context(object):
     for fut, _ in todo:
       fut.set_result(None)
     # Now update memcache.
-    memkeys = [key.urlsafe() for key in keys]
-    memcache.delete_multi(memkeys)
-    # The value returned by delete_multi() is pretty much useless, it
-    # could be the keys were never cached in the first place.
+    memkeys = [key.urlsafe() for key in keys if self.should_memcache(key)]
+    if memkeys:
+      memcache.delete_multi(memkeys)
+      # The value returned by delete_multi() is pretty much useless, it
+      # could be the keys were never cached in the first place.
 
   def set_cache_policy(self, func):
     self._cache_policy = func
 
-  def should_cache(self, key, entity):
+  def should_cache(self, key):
     if self._cache_policy is None:
       return True
-    return self._cache_policy(key, entity)
+    return self._cache_policy(key)
+
+  def set_memcache_policy(self, func):
+    self._memcache_policy = func
+
+  def should_memcache(self, key):
+    if self._memcache_policy is None:
+      return True
+    return self._memcache_policy(key)
 
   # TODO: What about conflicting requests to different autobatchers,
   # e.g. task A calls get() on a given key while task B calls
@@ -167,7 +185,7 @@ class Context(object):
       entity = self._cache[key]  # May be None, meaning "doesn't exist".
     else:
       entity = yield self._get_batcher.add(key)
-      if self.should_cache(key, entity):
+      if self.should_cache(key):
         self._cache[key] = entity
     raise tasks.Return(entity)
 
@@ -178,7 +196,7 @@ class Context(object):
       logging.info('replacing key %s with %s', entity.key, key)
       entity.key = key
     # TODO: For updated entities, could we update the cache first?
-    if self.should_cache(key, entity):
+    if self.should_cache(key):
       self._cache[key] = entity
     raise tasks.Return(key)
 
@@ -219,7 +237,7 @@ class Context(object):
               logging.info('Conflict: entity %s was modified', key)
             ent = self._cache[key]
           else:
-            if self.should_cache(key, ent):
+            if self.should_cache(key):
               self._cache[key] = ent
           count += 1
           val = callback(ent)  # TODO: If this raises something, log and ignore
@@ -250,6 +268,7 @@ class Context(object):
         entity_group=entity_group)
       tctx = self.__class__(conn=tconn,
                             auto_batcher_class=self._auto_batcher_class)
+      tctx.set_memcache_policy(lambda key: False)
       fut = callback(tctx)
       assert isinstance(fut, tasks.Future)
       try:
@@ -265,10 +284,17 @@ class Context(object):
         ok = yield tconn.async_commit(None)
         if ok:
           self._cache.update(tctx._cache)
+          self._flush_memcache(tctx._cache)
           raise tasks.Return(result)
     # Out of retries
     raise datastore_errors.TransactionFailedError(
       'The transaction could not be committed. Please try again.')
+
+  def _flush_memcache(self, keys):
+    keys = set(key for key in keys if self.should_memcache(key))
+    if keys:
+      memkeys = [key.urlsafe() for key in keys]
+      memcache.delete_multi(memkeys)
 
   @tasks.task
   def get_or_insert(self, model_class, name, parent=None, **kwds):

@@ -125,7 +125,7 @@ class TaskTests(unittest.TestCase):
     foo().check_success()
 
   def testContext_CachePolicy(self):
-    def should_cache(key, entity):
+    def should_cache(key):
       return False
     @tasks.task
     def foo():
