@@ -78,6 +78,8 @@ class Message(model.Model):
 class UrlSummary(model.Model):
   """Metadata about a URL."""
 
+  MAX_AGE = 60
+
   url = model.StringProperty()
   title = model.StringProperty()
   when = model.FloatProperty()
@@ -149,7 +151,7 @@ class HomePage(webapp.RequestHandler):
       title = ''
       key = model.Key(flat=[UrlSummary.GetKind(), url])
       summary = yield self.ctx.get(key)
-      if not summary or summary.when < time.time() - 15:
+      if not summary or summary.when < time.time() - UrlSummary.MAX_AGE:
         rpc = urlfetch.create_rpc(deadline=0.5)
         urlfetch.make_fetch_call(rpc, url,allow_truncated=True)
         t0 = time.time()
@@ -161,7 +163,7 @@ class HomePage(webapp.RequestHandler):
           bodytext = result.content
           m = re.search(r'(?i)<title>([^<]+)</title>', bodytext)
           if m:
-            title = m.group(1)
+            title = m.group(1).strip()
           summary = UrlSummary(key=key, url=url, title=title,
                                when=time.time())
           yield self.ctx.put(summary)
