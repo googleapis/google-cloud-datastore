@@ -376,6 +376,17 @@ class IntegerProperty(Property):
       return None
     return int(v.int64value())
 
+class FloatProperty(Property):
+
+  def DbSetValue(self, v, p, value):
+    assert isinstance(value, (bool, int, long, float)), (self.name)
+    v.set_doublevalue(float(value))
+
+  def DbGetValue(self, v, p):
+    if not v.has_doublevalue():
+      return None
+    return v.doublevalue()
+
 class StringProperty(Property):
 
   def DbSetValue(self, v, p, value):

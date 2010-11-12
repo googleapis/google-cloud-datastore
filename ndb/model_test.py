@@ -28,6 +28,13 @@ entity_group <
   }
 >
 property <
+  name: "d"
+  value <
+    doubleValue: 2.5
+  >
+  multiple: false
+>
+property <
   name: "k"
   value <
     ReferenceValue {
@@ -385,6 +392,7 @@ class ModelTests(unittest.TestCase):
     class MyModel(model.Model):
       p = model.IntegerProperty()
       q = model.StringProperty()
+      d = model.FloatProperty()
       k = model.KeyProperty()
 
     ent = MyModel()
@@ -392,9 +400,11 @@ class ModelTests(unittest.TestCase):
     ent.key = k
     MyModel.p.SetValue(ent, 42)
     MyModel.q.SetValue(ent, 'hello')
+    MyModel.d.SetValue(ent, 2.5)
     MyModel.k.SetValue(ent, k)
     self.assertEqual(MyModel.p.GetValue(ent), 42)
     self.assertEqual(MyModel.q.GetValue(ent), 'hello')
+    self.assertEqual(MyModel.d.GetValue(ent), 2.5)
     self.assertEqual(MyModel.k.GetValue(ent), k)
     pb = model.conn.adapter.entity_to_pb(ent)
     self.assertEqual(str(pb), INDEXED_PB)
@@ -406,6 +416,7 @@ class ModelTests(unittest.TestCase):
     self.assertEqual(ent.key, k)
     self.assertEqual(MyModel.p.GetValue(ent), 42)
     self.assertEqual(MyModel.q.GetValue(ent), 'hello')
+    self.assertEqual(MyModel.d.GetValue(ent), 2.5)
     self.assertEqual(MyModel.k.GetValue(ent), k)
 
   def testUnindexedProperty(self):
@@ -516,6 +527,7 @@ class ModelTests(unittest.TestCase):
     class MyModel(model.Model):
       pp = model.IntegerProperty('p')
       qq = model.StringProperty('q')
+      dd = model.FloatProperty('d')
       kk = model.KeyProperty('k')
 
     ent = MyModel()
@@ -523,9 +535,11 @@ class ModelTests(unittest.TestCase):
     ent.key = k
     MyModel.pp.SetValue(ent, 42)
     MyModel.qq.SetValue(ent, 'hello')
+    MyModel.dd.SetValue(ent, 2.5)
     MyModel.kk.SetValue(ent, k)
     self.assertEqual(MyModel.pp.GetValue(ent), 42)
     self.assertEqual(MyModel.qq.GetValue(ent), 'hello')
+    self.assertEqual(MyModel.dd.GetValue(ent), 2.5)
     self.assertEqual(MyModel.kk.GetValue(ent), k)
     pb = model.conn.adapter.entity_to_pb(ent)
     self.assertEqual(str(pb), INDEXED_PB)
@@ -537,6 +551,7 @@ class ModelTests(unittest.TestCase):
     self.assertEqual(ent.key, k)
     self.assertEqual(MyModel.pp.GetValue(ent), 42)
     self.assertEqual(MyModel.qq.GetValue(ent), 'hello')
+    self.assertEqual(MyModel.dd.GetValue(ent), 2.5)
     self.assertEqual(MyModel.kk.GetValue(ent), k)
 
   def testRenamedStructuredProperty(self):
@@ -771,6 +786,7 @@ class ModelTests(unittest.TestCase):
     p.k = k
     p.p = 42
     p.q = 'hello'
+    p.d = 2.5
     pb = p.ToPb()
     self.assertEqual(str(pb), GOLDEN_PB)
 
