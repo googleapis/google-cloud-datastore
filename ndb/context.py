@@ -107,6 +107,7 @@ class Context(object):
       todo = leftover
     if todo:
       keys = [key for (_, key) in todo]
+      # TODO: What if async_get() created a non-trivial MultiRpc?
       results = yield self._conn.async_get(None, keys)
       for ent, (fut, _) in zip(results, todo):
         fut.set_result(ent)
@@ -283,6 +284,7 @@ class Context(object):
       else:
         ok = yield tconn.async_commit(None)
         if ok:
+          # TODO: This is questionable when self is transactional.
           self._cache.update(tctx._cache)
           self._flush_memcache(tctx._cache)
           raise tasks.Return(result)
@@ -305,6 +307,7 @@ class Context(object):
       pairs = list(parent.pairs())
     pairs.append((model_class.GetKind(), name))
     key = model.Key(pairs=pairs)
+    # TODO: Can the cache be trusted here?
     ent = yield self.get(key)
     if ent is None:
       @tasks.task
