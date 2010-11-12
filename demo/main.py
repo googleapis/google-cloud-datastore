@@ -2,9 +2,11 @@
 
 import cgi
 import logging
+import re
 import sys
 import time
 
+from google.appengine.api import urlfetch
 from google.appengine.api import users
 from google.appengine.datastore import entity_pb
 from google.appengine.ext import webapp
@@ -69,8 +71,16 @@ class Message(model.Model):
   """Guestbook message."""
 
   body = model.StringProperty()
-  when = model.IntegerProperty()
+  when = model.FloatProperty()
   userid = model.StringProperty()
+
+
+class UrlSummary(model.Model):
+  """Metadata about a URL."""
+
+  url = model.StringProperty()
+  title = model.StringProperty()
+  when = model.FloatProperty()
 
 
 def account_key(userid):
@@ -127,9 +137,43 @@ class HomePage(webapp.RequestHandler):
     nickname = 'Anonymous'
     if message.userid:
       nickname = yield get_nickname(self.ctx, message.userid)
+    # Check if there's an URL.
+    body = message.body
+    m = re.search(r'(?i)\bhttps?://\S+[^\s.,;\]\}\)]', body)
+    if not m:
+      escbody = cgi.escape(body)
+    else:
+      url = m.group()
+      pre = body[:m.start()]
+      post = body[m.end():]
+      title = ''
+      key = model.Key(flat=[UrlSummary.GetKind(), url])
+      summary = yield self.ctx.get(key)
+      if not summary or summary.when < time.time() - 15:
+        rpc = urlfetch.create_rpc(deadline=0.5)
+        urlfetch.make_fetch_call(rpc, url,allow_truncated=True)
+        t0 = time.time()
+        result = yield rpc
+        t1 = time.time()
+        logging.warning('url=%r, status=%r, dt=%.3f',
+                        url, result.status_code, t1-t0)
+        if result.status_code == 200:
+          bodytext = result.content
+          m = re.search(r'(?i)<title>([^<]+)</title>', bodytext)
+          if m:
+            title = m.group(1)
+          summary = UrlSummary(key=key, url=url, title=title,
+                               when=int(time.time()))
+          yield self.ctx.put(summary)
+      hover = ''
+      if summary.title:
+        hover = ' title="%s"' % summary.title
+      escbody = (cgi.escape(pre) +
+                 '<a%s href="%s">' % (hover, cgi.escape(url)) +
+                 cgi.escape(url) + '</a>' + cgi.escape(post))
     text = '%s - %s - %s<br>' % (cgi.escape(nickname),
                                  time.ctime(message.when),
-                                 cgi.escape(message.body))
+                                 escbody)
     raise tasks.Return((-message.when, text))
 
   @context.toplevel
