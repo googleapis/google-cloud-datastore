@@ -149,31 +149,16 @@ class TaskTests(unittest.TestCase):
     for fut in futs:
       mfut.add_dependent(fut)
     mfut.complete()
-    completed = mfut.get_result()
-    self.assertEqual(set(r.get_result() for r in completed),
+    results = mfut.get_result()
+    self.assertEqual(set(results),
                      set(['foo-0.01', 'foo-0.03', 'foo-0.05',
                           'bar-3', 'bar-5']))
-
-  def testMultiFuture_Reducer(self):
-    @tasks.task
-    def foo(i):
-      yield tasks.sleep(0.001)
-      raise tasks.Return(i)
-    def reducer(result, fut):
-      assert fut.done()
-      val = fut.get_result()
-      return result + val
-    mfut = tasks.MultiFuture(None, reducer, 0)
-    for i in range(10):
-      mfut.add_dependent(foo(i))
-    mfut.complete()
-    val = mfut.get_result()
-    self.assertEqual(val, sum(range(10)))
 
   def testMultiFuture_PreCompleted(self):
     @tasks.task
     def foo():
       yield tasks.sleep(0.01)
+      raise tasks.Return(42)
     mfut = tasks.MultiFuture()
     dep = foo()
     dep.wait()
@@ -181,7 +166,7 @@ class TaskTests(unittest.TestCase):
     mfut.complete()
     eventloop.run()
     self.assertTrue(mfut.done())
-    self.assertEqual(mfut.get_result(), [dep])
+    self.assertEqual(mfut.get_result(), [42])
 
   def testGetReturnValue(self):
       r0 = tasks.Return()

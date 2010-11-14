@@ -119,10 +119,7 @@ class HomePage(webapp.RequestHandler):
               }
     self.response.out.write(HOME_PAGE % values)
     query, options = self._make_query()
-    futs, count = yield self.ctx.map_query(query, self._hp_callback, options)
-    assert len(futs) == count
-    pairs = [f.get_result() for f in futs]
-    pairs.sort()
+    pairs = yield self.ctx.map_query(query, self._hp_callback, options)
     for key, text in pairs:
       self.response.out.write(text)
 

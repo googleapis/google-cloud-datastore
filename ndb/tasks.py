@@ -308,20 +308,8 @@ class Future(object):
         return
       if isinstance(value, (tuple, list)):
         # Arrange for yield to return a list of results (not Futures).
-        # Since the subfutures may not finish in the given order, we
-        # keep track of the indexes separately.  (We can't store the
-        # indexes on the Futures because the same Future may be involved
-        # in multiple yields simultaneously.)
-        # TODO: Maybe not use MultiFuture, or do it another way?
-        indexes = {}
-        for index, subfuture in enumerate(value):
-          indexes[subfuture] = index
-        def reducer(state, subfuture):
-          # TODO: If any of the Futures has an exception, things go bad.
-          state[indexes[subfuture]] = subfuture.get_result()
-          return state
         info = 'multi-yield from ' + utils.gen_info(gen)
-        mfut = MultiFuture(info, reducer, [None] * len(value))
+        mfut = MultiFuture(info)
         for subfuture in value:
           mfut.add_dependent(subfuture)
         mfut.complete()
@@ -377,12 +365,12 @@ class MultiFuture(Future):
       .
       . (Time passes)
       .
-    completed = mf.get_result()
+    results = mf.get_result()
 
-  Now, completed is a list of all dependent Futures in the order in
-  which they completed.  (TODO: Is this the best result value?)
+  Now, results is a list of results from all dependent Futures in
+  the order in which they were added.
 
-  Adding the same dependent multiple times is a no-op.
+  It is legal to add the same dependent multiple times.
 
   Callbacks can be added at any point.
 
@@ -391,25 +379,18 @@ class MultiFuture(Future):
   its completion to the MultiFuture.
   """
 
-  # TODO: Make this return the list of dependents in the order ADDED.
-  # TODO: Do we really need reducer and initial?
-
-  def __init__(self, info=None, reducer=None, initial=None):
+  def __init__(self, info=None):
     self._full = False
     self._dependents = set()
     super(MultiFuture, self).__init__(info)
-    self._reducer = reducer
-    self._result = initial
-    if reducer is None:
-      assert initial is None, initial  # If no reducer, can't use initial.
-      self._result = []
+    self._results = []
 
   def __repr__(self):
     # TODO: This may be invoked before __init__() returns,
     # from Future.__init__().  Beware.
     line = super(MultiFuture, self).__repr__()
     lines = [line]
-    for fut in self._dependents:
+    for fut in self._results:
       lines.append(fut.dump_stack().replace('\n', '\n  '))
     return '\n waiting for '.join(lines)
 
@@ -418,27 +399,22 @@ class MultiFuture(Future):
     assert not self._full
     self._full = True
     if not self._dependents:
-      self.set_result(self._result)
+      # TODO: How to get multiple exceptions?
+      self.set_result([r.get_result() for r in self._results])
 
   def add_dependent(self, fut):
     assert isinstance(fut, Future)
     assert not self._full
+    self._results.append(fut)
     if fut not in self._dependents:
       self._dependents.add(fut)
       fut.add_callback(self.signal_dependent_done, fut)
 
   def signal_dependent_done(self, fut):
-    self.process_value(fut)
     self._dependents.remove(fut)
     if self._full and not self._dependents:
-      self.set_result(self._result)
-
-  def process_value(self, val):
-    # Typically, val is a Future; but this can also be called directly.
-    if self._reducer is None:
-      self._result.append(val)
-    else:
-      self._result = self._reducer(self._result, val)
+      # TODO: How to get multiple exceptions?
+      self.set_result([r.get_result() for r in self._results])
 
 # Alias for StopIteration used to mark return values.
 # To use this, raise Return(<your return value>).  The semantics

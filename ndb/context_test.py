@@ -35,7 +35,7 @@ class MyAutoBatcher(context.AutoBatcher):
     super(MyAutoBatcher, self).__init__(wrap)
 
 
-class TaskTests(unittest.TestCase):
+class ContextTests(unittest.TestCase):
 
   def setUp(self):
     self.set_up_eventloop()
@@ -174,12 +174,12 @@ class TaskTests(unittest.TestCase):
       self.assertTrue(key2 in self.ctx._cache)  # Whitebox.
       self.assertEqual(key1, key1a)
       self.assertEqual(key2, key2a)
+      @tasks.task
       def callback(ent):
         return ent
       query = datastore_query.Query(app='_', kind='Foo')
-      results, count = yield self.ctx.map_query(query, callback)
+      results = yield self.ctx.map_query(query, callback)
       self.assertEqual(results, [ent1, ent2])
-      self.assertEqual(count, 2)
       self.assertTrue(results[0] is ent1)
       self.assertTrue(results[1] is ent2)
     foo().check_success()
@@ -202,29 +202,23 @@ class TaskTests(unittest.TestCase):
     def foo():
       yield self.create_entities()
       query = datastore_query.Query(app='_', kind='Foo')
-      fut1, fut2 = self.ctx.map_query(query, callback)
-      res1 = yield fut1  # This is a list of Futures
-      res1 = yield res1  # Turn it into a list of results
-      res2 = yield fut2
-      raise tasks.Return([res1, res2])
-    res1, res2 = foo().get_result()
-    self.assertEqual(set(res1), set([1, 2, 3]))
-    self.assertEqual(res2, 3)
+      res = yield self.ctx.map_query(query, callback)
+      raise tasks.Return(res)
+    res = foo().get_result()
+    self.assertEqual(set(res), set([1, 2, 3]))
 
   def testContext_MapQuery_NonTaskCallback(self):
+    @tasks.task
     def callback(ent):
       return list(ent.key.flat())[-1]
     @tasks.task
     def foo():
       yield self.create_entities()
       query = datastore_query.Query(app='_', kind='Foo')
-      fut1, fut2 = self.ctx.map_query(query, callback)
-      res1 = yield fut1  # This is a list of values
-      res2 = yield fut2
-      raise tasks.Return([res1, res2])
-    res1, res2 = foo().get_result()
-    self.assertEqual(res1, [1, 2, 3])
-    self.assertEqual(res2, 3)
+      res = yield self.ctx.map_query(query, callback)
+      raise tasks.Return(res)
+    res = foo().get_result()
+    self.assertEqual(res, [1, 2, 3])
 
   def testContext_TransactionFailed(self):
     @tasks.task

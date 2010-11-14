@@ -215,9 +215,8 @@ class Context(object):
     lo_hi = yield self._conn.async_allocate_ids(None, key, size, max)
     raise tasks.Return(lo_hi)
 
-  def map_query(self, query, callback,
-                options=None, reducer=None, initial=None):
-    mfut = tasks.MultiFuture('map_query', reducer, initial)
+  def map_query(self, query, callback, options=None):
+    mfut = tasks.MultiFuture('map_query')
 
     @tasks.task
     def helper():
@@ -250,9 +249,9 @@ class Context(object):
           else:
             mfut.process_value(val)
       mfut.complete()
-      raise tasks.Return(count)
 
-    return mfut, helper()
+    helper()
+    return mfut
 
   @tasks.task
   def transaction(self, callback, retry=3, entity_group=None):
