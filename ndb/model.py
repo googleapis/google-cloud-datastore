@@ -317,7 +317,7 @@ class Property(object):
 
   # TODO: __delete__
 
-  def Serialize(self, entity, pb, prefix=''):
+  def Serialize(self, entity, pb, prefix='', parent_repeated=False):
     # entity -> pb; pb is an EntityProto message
     value = entity._values.get(self.name)
     if value is None and self.repeated:
@@ -330,7 +330,7 @@ class Property(object):
       else:
         p = pb.add_raw_property()
       p.set_name(prefix + self.name)
-      p.set_multiple(self.repeated)
+      p.set_multiple(self.repeated or parent_repeated)
       v = p.mutable_value()
       if val is not None:
         self.DbSetValue(v, p, val)
@@ -469,7 +469,7 @@ class StructuredProperty(Property):
       assert not modelclass._has_repeated
     self.modelclass = modelclass
 
-  def Serialize(self, entity, pb, prefix=''):
+  def Serialize(self, entity, pb, prefix='', parent_repeated=False):
     # entity -> pb; pb is an EntityProto message
     value = entity._values.get(self.name)
     if value is None:
@@ -486,7 +486,8 @@ class StructuredProperty(Property):
     for value in values:
       # TODO: Avoid re-sorting for repeated values.
       for name, prop in sorted(value._properties.iteritems()):
-        prop.Serialize(value, pb, prefix + self.name + '.')
+        prop.Serialize(value, pb, prefix + self.name + '.',
+                       self.repeated or parent_repeated)
 
   def Deserialize(self, entity, p, depth=1):
     if not self.repeated:

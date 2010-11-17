@@ -7,6 +7,8 @@ import pickle
 import re
 import unittest
 
+from google.appengine.api import apiproxy_stub_map
+from google.appengine.api import datastore_file_stub
 from google.appengine.datastore import entity_pb
 
 from ndb import model
@@ -310,7 +312,6 @@ property <
 >
 """
 
-# NOTE: When a structured property is repeated its fields are not marked so.
 MULTISTRUCT_PB = """\
 key <
   app: "_"
@@ -328,28 +329,28 @@ property <
   value <
     stringValue: "work"
   >
-  multiple: false
+  multiple: true
 >
 property <
   name: "address.text"
   value <
     stringValue: "San Francisco"
   >
-  multiple: false
+  multiple: true
 >
 property <
   name: "address.label"
   value <
     stringValue: "home"
   >
-  multiple: false
+  multiple: true
 >
 property <
   name: "address.text"
   value <
     stringValue: "Mountain View"
   >
-  multiple: false
+  multiple: true
 >
 property <
   name: "name"
@@ -832,6 +833,36 @@ class ModelTests(unittest.TestCase):
     q.FromPb(pb)
     self.assertEqual(q.foo, 42)
     self.assertEqual(q.bar.hello, 'hello')
+
+class DatastoreTests(unittest.TestCase):
+  """Tests that actually interact with the (stub) Datastore."""
+  # TODO: Merge this into ModelTests so there's less code duplication.
+
+  def setUp(self):
+    apiproxy_stub_map.apiproxy = apiproxy_stub_map.APIProxyStubMap()
+    stub = datastore_file_stub.DatastoreFileStub('_', None)
+    apiproxy_stub_map.apiproxy.RegisterStub('datastore_v3', stub)
+
+  def testMultipleStructuredProperty(self):
+    class Address(model.Model):
+      label = model.StringProperty()
+      text = model.StringProperty()
+    class Person(model.Model):
+      name = model.StringProperty()
+      address = model.StructuredProperty(Address, repeated=True)
+
+    m = Person(name='Google',
+               address=[Address(label='work', text='San Francisco'),
+                        Address(label='home', text='Mountain View')])
+    m.key = model.Key(flat=['Person', None])
+    self.assertEqual(m.address[0].label, 'work')
+    self.assertEqual(m.address[0].text, 'San Francisco')
+    self.assertEqual(m.address[1].label, 'home')
+    self.assertEqual(m.address[1].text, 'Mountain View')
+    [k] = model.conn.put([m])
+    m.key = k  # Connection.put() doesn't do this!
+    [m2] = model.conn.get([k])
+    self.assertEqual(m2, m)
 
 def main():
   unittest.main()
