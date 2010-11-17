@@ -14,7 +14,6 @@ from google.appengine.ext.webapp import util
 
 from core import datastore_query
 from core import datastore_rpc
-from core import monkey
 
 from ndb import context
 from ndb import eventloop
