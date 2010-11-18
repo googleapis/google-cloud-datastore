@@ -120,6 +120,8 @@ class Context(object):
     assert todo
     # TODO: What if the same entity is being put twice?
     # TODO: What if two entities with the same key are being put?
+    # TODO: Clear entities from memcache before starting the write?
+    # TODO: Attempt to prevent dogpile effect while keeping cache consistent?
     ents = [ent for (_, ent) in todo]
     results = yield self._conn.async_put(None, ents)
     for key, (fut, ent) in zip(results, todo):

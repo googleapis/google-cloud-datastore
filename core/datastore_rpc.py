@@ -1136,7 +1136,7 @@ class BaseConnection(object):
     for pbs in pbsgen:
       req = datastore_pb.DeleteRequest()
       req.CopyFrom(base_req)
-      req.key_list().extend(self.__adapter.key_to_pb(key) for key in keys)
+      req.key_list().extend(pbs)
       self._check_entity_group(req.key_list())
       self._set_request_transaction(req)
       resp = datastore_pb.DeleteResponse()
