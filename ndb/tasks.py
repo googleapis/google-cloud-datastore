@@ -139,7 +139,8 @@ class Future(object):
       self.__class__.__name__, id(self), line, state)
 
   def dump(self):
-    return '%s\nCreated by %s' % (self.dump_stack(), '\n called by '.join(self._where))
+    return '%s\nCreated by %s' % (self.dump_stack(),
+                                  '\n called by '.join(self._where))
 
   def dump_stack(self):
     lines = []
