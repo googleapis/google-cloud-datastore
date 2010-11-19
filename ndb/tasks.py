@@ -282,7 +282,9 @@ class Future(object):
 
     except Exception, err:
       _, _, tb = sys.exc_info()
-      logging.debug('%s raised %s(%s)', info, err.__class__.__name__, err)
+      logging.warning('%s raised %s(%s)',
+                      info, err.__class__.__name__, err,
+                      exc_info=(logging.getLogger().level <= logging.DEBUG))
       self.set_exception(err, tb)
       return
 
@@ -383,8 +385,8 @@ class MultiFuture(Future):
   def __init__(self, info=None):
     self._full = False
     self._dependents = set()
-    super(MultiFuture, self).__init__(info)
     self._results = []
+    super(MultiFuture, self).__init__(info)
 
   def __repr__(self):
     # TODO: This may be invoked before __init__() returns,
