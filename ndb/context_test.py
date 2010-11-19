@@ -197,7 +197,7 @@ class ContextTests(unittest.TestCase):
   def testContext_MapQuery(self):
     @tasks.task
     def callback(ent):
-      return list(ent.key.flat())[-1]
+      return ent.key.flat()[-1]
     @tasks.task
     def foo():
       yield self.create_entities()
@@ -218,12 +218,12 @@ class ContextTests(unittest.TestCase):
     self.assertEqual(len(res), 3)
     for i, ent in enumerate(res):
       self.assertTrue(isinstance(ent, model.Model))
-      self.assertEqual(list(ent.key.flat()), ['Foo', i+1])
+      self.assertEqual(ent.key.flat(), ['Foo', i+1])
 
   def testContext_MapQuery_NonTaskCallback(self):
     @tasks.task
     def callback(ent):
-      return list(ent.key.flat())[-1]
+      return ent.key.flat()[-1]
     @tasks.task
     def foo():
       yield self.create_entities()

@@ -80,6 +80,9 @@ class Key(object):
     return ({'pairs': tuple(self.pairs())},)
 
   def pairs(self):
+    return list(self._pairs())
+
+  def _pairs(self):
     for elem in self.__reference.path().element_list():
       kind = elem.type()
       if elem.has_id():
@@ -89,7 +92,10 @@ class Key(object):
       yield (kind, idorname)
 
   def flat(self):
-    for kind, idorname in self.pairs():
+    return list(self._flat())
+
+  def _flat(self):
+    for kind, idorname in self._pairs():
       yield kind
       yield idorname
 

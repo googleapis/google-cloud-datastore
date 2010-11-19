@@ -14,15 +14,15 @@ class KeyTests(unittest.TestCase):
     flat = ['Kind', 1]
     pairs = [(flat[i], flat[i+1]) for i in xrange(0, len(flat), 2)]
     k = key.Key(flat=flat)
-    self.assertEqual(list(k.pairs()), pairs)
-    self.assertEqual(list(k.flat()), flat)
+    self.assertEqual(k.pairs(), pairs)
+    self.assertEqual(k.flat(), flat)
 
   def testFlatLong(self):
     flat = ['Kind', 1, 'Subkind', 'foobar']
     pairs = [(flat[i], flat[i+1]) for i in xrange(0, len(flat), 2)]
     k = key.Key(flat=flat)
-    self.assertEqual(list(k.pairs()), pairs)
-    self.assertEqual(list(k.flat()), flat)
+    self.assertEqual(k.pairs(), pairs)
+    self.assertEqual(k.flat(), flat)
 
   def testSerialized(self):
     flat = ['Kind', 1, 'Subkind', 'foobar']
@@ -71,8 +71,8 @@ class KeyTests(unittest.TestCase):
             flat_input[2], flat_input[3].encode('utf8')]
     pairs = [(flat[i], flat[i+1]) for i in xrange(0, len(flat), 2)]
     k = key.Key(flat=flat_input)
-    self.assertEqual(list(k.pairs()), pairs)
-    self.assertEqual(list(k.flat()), flat)
+    self.assertEqual(k.pairs(), pairs)
+    self.assertEqual(k.flat(), flat)
     # TODO: test these more thoroughly
     r = k.reference()
     serialized = k.serialized()
