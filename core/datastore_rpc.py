@@ -824,7 +824,9 @@ class BaseConnection(object):
       request: A protobuf with a failover_ms field.
       config: Optional Configuration object.
     """
-    if not (hasattr(request, 'set_failover_ms') and hasattr(request, 'strong')):
+    if not (hasattr(request, 'set_failover_ms')
+            ## and hasattr(request, 'strong')
+            ):
       raise datastore_errors.BadRequestError(
           'read_policy is only supported on read operations.')
     if isinstance(config, apiproxy_stub_map.UserRPC):
@@ -843,7 +845,7 @@ class BaseConnection(object):
     if read_policy == Configuration.APPLY_ALL_JOBS_CONSISTENCY:
       request.set_strong(True)
     elif read_policy == Configuration.EVENTUAL_CONSISTENCY:
-      request.set_strong(False)
+##      request.set_strong(False)
       request.set_failover_ms(-1)
 
   def _set_request_transaction(self, request):
