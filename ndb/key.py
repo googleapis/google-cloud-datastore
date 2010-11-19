@@ -8,7 +8,9 @@ import os
 
 from google.appengine.datastore import entity_pb
 
-from core.datastore_rpc import _positional as positional
+from core import datastore_rpc
+
+positional = datastore_rpc._positional
 
 class Key(object):
   """An immutable datastore key.
