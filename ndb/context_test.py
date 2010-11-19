@@ -221,7 +221,6 @@ class ContextTests(unittest.TestCase):
       self.assertEqual(ent.key.flat(), ['Foo', i+1])
 
   def testContext_MapQuery_NonTaskCallback(self):
-    @tasks.task
     def callback(ent):
       return ent.key.flat()[-1]
     @tasks.task

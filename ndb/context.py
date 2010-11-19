@@ -221,8 +221,6 @@ class Context(object):
     raise tasks.Return(lo_hi)
 
   def map_query(self, query, callback, options=None):
-    if callback is None:
-      callback = tasks.task(lambda entity: entity)
     mfut = tasks.MultiFuture('map_query')
 
     @tasks.task
@@ -250,7 +248,14 @@ class Context(object):
             if self.should_cache(key):
               self._cache[key] = ent
           count += 1
-          val = callback(ent)  # TODO: If this raises something, log and ignore
+          if callback is None:
+            val = ent
+          else:
+            val = callback(ent)  # TODO: If this raises, log and ignore
+          if not isinstance(val, tasks.Future):
+            fut = tasks.Future()
+            fut.set_result(val)
+            val = fut
           mfut.add_dependent(val)
       mfut.complete()
 
