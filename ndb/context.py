@@ -166,6 +166,7 @@ class Context(object):
     self._cache_policy = func
 
   def should_cache(self, key):
+    # TODO: Don't need this, set_cache_policy() could substitute a lambda.
     if self._cache_policy is None:
       return True
     return self._cache_policy(key)
@@ -174,6 +175,7 @@ class Context(object):
     self._memcache_policy = func
 
   def should_memcache(self, key):
+    # TODO: Don't need this, set_memcache_policy() could substitute a lambda.
     if self._memcache_policy is None:
       return True
     return self._memcache_policy(key)
@@ -203,6 +205,7 @@ class Context(object):
       entity.key = key
     # TODO: For updated entities, could we update the cache first?
     if self.should_cache(key):
+      # TODO: What if by now the entity is already in the cache?
       self._cache[key] = entity
     raise tasks.Return(key)
 
@@ -303,6 +306,7 @@ class Context(object):
 
   @tasks.task
   def get_or_insert(self, model_class, name, parent=None, **kwds):
+    # TODO: Test the heck out of this, in all sorts of evil scenarios.
     assert isinstance(name, basestring) and name
     if parent is None:
       pairs = []
@@ -310,7 +314,7 @@ class Context(object):
       pairs = list(parent.pairs())
     pairs.append((model_class.GetKind(), name))
     key = model.Key(pairs=pairs)
-    # TODO: Can the cache be trusted here?
+    # TODO: Can (and should) the cache be trusted here?
     ent = yield self.get(key)
     if ent is None:
       @tasks.task
