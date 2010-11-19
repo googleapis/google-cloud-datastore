@@ -207,6 +207,19 @@ class ContextTests(unittest.TestCase):
     res = foo().get_result()
     self.assertEqual(set(res), set([1, 2, 3]))
 
+  def testContext_MapQuery_NoCallback(self):
+    @tasks.task
+    def foo():
+      yield self.create_entities()
+      query = datastore_query.Query(app='_', kind='Foo')
+      res = yield self.ctx.map_query(query, None)
+      raise tasks.Return(res)
+    res = foo().get_result()
+    self.assertEqual(len(res), 3)
+    for i, ent in enumerate(res):
+      self.assertTrue(isinstance(ent, model.Model))
+      self.assertEqual(ent.key.flat(), ['Foo', i+1])
+
   def testContext_MapQuery_NonTaskCallback(self):
     @tasks.task
     def callback(ent):
