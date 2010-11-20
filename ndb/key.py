@@ -15,27 +15,34 @@ positional = datastore_rpc._positional
 class Key(object):
   """An immutable datastore key.
 
-  Constructor forms:
+  Long constructor forms:
     Key(pairs=[(kind, idorname), (kind, idorname), ...])
     Key(flat=[kind, idorname, kind, idorname, ...])
     Key(reference=<reference>)
     Key(serialized=<serialized reference>)
     Key(urlsafe=<urlsafe base64 encoded serialized reference>)
 
+  Short constructor form:
+    Key(kind, idorname, ...)  # Same as Key(flat=[kind, idorname, ...])
+
+  Backdoor constructor form:
+    Key(<dict>)  # If X is a doct, Key(X) == Key(**X)
+
   TODO: namespace, appid, parent
-  TODO: allow friendlier signature e.g. Key(kind, id) or even
-  Key(modelclass, id).
   """
 
   __slots__ = ['__reference']
 
-  def __new__(cls, _kwdict=None, **kwargs):
-    if _kwdict:
-      # For pickling only: one positional argument is allowed,
-      # giving a dict specifying the keyword arguments.
-      assert isinstance(_kwdict, dict)
-      assert not kwargs
-      kwargs = _kwdict
+  def __new__(cls, *_args, **kwargs):
+    if _args:
+      if len(_args) == 1 and isinstance(_args[0], dict):
+        # For pickling only: one positional argument is allowed,
+        # giving a dict specifying the keyword arguments.
+        assert not kwargs
+        kwargs = _args[0]
+      else:
+        assert 'flat' not in kwargs
+        kwargs['flat'] = _args
     self = super(Key, cls).__new__(cls)
     self.__reference = _ConstructReference(cls, **kwargs)
     return self
