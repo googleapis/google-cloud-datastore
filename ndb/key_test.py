@@ -67,11 +67,12 @@ class KeyTests(unittest.TestCase):
     self.assertEqual(k.reference(), r)
 
   def testRepr(self):
-    flat = ['Kind', 1L, 'Subkind', 'foobar']
-    k = key.Key(flat=flat)
+    k = key.Key('Kind', 1L, 'Subkind', 'foobar')
     self.assertEqual(repr(k),
-                     "Key(pairs=[('Kind', 1), ('Subkind', 'foobar')])")
+                     "Key('Kind', 1, 'Subkind', 'foobar')")
     self.assertEqual(repr(k), str(k))
+    k = key.Key('Kind', 1)
+    self.assertEqual(repr(k), "Key('Kind', 1)")
 
   def testUnicode(self):
     flat_input = [u'Kind\u1234', 1, 'Subkind', u'foobar\u4321']

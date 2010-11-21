@@ -48,16 +48,15 @@ class Key(object):
     return self
 
   def __repr__(self):
-    pairs = []
-    for kind, idorname in self._pairs():
-      if isinstance(kind, unicode):
-        kind = kind.encoded('utf8')
-      if isinstance(idorname, unicode):
-        idorname = idorname.encode('utf8')
-      if isinstance(idorname, basestring):
-        idorname = repr(idorname)
-      pairs.append("(%r, %s)" % (kind, idorname))
-    return 'Key(pairs=[%s])' % (", ".join(pairs))
+    args = []
+    for item in self._flat():
+      if isinstance(item, unicode):
+        item = item.encoded('utf8')
+      if isinstance(item, basestring):
+        args.append(repr(item))
+      else:
+        args.append(str(item))
+    return 'Key(%s)' % ', '.join(args)
 
   __str__ = __repr__
 
