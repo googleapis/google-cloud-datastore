@@ -10,6 +10,14 @@ from ndb import key
 
 class KeyTests(unittest.TestCase):
 
+  def testShort(self):
+    k0 = key.Key('Kind', None)
+    self.assertEqual(k0.flat(), ['Kind', 0])
+    k1 = key.Key('Kind', 1)
+    self.assertEqual(k1.flat(), ['Kind', 1])
+    k2 = key.Key('Parent', 42, 'Kind', 1)
+    self.assertEqual(k2.flat(), ['Parent', 42, 'Kind', 1])
+
   def testFlat(self):
     flat = ['Kind', 1]
     pairs = [(flat[i], flat[i+1]) for i in xrange(0, len(flat), 2)]
@@ -59,11 +67,12 @@ class KeyTests(unittest.TestCase):
     self.assertEqual(k.reference(), r)
 
   def testRepr(self):
-    flat = ['Kind', 1L, 'Subkind', 'foobar']
-    k = key.Key(flat=flat)
+    k = key.Key('Kind', 1L, 'Subkind', 'foobar')
     self.assertEqual(repr(k),
-                     "Key(pairs=[('Kind', 1), ('Subkind', 'foobar')])")
+                     "Key('Kind', 1, 'Subkind', 'foobar')")
     self.assertEqual(repr(k), str(k))
+    k = key.Key('Kind', 1)
+    self.assertEqual(repr(k), "Key('Kind', 1)")
 
   def testUnicode(self):
     flat_input = [u'Kind\u1234', 1, 'Subkind', u'foobar\u4321']

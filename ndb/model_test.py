@@ -727,7 +727,7 @@ class ModelTests(unittest.TestCase):
     p.key = model.Key(pairs=[('Person', 42)])
     self.assertEqual(
       repr(p),
-      "Person(key=Key(pairs=[('Person', 42)]), "
+      "Person(key=Key('Person', 42), "
       "address=Address(city='SF', street='345 Spear'), name='Google')")
 
   def testPropertyRepr(self):

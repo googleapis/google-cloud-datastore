@@ -15,53 +15,59 @@ positional = datastore_rpc._positional
 class Key(object):
   """An immutable datastore key.
 
-  Constructor forms:
+  Long constructor forms:
     Key(pairs=[(kind, idorname), (kind, idorname), ...])
     Key(flat=[kind, idorname, kind, idorname, ...])
     Key(reference=<reference>)
     Key(serialized=<serialized reference>)
     Key(urlsafe=<urlsafe base64 encoded serialized reference>)
 
+  Short constructor form:
+    Key(kind, idorname, ...)  # Same as Key(flat=[kind, idorname, ...])
+
+  Backdoor constructor form:
+    Key(<dict>)  # If X is a doct, Key(X) == Key(**X)
+
   TODO: namespace, appid, parent
-  TODO: allow friendlier signature e.g. Key(kind, id) or even
-  Key(modelclass, id).
   """
 
   __slots__ = ['__reference']
 
-  def __new__(cls, _kwdict=None, **kwargs):
-    if _kwdict:
-      # For pickling only: one positional argument is allowed,
-      # giving a dict specifying the keyword arguments.
-      assert isinstance(_kwdict, dict)
-      assert not kwargs
-      kwargs = _kwdict
+  def __new__(cls, *_args, **kwargs):
+    if _args:
+      if len(_args) == 1 and isinstance(_args[0], dict):
+        # For pickling only: one positional argument is allowed,
+        # giving a dict specifying the keyword arguments.
+        assert not kwargs
+        kwargs = _args[0]
+      else:
+        assert 'flat' not in kwargs
+        kwargs['flat'] = _args
     self = super(Key, cls).__new__(cls)
     self.__reference = _ConstructReference(cls, **kwargs)
     return self
 
   def __repr__(self):
-    pairs = []
-    for kind, idorname in self.pairs():
-      if isinstance(kind, unicode):
-        kind = kind.encoded('utf8')
-      if isinstance(idorname, unicode):
-        idorname = idorname.encode('utf8')
-      if isinstance(idorname, basestring):
-        idorname = repr(idorname)
-      pairs.append("(%r, %s)" % (kind, idorname))
-    return 'Key(pairs=[%s])' % (", ".join(pairs))
+    args = []
+    for item in self._flat():
+      if isinstance(item, unicode):
+        item = item.encoded('utf8')
+      if isinstance(item, basestring):
+        args.append(repr(item))
+      else:
+        args.append(str(item))
+    return 'Key(%s)' % ', '.join(args)
 
   __str__ = __repr__
 
   def __hash__(self):
-    return hash(tuple(self.pairs()))
+    return hash(tuple(self._pairs()))
 
   def __eq__(self, other):
     if not isinstance(other, Key):
       return NotImplemented
     # TODO: app, namespace
-    return tuple(self.pairs()) == tuple(other.pairs())
+    return tuple(self._pairs()) == tuple(other._pairs())
 
   def __ne__(self, other):
     if not isinstance(other, Key):
@@ -69,7 +75,7 @@ class Key(object):
     return not self.__eq__(other)
 
   def __getstate__(self):
-    return ({'pairs': tuple(self.pairs())},)
+    return ({'pairs': tuple(self._pairs())},)
 
   def __setstate__(self, state):
     assert len(state) == 1
@@ -79,7 +85,7 @@ class Key(object):
 
   def __getnewargs__(self):
     # TODO: app, namespace
-    return ({'pairs': tuple(self.pairs())},)
+    return ({'pairs': tuple(self._pairs())},)
 
   def pairs(self):
     return list(self._pairs())
