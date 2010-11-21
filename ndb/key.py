@@ -49,7 +49,7 @@ class Key(object):
 
   def __repr__(self):
     pairs = []
-    for kind, idorname in self.pairs():
+    for kind, idorname in self._pairs():
       if isinstance(kind, unicode):
         kind = kind.encoded('utf8')
       if isinstance(idorname, unicode):
@@ -62,13 +62,13 @@ class Key(object):
   __str__ = __repr__
 
   def __hash__(self):
-    return hash(tuple(self.pairs()))
+    return hash(tuple(self._pairs()))
 
   def __eq__(self, other):
     if not isinstance(other, Key):
       return NotImplemented
     # TODO: app, namespace
-    return tuple(self.pairs()) == tuple(other.pairs())
+    return tuple(self._pairs()) == tuple(other._pairs())
 
   def __ne__(self, other):
     if not isinstance(other, Key):
@@ -76,7 +76,7 @@ class Key(object):
     return not self.__eq__(other)
 
   def __getstate__(self):
-    return ({'pairs': tuple(self.pairs())},)
+    return ({'pairs': tuple(self._pairs())},)
 
   def __setstate__(self, state):
     assert len(state) == 1
@@ -86,7 +86,7 @@ class Key(object):
 
   def __getnewargs__(self):
     # TODO: app, namespace
-    return ({'pairs': tuple(self.pairs())},)
+    return ({'pairs': tuple(self._pairs())},)
 
   def pairs(self):
     return list(self._pairs())
