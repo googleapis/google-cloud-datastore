@@ -343,3 +343,108 @@ def toplevel(func):
     self.ctx = Context()
     return tasks.taskify(func)(self, *args)
   return add_context_wrapper
+
+
+# TODO: Use thread-local for this.
+_default_context = None
+
+def _get_default_context():
+  return _default_context
+
+def _set_default_context(new_context):
+  assert (new_context is None or
+          isinstance(new_context, Context)), repr(new_context)
+  global _default_context
+  _default_context = new_context
+
+
+# TODO: Rename to something less cute.
+class MagicFuture(tasks.Future):
+  """A Future that keeps track of a default Context for its task."""
+
+  def __init__(self, info, default_context):
+    assert (default_context is None or
+            isinstance(default_context, Context)), repr(default_context)
+    super(MagicFuture, self).__init__(info)
+    self.default_context = default_context
+
+  def _help_task_along(self, gen, val=None, exc=None, tb=None):
+    save_context = _get_default_context()
+    try:
+      _set_default_context(self.default_context)
+      super(MagicFuture, self)._help_task_along(gen, val=val, exc=exc, tb=tb)
+    finally:
+      _set_default_context(save_context)
+
+
+def task(func):
+  """Decorator like @tasks.task that maintains a default Context."""
+
+  @utils.wrapping(func)
+  def context_task_wrapper(*args, **kwds):
+
+    # TODO: make most of this a public function so you can take a bare
+    # generator and turn it into a task dynamically.  (Monocle has
+    # this I believe.)
+    # __ndb_debug__ = utils.func_info(func)
+    fut = MagicFuture('context.task %s' % utils.func_info(func),
+                      _get_default_context())
+    try:
+      result = func(*args, **kwds)
+    except StopIteration, err:
+      # Just in case the function is not a generator but still uses
+      # the "raise Return(...)" idiom, we'll extract the return value.
+      result = get_return_value(err)
+    if tasks.is_generator(result):
+      eventloop.queue_task(None, fut._help_task_along, result)
+    else:
+      fut.set_result(result)
+    return fut
+
+  return context_task_wrapper
+
+
+def taskify(func):
+  # TODOL Update docstring?
+  """Decorator to run a function as a task when called.
+
+  Use this to wrap a request handler function that will be called by
+  some web application framework (e.g. a Django view function or a
+  webapp.RequestHandler.get method).
+  """
+  @utils.wrapping(func)
+  def context_taskify_wrapper(*args):
+    __ndb_debug__ = utils.func_info(func)
+    tasks.Future.clear_all_pending()
+    _set_default_context(Context())
+    taskfunc = task(func)
+    return taskfunc(*args).get_result()
+  return context_taskify_wrapper
+
+
+# Functions using the default context.
+
+def get(*args, **kwds):
+  return _get_default_context().get(*args, **kwds)
+
+def put(*args, **kwds):
+  return _get_default_context().put(*args, **kwds)
+
+def delete(*args, **kwds):
+  return _get_default_context().delete(*args, **kwds)
+
+def allocate_ids(*args, **kwds):
+  return _get_default_context().allocate_ids(*args, **kwds)
+
+def map_query(*args, **kwds):
+  return _get_default_context().map_query(*args, **kwds)
+
+def transaction(callback, *args, **kwds):
+  def callback_wrapper(ctx):
+    return callback()
+  return _get_default_context().transaction(callback_wrapper, *args, **kwds)
+
+def get_or_insert(*args, **kwds):
+  return _get_default_context().get_or_insert(*args, **kwds)
+
+# TODO: Add flush() and cache policy API?
