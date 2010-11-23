@@ -88,15 +88,15 @@ def account_key(userid):
   return model.Key(flat=['Account', userid])
 
 
-def get_account(ctx, userid):
+def get_account(userid):
   """Return a Future for an Account."""
-  return ctx.get(account_key(userid))
+  return context.get(account_key(userid))
 
 
-@tasks.task
-def get_nickname(ctx, userid):
+@context.task
+def get_nickname(userid):
   """Return a Future for a nickname from an account."""
-  account = yield get_account(ctx, userid)
+  account = yield get_account(userid)
   if not account:
     nickname = 'Unregistered'
   else:
@@ -106,19 +106,19 @@ def get_nickname(ctx, userid):
 
 class HomePage(webapp.RequestHandler):
 
-  @context.toplevel
+  @context.taskify
   def get(self):
     nickname = 'Anonymous'
     user = users.get_current_user()
     if user is not None:
-      nickname = yield get_nickname(self.ctx, user.user_id())
+      nickname = yield get_nickname(user.user_id())
     values = {'nickname': nickname,
               'login': users.create_login_url('/'),
               'logout': users.create_logout_url('/'),
               }
     self.response.out.write(HOME_PAGE % values)
     query, options = self._make_query()
-    pairs = yield self.ctx.map_query(query, self._hp_callback, options)
+    pairs = yield context.map_query(query, self._hp_callback, options)
     for key, text in pairs:
       self.response.out.write(text)
 
@@ -130,11 +130,11 @@ class HomePage(webapp.RequestHandler):
     options = datastore_query.QueryOptions(batch_size=13, limit=43)
     return query, options
 
-  @tasks.task
+  @context.task
   def _hp_callback(self, message):
     nickname = 'Anonymous'
     if message.userid:
-      nickname = yield get_nickname(self.ctx, message.userid)
+      nickname = yield get_nickname(message.userid)
     # Check if there's an URL.
     body = message.body
     m = re.search(r'(?i)\bhttps?://\S+[^\s.,;\]\}\)]', body)
@@ -146,7 +146,7 @@ class HomePage(webapp.RequestHandler):
       post = body[m.end():]
       title = ''
       key = model.Key(flat=[UrlSummary.GetKind(), url])
-      summary = yield self.ctx.get(key)
+      summary = yield context.get(key)
       if not summary or summary.when < time.time() - UrlSummary.MAX_AGE:
         rpc = urlfetch.create_rpc(deadline=0.5)
         urlfetch.make_fetch_call(rpc, url,allow_truncated=True)
@@ -162,7 +162,7 @@ class HomePage(webapp.RequestHandler):
             title = m.group(1).strip()
           summary = UrlSummary(key=key, url=url, title=title,
                                when=time.time())
-          yield self.ctx.put(summary)
+          yield context.put(summary)
       hover = ''
       if summary.title:
         hover = ' title="%s"' % summary.title
@@ -174,7 +174,7 @@ class HomePage(webapp.RequestHandler):
                                  escbody)
     raise tasks.Return((-message.when, text))
 
-  @context.toplevel
+  @context.taskify
   def post(self):
     # TODO: XSRF protection.
     body = self.request.get('body', '').strip()
@@ -184,13 +184,13 @@ class HomePage(webapp.RequestHandler):
       if user:
         userid = user.user_id()
       message = Message(body=body, when=time.time(), userid=userid)
-      yield self.ctx.put(message)  # Synchronous.
+      yield context.put(message)  # Synchronous.
     self.redirect('/')
 
 
 class AccountPage(webapp.RequestHandler):
 
-  @context.toplevel
+  @context.taskify
   def get(self):
     user = users.get_current_user()
     if not user:
@@ -198,8 +198,8 @@ class AccountPage(webapp.RequestHandler):
       return
     email = user.email()
     action = 'Create'
-    account, nickname = yield (get_account(self.ctx, user.user_id()),
-                               get_nickname(self.ctx, user.user_id()))
+    account, nickname = yield (get_account(user.user_id()),
+                               get_nickname(user.user_id()))
     if account is not None:
       action = 'Update'
     if account:
@@ -215,17 +215,17 @@ class AccountPage(webapp.RequestHandler):
               }
     self.response.out.write(ACCOUNT_PAGE % values)
 
-  @context.toplevel
+  @context.taskify
   def post(self):
     # TODO: XSRF protection.
     user = users.get_current_user()
     if not user:
       self.redirect(users.create_login_url('/account'))
       return
-    account = yield get_account(self.ctx, user.user_id())
+    account = yield get_account(user.user_id())
     if self.request.get('delete'):
       if account:
-        yield self.ctx.delete(account.key)
+        yield context.delete(account.key)
       self.redirect('/account')
       return
     if not account:
@@ -234,7 +234,7 @@ class AccountPage(webapp.RequestHandler):
     nickname = self.request.get('nickname')
     if nickname:
       account.nickname = nickname
-    yield self.ctx.put(account)
+    yield context.put(account)
     self.redirect('/account')
 
 
