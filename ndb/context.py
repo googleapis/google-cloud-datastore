@@ -441,7 +441,13 @@ def map_query(*args, **kwds):
 
 def transaction(callback, *args, **kwds):
   def callback_wrapper(ctx):
-    return callback()
+    # TODO: Is this right?
+    save_context = _get_default_context()
+    try:
+      _set_default_context(ctx)
+      return callback()
+    finally:
+      _set_default_context(save_context)
   return _get_default_context().transaction(callback_wrapper, *args, **kwds)
 
 def get_or_insert(*args, **kwds):
