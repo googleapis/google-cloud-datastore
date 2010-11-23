@@ -290,6 +290,27 @@ class ContextTests(unittest.TestCase):
     b = outer()
     self.assertEqual(b, 42)
 
+  def testExplicitTransactionClearsDefaultContext(self):
+    @context.taskify
+    def outer():
+      ctx1 = context.get_default_context()
+      @tasks.task
+      def inner(ctx):
+        self.assertTrue(context.get_default_context() is None)
+        key = model.Key('Account', 1)
+        ent = yield ctx.get(key)
+        self.assertTrue(context.get_default_context() is None)
+        self.assertTrue(ent is None)
+        raise tasks.Return(42)
+      fut = ctx1.transaction(inner)
+      self.assertEqual(context.get_default_context(), ctx1)
+      val = yield fut
+      self.assertEqual(context.get_default_context(), ctx1)
+      raise tasks.Return(val)
+    val = outer()
+    self.assertEqual(val, 42)
+    self.assertTrue(context.get_default_context() is None)
+
 
 def main():
   unittest.main()

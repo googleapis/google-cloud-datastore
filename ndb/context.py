@@ -281,6 +281,7 @@ class Context(object):
       tctx = self.__class__(conn=tconn,
                             auto_batcher_class=self._auto_batcher_class)
       tctx.set_memcache_policy(lambda key: False)
+      set_default_context(None)
       fut = callback(tctx)
       assert isinstance(fut, tasks.Future)
       try:
