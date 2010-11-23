@@ -348,10 +348,10 @@ def toplevel(func):
 # TODO: Use thread-local for this.
 _default_context = None
 
-def _get_default_context():
+def get_default_context():
   return _default_context
 
-def _set_default_context(new_context):
+def set_default_context(new_context):
   assert (new_context is None or
           isinstance(new_context, Context)), repr(new_context)
   global _default_context
@@ -369,12 +369,12 @@ class MagicFuture(tasks.Future):
     self.default_context = default_context
 
   def _help_task_along(self, gen, val=None, exc=None, tb=None):
-    save_context = _get_default_context()
+    save_context = get_default_context()
     try:
-      _set_default_context(self.default_context)
+      set_default_context(self.default_context)
       super(MagicFuture, self)._help_task_along(gen, val=val, exc=exc, tb=tb)
     finally:
-      _set_default_context(save_context)
+      set_default_context(save_context)
 
 
 def task(func):
@@ -388,7 +388,7 @@ def task(func):
     # this I believe.)
     # __ndb_debug__ = utils.func_info(func)
     fut = MagicFuture('context.task %s' % utils.func_info(func),
-                      _get_default_context())
+                      get_default_context())
     try:
       result = func(*args, **kwds)
     except StopIteration, err:
@@ -416,7 +416,7 @@ def taskify(func):
   def context_taskify_wrapper(*args):
     __ndb_debug__ = utils.func_info(func)
     tasks.Future.clear_all_pending()
-    _set_default_context(Context())
+    set_default_context(Context())
     taskfunc = task(func)
     return taskfunc(*args).get_result()
   return context_taskify_wrapper
@@ -425,32 +425,32 @@ def taskify(func):
 # Functions using the default context.
 
 def get(*args, **kwds):
-  return _get_default_context().get(*args, **kwds)
+  return get_default_context().get(*args, **kwds)
 
 def put(*args, **kwds):
-  return _get_default_context().put(*args, **kwds)
+  return get_default_context().put(*args, **kwds)
 
 def delete(*args, **kwds):
-  return _get_default_context().delete(*args, **kwds)
+  return get_default_context().delete(*args, **kwds)
 
 def allocate_ids(*args, **kwds):
-  return _get_default_context().allocate_ids(*args, **kwds)
+  return get_default_context().allocate_ids(*args, **kwds)
 
 def map_query(*args, **kwds):
-  return _get_default_context().map_query(*args, **kwds)
+  return get_default_context().map_query(*args, **kwds)
 
 def transaction(callback, *args, **kwds):
   def callback_wrapper(ctx):
     # TODO: Is this right?
-    save_context = _get_default_context()
+    save_context = get_default_context()
     try:
-      _set_default_context(ctx)
+      set_default_context(ctx)
       return callback()
     finally:
-      _set_default_context(save_context)
-  return _get_default_context().transaction(callback_wrapper, *args, **kwds)
+      set_default_context(save_context)
+  return get_default_context().transaction(callback_wrapper, *args, **kwds)
 
 def get_or_insert(*args, **kwds):
-  return _get_default_context().get_or_insert(*args, **kwds)
+  return get_default_context().get_or_insert(*args, **kwds)
 
 # TODO: Add flush() and cache policy API?

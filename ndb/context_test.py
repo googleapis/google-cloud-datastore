@@ -275,16 +275,16 @@ class ContextTests(unittest.TestCase):
   def testDefaultContextTransaction(self):
     @context.taskify
     def outer():
-      ctx1 = context._get_default_context()
+      ctx1 = context.get_default_context()
       @context.task
       def inner():
-        ctx2 = context._get_default_context()
+        ctx2 = context.get_default_context()
         self.assertTrue(ctx1 is not ctx2)
         self.assertTrue(isinstance(ctx2._conn,
                                    datastore_rpc.TransactionalConnection))
         return 42
       a = yield context.transaction(inner)
-      ctx1a = context._get_default_context()
+      ctx1a = context.get_default_context()
       self.assertTrue(ctx1 is ctx1a)
       raise tasks.Return(a)
     b = outer()
