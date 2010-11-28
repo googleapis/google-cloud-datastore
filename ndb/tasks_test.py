@@ -168,6 +168,28 @@ class TaskTests(unittest.TestCase):
     self.assertTrue(mfut.done())
     self.assertEqual(mfut.get_result(), [42])
 
+  def testQueueFuture(self):
+    q = tasks.QueueFuture()
+    @tasks.task
+    def produce_one(i):
+      yield tasks.sleep(i * 0.001)
+      raise tasks.Return(i)
+    @tasks.task
+    def producer():
+      for i in range(10):
+        q.add_dependent(produce_one(i))
+      q.complete()
+    @tasks.task
+    def consumer():
+      for i in range(10):
+        val = yield q.getq()
+        self.assertEqual(val, i)
+      self.assertRaises(EOFError, q.getq().get_result)
+    @tasks.task
+    def foo():
+      yield producer(), consumer()
+    foo().get_result()
+
   def testGetReturnValue(self):
       r0 = tasks.Return()
       r1 = tasks.Return(42)

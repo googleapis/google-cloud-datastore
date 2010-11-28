@@ -411,13 +411,78 @@ class MultiFuture(Future):
     self._results.append(fut)
     if fut not in self._dependents:
       self._dependents.add(fut)
-      fut.add_callback(self.signal_dependent_done, fut)
+      fut.add_callback(self._signal_dependent_done, fut)
 
-  def signal_dependent_done(self, fut):
+  def _signal_dependent_done(self, fut):
     self._dependents.remove(fut)
     if self._full and not self._dependents:
       # TODO: How to get multiple exceptions?
       self.set_result([r.get_result() for r in self._results])
+
+
+class QueueFuture(Future):
+  """A Queue following the same protocol as MultiFuture."""
+  # TODO: Refactor to reuse some code with MultiFuture.
+
+  def __init__(self, info=None):
+    self._full = False
+    self._dependents = set()
+    self._completed = list()
+    self._waiting = list()
+    super(QueueFuture, self).__init__(info)
+
+  def complete(self):
+    assert not self._full
+    self._full = True
+    if self._waiting and not self._dependents:
+      self._abort_excess_waiters()
+
+  def add_dependent(self, fut):
+    assert isinstance(fut, Future)
+    assert not self._full
+    if fut not in self._dependents:
+      self._dependents.add(fut)
+      fut.add_callback(self._signal_dependent_done, fut)
+
+  def _signal_dependent_done(self, fut):
+    assert fut.done()
+    self._dependents.remove(fut)
+    exc = fut.get_exception()
+    tb = fut.get_traceback()
+    val = None
+    if exc is None:
+      val = fut.get_result()
+    if self._waiting:
+      waiter = self._waiting.pop(0)
+      if exc is not None:
+        waiter.set_exception(exc)
+      else:
+        waiter.set_result(val)
+    else:
+      self._completed.append((exc, tb, val))
+    if self._full and self._waiting and not self._dependents:
+      self._abort_excess_waiters()
+
+  def _abort_excess_waiters(self):
+    waiters = self._waiters[:]
+    self._waiters[:] = []
+    for waiter in waiters:
+      waiter.set_exception(EOFError('Queue is empty'))
+
+  def getq(self):
+    fut = Future()
+    if self._completed:
+      exc, tb, val = self._completed.pop(0)
+      if exc is not None:
+        fut.set_exception(exc, tb)
+      else:
+        fut.set_result(val)
+    elif self._full and not self._dependents:
+      fut.set_exception(EOFError('Queue is empty'))
+    else:
+      self._waiting.append(fut)
+    return fut
+
 
 # Alias for StopIteration used to mark return values.
 # To use this, raise Return(<your return value>).  The semantics
