@@ -172,7 +172,7 @@ class TaskTests(unittest.TestCase):
     q = tasks.QueueFuture()
     @tasks.task
     def produce_one(i):
-      yield tasks.sleep(i * 0.001)
+      yield tasks.sleep(i * 0.01)
       raise tasks.Return(i)
     @tasks.task
     def producer():
