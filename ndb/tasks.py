@@ -421,7 +421,20 @@ class MultiFuture(Future):
 
 
 class QueueFuture(Future):
-  """A Queue following the same protocol as MultiFuture."""
+  """A Queue following the same protocol as MultiFuture.
+
+  However, instead of returning results as a list, it lets you
+  retrieve results as soon as they are ready, one at a time, using
+  getq().  The Future itself finishes with a result of None when the
+  last result is ready (regardless of whether it was retrieved).
+
+  The getq() method returns a Future which blocks until the next
+  result is ready, and then returns that result.  Each getq() call
+  retrieves one unique result.  Extra getq() calls after the last
+  result is already returned return EOFError as their Future's
+  exception.  (I.e., q.getq() returns a Future as always, but yieding
+  that Future raises EOFError.)
+  """
   # TODO: Refactor to reuse some code with MultiFuture.
 
   def __init__(self, info=None):
@@ -431,11 +444,13 @@ class QueueFuture(Future):
     self._waiting = list()
     super(QueueFuture, self).__init__(info)
 
+  # TODO: __repr__
+
   def complete(self):
     assert not self._full
     self._full = True
-    if self._waiting and not self._dependents:
-      self._abort_excess_waiters()
+    if not self._dependents:
+      self._mark_finished()
 
   def add_dependent(self, fut):
     assert isinstance(fut, Future)
@@ -460,14 +475,15 @@ class QueueFuture(Future):
         waiter.set_result(val)
     else:
       self._completed.append((exc, tb, val))
-    if self._full and self._waiting and not self._dependents:
-      self._abort_excess_waiters()
+    if self._full and not self._dependents:
+      self._mark_finished()
 
-  def _abort_excess_waiters(self):
-    waiters = self._waiters[:]
-    self._waiters[:] = []
-    for waiter in waiters:
+  def _mark_finished(self):
+    waiting = self._waiting[:]
+    self._waiting[:] = []
+    for waiter in waiting:
       waiter.set_exception(EOFError('Queue is empty'))
+    self.set_result(None)
 
   def getq(self):
     fut = Future()
