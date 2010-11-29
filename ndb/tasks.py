@@ -480,7 +480,7 @@ class QueueFuture(Future):
 
   def _mark_finished(self):
     waiting = self._waiting[:]
-    self._waiting[:] = []
+    del self._waiting[:]
     for waiter in waiting:
       waiter.set_exception(EOFError('Queue is empty'))
     self.set_result(None)
@@ -498,6 +498,75 @@ class QueueFuture(Future):
     else:
       self._waiting.append(fut)
     return fut
+
+
+class ReducingFuture(Future):
+  """A Queue following the same protocol as MultiFuture.
+
+  However the result, instead of being a list of results of dependent
+  Futures, is computed by calling a 'reducer' task.  The reducer task
+  takes a list of values and returns a single value.  It may be called
+  multiple times on sublists of values and should behave like
+  e.g. sum().
+  """
+  # TODO: Refactor to reuse some code with MultiFuture.
+
+  def __init__(self, reducer, info=None, batch_size=20):
+    self._reducer = reducer
+    self._batch_size = batch_size
+    self._full = False
+    self._dependents = set()
+    self._completed = list()
+    self._queue = list()
+    super(ReducingFuture, self).__init__(info)
+
+  # TODO: __repr__
+
+  def complete(self):
+    assert not self._full
+    self._full = True
+    if not self._dependents:
+      self._mark_finished()
+
+  def add_dependent(self, fut):
+    assert not self._full
+    self._internal_add_dependent(fut)
+
+  def _internal_add_dependent(self, fut):
+    assert isinstance(fut, Future)
+    if fut not in self._dependents:
+      self._dependents.add(fut)
+      fut.add_callback(self._signal_dependent_done, fut)
+
+  def _signal_dependent_done(self, fut):
+    assert fut.done()
+    self._dependents.remove(fut)
+    val = fut.get_result()  # TODO: What about exceptions here?
+    self._queue.append(val)
+    if len(self._queue) >= self._batch_size:
+      todo = self._queue[:]
+      del self._queue[:]
+      nval = self._reducer(todo)  # TODO: What if exception?
+      if isinstance(nval, Future):
+        self._internal_add_dependent(nval)
+      else:
+        self._queue.append(nval)
+    if self._full and not self._dependents:
+      self._mark_finished()
+
+  def _mark_finished(self):
+    if not self._queue:
+      self.set_result(None)
+    elif len(self._queue) == 1:
+      self.set_result(self._queue.pop())
+    else:
+      todo = self._queue[:]
+      del self._queue[:]
+      nval = self._reducer(todo)  # TODO: What if exception?
+      if isinstance(nval, Future):
+        self._internal_add_dependent(nval)
+      else:
+        self.set_result(nval)
 
 
 # Alias for StopIteration used to mark return values.
