@@ -232,6 +232,27 @@ class ContextTests(unittest.TestCase):
     res = foo().get_result()
     self.assertEqual(res, [1, 2, 3])
 
+  def testContext_MapQuery_CustomFuture(self):
+    mfut = tasks.QueueFuture()
+    @tasks.task
+    def callback(ent):
+      return ent.key.flat()[-1]
+    @tasks.task
+    def foo():
+      yield self.create_entities()
+      query = datastore_query.Query(app='_', kind='Foo')
+      res = yield self.ctx.map_query(query, callback, merge_future=mfut)
+      self.assertEqual(res, None)
+      vals = set()
+      for i in range(3):
+        val = yield mfut.getq()
+        vals.add(val)
+      fail = mfut.getq()
+      self.assertRaises(EOFError, fail.get_result)
+      raise tasks.Return(vals)
+    res = foo().get_result()
+    self.assertEqual(res, set([1, 2, 3]))
+
   def testContext_TransactionFailed(self):
     @tasks.task
     def foo():

@@ -220,8 +220,11 @@ class Context(object):
     lo_hi = yield self._conn.async_allocate_ids(None, key, size, max)
     raise tasks.Return(lo_hi)
 
-  def map_query(self, query, callback, options=None):
-    mfut = tasks.MultiFuture('map_query')
+  @datastore_rpc._positional(3)
+  def map_query(self, query, callback, options=None, merge_future=None):
+    mfut = merge_future
+    if mfut is None:
+      mfut = tasks.MultiFuture('map_query')
 
     @tasks.task
     def helper():
