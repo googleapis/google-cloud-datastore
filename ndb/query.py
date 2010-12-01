@@ -8,6 +8,11 @@ from core import datastore_rpc
 from ndb import model
 
 
+ASC = datastore_query.PropertyOrder.ASCENDING
+DESC = datastore_query.PropertyOrder.DESCENDING
+
+_AND = datastore_query.CompositeFilter.AND
+
 _OPS = {
   '__eq': '=',
 ##  '__ne': '!=',
@@ -22,20 +27,33 @@ _OPS = {
 class Query(object):
 
   @datastore_rpc._positional(1)
-  def __init__(self, kind=None, ancestor=None, __filter=None, __order=None):
+  def __init__(self, kind=None, ancestor=None, filter=None, order=None):
     """A wrapper for Query."""
     self.__query = datastore_query.Query(kind=kind, ancestor=ancestor,
-                                         filter_predicate=__filter,
-                                         order=__order)
+                                         filter_predicate=filter,
+                                         order=order)
 
-  def run_async(self, connection, options):
+  def run_async(self, connection, options=None):
     return self.__query.run_async(connection, options)
 
-  @property
-  def filters(self):
-    return self.__query.__filter_predicate  # XXX
+  # TODO: These properties only work because our class name ('Query')
+  # is the same as that of self.__query.  This is really bad style.
 
-  # XXX Etc. (app, namespace, kind, ancestor, orders)
+  @property
+  def kind(self):
+    return self.__query.__kind
+
+  @property
+  def ancestor(self):
+    return self.__query.__ancestor
+
+  @property
+  def filter(self):
+    return self.__query.__filter_predicate
+
+  @property
+  def order(self):
+    return self.__query.__order
 
   def where(self, **kwds):
     # NOTE: Filters specified this way are not ordered; to force
@@ -43,20 +61,25 @@ class Query(object):
     if not kwds:
       return self
     preds = []
-    if self.filters:
-      preds.append(self.filters)
+    f = self.filter
+    if f:
+      preds.append(f)
     for key, value in kwds.iteritems():
       for opname, opsymbol in _OPS.iteritems():
         if key.endswith(opname):
           name = key[:-len(opname)]
           pred = datastore_query.make_filter(name, opsymbol, value)
           preds.append(pred)
-    if len(preds) == 1:
+    if not preds:
+      pred = None
+    elif len(preds) == 1:
       pred = preds[0]
     else:
-      pred = datastore_query.CompositeFilter(preds)
-    return self.__class__(kind=self.kind, ancestor=self.ancestor,
-                          __filter=pred)
+      pred = datastore_query.CompositeFilter(_AND, preds)
+    return self.__class__(kind=self.kind, ancestor=self.ancestor, order=self.order,
+                          filter=pred)
+
+  # TODO: Add or_where() -- client-side query merging.
 
   def order_by(self, *args, **kwds):
     # q.order(prop1=ASC).order(prop2=DESC)
