@@ -50,7 +50,16 @@ class QueryTests(unittest.TestCase):
       res.extend(batch.results)
     self.assertEqual(res, [self.joe, self.moe])
 
-  # TODO: Add tests for order_by().
+  def testOrderedQuery(self):
+    q = query.Query(kind='Foo').order_by(('name', query.ASC))
+    res = []
+    rpc = q.run_async(model.conn)
+    while rpc is not None:
+      batch = rpc.get_result()
+      rpc = batch.next_batch_async()
+      res.extend(batch.results)
+    self.assertEqual(res, [self.jill, self.joe, self.moe])
+
 
 def main():
   unittest.main()

@@ -76,15 +76,18 @@ class Query(object):
       pred = preds[0]
     else:
       pred = datastore_query.CompositeFilter(_AND, preds)
-    return self.__class__(kind=self.kind, ancestor=self.ancestor, order=self.order,
-                          filter=pred)
+    return self.__class__(kind=self.kind, ancestor=self.ancestor,
+                          order=self.order, filter=pred)
 
   # TODO: Add or_where() -- client-side query merging.
 
   def order_by(self, *args, **kwds):
     # q.order(prop1=ASC).order(prop2=DESC)
     # or q.order('prop1', ('prop2', DESC))
-    orders = list(self.orders)
+    orders = []
+    o = self.order
+    if o:
+      orders.append(o)
     for arg in args:
       if isinstance(arg, tuple):
         propname, direction = arg
@@ -92,4 +95,12 @@ class Query(object):
       else:
         propname = arg
         direction = ASC
-      orders.append(XXX(propname, direction))
+      orders.append(datastore_query.PropertyOrder(propname, direction))
+    if not orders:
+      order = None
+    elif len(orders) == 1:
+      order = orders[0]
+    else:
+      order = datastore_query.CompositeOrder(orders)
+    return self.__class__(kind=self.kind, ancestor=self.ancestor,
+                          filter=self.filter, order=order)
