@@ -10,9 +10,8 @@ from google.appengine.api import apiproxy_stub_map
 from google.appengine.api import datastore_file_stub
 from google.appengine.api import memcache
 from google.appengine.api.memcache import memcache_stub
-
-from core import datastore_rpc
-from core import datastore_query
+from google.appengine.datastore import datastore_rpc
+from google.appengine.datastore import datastore_query
 
 from ndb import context
 from ndb import eventloop
