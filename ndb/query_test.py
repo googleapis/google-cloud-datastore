@@ -18,6 +18,8 @@ from ndb import query
 
 class Foo(model.Model):
   name = model.StringProperty()
+  rate = model.IntegerProperty()
+  tags = model.StringProperty(repeated=True)
 
 
 class QueryTests(unittest.TestCase):
@@ -33,15 +35,16 @@ class QueryTests(unittest.TestCase):
     apiproxy_stub_map.apiproxy.RegisterStub('datastore_v3', ds_stub)
 
   def create_entities(self):
-    self.joe = Foo(name='joe')
+    self.joe = Foo(name='joe', tags=['joe', 'jill', 'hello'], rate=1)
     self.joe.put()
-    self.jill = Foo(name='jill')
+    self.jill = Foo(name='jill', tags=['jack', 'jill'], rate=2)
     self.jill.put()
-    self.moe = Foo(name='moe')
+    self.moe = Foo(name='moe', rate=1)
     self.moe.put()
 
   def testBasicQuery(self):
-    q = query.Query(kind='Foo').where(name__ge='joe').where(name__le='moe')
+    q = query.Query(kind='Foo')
+    q = q.where(name__ge='joe').where(name__le='moe').where()
     res = []
     rpc = q.run_async(model.conn)
     while rpc is not None:
@@ -51,14 +54,15 @@ class QueryTests(unittest.TestCase):
     self.assertEqual(res, [self.joe, self.moe])
 
   def testOrderedQuery(self):
-    q = query.Query(kind='Foo').order_by(('name', query.ASC))
+    q = query.Query(kind='Foo')
+    q = q.order_by('rate').order_by().order_by(('name', query.DESC))
     res = []
     rpc = q.run_async(model.conn)
     while rpc is not None:
       batch = rpc.get_result()
       rpc = batch.next_batch_async()
       res.extend(batch.results)
-    self.assertEqual(res, [self.jill, self.joe, self.moe])
+    self.assertEqual(res, [self.moe, self.joe, self.jill])
 
 
 def main():

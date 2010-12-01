@@ -29,6 +29,7 @@ class Query(object):
   @datastore_rpc._positional(1)
   def __init__(self, kind=None, ancestor=None, filter=None, order=None):
     """A wrapper for Query."""
+    # TODO: Put off setting __query until run_async() is called.
     self.__query = datastore_query.Query(kind=kind, ancestor=ancestor,
                                          filter_predicate=filter,
                                          order=order)
@@ -58,6 +59,10 @@ class Query(object):
   def where(self, **kwds):
     # NOTE: Filters specified this way are not ordered; to force
     # ordered filters, use q.filter(...).filter(...).
+    # TODO: What about renamed properties?  The kwd should be the
+    # Python name, but the Query should use the datastore name.  We'd
+    # need the actual Model class to suport this though, or at least
+    # the actual Property instance.
     if not kwds:
       return self
     preds = []
@@ -70,9 +75,7 @@ class Query(object):
           name = key[:-len(opname)]
           pred = datastore_query.make_filter(name, opsymbol, value)
           preds.append(pred)
-    if not preds:
-      pred = None
-    elif len(preds) == 1:
+    if len(preds) == 1:
       pred = preds[0]
     else:
       pred = datastore_query.CompositeFilter(_AND, preds)
@@ -84,6 +87,9 @@ class Query(object):
   def order_by(self, *args, **kwds):
     # q.order(prop1=ASC).order(prop2=DESC)
     # or q.order('prop1', ('prop2', DESC))
+    # TODO: Again with the renamed properties.
+    if not args and not kwds:
+      return self
     orders = []
     o = self.order
     if o:
@@ -96,9 +102,7 @@ class Query(object):
         propname = arg
         direction = ASC
       orders.append(datastore_query.PropertyOrder(propname, direction))
-    if not orders:
-      order = None
-    elif len(orders) == 1:
+    if len(orders) == 1:
       order = orders[0]
     else:
       order = datastore_query.CompositeOrder(orders)
