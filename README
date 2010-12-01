@@ -1,7 +1,7 @@
 Introduction
 ------------
 
-In this project I am going to develop a new, experimental datastore
+In this project I am developing a new, experimental datastore
 API for the Google App Engine Python runtime. I am doing this as a
 Google employee but using an open source development style as I
 believe this project will benefit from early user feedback.
@@ -17,25 +17,22 @@ to worry about backwards compatibility between versions of this
 experimental code. You are not required to check out the trunk,
 however I do not plan to fix bugs in older branches.
 
+See the file LICENSE for the open source licensing conditions (which
+are the same as for the App Engine SDK).
+
 --Guido van Rossum <guido@google.com>
 
 
 Overview
 --------
 
-The code is structured into three subdirectories:
-
-- core: This contains two modules, datastore_rpc.py and
-  datastore_query.py, which will be released (moved into the
-  google/appengine/datastore directory) as part of the 1.4.0 App
-  Engine release.  It also contains monkey.py, which can be imported
-  to fix a bug in the 1.3.8 production runtime that only happens
-  when async datastore operations are used.  Once 1.4.0 is live,
-  this directory will be deleted from the project.
+The code is structured into two subdirectories:
 
 - ndb: This is the main code base.  Notable submodules are
-  key.py, model.py, eventloop.py, tasks.py, and context.py.
+  key.py, model.py, query.py, eventloop.py, tasks.py, and context.py.
   (Please ignore pep380.py, this was a "fork not taken".)
+  For each module foo.py there's a corresponding foo_test.py which
+  contains unit tests for that module.
 
 - demo: This is where demo programs live.  There currently is only
   one, main.py, which implements a simple guestbook.
@@ -44,7 +41,7 @@ How To
 ------
 
 You need to separately download and install the App Engine Python SDK,
-version 1.3.8 or later.  NOTE: previous versions don't work!!!!!!!!!
+version 1.4.0 or later.  NOTE: previous versions don't work!!!!!!!!!
 (If you don't know where to find that you are not ready to play with
 this code. :-) Assuming the SDK lives at /usr/local/google_appengine,
 you need to add that directory to your $PYTHONPATH environment
