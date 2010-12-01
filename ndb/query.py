@@ -1,9 +1,8 @@
 """Higher-level Query wrapper."""
 
 from google.appengine.api import datastore_types
-
-from core import datastore_query
-from core import datastore_rpc
+from google.appengine.datastore import datastore_query
+from google.appengine.datastore import datastore_rpc
 
 from ndb import model
 
@@ -26,10 +25,15 @@ _OPS = {
 
 class Query(object):
 
+  # TODO: Add an all() or select() class method to Model that returns
+  # a Query instance.
+
   @datastore_rpc._positional(1)
   def __init__(self, kind=None, ancestor=None, filter=None, order=None):
     """A wrapper for Query."""
-    # TODO: Put off setting __query until run_async() is called.
+    # TODO: Put off all this until run_async() is called.
+    if ancestor is not None:
+      ancestor = model.conn.adapter.key_to_pb(ancestor)
     self.__query = datastore_query.Query(kind=kind, ancestor=ancestor,
                                          filter_predicate=filter,
                                          order=order)
@@ -46,7 +50,10 @@ class Query(object):
 
   @property
   def ancestor(self):
-    return self.__query.__ancestor
+    ancestor = self.__query.__ancestor
+    if ancestor is not None:
+      ancestor = model.conn.adapter.pb_to_key(ancestor)
+    return ancestor
 
   @property
   def filter(self):
