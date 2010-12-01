@@ -39,3 +39,7 @@ deploy:
 
 python:
 	PYTHONPATH=$(GAEPATH):. $(PYTHON)
+
+clean:
+	rm -rf htmlcov
+	rm -f `find . -name \*.pyc -o -name \*~ -o -name ~* -o -name \*.orig`
