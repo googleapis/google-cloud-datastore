@@ -232,6 +232,27 @@ class ContextTests(unittest.TestCase):
     res = foo().get_result()
     self.assertEqual(res, [1, 2, 3])
 
+  def testContext_MapQuery_CustomFuture(self):
+    mfut = tasks.QueueFuture()
+    @tasks.task
+    def callback(ent):
+      return ent.key.flat()[-1]
+    @tasks.task
+    def foo():
+      yield self.create_entities()
+      query = datastore_query.Query(app='_', kind='Foo')
+      res = yield self.ctx.map_query(query, callback, merge_future=mfut)
+      self.assertEqual(res, None)
+      vals = set()
+      for i in range(3):
+        val = yield mfut.getq()
+        vals.add(val)
+      fail = mfut.getq()
+      self.assertRaises(EOFError, fail.get_result)
+      raise tasks.Return(vals)
+    res = foo().get_result()
+    self.assertEqual(res, set([1, 2, 3]))
+
   def testContext_TransactionFailed(self):
     @tasks.task
     def foo():
@@ -275,20 +296,41 @@ class ContextTests(unittest.TestCase):
   def testDefaultContextTransaction(self):
     @context.taskify
     def outer():
-      ctx1 = context._get_default_context()
+      ctx1 = context.get_default_context()
       @context.task
       def inner():
-        ctx2 = context._get_default_context()
+        ctx2 = context.get_default_context()
         self.assertTrue(ctx1 is not ctx2)
         self.assertTrue(isinstance(ctx2._conn,
                                    datastore_rpc.TransactionalConnection))
         return 42
       a = yield context.transaction(inner)
-      ctx1a = context._get_default_context()
+      ctx1a = context.get_default_context()
       self.assertTrue(ctx1 is ctx1a)
       raise tasks.Return(a)
     b = outer()
     self.assertEqual(b, 42)
+
+  def testExplicitTransactionClearsDefaultContext(self):
+    @context.taskify
+    def outer():
+      ctx1 = context.get_default_context()
+      @tasks.task
+      def inner(ctx):
+        self.assertTrue(context.get_default_context() is None)
+        key = model.Key('Account', 1)
+        ent = yield ctx.get(key)
+        self.assertTrue(context.get_default_context() is None)
+        self.assertTrue(ent is None)
+        raise tasks.Return(42)
+      fut = ctx1.transaction(inner)
+      self.assertEqual(context.get_default_context(), ctx1)
+      val = yield fut
+      self.assertEqual(context.get_default_context(), ctx1)
+      raise tasks.Return(val)
+    val = outer()
+    self.assertEqual(val, 42)
+    self.assertTrue(context.get_default_context() is None)
 
 
 def main():

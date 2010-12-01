@@ -36,3 +36,6 @@ debug:
 
 deploy:
 	appcfg.py update .
+
+python:
+	PYTHONPATH=$(GAEPATH):. $(PYTHON)

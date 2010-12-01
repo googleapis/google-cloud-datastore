@@ -118,7 +118,7 @@ class HomePage(webapp.RequestHandler):
               }
     self.response.out.write(HOME_PAGE % values)
     query, options = self._make_query()
-    pairs = yield context.map_query(query, self._hp_callback, options)
+    pairs = yield context.map_query(query, self._hp_callback, options=options)
     for key, text in pairs:
       self.response.out.write(text)
 

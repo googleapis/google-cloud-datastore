@@ -168,6 +168,55 @@ class TaskTests(unittest.TestCase):
     self.assertTrue(mfut.done())
     self.assertEqual(mfut.get_result(), [42])
 
+  def testQueueFuture(self):
+    q = tasks.QueueFuture()
+    @tasks.task
+    def produce_one(i):
+      yield tasks.sleep(i * 0.01)
+      raise tasks.Return(i)
+    @tasks.task
+    def producer():
+      for i in range(10):
+        q.add_dependent(produce_one(i))
+      q.complete()
+    @tasks.task
+    def consumer():
+      for i in range(10):
+        val = yield q.getq()
+        self.assertEqual(val, i)
+      yield q
+      self.assertRaises(EOFError, q.getq().get_result)
+    @tasks.task
+    def foo():
+      yield producer(), consumer()
+    foo().get_result()
+
+  def testReducerFuture(self):
+    @tasks.task
+    def sum_task(arg):
+      yield tasks.sleep(0.01)
+      raise tasks.Return(sum(arg))
+    @tasks.task
+    def produce_one(i):
+      yield tasks.sleep(i * 0.01)
+      raise tasks.Return(i)
+    @tasks.task
+    def producer():
+      for i in range(10):
+        q.add_dependent(produce_one(i))
+      q.complete()
+    @tasks.task
+    def consumer():
+      total = yield q
+      self.assertEqual(total, sum(range(10)))
+    @tasks.task
+    def foo():
+      yield producer(), consumer()
+    q = tasks.ReducingFuture(sum_task, batch_size=3)
+    foo().get_result()
+    q = tasks.ReducingFuture(sum, batch_size=3)
+    foo().get_result()
+
   def testGetReturnValue(self):
       r0 = tasks.Return()
       r1 = tasks.Return(42)
