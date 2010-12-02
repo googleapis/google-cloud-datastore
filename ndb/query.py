@@ -57,10 +57,14 @@ class Query(object):
 
   @property
   def filter(self):
+    # TODO: Return something that is actually useful to the user
+    # (e.g. from which it is easy to reconstruct the arguments to
+    # where()).  Alternately make the *Filter class introspectable.
     return self.__query.__filter_predicate
 
   @property
   def order(self):
+    # TODO: See filter().
     return self.__query.__order
 
   def where(self, **kwds):

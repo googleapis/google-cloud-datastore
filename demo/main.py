@@ -18,6 +18,7 @@ from google.appengine.datastore import datastore_rpc
 from ndb import context
 from ndb import eventloop
 from ndb import model
+from ndb import query
 from ndb import tasks
 
 HOME_PAGE = """
@@ -117,18 +118,15 @@ class HomePage(webapp.RequestHandler):
               'logout': users.create_logout_url('/'),
               }
     self.response.out.write(HOME_PAGE % values)
-    query, options = self._make_query()
-    pairs = yield context.map_query(query, self._hp_callback, options=options)
+    qry, options = self._make_query()
+    pairs = yield context.map_query(qry, self._hp_callback, options=options)
     for key, text in pairs:
       self.response.out.write(text)
 
   def _make_query(self):
-    order = datastore_query.PropertyOrder(
-      'when',
-      datastore_query.PropertyOrder.DESCENDING)
-    query = datastore_query.Query(kind=Message.GetKind(), order=order)
+    qry = query.Query(kind=Message.GetKind()).order_by(('when', query.DESC))
     options = datastore_query.QueryOptions(batch_size=13, limit=43)
-    return query, options
+    return qry, options
 
   @context.task
   def _hp_callback(self, message):
