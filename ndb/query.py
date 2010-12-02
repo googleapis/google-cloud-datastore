@@ -1,5 +1,7 @@
 """Higher-level Query wrapper."""
 
+import heapq
+
 from google.appengine.api import datastore_types
 from google.appengine.datastore import datastore_query
 from google.appengine.datastore import datastore_rpc
@@ -40,6 +42,15 @@ class Query(object):
 
   def run_async(self, connection, options=None):
     return self.__query.run_async(connection, options)
+
+  def run(self, connection, options=None):
+    return self.__query.run(connection, options)
+
+  # NOTE: This is an iterating generator, not a coroutine!
+  def iterate(self, connection, options=None):
+    for batch in self.run(connection, options):
+      for result in batch.results:
+        yield result
 
   # TODO: These properties only work because our class name ('Query')
   # is the same as that of self.__query.  This is really bad style.
@@ -86,6 +97,9 @@ class Query(object):
           name = key[:-len(opname)]
           pred = datastore_query.make_filter(name, opsymbol, value)
           preds.append(pred)
+          break
+      else:
+        assert False, 'No valid operator (%r)' % key
     if len(preds) == 1:
       pred = preds[0]
     else:
@@ -119,3 +133,106 @@ class Query(object):
       order = datastore_query.CompositeOrder(orders)
     return self.__class__(kind=self.kind, ancestor=self.ancestor,
                           filter=self.filter, order=order)
+
+
+class _SubQueryIteratorState(object):
+  # Helper class for MultiQuery.
+
+  def __init__(self, entity, iterator, orders):
+    self.entity = entity
+    self.iterator = iterator
+    self.orders = orders
+
+  def __cmp__(self, other):
+    assert isinstance(other, _SubQueryIteratorState)
+    assert self.orders == other.orders
+    our_entity = self.entity
+    their_entity = other.entity
+    # TODO: Renamed properties again.
+    for propname, direction in self.orders:
+      our_value = getattr(our_entity, propname, None)
+      their_value = getattr(their_entity, propname, None)
+      # NOTE: Repeated properties sort by lowest value when in
+      # ascending order and highest value when in descending order.
+      # TODO: Use min_max_value_cache as datastore.py does?
+      if direction == ASC:
+        func = min
+      else:
+        func = max
+      if isinstance(our_value, list):
+        our_value = func(our_value)
+      if isinstance(their_value, list):
+        their_value = func(their_value)
+      flag = cmp(our_value, their_value)
+      if direction == DESC:
+        flag = -flag
+      if flag:
+        return flag
+    # All considered properties are equal; compare by key (ascending).
+    # TODO: Comparison between ints and strings is arbitrary.
+    return cmp(our_entity.key.pairs(), their_entity.key.pairs())
+
+
+class MultiQuery(object):
+
+  # This is not created by the user directly, but implicitly by using
+  # a where() call with an __in or __ne operator.  In the future
+  # or_where() can also use this.  Note that some options must be
+  # interpreted by MultiQuery instead of passed to the underlying
+  # Query's run_async() methode, e.g. offset (though not necessarily
+  # limit, and I'm not sure about cursors).
+
+  def __init__(self, subqueries, orders=()):
+    assert isinstance(subqueries, list), subqueries
+    assert all(isinstance(subq, Query) for subq in subqueries), subqueries
+    self.__subqueries = subqueries
+    self.__orders = orders
+
+  # TODO: Implement equivalents to run() and run_async().  The latter
+  # is needed so we can use this with map_query().
+
+  # NOTE: This is an iterating generator, not a coroutine!
+  def iterate(self, connection, options=None):
+    # Create a list of (first-entity, subquery-iterator) tuples.
+    # TODO: Use the specified sort order.
+    state = []
+    for subq in self.__subqueries:
+      subit = subq.iterate(connection)
+      try:
+        ent = subit.next()
+      except StopIteration:
+        # An empty subquery can't contribute, so just skip it.
+        continue
+      state.append(_SubQueryIteratorState(ent, subit, self.__orders))
+
+    # Now turn it into a sorted heap.  The heapq module claims that
+    # calling heapify() is more efficient than calling heappush() for
+    # each item.
+    heapq.heapify(state)
+
+    # Repeatedly yield the lowest entity from the state vector,
+    # filtering duplicates.  This is essentially a multi-way merge
+    # sort.  One would think it should be possible to filter
+    # duplicates simply by dropping other entities already in the
+    # state vector that are equal to the lowest entity, but because of
+    # the weird sorting of repeated properties, we have to explicitly
+    # keep a set of all keys, so we can remove later occurrences.
+    # Yes, this means that the output may not be sorted correctly.
+    # Too bad.  (I suppose you can do this in constant memory bounded
+    # by the maximum number of entries in relevant repeated
+    # properties, but I'm too lazy for now.  And yes, all this means
+    # MultiQuery is a bit of a toy.  But where it works, it beats
+    # expecting the user to do this themselves.)
+    keys_seen = set()
+    while state:
+      item = heapq.heappop(state)
+      ent = item.entity
+      if ent.key not in keys_seen:
+        keys_seen.add(ent.key)
+        yield ent
+      try:
+        item.entity = item.iterator.next()
+      except StopIteration:
+        # The subquery is exhausted, so just forget about it.
+        continue
+      heapq.heappush(state, item)

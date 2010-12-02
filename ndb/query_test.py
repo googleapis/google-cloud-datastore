@@ -93,6 +93,13 @@ class QueryTests(unittest.TestCase):
     expected_pbs = [datastore_query.PropertyOrder('name', query.DESC)._to_pb()]
     self.assertEqual(order_pbs, expected_pbs)
 
+  def testMultiQuery(self):
+    q1 = query.Query(kind='Foo').where(tags__eq='jill').order_by('name')
+    q2 = query.Query(kind='Foo').where(tags__eq='joe').order_by('name')
+    qq = query.MultiQuery([q1, q2], [('name', query.ASC)])
+    res = list(qq.iterate(model.conn))
+    self.assertEqual(res, [self.jill, self.joe])
+
 
 def main():
   unittest.main()
