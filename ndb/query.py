@@ -26,12 +26,113 @@ _OPS = {
   }
 
 
-def make_filter(name, opsymbol, value):
-  return datastore_query.make_filter(name, opsymbol, value)
+class Node(object):
+
+  def __new__(cls):
+    assert cls is not None
+    return super(Node, cls).__new__(cls)
+
+  def __eq__(self, other):
+    return NotImplemented
+
+  def __ne__(self, other):
+    eq = self.__eq__(other)
+    if eq is NotImplemented:
+      eq = not eq
+    return eq
+
+  def __unordered(self, other):
+    raise TypeError('Nodes cannot be ordered')
+  __le__ = __lt__ = __ge__ = __gt__ = __unordered
+
+  def _to_lower(self):
+    raise NotImplementedError
 
 
-def conjunction(preds):
-  return datastore_query.CompositeFilter(_AND, preds)
+class FilterNode(Node):
+
+  def __new__(cls, name, opsymbol, value):
+    if isinstance(value, list):
+      nodes = [FilterNode(name, opsymbol, v) for v in values]
+      return ConjunctionNode(nodes)
+    self = super(FilterNode, cls).__new__(cls)
+    self.__name = name
+    self.__opsymbol = opsymbol
+    self.__value = value
+    return self
+
+  def __repr__(self):
+    return '%s(%r, %r, %r)' % (self.__class__.__name__,
+                               self.__name, self.__opsymbol, self.__value)
+
+  def __eq__(self, other):
+    if not isinstance(other, FilterNode):
+      return NotImplemented
+    return (self.__name == other.__name and
+            self.__opsymbol == other.__opsymbol and
+            self.__value == other.__value)
+
+  def _to_lower(self):
+    assert self.__opsymbol not in ('!=', 'in'), self.__opsymbol
+    return datastore_query.make_filter(self.__name, self.__opsymbol,
+                                       self.__value)
+
+
+class ConjunctionNode(Node):
+
+  def __new__(cls, nodes):
+    assert nodes
+    if len(nodes) == 1:
+      return nodes[0]
+    self = super(ConjunctionNode, cls).__new__(cls)
+    self.__nodes = []
+    # TODO: Remove duplicates?
+    for node in nodes:
+      assert isinstance(node, Node), node
+      assert not isinstance(node, DisjunctionNode), node  # XXX
+      if isinstance(node, ConjunctionNode):
+        self.__nodes.extend(node.__nodes)
+      else:
+        self.__nodes.append(node)
+    return self
+
+  def __repr__(self):
+    return '%s(%r)' % (self.__class__.__name__, self.__nodes)
+
+  def __eq__(self, other):
+    if not isinstance(other, ConjunctionNode):
+      return NotImplemented
+    return self.__nodes == other.__nodes
+
+  def _to_lower(self):
+    filters = [node._to_lower() for node in self.__nodes]
+    return datastore_query.CompositeFilter(_AND, filters)
+
+
+class DisjunctionNode(Node):
+
+  def __new__(cls, nodes):
+    assert nodes
+    if len(nodes) == 1:
+      return nodes[0]
+    self = super(DisjunctionNode, cls).__new__(cls)
+    self.__nodes = []
+    # TODO: Remove duplicates?
+    for node in nodes:
+      assert isinstance(node, Node), node
+      if isinstance(node, DisjunctionNode):
+        self.__nodes.extend(node.__nodes)
+      else:
+        self.__nodes.append(node)
+    return self
+
+  def __repr__(self):
+    return '%s(%r)' % (self.__class__.__name__, self.__nodes)
+
+  def __eq__(self, other):
+    if not isinstance(other, DisjunctionNode):
+      return NotImplemented
+    return self.__nodes == other.__nodes
 
 
 class Query(object):
@@ -41,7 +142,6 @@ class Query(object):
 
   @datastore_rpc._positional(1)
   def __init__(self, kind=None, ancestor=None, filter=None, order=None):
-    """A wrapper for Query."""
     self.__kind = kind
     self.__ancestor = ancestor
     self.__filter = filter
@@ -57,6 +157,8 @@ class Query(object):
     order = self.__order
     if ancestor is not None:
       ancestor = model.conn.adapter.key_to_pb(ancestor)
+    if filter is not None:
+      filter = filter._to_lower()
     self.__query = datastore_query.Query(kind=kind, ancestor=ancestor,
                                          filter_predicate=filter,
                                          order=order)
@@ -107,18 +209,18 @@ class Query(object):
       for opname, opsymbol in _OPS.iteritems():
         if key.endswith(opname):
           name = key[:-len(opname)]
-          pred = make_filter(name, opsymbol, value)
+          pred = FilterNode(name, opsymbol, value)
           preds.append(pred)
           break
       else:
         if '__' not in key:
-          pred = make_filter(name, '=', value)
+          pred = FilterNode(name, '=', value)
         else:
           assert False, 'No valid operator (%r)' % key  # TODO: proper exc.
     if len(preds) == 1:
       pred = preds[0]
     else:
-      pred = conjunction(preds)
+      pred = ConjunctionNode(preds)
     return self.__class__(kind=self.kind, ancestor=self.ancestor,
                           order=self.order, filter=pred)
 

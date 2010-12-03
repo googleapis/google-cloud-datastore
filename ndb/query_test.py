@@ -80,15 +80,13 @@ class QueryTests(unittest.TestCase):
     q = q.where(rate__eq=1)
     self.assertEqual(q.kind, 'Foo')
     self.assertEqual(q.ancestor, key)
-    self.assertEqual(q.filter._to_pb(),
-                     datastore_query.make_filter('rate', '=', 1)._to_pb())
+    self.assertEqual(q.filter, query.FilterNode('rate', '=', 1))
     self.assertEqual(q.order, None)
 
     q = q.order_by(('name', query.DESC))
     self.assertEqual(q.kind, 'Foo')
     self.assertEqual(q.ancestor, key)
-    self.assertEqual(q.filter._to_pb(),
-                     datastore_query.make_filter('rate', '=', 1)._to_pb())
+    self.assertEqual(q.filter, query.FilterNode('rate', '=', 1))
     order_pbs = [q.order._to_pb()]
     expected_pbs = [datastore_query.PropertyOrder('name', query.DESC)._to_pb()]
     self.assertEqual(order_pbs, expected_pbs)
