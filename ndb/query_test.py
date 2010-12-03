@@ -89,7 +89,7 @@ class QueryTests(unittest.TestCase):
     self.assertEqual(q.ancestor, key)
     self.assertEqual(q.filter._to_pb(),
                      datastore_query.make_filter('rate', '=', 1)._to_pb())
-    order_pbs = q.order._to_pbs()
+    order_pbs = [q.order._to_pb()]
     expected_pbs = [datastore_query.PropertyOrder('name', query.DESC)._to_pb()]
     self.assertEqual(order_pbs, expected_pbs)
 

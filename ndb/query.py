@@ -42,18 +42,31 @@ class Query(object):
   @datastore_rpc._positional(1)
   def __init__(self, kind=None, ancestor=None, filter=None, order=None):
     """A wrapper for Query."""
-    # TODO: Put off all this until run_async() is called.
+    self.__kind = kind
+    self.__ancestor = ancestor
+    self.__filter = filter
+    self.__order = order
+    self.__query = None
+
+  def _get_query(self, connection):
+    if self.__query is not None:
+      return self.__query
+    kind = self.__kind
+    ancestor = self.__ancestor
+    filter = self.__filter
+    order = self.__order
     if ancestor is not None:
       ancestor = model.conn.adapter.key_to_pb(ancestor)
     self.__query = datastore_query.Query(kind=kind, ancestor=ancestor,
                                          filter_predicate=filter,
                                          order=order)
+    return self.__query
 
   def run_async(self, connection, options=None):
-    return self.__query.run_async(connection, options)
+    return self._get_query(connection).run_async(connection, options)
 
   def run(self, connection, options=None):
-    return self.__query.run(connection, options)
+    return self._get_query(connection).run(connection, options)
 
   # NOTE: This is an iterating generator, not a coroutine!
   def iterate(self, connection, options=None):
@@ -61,31 +74,21 @@ class Query(object):
       for result in batch.results:
         yield result
 
-  # TODO: These properties only work because our class name ('Query')
-  # is the same as that of self.__query.  This is really bad style.
-
   @property
   def kind(self):
-    return self.__query.__kind
+    return self.__kind
 
   @property
   def ancestor(self):
-    ancestor = self.__query.__ancestor
-    if ancestor is not None:
-      ancestor = model.conn.adapter.pb_to_key(ancestor)
-    return ancestor
+    return self.__ancestor
 
   @property
   def filter(self):
-    # TODO: Return something that is actually useful to the user
-    # (e.g. from which it is easy to reconstruct the arguments to
-    # where()).  Alternately make the *Filter class introspectable.
-    return self.__query.__filter_predicate
+    return self.__filter
 
   @property
   def order(self):
-    # TODO: See filter().
-    return self.__query.__order
+    return self.__order
 
   def where(self, **kwds):
     # NOTE: Filters specified this way are not ordered; to force
