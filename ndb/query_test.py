@@ -107,6 +107,36 @@ class QueryTests(unittest.TestCase):
     res = list(q.iterate(model.conn))
     self.assertEqual(res, [self.joe, self.jill])
 
+  def testFullDistributiveLaw(self):
+    q = query.Query(kind='Foo').where(tags__in=['jill', 'hello'])
+    q = q.where(rate__in=[1, 2])
+    DisjunctionNode = query.DisjunctionNode
+    ConjunctionNode = query.ConjunctionNode
+    FilterNode = query.FilterNode
+    expected = DisjunctionNode(
+    [ConjunctionNode([FilterNode('tags', '=', 'jill'), FilterNode('rate', '=', 1)]),
+     ConjunctionNode([FilterNode('tags', '=', 'jill'), FilterNode('rate', '=', 2)]),
+     ConjunctionNode([FilterNode('tags', '=', 'hello'), FilterNode('rate', '=', 1)]),
+     ConjunctionNode([FilterNode('tags', '=', 'hello'), FilterNode('rate', '=', 2)])])
+    self.assertEqual(q.filter, expected)
+
+  def testHalfDistributiveLaw(self):
+    DisjunctionNode = query.DisjunctionNode
+    ConjunctionNode = query.ConjunctionNode
+    FilterNode = query.FilterNode
+    filter = ConjunctionNode(
+      [FilterNode('tags', 'in', ['jill', 'hello']),
+       ConjunctionNode([FilterNode('rate', '=', 1),
+                        FilterNode('name', '=', 'moe')])])
+    expected = DisjunctionNode(
+      [ConjunctionNode([FilterNode('tags', '=', 'jill'),
+                        FilterNode('rate', '=', 1),
+                        FilterNode('name', '=', 'moe')]),
+       ConjunctionNode([FilterNode('tags', '=', 'hello'),
+                        FilterNode('rate', '=', 1),
+                        FilterNode('name', '=', 'moe')])])
+    self.assertEqual(filter, expected)
+
 
 def main():
   unittest.main()
