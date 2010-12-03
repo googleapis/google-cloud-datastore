@@ -87,13 +87,12 @@ class QueryTests(unittest.TestCase):
     self.assertEqual(q.kind, 'Foo')
     self.assertEqual(q.ancestor, key)
     self.assertEqual(q.filter, query.FilterNode('rate', '=', 1))
-    order_pbs = [q.order._to_pb()]
-    expected_pbs = [datastore_query.PropertyOrder('name', query.DESC)._to_pb()]
-    self.assertEqual(order_pbs, expected_pbs)
+    expected_order = [('name', query.DESC)]
+    self.assertEqual(q.order, expected_order)
 
   def testMultiQuery(self):
     q1 = query.Query(kind='Foo').where(tags__eq='jill').order_by('name')
-    q2 = query.Query(kind='Foo').where(tags__eq='joe').order_by('name')
+    q2 = query.Query(kind='Foo').where(tags='joe').order_by('name')
     qq = query.MultiQuery([q1, q2], [('name', query.ASC)])
     res = list(qq.iterate(model.conn))
     self.assertEqual(res, [self.jill, self.joe])
@@ -102,6 +101,11 @@ class QueryTests(unittest.TestCase):
     q = query.Query(kind='Foo').where(rate__ne=2)
     res = list(q.iterate(model.conn))
     self.assertEqual(res, [self.joe, self.moe])
+
+  def testInOperator(self):
+    q = query.Query(kind='Foo').where(tags__in=('jill', 'hello'))
+    res = list(q.iterate(model.conn))
+    self.assertEqual(res, [self.joe, self.jill])
 
 
 def main():

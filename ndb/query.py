@@ -212,11 +212,11 @@ class Query(object):
 
   @datastore_rpc._positional(1)
   def __init__(self, kind=None, ancestor=None, filter=None, order=None):
-    self.__kind = kind
-    self.__ancestor = ancestor
-    self.__filter = filter
-    self.__order = order
-    self.__query = None
+    self.__kind = kind  # String
+    self.__ancestor = ancestor  # Key
+    self.__filter = filter  # Node subclass
+    self.__order = order  # List/tuple of (propname, direction)
+    self.__query = None  # Cache for datastore_query.Query instance
 
   def _get_query(self, connection):
     if self.__query is not None:
@@ -229,7 +229,14 @@ class Query(object):
       ancestor = model.conn.adapter.key_to_pb(ancestor)
     if filter is not None:
       filter = filter._to_filter()
-    # TODO: Do something about orders too.
+    if order:
+      order = [datastore_query.PropertyOrder(*o) for o in order]
+      if len(order) == 1:
+        order = order[0]
+      else:
+        order = datastore_query.CompositeOrder(order)
+    # TODO: Don't cache if there were Bindings, or invalidate cache
+    # if bound values change.
     self.__query = datastore_query.Query(kind=kind, ancestor=ancestor,
                                          filter_predicate=filter,
                                          order=order)
@@ -247,15 +254,13 @@ class Query(object):
     if filter is not None:
       filter = filter.resolve()
       if isinstance(filter, DisjunctionNode):
-        assert self.__order is None  # Orders not yet implemented.
         # Switch to a MultiQuery.
         subqueries = []
         for subfilter in filter:
           subquery = Query(kind=self.__kind, ancestor=self.__ancestor,
                            filter=subfilter, order=self.__order)
           subqueries.append(subquery)
-        orders = ()  # Orders not yet implemented.
-        multiquery = MultiQuery(subqueries, orders=orders)
+        multiquery = MultiQuery(subqueries, order=self.__order)
         for result in multiquery.iterate(connection, options):
           yield result
         return
@@ -301,10 +306,13 @@ class Query(object):
           break
       else:
         if '__' not in key:
-          pred = FilterNode(name, '=', value)
+          pred = FilterNode(key, '=', value)
+          preds.append(pred)
         else:
           assert False, 'No valid operator (%r)' % key  # TODO: proper exc.
-    if len(preds) == 1:
+    if not preds:
+      pred = None
+    elif len(preds) == 1:
       pred = preds[0]
     else:
       pred = ConjunctionNode(preds)
@@ -319,10 +327,10 @@ class Query(object):
     # TODO: Again with the renamed properties.
     if not args and not kwds:
       return self
-    orders = []
+    order = []
     o = self.order
     if o:
-      orders.append(o)
+      order.extend(o)
     for arg in args:
       if isinstance(arg, tuple):
         propname, direction = arg
@@ -330,11 +338,7 @@ class Query(object):
       else:
         propname = arg
         direction = ASC
-      orders.append(datastore_query.PropertyOrder(propname, direction))
-    if len(orders) == 1:
-      order = orders[0]
-    else:
-      order = datastore_query.CompositeOrder(orders)
+      order.append((propname, direction))
     return self.__class__(kind=self.kind, ancestor=self.ancestor,
                           filter=self.filter, order=order)
 
@@ -342,36 +346,37 @@ class Query(object):
 class _SubQueryIteratorState(object):
   # Helper class for MultiQuery.
 
-  def __init__(self, entity, iterator, orders):
+  def __init__(self, entity, iterator, order):
     self.entity = entity
     self.iterator = iterator
-    self.orders = orders
+    self.order = order
 
   def __cmp__(self, other):
     assert isinstance(other, _SubQueryIteratorState)
-    assert self.orders == other.orders
+    assert self.order == other.order
     our_entity = self.entity
     their_entity = other.entity
     # TODO: Renamed properties again.
-    for propname, direction in self.orders:
-      our_value = getattr(our_entity, propname, None)
-      their_value = getattr(their_entity, propname, None)
-      # NOTE: Repeated properties sort by lowest value when in
-      # ascending order and highest value when in descending order.
-      # TODO: Use min_max_value_cache as datastore.py does?
-      if direction == ASC:
-        func = min
-      else:
-        func = max
-      if isinstance(our_value, list):
-        our_value = func(our_value)
-      if isinstance(their_value, list):
-        their_value = func(their_value)
-      flag = cmp(our_value, their_value)
-      if direction == DESC:
-        flag = -flag
-      if flag:
-        return flag
+    if self.order:
+      for propname, direction in self.order:
+        our_value = getattr(our_entity, propname, None)
+        their_value = getattr(their_entity, propname, None)
+        # NOTE: Repeated properties sort by lowest value when in
+        # ascending order and highest value when in descending order.
+        # TODO: Use min_max_value_cache as datastore.py does?
+        if direction == ASC:
+          func = min
+        else:
+          func = max
+        if isinstance(our_value, list):
+          our_value = func(our_value)
+        if isinstance(their_value, list):
+          their_value = func(their_value)
+        flag = cmp(our_value, their_value)
+        if direction == DESC:
+          flag = -flag
+        if flag:
+          return flag
     # All considered properties are equal; compare by key (ascending).
     # TODO: Comparison between ints and strings is arbitrary.
     return cmp(our_entity.key.pairs(), their_entity.key.pairs())
@@ -386,11 +391,11 @@ class MultiQuery(object):
   # Query's run_async() methode, e.g. offset (though not necessarily
   # limit, and I'm not sure about cursors).
 
-  def __init__(self, subqueries, orders=()):
+  def __init__(self, subqueries, order=None):
     assert isinstance(subqueries, list), subqueries
     assert all(isinstance(subq, Query) for subq in subqueries), subqueries
     self.__subqueries = subqueries
-    self.__orders = orders
+    self.__order = order
 
   # TODO: Implement equivalents to run() and run_async().  The latter
   # is needed so we can use this with map_query().
@@ -407,7 +412,7 @@ class MultiQuery(object):
       except StopIteration:
         # An empty subquery can't contribute, so just skip it.
         continue
-      state.append(_SubQueryIteratorState(ent, subit, self.__orders))
+      state.append(_SubQueryIteratorState(ent, subit, self.__order))
 
     # Now turn it into a sorted heap.  The heapq module claims that
     # calling heapify() is more efficient than calling heappush() for
