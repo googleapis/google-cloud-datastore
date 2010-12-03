@@ -63,11 +63,6 @@ class QueryTests(unittest.TestCase):
       res.extend(batch.results)
     self.assertEqual(res, [self.moe, self.joe, self.jill])
 
-  def NOTYETtestNotEqualOperator(self):
-    q = query.Query(kind='Foo').where(rate__ne=2)
-    res = list(q.iterate(model.conn))
-    self.assertEqual(res, [self.joe, self.jill])
-
   def testQueryAttributes(self):
     q = query.Query(kind='Foo')
     self.assertEqual(q.kind, 'Foo')
@@ -102,6 +97,11 @@ class QueryTests(unittest.TestCase):
     qq = query.MultiQuery([q1, q2], [('name', query.ASC)])
     res = list(qq.iterate(model.conn))
     self.assertEqual(res, [self.jill, self.joe])
+
+  def testNotEqualOperator(self):
+    q = query.Query(kind='Foo').where(rate__ne=2)
+    res = list(q.iterate(model.conn))
+    self.assertEqual(res, [self.joe, self.moe])
 
 
 def main():

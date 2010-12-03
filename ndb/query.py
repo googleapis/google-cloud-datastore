@@ -147,6 +147,9 @@ class ConjunctionNode(Node):
         self.__nodes.append(node)
     return self
 
+  def __iter__(self):
+    return iter(self.__nodes)
+
   def __repr__(self):
     return '%s(%r)' % (self.__class__.__name__, self.__nodes)
 
@@ -183,6 +186,9 @@ class DisjunctionNode(Node):
       else:
         self.__nodes.append(node)
     return self
+
+  def __iter__(self):
+    return iter(self.__nodes)
 
   def __repr__(self):
     return '%s(%r)' % (self.__class__.__name__, self.__nodes)
@@ -237,6 +243,22 @@ class Query(object):
 
   # NOTE: This is an iterating generator, not a coroutine!
   def iterate(self, connection, options=None):
+    filter = self.__filter
+    if filter is not None:
+      filter = filter.resolve()
+      if isinstance(filter, DisjunctionNode):
+        assert self.__order is None  # Orders not yet implemented.
+        # Switch to a MultiQuery.
+        subqueries = []
+        for subfilter in filter:
+          subquery = Query(kind=self.__kind, ancestor=self.__ancestor,
+                           filter=subfilter, order=self.__order)
+          subqueries.append(subquery)
+        orders = ()  # Orders not yet implemented.
+        multiquery = MultiQuery(subqueries, orders=orders)
+        for result in multiquery.iterate(connection, options):
+          yield result
+        return
     for batch in self.run(connection, options):
       for result in batch.results:
         yield result
