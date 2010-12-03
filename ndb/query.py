@@ -17,13 +17,24 @@ _AND = datastore_query.CompositeFilter.AND
 
 _OPS = {
   '__eq': '=',
-##  '__ne': '!=',
+  '__ne': '!=',
   '__lt': '<',
   '__le': '<=',
   '__gt': '>',
   '__ge': '>=',
-##  '__in': 'in',
+  '__in': 'in',
   }
+
+
+class Binding(object):
+
+  def __init__(self, value=None):
+    self.value = value
+
+  def resolve(self):
+    value = self.value
+    assert not isinstance(value, Binding)
+    return value
 
 
 class Node(object):
@@ -45,16 +56,46 @@ class Node(object):
     raise TypeError('Nodes cannot be ordered')
   __le__ = __lt__ = __ge__ = __gt__ = __unordered
 
-  def _to_lower(self):
+  def _to_filter(self):
     raise NotImplementedError
+
+  def resolve(self):
+    raise NotImplementedError
+
+
+class FalseNode(Node):
+
+  def __new__(cls):
+    return super(Node, cls).__new__(cls)
+
+  def __eq__(self, other):
+    if not isinstane(other, FalseNode):
+      return NotImplemented
+    return True
+
+  def _to_filter(self):
+    # TODO: Or use make_filter(name, '=', []) ?
+    raise ValueError('Cannot convert FalseNode to predicate')
+
+  def resolve(self):
+    return self
 
 
 class FilterNode(Node):
 
   def __new__(cls, name, opsymbol, value):
-    if isinstance(value, list):
-      nodes = [FilterNode(name, opsymbol, v) for v in values]
-      return ConjunctionNode(nodes)
+    if opsymbol == '!=':
+      n1 = FilterNode(name, '<', value)
+      n2 = FilterNode(name, '>', value)
+      return DisjunctionNode([n1, n2])
+    if opsymbol == 'in' and not isinstance(value, Binding):
+      assert isinstance(value, (list, tuple, set, frozenset)), value
+      nodes = [FilterNode(name, '=', v) for v in value]
+      if not nodes:
+        return FalseNode()
+      if len(nodes) == 1:
+        return nodes[0]
+      return DisjunctionNode(nodes)
     self = super(FilterNode, cls).__new__(cls)
     self.__name = name
     self.__opsymbol = opsymbol
@@ -72,13 +113,23 @@ class FilterNode(Node):
             self.__opsymbol == other.__opsymbol and
             self.__value == other.__value)
 
-  def _to_lower(self):
+  def _to_filter(self):
     assert self.__opsymbol not in ('!=', 'in'), self.__opsymbol
-    return datastore_query.make_filter(self.__name, self.__opsymbol,
-                                       self.__value)
+    value = self.__value
+    if isinstance(value, Binding):
+      value = self.resolve()
+    return datastore_query.make_filter(self.__name, self.__opsymbol, value)
+
+  def resolve(self):
+    if self.__opsymbol == 'in':
+      assert isinstance(self.__value, Binding)
+      return FilterNode(self.__name, self.__opsymbol, self.__value.resolve())
+    else:
+      return self
 
 
 class ConjunctionNode(Node):
+  # AND
 
   def __new__(cls, nodes):
     assert nodes
@@ -104,12 +155,19 @@ class ConjunctionNode(Node):
       return NotImplemented
     return self.__nodes == other.__nodes
 
-  def _to_lower(self):
-    filters = [node._to_lower() for node in self.__nodes]
+  def _to_filter(self):
+    filters = [node._to_filter() for node in self.__nodes]
     return datastore_query.CompositeFilter(_AND, filters)
+
+  def resolve(self):
+    nodes = [node.resolve() for node in self.__nodes]
+    if nodes == self.__nodes:
+      return self
+    return ConjunctionNode(nodes)
 
 
 class DisjunctionNode(Node):
+  # OR
 
   def __new__(cls, nodes):
     assert nodes
@@ -133,6 +191,12 @@ class DisjunctionNode(Node):
     if not isinstance(other, DisjunctionNode):
       return NotImplemented
     return self.__nodes == other.__nodes
+
+  def resolve(self):
+    nodes = [node.resolve() for node in self.__nodes]
+    if nodes == self.__nodes:
+      return self
+    return DisjunctionNode(nodes)
 
 
 class Query(object):
@@ -158,7 +222,8 @@ class Query(object):
     if ancestor is not None:
       ancestor = model.conn.adapter.key_to_pb(ancestor)
     if filter is not None:
-      filter = filter._to_lower()
+      filter = filter._to_filter()
+    # TODO: Do something about orders too.
     self.__query = datastore_query.Query(kind=kind, ancestor=ancestor,
                                          filter_predicate=filter,
                                          order=order)
