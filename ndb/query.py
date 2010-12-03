@@ -26,71 +26,12 @@ _OPS = {
   }
 
 
-class ConjunctionFilter(datastore_query.CompositeFilter):
-  """An alias for CompositeFilter(AND, ...)."""
-
-  def __init__(self, filters):
-    super(ConjunctionFilter, self).__init__(CompositeFilter.AND, filters)
+def make_filter(name, opsymbol, value):
+  return datastore_query.make_filter(name, opsymbol, value)
 
 
-class DisjunctionFilter(datastore_query.FilterPredicate):
-  """This should really be CompositeFilter(OR, ...) but that doesn't exist."""
-
-  def __init__(self, filters):
-    super(DisjunctionFilter, self).__init__()
-    self._filters = []
-    for filter in filters:
-      if isinstance(filter, DisjunctionFilter):
-        # Merge
-        self._filters.extend(filter._filters)
-      elif isinstance(filter, FilterPredicate):
-        self._filters.append(filter)
-      else:
-        raise datastore_errors.BadArgumentError(
-          'filters argument must be a list of FilterPredicates, found (%r)' %
-          (filter,))
-
-def normalize(filter):
-  """Normalize a filter.
-
-  This returns a Conjunction of Disjunctions of atomic filters (where
-  currently atomic is a property filter).  A Conjunction or
-  Disjunction with only one subfilter is replaced by that subfilter.
-
-  Since filters are considered immutable this may return the argument
-  filter, or a new one if the structure is significantly changed.
-
-  Some attempt is made to prune redundant copies of the same filter as
-  well.
-  """
-  if isinstance(filter, PropertyFilter):
-    return filter
-
-  if isinstance(filter, CompositeFilter):  # Conjunction
-    assert filter._op == CompositeFilter.AND  # Currently the only operator.
-    subfilters = [normalize(f) for f in filter._filters]
-    assert subfilters  # Should not be empty.
-    if len(subfilters) == 1:
-      return subfilters[0]
-    # TODO: Remove redundant subfilters.
-    # Are any subfilters Conjunctions or Disjunctions?
-    nconj = 0
-    ndisj = 0
-    for sf in subfilters:
-      if isinstance(sf, CompositeFilter):  # Conjunction
-        assert sf._op == CompositeFilter.AND
-        nconj += 1
-      elif isinstance(sf, DisjunctionFilter):
-        ndisj += 1
-    if not nconj and not ndisj:
-      # They must all be atomic.
-      if subfilters == filter._filters:
-        # We already were normalized.  (TODO: Cache this?)
-        return filter
-    if not ndisj:
-      # Create a new conjunction filter.
-      return ConjunctionFilter(subfilters)
-    # XXX Here comes the heavy lifting: apply the distributive law.
+def conjunction(preds):
+  return datastore_query.CompositeFilter(_AND, preds)
 
 
 class Query(object):
@@ -163,15 +104,18 @@ class Query(object):
       for opname, opsymbol in _OPS.iteritems():
         if key.endswith(opname):
           name = key[:-len(opname)]
-          pred = datastore_query.make_filter(name, opsymbol, value)
+          pred = make_filter(name, opsymbol, value)
           preds.append(pred)
           break
       else:
-        assert False, 'No valid operator (%r)' % key
+        if '__' not in key:
+          pred = make_filter(name, '=', value)
+        else:
+          assert False, 'No valid operator (%r)' % key  # TODO: proper exc.
     if len(preds) == 1:
       pred = preds[0]
     else:
-      pred = datastore_query.CompositeFilter(_AND, preds)
+      pred = conjunction(preds)
     return self.__class__(kind=self.kind, ancestor=self.ancestor,
                           order=self.order, filter=pred)
 
