@@ -31,6 +31,9 @@ class Binding(object):
   def __init__(self, value=None):
     self.value = value
 
+  def __repr__(self):
+    return '%s(%r)' % (self.__class__.__name__, self.value)
+
   def resolve(self):
     value = self.value
     assert not isinstance(value, Binding)
@@ -135,16 +138,34 @@ class ConjunctionNode(Node):
     assert nodes
     if len(nodes) == 1:
       return nodes[0]
-    self = super(ConjunctionNode, cls).__new__(cls)
-    self.__nodes = []
+    clauses = [[]]  # Outer: Disjunction; inner: Conjunction.
     # TODO: Remove duplicates?
     for node in nodes:
       assert isinstance(node, Node), node
-      assert not isinstance(node, DisjunctionNode), node  # XXX
-      if isinstance(node, ConjunctionNode):
-        self.__nodes.extend(node.__nodes)
+      if isinstance(node, DisjunctionNode):
+        # Apply the distributive law: (X or Y) and (A or B) becomes
+        # (X and A) or (X and B) or (Y and A) or (Y and B).
+        new_clauses = []
+        for clause in clauses:
+          for subnode in node:
+            new_clause = clause + [subnode]
+            new_clauses.append(new_clause)
+        clauses = new_clauses
+      elif isinstance(node, ConjunctionNode):
+        # Apply half of the distributive law: (X or Y) and A becomes
+        # (X and A) or (Y and A).
+        for clause in clauses:
+          clause.extend(node.__nodes)
       else:
-        self.__nodes.append(node)
+        # Ditto.
+        for clause in clauses:
+          clause.append(node)
+    if not clauses:
+      return FalseNode()
+    if len(clauses) > 1:
+      return DisjunctionNode([ConjunctionNode(clause) for clause in clauses])
+    self = super(ConjunctionNode, cls).__new__(cls)
+    self.__nodes = clauses[0]
     return self
 
   def __iter__(self):
