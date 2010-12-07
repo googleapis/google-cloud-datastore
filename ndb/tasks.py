@@ -105,12 +105,15 @@ class Future(object):
     # TODO: Make done a method, to match PEP 3148?
     __ndb_debug__ = 'SKIP'  # Hide this frame from self._where
     self._info = info  # Info from the caller about this Future's purpose.
+    self._where = utils.get_stack()
+    self._reset()
+
+  def _reset(self):
     self._done = False
     self._result = None
     self._exception = None
     self._traceback = None
     self._callbacks = []
-    self._where = utils.get_stack()
     logging.debug('_all_pending: add %s', self)
     self._all_pending.add(self)
     self._next = None  # Links suspended Futures together in a stack.
@@ -498,6 +501,83 @@ class QueueFuture(Future):
     else:
       self._waiting.append(fut)
     return fut
+
+
+class QueueIteratingFuture(Future):
+  """This is an experiment.
+
+  The idea is that you can write:
+
+    qif = QueueIteratingFuture(...)
+    while (yield qif):
+      value = qif.value
+      <use value>
+    
+  This is a little weird because you are waiting for the same future
+  (qif) multiple times.  But the alternative would be to write:
+
+    while True:
+      value = yield qif.getq()
+      if value is None:
+        break
+      <use value>
+
+  and that is just a little less pleasant.  All of this is of course
+  worse than:
+
+    for value in qif:
+      <use value>
+
+  but we want to have a yield in there.  And we need to yield exactly
+  N+1 times if there are N values -- you won't know there isn't an N+1st
+  value until after you've yielded in vain, so:
+
+    for fut in qif:
+      value = yield fut
+      <use value>
+
+  won't work.  I'd propose a language change:
+
+    for value in yield qif:
+      <use value>
+
+  but that might well be shot down (it's too close to 'in (yield qif):')
+  and even if it were accepted we couldn't use it until Python 3.3.
+
+  Anyway, another way to think of this is probably a semaphore.
+  """
+
+  def __init__(self, queuef, info=None):
+    super(QueueIteratingFuture, self).__init__(info)
+    assert isinstance(queuef, QueueFuture)
+    self.__queuef = queuef
+    self.__nextf = self.__queuef.getq()
+    self.__nextf.add_callback(self.__release)
+    self.__value_valid = False
+    self.__value = None
+
+  @property
+  def value(self):
+    if not self.__value_valid:
+      raise AttributeError('value is currently undefined')
+    if self._done:
+      self._reset()
+    return self.__value
+
+  def __release(self):
+    assert self.__nextf.done()
+    self.__value_valid = False
+    try:
+      self.__value = self.__nextf.get_result()
+    except EOFError:
+      self.__value = None
+      self.__nextf = None
+      self.set_result(None)
+    else:
+      self.__value_valid = True
+      self.set_result(self.__value)
+      self.__nextf = self.__queuef.getq()
+      self.__nextf.add_callback(self.__release)
 
 
 class ReducingFuture(Future):

@@ -217,6 +217,29 @@ class TaskTests(unittest.TestCase):
     q = tasks.ReducingFuture(sum, batch_size=3)
     foo().get_result()
 
+  def testQueueIteratingFuture(self):
+    q = tasks.QueueFuture()
+    @tasks.task
+    def produce_one(i):
+      yield tasks.sleep(i * 0.01)
+      raise tasks.Return(i)
+    @tasks.task
+    def producer():
+      for i in range(10):
+        q.add_dependent(produce_one(i))
+      q.complete()
+    @tasks.task
+    def consumer():
+      qif = tasks.QueueIteratingFuture(q)
+      res = []
+      while (yield qif):
+        res.append(qif.value)
+      self.assertEqual(res, range(10))
+    @tasks.task
+    def foo():
+      yield producer(), consumer()
+    foo().get_result()
+
   def testGetReturnValue(self):
       r0 = tasks.Return()
       r1 = tasks.Return(42)
