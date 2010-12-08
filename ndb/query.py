@@ -271,17 +271,7 @@ class Query(object):
   def run(self, connection, options=None):
     return self._get_query(connection).run(connection, options)
 
-  # Not the final API name. :-)
-  def looper(self, ctx=None, options=None):
-    if ctx is None:
-      ctx = context.get_default_context()
-    qf = tasks.QueueFuture()
-    qif = tasks.QueueIteratingFuture(qf)
-    ctx.map_query(query=self, callback=None, options=options, merge_future=qf)
-    return qif
-
-  # NOTE: This is an iterating generator, not a coroutine!
-  def iterate(self, connection, options=None):
+  def _maybe_multi_query(self):
     filter = self.__filter
     if filter is not None:
       filter = filter.resolve()
@@ -292,10 +282,28 @@ class Query(object):
           subquery = Query(kind=self.__kind, ancestor=self.__ancestor,
                            filter=subfilter, order=self.__order)
           subqueries.append(subquery)
-        multiquery = MultiQuery(subqueries, order=self.__order)
-        for result in multiquery.iterate(connection, options):
-          yield result
-        return
+        return MultiQuery(subqueries, order=self.__order)
+    return None
+
+  # TODO: Pick a better name; decide on context or not.
+  def looper(self, ctx=None, options=None):
+    if ctx is None:
+      ctx = context.get_default_context()
+    multiquery = self._maybe_multi_query()
+    if multiquery is not None:
+      return multiquery.looper(ctx=ctx, options=options)
+    qf = tasks.QueueFuture()
+    qif = tasks.QueueIteratingFuture(qf)
+    ctx.map_query(query=self, callback=None, options=options, merge_future=qf)
+    return qif
+
+  # NOTE: This is an iterating generator, not a coroutine!
+  def iterate(self, connection, options=None):
+    multiquery = self._maybe_multi_query()
+    if multiquery is not None:
+      for result in multiquery.iterate(connection, options):
+        yield result
+      return
     for batch in self.run(connection, options):
       for result in batch.results:
         yield result
@@ -432,8 +440,40 @@ class MultiQuery(object):
   # TODO: Implement equivalents to run() and run_async().  The latter
   # is needed so we can use this with map_query().
 
+  # TODO: Pick a better name; decide on context or not.
+  def looper(self, ctx=None, options=None):
+    assert options is None  # Don't know what to do with these yet.
+    if ctx is None:
+      ctx = context.get_default_context()
+    @tasks.task
+    def inner():
+      # For comments, see iterate() below.
+      state = []
+      for subq in self.__subqueries:
+        subit = subq.looper(ctx)
+        if (yield subit):
+          ent = subit.value
+        else:
+          continue
+        state.append(_SubQueryIteratorState(ent, subit, self.__order))
+      heapq.heapify(state)
+      keys_seen = set()
+      while state:
+        item = heapq.heappop(state)
+        ent = item.entity
+        if ent.key not in keys_seen:
+          keys_seen.add(ent.key)
+          yield ent
+        subit = item.iterator
+        if (yield subit):
+          item.entity = subit.value
+          heapq.heappush(state, item)
+    inner()
+    return qif
+
   # NOTE: This is an iterating generator, not a coroutine!
   def iterate(self, connection, options=None):
+    assert options is None  # Don't know what to do with these yet.
     # Create a list of (first-entity, subquery-iterator) tuples.
     # TODO: Use the specified sort order.
     state = []
