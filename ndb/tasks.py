@@ -572,10 +572,10 @@ class QueueIteratingFuture(Future):
     except EOFError:
       self.__value = None
       self.__nextf = None
-      self.set_result(None)
+      self.set_result(False)
     else:
       self.__value_valid = True
-      self.set_result(self.__value)
+      self.set_result(True)
       self.__nextf = self.__queuef.getq()
       self.__nextf.add_callback(self.__release)
 
