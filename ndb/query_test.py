@@ -11,8 +11,10 @@ from google.appengine.api import datastore_file_stub
 from google.appengine.datastore import datastore_rpc
 from google.appengine.datastore import datastore_query
 
+from ndb import context
 from ndb import model
 from ndb import query
+from ndb import tasks
 
 
 class Foo(model.Model):
@@ -96,6 +98,20 @@ class QueryTests(unittest.TestCase):
     qq = query.MultiQuery([q1, q2], [('name', query.ASC)])
     res = list(qq.iterate(model.conn))
     self.assertEqual(res, [self.jill, self.joe])
+
+  def testLooper(self):
+    q = query.Query(kind='Foo').where(tags__eq='jill')
+    @context.taskify
+    def foo():
+      it = q.looper()
+      res = []
+      res2 = []
+      while (yield it):
+        res.append(it.value)
+        res2.append(it.value)  # It's okay to use it.value more than once.
+      self.assertEqual(res, [self.joe, self.jill])
+      self.assertEqual(res2, res)
+    foo()
 
   def testNotEqualOperator(self):
     q = query.Query(kind='Foo').where(rate__ne=2)

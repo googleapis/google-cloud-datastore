@@ -7,7 +7,9 @@ from google.appengine.api import datastore_types
 from google.appengine.datastore import datastore_query
 from google.appengine.datastore import datastore_rpc
 
+from ndb import context
 from ndb import model
+from ndb import tasks
 
 
 ASC = datastore_query.PropertyOrder.ASCENDING
@@ -268,6 +270,15 @@ class Query(object):
 
   def run(self, connection, options=None):
     return self._get_query(connection).run(connection, options)
+
+  # Not the final API name. :-)
+  def looper(self, ctx=None, options=None):
+    if ctx is None:
+      ctx = context.get_default_context()
+    qf = tasks.QueueFuture()
+    qif = tasks.QueueIteratingFuture(qf)
+    ctx.map_query(query=self, callback=None, options=options, merge_future=qf)
+    return qif
 
   # NOTE: This is an iterating generator, not a coroutine!
   def iterate(self, connection, options=None):
