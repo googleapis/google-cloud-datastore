@@ -503,56 +503,26 @@ class QueueFuture(Future):
     return fut
 
 
-class QueueIteratingFuture(Future):
-  """This is an experiment.
+class SimpleQueueFuture(Future):
+  """A Future that acts as a queue.
 
-  The idea is that you can write:
+  The consumer writes a loop like this:
 
-    qif = QueueIteratingFuture(...)
-    while (yield qif):
-      value = qif.value
-      <use value>
-    
-  This is a little weird because you are waiting for the same future
-  (qif) multiple times.  But the alternative would be to write:
-
-    while True:
-      value = yield qif.getq()
-      if value is None:
-        break
+    q = SimpleQueueFuture(...)
+    while (yield q):
+      value = q.value
       <use value>
 
-  and that is just a little less pleasant.  All of this is of course
-  worse than:
-
-    for value in qif:
-      <use value>
-
-  but we want to have a yield in there.  And we need to yield exactly
-  N+1 times if there are N values -- you won't know there isn't an N+1st
-  value until after you've yielded in vain, so:
-
-    for fut in qif:
-      value = yield fut
-      <use value>
-
-  won't work.  I'd propose a language change:
-
-    for value in yield qif:
-      <use value>
-
-  but that might well be shot down (it's too close to 'in (yield qif):')
-  and even if it were accepted we couldn't use it until Python 3.3.
-
-  Anyway, another way to think of this is probably a semaphore.
+  The producer calls q.push(value) 0 or more times and indicates that
+  it has no more values with q.end().  If the producer pushes N
+  values, the consumer will see N True results followed by a False
+  result, the True results being accompanied with the pushed values,
+  in the same order as they were pushed.
   """
 
-  def __init__(self, queuef, info=None):
-    super(QueueIteratingFuture, self).__init__(info)
-    assert isinstance(queuef, QueueFuture)
-    self.__queuef = queuef
-    self.__nextf = self.__queuef.getq()
-    self.__nextf.add_callback(self.__release)
+
+  def __init__(self, info=None):
+    super(SimpleQueueFuture, self).__init__(info)
     self.__value_valid = False
     self.__value = None
 
@@ -564,20 +534,39 @@ class QueueIteratingFuture(Future):
       self._reset()
     return self.__value
 
+  def push(self, value):
+    self.__value = value
+    self.__value_valid = True
+    self.set_result(True)
+
+  def end(self):
+    self.__value_valid = False
+    self.set_result(False)
+
+
+class QueueIteratingFuture(SimpleQueueFuture):
+  """A SimpleQueueFuture subclass taking its values from a QueueFuture."""
+
+  def __init__(self, queuef, info=None):
+    super(QueueIteratingFuture, self).__init__(info)
+    assert isinstance(queuef, QueueFuture)
+    self.__queuef = queuef
+    self.__prime()
+
+  def __prime(self):
+    self.__nextf = self.__queuef.getq()
+    self.__nextf.add_callback(self.__release)
+
   def __release(self):
     assert self.__nextf.done()
-    self.__value_valid = False
     try:
-      self.__value = self.__nextf.get_result()
+      value = self.__nextf.get_result()
     except EOFError:
-      self.__value = None
       self.__nextf = None
-      self.set_result(False)
+      self.end()
     else:
-      self.__value_valid = True
-      self.set_result(True)
-      self.__nextf = self.__queuef.getq()
-      self.__nextf.add_callback(self.__release)
+      self.push(value)
+      self.__prime()
 
 
 class ReducingFuture(Future):
