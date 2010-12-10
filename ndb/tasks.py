@@ -437,14 +437,24 @@ class QueueFuture(Future):
   result is already returned return EOFError as their Future's
   exception.  (I.e., q.getq() returns a Future as always, but yieding
   that Future raises EOFError.)
+
+  NOTE: If .getq() is given a default argument, it will be returned as
+  the result instead of raising EOFError.  However, other exceptions
+  are still passed through.
+
+  NOTE: Values can also be pushed directly via .pushq(value).  However
+  there is no flow control -- if the producer is faster than the
+  consumer, the queue will grow unbounded.
   """
-  # TODO: Refactor to reuse some code with MultiFuture.
+  # TODO: Refactor to share code with MultiFuture.
+
+  _RAISE_ERROR = object()  # Marker for getq() default value.
 
   def __init__(self, info=None):
     self._full = False
     self._dependents = set()
     self._completed = list()
-    self._waiting = list()
+    self._waiting = list()  # List of (Future, default) tuples.
     super(QueueFuture, self).__init__(info)
 
   # TODO: __repr__
@@ -462,6 +472,11 @@ class QueueFuture(Future):
       self._dependents.add(fut)
       fut.add_callback(self._signal_dependent_done, fut)
 
+  def pushq(self, value):
+    fut = Future()
+    fut.set_result(value)
+    self.add_dependent(fut)
+
   def _signal_dependent_done(self, fut):
     assert fut.done()
     self._dependents.remove(fut)
@@ -471,11 +486,8 @@ class QueueFuture(Future):
     if exc is None:
       val = fut.get_result()
     if self._waiting:
-      waiter = self._waiting.pop(0)
-      if exc is not None:
-        waiter.set_exception(exc)
-      else:
-        waiter.set_result(val)
+      waiter, default = self._waiting.pop(0)
+      self.__pass_result(waiter, exc, tb, val)
     else:
       self._completed.append((exc, tb, val))
     if self._full and not self._dependents:
@@ -484,89 +496,33 @@ class QueueFuture(Future):
   def _mark_finished(self):
     waiting = self._waiting[:]
     del self._waiting[:]
-    for waiter in waiting:
-      waiter.set_exception(EOFError('Queue is empty'))
+    for waiter, default in waiting:
+      self.__pass_eof(waiter, default)
     self.set_result(None)
 
-  def getq(self):
+  def getq(self, default=_RAISE_ERROR):
+    # The default is only used when EOFError is raised.
     fut = Future()
     if self._completed:
       exc, tb, val = self._completed.pop(0)
+      self.__pass_result(fut, exc, tb, val)
+    elif self._full and not self._dependents:
+      self.__pass_eof(fut, default)
+    else:
+      self._waiting.append((fut, default))
+    return fut
+
+  def __pass_eof(self, fut, default):
+    if default is self._RAISE_ERROR:
+      self.__pass_result(fut, EOFError('Queue is empty'), None, None)
+    else:
+      self.__pass_result(fut, None, None, default)
+
+  def __pass_result(self, fut, exc, tb, val):
       if exc is not None:
         fut.set_exception(exc, tb)
       else:
         fut.set_result(val)
-    elif self._full and not self._dependents:
-      fut.set_exception(EOFError('Queue is empty'))
-    else:
-      self._waiting.append(fut)
-    return fut
-
-
-class SimpleQueueFuture(Future):
-  """A Future that acts as a queue.
-
-  The consumer writes a loop like this:
-
-    q = SimpleQueueFuture(...)
-    while (yield q):
-      value = q.value
-      <use value>
-
-  The producer calls q.push(value) 0 or more times and indicates that
-  it has no more values with q.end().  If the producer pushes N
-  values, the consumer will see N True results followed by a False
-  result, the True results being accompanied with the pushed values,
-  in the same order as they were pushed.
-  """
-
-
-  def __init__(self, info=None):
-    super(SimpleQueueFuture, self).__init__(info)
-    self.__value_valid = False
-    self.__value = None
-
-  @property
-  def value(self):
-    if not self.__value_valid:
-      raise AttributeError('value is currently undefined')
-    if self._done:
-      self._reset()
-    return self.__value
-
-  def push(self, value):
-    self.__value = value
-    self.__value_valid = True
-    self.set_result(True)
-
-  def end(self):
-    self.__value_valid = False
-    self.set_result(False)
-
-
-class QueueIteratingFuture(SimpleQueueFuture):
-  """A SimpleQueueFuture subclass taking its values from a QueueFuture."""
-
-  def __init__(self, queuef, info=None):
-    super(QueueIteratingFuture, self).__init__(info)
-    assert isinstance(queuef, QueueFuture)
-    self.__queuef = queuef
-    self.__prime()
-
-  def __prime(self):
-    self.__nextf = self.__queuef.getq()
-    self.__nextf.add_callback(self.__release)
-
-  def __release(self):
-    assert self.__nextf.done()
-    try:
-      value = self.__nextf.get_result()
-    except EOFError:
-      self.__nextf = None
-      self.end()
-    else:
-      self.push(value)
-      self.__prime()
 
 
 class ReducingFuture(Future):

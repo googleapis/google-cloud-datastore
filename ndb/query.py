@@ -293,7 +293,7 @@ class Query(object):
     if multiquery is not None:
       return multiquery.looper(ctx=ctx, options=options)
     qf = tasks.QueueFuture()
-    qif = tasks.QueueIteratingFuture(qf)
+    qif = tasks.QueueIteratingFuture(qf)  # XXX
     ctx.map_query(query=self, callback=None, options=options, merge_future=qf)
     return qif
 
