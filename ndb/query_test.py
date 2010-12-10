@@ -100,17 +100,17 @@ class QueryTests(unittest.TestCase):
     self.assertEqual(res, [self.jill, self.joe])
 
   def testLooper(self):
-    q = query.Query(kind='Foo').where(tags__eq='jill')
+    q = query.Query(kind='Foo').where(tags__eq='jill').order_by('name')
     @context.taskify
     def foo():
       it = q.looper()
       res = []
-      res2 = []
-      while (yield it):
-        res.append(it.value)
-        res2.append(it.value)  # It's okay to use it.value more than once.
-      self.assertEqual(res, [self.joe, self.jill])
-      self.assertEqual(res2, res)
+      while True:
+        val = yield it.getq(None)
+        if val is None:
+          break
+        res.append(val)
+      self.assertEqual(res, [self.jill, self.joe])
     foo()
 
   def testNotEqualOperator(self):
