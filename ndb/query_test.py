@@ -114,6 +114,22 @@ class QueryTests(unittest.TestCase):
       self.assertEqual(res, [self.jill, self.joe])
     foo()
 
+  def testMultiQueryLooper(self):
+    q = query.Query(kind='Foo').where(tags__in=['joe', 'jill'])
+    q = q.order_by('name')
+    @context.taskify
+    def foo():
+      it = q.looper()
+      res = []
+      while True:
+        try:
+          val = yield it.getq()
+        except EOFError:
+          break
+        res.append(val)
+      self.assertEqual(res, [self.jill, self.joe])
+    foo()
+
   def testNotEqualOperator(self):
     q = query.Query(kind='Foo').where(rate__ne=2)
     res = list(q.iterate(model.conn))
@@ -131,10 +147,14 @@ class QueryTests(unittest.TestCase):
     ConjunctionNode = query.ConjunctionNode
     FilterNode = query.FilterNode
     expected = DisjunctionNode(
-    [ConjunctionNode([FilterNode('tags', '=', 'jill'), FilterNode('rate', '=', 1)]),
-     ConjunctionNode([FilterNode('tags', '=', 'jill'), FilterNode('rate', '=', 2)]),
-     ConjunctionNode([FilterNode('tags', '=', 'hello'), FilterNode('rate', '=', 1)]),
-     ConjunctionNode([FilterNode('tags', '=', 'hello'), FilterNode('rate', '=', 2)])])
+      [ConjunctionNode([FilterNode('tags', '=', 'jill'),
+                        FilterNode('rate', '=', 1)]),
+       ConjunctionNode([FilterNode('tags', '=', 'jill'),
+                        FilterNode('rate', '=', 2)]),
+       ConjunctionNode([FilterNode('tags', '=', 'hello'),
+                        FilterNode('rate', '=', 1)]),
+       ConjunctionNode([FilterNode('tags', '=', 'hello'),
+                        FilterNode('rate', '=', 2)])])
     self.assertEqual(q.filter, expected)
 
   def testHalfDistributiveLaw(self):

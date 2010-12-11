@@ -443,7 +443,7 @@ class QueueFuture(Future):
   the result instead of raising EOFError.  However, other exceptions
   are still passed through.
 
-  NOTE: Values can also be pushed directly via .pushq(value).  However
+  NOTE: Values can also be pushed directly via .putq(value).  However
   there is no flow control -- if the producer is faster than the
   consumer, the queue will grow unbounded.
   """
@@ -467,7 +467,7 @@ class QueueFuture(Future):
     if not self._dependents:
       self._mark_finished()
 
-  def pushq(self, value):
+  def putq(self, value):
     fut = Future()
     fut.set_result(value)
     self.add_dependent(fut)
@@ -548,7 +548,7 @@ class SerialQueueFuture(Future):
     if not self._queue:
       self.set_result(None)
 
-  def pushq(self, value):
+  def putq(self, value):
     if self._waiting:
       waiter = self._waiting.popleft()
       waiter.set_result(value)

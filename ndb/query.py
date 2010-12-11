@@ -294,6 +294,7 @@ class Query(object):
       return multiquery.looper(ctx=ctx, options=options)
     qf = tasks.SerialQueueFuture()
     ctx.map_query(query=self, callback=None, options=options, merge_future=qf)
+    # XXX The map_query() returns a Future that nobody will wait for.
     return qf
 
   # NOTE: This is an iterating generator, not a coroutine!
@@ -444,17 +445,19 @@ class MultiQuery(object):
     assert options is None  # Don't know what to do with these yet.
     if ctx is None:
       ctx = context.get_default_context()
+    qf = tasks.SerialQueueFuture()
     @tasks.task
     def inner():
       # For comments, see iterate() below.
       state = []
       for subq in self.__subqueries:
         subit = subq.looper(ctx)
-        if (yield subit):
-          ent = subit.value
-        else:
+        try:
+          ent = yield subit.getq()
+        except EOFError:
           continue
-        state.append(_SubQueryIteratorState(ent, subit, self.__order))
+        else:
+          state.append(_SubQueryIteratorState(ent, subit, self.__order))
       heapq.heapify(state)
       keys_seen = set()
       while state:
@@ -462,13 +465,18 @@ class MultiQuery(object):
         ent = item.entity
         if ent.key not in keys_seen:
           keys_seen.add(ent.key)
-          yield ent
+          qf.putq(ent)
         subit = item.iterator
-        if (yield subit):
-          item.entity = subit.value
+        try:
+          ent = yield subit.getq()
+        except EOFError:
+          pass
+        else:
+          item.entity = ent
           heapq.heappush(state, item)
-    inner()
-    return qif
+      qf.complete()
+    inner()  # XXX But nobody will be waiting for this.
+    return qf
 
   # NOTE: This is an iterating generator, not a coroutine!
   def iterate(self, connection, options=None):
