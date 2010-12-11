@@ -2,6 +2,7 @@
 
 import os
 import re
+import random
 import sys
 import time
 import unittest
@@ -190,6 +191,30 @@ class TaskTests(unittest.TestCase):
     def foo():
       yield producer(), consumer()
     foo().get_result()
+
+  def testSerialQueueFuture(self):
+    q = tasks.SerialQueueFuture()
+    @tasks.task
+    def produce_one(i):
+      yield tasks.sleep(random.randrange(10) * 0.01)
+      raise tasks.Return(i)
+    @tasks.task
+    def producer():
+      for i in range(10):
+        q.add_dependent(produce_one(i))
+      q.complete()
+    @tasks.task
+    def consumer():
+      for i in range(10):
+        val = yield q.getq()
+        self.assertEqual(val, i)
+      yield q
+      self.assertRaises(EOFError, q.getq().get_result)
+      yield q
+    @tasks.taskify
+    def foo():
+      yield producer(), consumer()
+    foo()
 
   def testReducerFuture(self):
     @tasks.task

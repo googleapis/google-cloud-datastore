@@ -292,7 +292,7 @@ class Query(object):
     multiquery = self._maybe_multi_query()
     if multiquery is not None:
       return multiquery.looper(ctx=ctx, options=options)
-    qf = tasks.QueueFuture()
+    qf = tasks.SerialQueueFuture()
     ctx.map_query(query=self, callback=None, options=options, merge_future=qf)
     return qf
 

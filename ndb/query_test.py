@@ -106,8 +106,9 @@ class QueryTests(unittest.TestCase):
       it = q.looper()
       res = []
       while True:
-        val = yield it.getq(None)
-        if val is None:
+        try:
+          val = yield it.getq()
+        except EOFError:
           break
         res.append(val)
       self.assertEqual(res, [self.jill, self.joe])

@@ -59,6 +59,7 @@ suspend -- there's no need to insert a dummy yield in order to make
 the task into a generator.
 """
 
+import collections
 import logging
 import os
 import sys
@@ -389,7 +390,7 @@ class MultiFuture(Future):
     self._full = False
     self._dependents = set()
     self._results = []
-    super(MultiFuture, self).__init__(info)
+    super(MultiFuture, self).__init__(info=info)
 
   def __repr__(self):
     # TODO: This may be invoked before __init__() returns,
@@ -448,6 +449,7 @@ class QueueFuture(Future):
   """
   # TODO: Refactor to share code with MultiFuture.
 
+  # TODO: Kill getq(default) or add it uniformly.
   _RAISE_ERROR = object()  # Marker for getq() default value.
 
   def __init__(self, info=None):
@@ -455,7 +457,7 @@ class QueueFuture(Future):
     self._dependents = set()
     self._completed = list()
     self._waiting = list()  # List of (Future, default) tuples.
-    super(QueueFuture, self).__init__(info)
+    super(QueueFuture, self).__init__(info=info)
 
   # TODO: __repr__
 
@@ -465,17 +467,17 @@ class QueueFuture(Future):
     if not self._dependents:
       self._mark_finished()
 
+  def pushq(self, value):
+    fut = Future()
+    fut.set_result(value)
+    self.add_dependent(fut)
+
   def add_dependent(self, fut):
     assert isinstance(fut, Future)
     assert not self._full
     if fut not in self._dependents:
       self._dependents.add(fut)
       fut.add_callback(self._signal_dependent_done, fut)
-
-  def pushq(self, value):
-    fut = Future()
-    fut.set_result(value)
-    self.add_dependent(fut)
 
   def _signal_dependent_done(self, fut):
     assert fut.done()
@@ -487,7 +489,7 @@ class QueueFuture(Future):
       val = fut.get_result()
     if self._waiting:
       waiter, default = self._waiting.pop(0)
-      self.__pass_result(waiter, exc, tb, val)
+      self._pass_result(waiter, exc, tb, val)
     else:
       self._completed.append((exc, tb, val))
     if self._full and not self._dependents:
@@ -497,7 +499,7 @@ class QueueFuture(Future):
     waiting = self._waiting[:]
     del self._waiting[:]
     for waiter, default in waiting:
-      self.__pass_eof(waiter, default)
+      self._pass_eof(waiter, default)
     self.set_result(None)
 
   def getq(self, default=_RAISE_ERROR):
@@ -505,24 +507,78 @@ class QueueFuture(Future):
     fut = Future()
     if self._completed:
       exc, tb, val = self._completed.pop(0)
-      self.__pass_result(fut, exc, tb, val)
+      self._pass_result(fut, exc, tb, val)
     elif self._full and not self._dependents:
-      self.__pass_eof(fut, default)
+      self._pass_eof(fut, default)
     else:
       self._waiting.append((fut, default))
     return fut
 
-  def __pass_eof(self, fut, default):
+  def _pass_eof(self, fut, default):
     if default is self._RAISE_ERROR:
-      self.__pass_result(fut, EOFError('Queue is empty'), None, None)
+      self._pass_result(fut, EOFError('Queue is empty'), None, None)
     else:
-      self.__pass_result(fut, None, None, default)
+      self._pass_result(fut, None, None, default)
 
-  def __pass_result(self, fut, exc, tb, val):
+  def _pass_result(self, fut, exc, tb, val):
       if exc is not None:
         fut.set_exception(exc, tb)
       else:
         fut.set_result(val)
+
+
+class SerialQueueFuture(Future):
+  """Like QueueFuture but maintains the order of insertion."""
+
+  def __init__(self, info=None):
+    self._full = False
+    self._queue = collections.deque()
+    self._waiting = collections.deque()
+    # Invariant: at least one of _queue and _waiting is empty.
+    super(SerialQueueFuture, self).__init__(info=info)
+
+  # TODO: __repr__
+
+  def complete(self):
+    assert not self._full
+    self._full = True
+    while self._waiting:
+      waiter = self._waiting.popleft()
+      waiter.set_exception(EOFError('Queue is empty'))
+    if not self._queue:
+      self.set_result(None)
+
+  def pushq(self, value):
+    if self._waiting:
+      waiter = self._waiting.popleft()
+      waiter.set_result(value)
+      return
+    fut = Future()
+    fut.set_result(value)
+    self.add_dependent(fut)
+
+  def add_dependent(self, fut):
+    assert isinstance(fut, Future)
+    assert not self._full
+    if self._waiting:
+      waiter = self._waiting.popleft()
+      # TODO: Transfer errors too.
+      fut.add_callback(lambda: waiter.set_result(fut.get_result()))
+    else:
+      self._queue.append(fut)
+
+  def getq(self):
+    if self._queue:
+      fut = self._queue.popleft()
+    else:
+      fut = Future()
+      if self._full:
+        fut.set_exception(EOFError('Queue is empty'))
+      else:
+        self._waiting.append(fut)
+    if self._full and not self.done():
+      self.set_result(None)
+    return fut
 
 
 class ReducingFuture(Future):
@@ -533,6 +589,9 @@ class ReducingFuture(Future):
   takes a list of values and returns a single value.  It may be called
   multiple times on sublists of values and should behave like
   e.g. sum().
+
+  NOTE: The reducer input values may be reordered compared to the
+  order in which they were added to the queue.
   """
   # TODO: Refactor to reuse some code with MultiFuture.
 
@@ -543,7 +602,7 @@ class ReducingFuture(Future):
     self._dependents = set()
     self._completed = list()
     self._queue = list()
-    super(ReducingFuture, self).__init__(info)
+    super(ReducingFuture, self).__init__(info=info)
 
   # TODO: __repr__
 
