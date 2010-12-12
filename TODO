@@ -3,7 +3,7 @@ Go public.
 Finalize Query API.  Add Model.all().  Decide what to call
 Query.looper().  Add Query.map().
 
-Make Model().get()/put()/delete() async.
+Make Model().get()/put()/delete() async.  Add get_or_insert().
 
 Prettify MultiQuery API (add_dependent() vs. putq() and getq()).
 
