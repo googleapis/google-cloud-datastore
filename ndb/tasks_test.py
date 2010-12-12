@@ -177,7 +177,8 @@ class TaskTests(unittest.TestCase):
       raise tasks.Return(i)
     @tasks.task
     def producer():
-      for i in range(10):
+      q.putq(0)
+      for i in range(1, 10):
         q.add_dependent(produce_one(i))
       q.complete()
     @tasks.task

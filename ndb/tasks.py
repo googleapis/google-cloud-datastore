@@ -409,6 +409,11 @@ class MultiFuture(Future):
       # TODO: How to get multiple exceptions?
       self.set_result([r.get_result() for r in self._results])
 
+  def putq(self, value):
+    fut = Future()
+    fut.set_result(value)
+    self.add_dependent(fut)
+
   def add_dependent(self, fut):
     assert isinstance(fut, Future)
     assert not self._full

@@ -256,10 +256,9 @@ class Context(object):
           else:
             val = callback(ent)  # TODO: If this raises, log and ignore
           if not isinstance(val, tasks.Future):
-            fut = tasks.Future()
-            fut.set_result(val)
-            val = fut
-          mfut.add_dependent(val)
+            mfut.putq(val)
+          else:
+            mfut.add_dependent(val)
       mfut.complete()
 
     helper()
