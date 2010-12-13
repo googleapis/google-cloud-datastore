@@ -364,11 +364,10 @@ class Query(object):
 
   # TODO: Add or_where() -- client-side query merging.
 
-  def order_by(self, *args, **kwds):
-    # q.order(prop1=ASC).order(prop2=DESC)
-    # or q.order('prop1', ('prop2', DESC))
+  def order_by(self, *args):
+    # q.order_by('prop1', ('prop2', DESC))
     # TODO: Again with the renamed properties.
-    if not args and not kwds:
+    if not args:
       return self
     order = []
     o = self.order
@@ -384,6 +383,15 @@ class Query(object):
       order.append((propname, direction))
     return self.__class__(kind=self.kind, ancestor=self.ancestor,
                           filter=self.filter, order=order)
+
+  def order_by_desc(self, *args):
+    # q.order_by_desc('prop1', 'prop2') is equivalent to
+    # q.order_by(('prop1', DESC), ('prop2', DESC)).
+    order = []
+    for arg in args:
+      assert isinstance(arg, basestring)
+      order.append((arg, DESC))
+    return self.order_by(*order)
 
 
 class _SubQueryIteratorState(object):

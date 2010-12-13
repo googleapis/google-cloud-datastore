@@ -85,7 +85,7 @@ class QueryTests(unittest.TestCase):
     self.assertEqual(q.filter, query.FilterNode('rate', '=', 1))
     self.assertEqual(q.order, None)
 
-    q = q.order_by(('name', query.DESC))
+    q = q.order_by_desc('name')
     self.assertEqual(q.kind, 'Foo')
     self.assertEqual(q.ancestor, key)
     self.assertEqual(q.filter, query.FilterNode('rate', '=', 1))
