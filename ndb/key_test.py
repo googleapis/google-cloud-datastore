@@ -24,6 +24,7 @@ class KeyTests(unittest.TestCase):
     k = key.Key(flat=flat)
     self.assertEqual(k.pairs(), pairs)
     self.assertEqual(k.flat(), flat)
+    self.assertEqual(k.kind(), 'Kind')
 
   def testFlatLong(self):
     flat = ['Kind', 1, 'Subkind', 'foobar']
@@ -31,6 +32,7 @@ class KeyTests(unittest.TestCase):
     k = key.Key(flat=flat)
     self.assertEqual(k.pairs(), pairs)
     self.assertEqual(k.flat(), flat)
+    self.assertEqual(k.kind(), 'Subkind')
 
   def testSerialized(self):
     flat = ['Kind', 1, 'Subkind', 'foobar']

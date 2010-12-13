@@ -124,7 +124,7 @@ class HomePage(webapp.RequestHandler):
       self.response.out.write(text)
 
   def _make_query(self):
-    qry = query.Query(kind=Message.GetKind()).order_by(('when', query.DESC))
+    qry = Message.all().order_by(('when', query.DESC))
     options = datastore_query.QueryOptions(batch_size=13, limit=43)
     return qry, options
 

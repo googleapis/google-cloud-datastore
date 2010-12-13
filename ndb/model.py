@@ -234,10 +234,17 @@ class Model(object):
   def ResetKindMap(cls):
     cls._kind_map.clear()
 
-  # TODO: Move db methods out of this class?
+  @classmethod
+  def all(cls, **kwds):
+    from ndb.query import Query  # Import late to avoid circular imports.
+    return Query(kind=cls.GetKind(), **kwds)
+
+  # TODO: Make the below db methods asynchronous and use contexts.
 
   @classmethod
   def get(cls, key):
+    # TODO: Make this a method on the Key class?
+    assert key.kind() == cls.GetKind()
     return conn.get([key])[0]
 
   def put(self):
@@ -247,9 +254,16 @@ class Model(object):
     return key
 
   def delete(self):
+    # TODO: Make this a method on the Key class too?
+    assert key.kind() == self.GetKind()
     conn.delete([self.key])
 
-# TODO: Use a metaclass to automatically call FixUpProperties()?
+  @classmethod
+  def allocate_ids(cls, key, size=None, max=None):
+    # TODO: Make this a method on the Key class?
+    assert key.kind() == self.GetKind()
+    return conn.allocate_ids(key, size=size, max=max)
+
 # TODO: More Property types
 
 class Property(object):

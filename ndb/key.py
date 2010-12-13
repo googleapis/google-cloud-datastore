@@ -107,6 +107,12 @@ class Key(object):
       yield kind
       yield idorname
 
+  def kind(self):
+    kind = None
+    for elem in self.__reference.path().element_list():
+      kind = elem.type()
+    return kind
+
   def reference(self):
     # TODO: In order to guarantee immutability, this must make a copy.
     # But most uses are from internal code which won't touch the

@@ -235,6 +235,9 @@ class Query(object):
 
   @datastore_rpc._positional(1)
   def __init__(self, kind=None, ancestor=None, filter=None, order=None):
+    if ancestor is not None:
+      lastid = ancestor.pairs()[-1][1]
+      assert lastid, 'ancestor cannot be an incomplete key'
     self.__kind = kind  # String
     self.__ancestor = ancestor  # Key
     self.__filter = filter  # Node subclass

@@ -11,7 +11,7 @@ from google.appengine.api import apiproxy_stub_map
 from google.appengine.api import datastore_file_stub
 from google.appengine.datastore import entity_pb
 
-from ndb import model
+from ndb import model, query
 
 GOLDEN_PB = """\
 key <
@@ -388,6 +388,23 @@ class ModelTests(unittest.TestCase):
     m2 = model.Model()
     m2.FromPb(pb)
     self.assertEqual(m2, m)
+
+  def testQuery(self):
+    class MyModel(model.Model):
+      p = model.IntegerProperty()
+
+    q = MyModel.all()
+    self.assertTrue(isinstance(q, query.Query))
+    self.assertEqual(q.kind, 'MyModel')
+    self.assertEqual(q.ancestor, None)
+
+    k = model.Key(flat=['Model', 1])
+    q = MyModel.all(ancestor=k)
+    self.assertEqual(q.kind, 'MyModel')
+    self.assertEqual(q.ancestor, k)
+
+    k0 = model.Key(flat=['Model', None])
+    self.assertRaises(Exception, MyModel.all, ancestor=k0)
 
   def testProperty(self):
     class MyModel(model.Model):
