@@ -5,10 +5,13 @@ Fix up code: style, docstrings, TODOs.  Increase coverage again.
 Separate tutorial, user guide, reference manual.  Explain the things
 that Brett & Nick asked in feedback.
 
-Finalize Query API.  Add Model.all().  Decide what to call
-Query.looper().  Add Query.map().
+Add Query methods going through default context for map and iter (and
+possibly a fetch()).
 
-Make Model().get()/put()/delete() async.  Add get_or_insert().
+Make Model().get()/put()/delete() async and go through default
+context.  Add Model.get_or_insert().
+
+Add a public API for QueryOptions.
 
 Handle exceptions in callbacks uniformly.
 
