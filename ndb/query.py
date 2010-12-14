@@ -278,6 +278,8 @@ class Query(object):
       except EOFError:
         return
 
+  # TODO: Need an API parallel to context.iter_query().
+
   @tasks.task
   def run_to_queue(self, queue, conn, options=None):
     """Run this query, putting entities into the given queue."""
@@ -452,6 +454,8 @@ class MultiQuery(object):
 
   # NOTE: This is an iterating generator, not a coroutine!
   def iterate(self, conn, options=None):
+    # TODO: Maybe this should be a helper function?  It is identical
+    # to Query.iterate().
     queue = tasks.SerialQueueFuture()
     self.run_to_queue(queue, conn, options)
     while True:

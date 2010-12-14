@@ -253,6 +253,26 @@ class ContextTests(unittest.TestCase):
     res = foo().get_result()
     self.assertEqual(res, set([1, 2, 3]))
 
+  def testContext_IterQuery(self):
+    @tasks.task
+    def foo():
+      yield self.create_entities()
+      qry = query.Query(kind='Foo')
+      it = self.ctx.iter_query(qry)
+      res = []
+      while True:
+        try:
+          ent = yield it.getq()
+        except EOFError:
+          break
+        res.append(ent)
+      raise tasks.Return(res)
+    res = foo().get_result()
+    self.assertEqual(len(res), 3)
+    for i, ent in enumerate(res):
+      self.assertTrue(isinstance(ent, model.Model))
+      self.assertEqual(ent.key.flat(), ['Foo', i+1])
+
   def testContext_TransactionFailed(self):
     @tasks.task
     def foo():

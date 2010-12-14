@@ -261,6 +261,11 @@ class Context(object):
     helper()
     return mfut
 
+  @datastore_rpc._positional(2)
+  def iter_query(self, query, options=None):
+    return self.map_query(query, callback=None, options=options,
+                          merge_future=tasks.SerialQueueFuture())
+
   @tasks.task
   def transaction(self, callback, retry=3, entity_group=None):
     # Will invoke callback(ctx) one or more times with ctx set to a new,
@@ -438,6 +443,9 @@ def allocate_ids(*args, **kwds):
 
 def map_query(*args, **kwds):
   return get_default_context().map_query(*args, **kwds)
+
+def iter_query(*args, **kwds):
+  return get_default_context().iter_query(*args, **kwds)
 
 def transaction(callback, *args, **kwds):
   def callback_wrapper(ctx):
