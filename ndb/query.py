@@ -268,11 +268,36 @@ class Query(object):
                                          order=order)
     return self.__query
 
-  def run_async(self, connection, options=None):
-    return self._get_query(connection).run_async(connection, options)
+  # NOTE: This is an iterating generator, not a coroutine!
+  def iterate(self, conn, options=None):
+    queue = tasks.SerialQueueFuture()
+    self.run_to_queue(queue, conn, options)
+    while True:
+      try:
+        yield queue.getq().get_result()
+      except EOFError:
+        return
 
-  def run(self, connection, options=None):
-    return self._get_query(connection).run(connection, options)
+  @tasks.task
+  def run_to_queue(self, queue, conn, options=None):
+    """Run this query, putting entities into the given queue."""
+    multiquery = self._maybe_multi_query()
+    if multiquery is not None:
+      multiquery.run_to_queue(queue, conn, options=options)  # No return value.
+      return
+    rpc = self.run_async(conn, options)
+    while rpc is not None:
+      batch = yield rpc
+      rpc = batch.next_batch_async(options)
+      for ent in batch.results:
+        queue.putq(ent)
+    queue.complete()
+
+  def run_async(self, conn, options=None):
+    return self._get_query(conn).run_async(conn, options)
+
+  def run(self, conn, options=None):
+    return self._get_query(conn).run(conn, options)
 
   def _maybe_multi_query(self):
     filter = self.__filter
@@ -298,17 +323,6 @@ class Query(object):
     qf = tasks.SerialQueueFuture()
     ctx.map_query(query=self, callback=None, options=options, merge_future=qf)
     return qf
-
-  # NOTE: This is an iterating generator, not a coroutine!
-  def iterate(self, connection, options=None):
-    multiquery = self._maybe_multi_query()
-    if multiquery is not None:
-      for result in multiquery.iterate(connection, options):
-        yield result
-      return
-    for batch in self.run(connection, options):
-      for result in batch.results:
-        yield result
 
   @property
   def kind(self):
@@ -447,8 +461,47 @@ class MultiQuery(object):
     self.__subqueries = subqueries
     self.__order = order
 
-  # TODO: Implement equivalents to run() and run_async().  The latter
-  # is needed so we can use this with map_query().
+  # NOTE: This is an iterating generator, not a coroutine!
+  def iterate(self, conn, options=None):
+    queue = tasks.SerialQueueFuture()
+    self.run_to_queue(queue, conn, options)
+    while True:
+      try:
+        yield queue.getq().get_result()
+      except EOFError:
+        return
+
+  @tasks.task
+  def run_to_queue(self, queue, conn, options=None):
+    """Run this query, putting entities into the given queue."""
+    assert options is None  # Don't know what to do with these yet.
+    state = []
+    for subq in self.__subqueries:
+      subit = tasks.SerialQueueFuture()  # TODO: info.
+      subq.run_to_queue(subit, conn)
+      try:
+        ent = yield subit.getq()
+      except EOFError:
+        continue
+      else:
+        state.append(_SubQueryIteratorState(ent, subit, self.__order))
+    heapq.heapify(state)
+    keys_seen = set()
+    while state:
+      item = heapq.heappop(state)
+      ent = item.entity
+      if ent.key not in keys_seen:
+        keys_seen.add(ent.key)
+        queue.putq(ent)
+      subit = item.iterator
+      try:
+        ent = yield subit.getq()
+      except EOFError:
+        pass
+      else:
+        item.entity = ent
+        heapq.heappush(state, item)
+    queue.complete()
 
   # TODO: Pick a better name; decide on context or not.
   def looper(self, ctx=None, options=None):
@@ -458,7 +511,8 @@ class MultiQuery(object):
     qf = tasks.SerialQueueFuture()
     @tasks.task
     def inner():
-      # For comments, see iterate() below.
+      # Create a list of (first-entity, subquery-iterator) tuples.
+      # TODO: Use the specified sort order.
       state = []
       for subq in self.__subqueries:
         subit = subq.looper(ctx)
@@ -468,7 +522,25 @@ class MultiQuery(object):
           continue
         else:
           state.append(_SubQueryIteratorState(ent, subit, self.__order))
+
+      # Now turn it into a sorted heap.  The heapq module claims that
+      # calling heapify() is more efficient than calling heappush() for
+      # each item.
       heapq.heapify(state)
+
+      # Repeatedly yield the lowest entity from the state vector,
+      # filtering duplicates.  This is essentially a multi-way merge
+      # sort.  One would think it should be possible to filter
+      # duplicates simply by dropping other entities already in the
+      # state vector that are equal to the lowest entity, but because of
+      # the weird sorting of repeated properties, we have to explicitly
+      # keep a set of all keys, so we can remove later occurrences.
+      # Yes, this means that the output may not be sorted correctly.
+      # Too bad.  (I suppose you can do this in constant memory bounded
+      # by the maximum number of entries in relevant repeated
+      # properties, but I'm too lazy for now.  And yes, all this means
+      # MultiQuery is a bit of a toy.  But where it works, it beats
+      # expecting the user to do this themselves.)
       keys_seen = set()
       while state:
         item = heapq.heappop(state)
@@ -487,50 +559,3 @@ class MultiQuery(object):
       qf.complete()
     inner()
     return qf
-
-  # NOTE: This is an iterating generator, not a coroutine!
-  def iterate(self, connection, options=None):
-    assert options is None  # Don't know what to do with these yet.
-    # Create a list of (first-entity, subquery-iterator) tuples.
-    # TODO: Use the specified sort order.
-    state = []
-    for subq in self.__subqueries:
-      subit = subq.iterate(connection)
-      try:
-        ent = subit.next()
-      except StopIteration:
-        # An empty subquery can't contribute, so just skip it.
-        continue
-      state.append(_SubQueryIteratorState(ent, subit, self.__order))
-
-    # Now turn it into a sorted heap.  The heapq module claims that
-    # calling heapify() is more efficient than calling heappush() for
-    # each item.
-    heapq.heapify(state)
-
-    # Repeatedly yield the lowest entity from the state vector,
-    # filtering duplicates.  This is essentially a multi-way merge
-    # sort.  One would think it should be possible to filter
-    # duplicates simply by dropping other entities already in the
-    # state vector that are equal to the lowest entity, but because of
-    # the weird sorting of repeated properties, we have to explicitly
-    # keep a set of all keys, so we can remove later occurrences.
-    # Yes, this means that the output may not be sorted correctly.
-    # Too bad.  (I suppose you can do this in constant memory bounded
-    # by the maximum number of entries in relevant repeated
-    # properties, but I'm too lazy for now.  And yes, all this means
-    # MultiQuery is a bit of a toy.  But where it works, it beats
-    # expecting the user to do this themselves.)
-    keys_seen = set()
-    while state:
-      item = heapq.heappop(state)
-      ent = item.entity
-      if ent.key not in keys_seen:
-        keys_seen.add(ent.key)
-        yield ent
-      try:
-        item.entity = item.iterator.next()
-      except StopIteration:
-        # The subquery is exhausted, so just forget about it.
-        continue
-      heapq.heappush(state, item)
