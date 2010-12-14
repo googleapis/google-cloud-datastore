@@ -18,7 +18,6 @@ from google.appengine.datastore import datastore_rpc
 from ndb import context
 from ndb import eventloop
 from ndb import model
-from ndb import query
 from ndb import tasks
 
 HOME_PAGE = """
@@ -124,7 +123,7 @@ class HomePage(webapp.RequestHandler):
       self.response.out.write(text)
 
   def _make_query(self):
-    qry = Message.all().order_by(('when', query.DESC))
+    qry = Message.all().order_by_desc('when')
     options = datastore_query.QueryOptions(batch_size=13, limit=43)
     return qry, options
 
