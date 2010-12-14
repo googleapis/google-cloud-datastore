@@ -11,11 +11,11 @@ from google.appengine.api import datastore_file_stub
 from google.appengine.api import memcache
 from google.appengine.api.memcache import memcache_stub
 from google.appengine.datastore import datastore_rpc
-from google.appengine.datastore import datastore_query
 
 from ndb import context
 from ndb import eventloop
 from ndb import model
+from ndb import query
 from ndb import tasks
 
 
@@ -54,6 +54,7 @@ class ContextTests(unittest.TestCase):
     apiproxy_stub_map.apiproxy.RegisterStub('datastore_v3', ds_stub)
     mc_stub = memcache_stub.MemcacheServiceStub()
     apiproxy_stub_map.apiproxy.RegisterStub('memcache', mc_stub)
+    os.environ['APPLICATION_ID'] = '_'
 
   def testContext_AutoBatcher_Get(self):
     @tasks.task
@@ -176,8 +177,8 @@ class ContextTests(unittest.TestCase):
       @tasks.task
       def callback(ent):
         return ent
-      query = datastore_query.Query(app='_', kind='Foo')
-      results = yield self.ctx.map_query(query, callback)
+      qry = query.Query(kind='Foo')
+      results = yield self.ctx.map_query(qry, callback)
       self.assertEqual(results, [ent1, ent2])
       self.assertTrue(results[0] is ent1)
       self.assertTrue(results[1] is ent2)
@@ -200,8 +201,8 @@ class ContextTests(unittest.TestCase):
     @tasks.task
     def foo():
       yield self.create_entities()
-      query = datastore_query.Query(app='_', kind='Foo')
-      res = yield self.ctx.map_query(query, callback)
+      qry = query.Query(kind='Foo')
+      res = yield self.ctx.map_query(qry, callback)
       raise tasks.Return(res)
     res = foo().get_result()
     self.assertEqual(set(res), set([1, 2, 3]))
@@ -210,8 +211,8 @@ class ContextTests(unittest.TestCase):
     @tasks.task
     def foo():
       yield self.create_entities()
-      query = datastore_query.Query(app='_', kind='Foo')
-      res = yield self.ctx.map_query(query, None)
+      qry = query.Query(kind='Foo')
+      res = yield self.ctx.map_query(qry, None)
       raise tasks.Return(res)
     res = foo().get_result()
     self.assertEqual(len(res), 3)
@@ -225,8 +226,8 @@ class ContextTests(unittest.TestCase):
     @tasks.task
     def foo():
       yield self.create_entities()
-      query = datastore_query.Query(app='_', kind='Foo')
-      res = yield self.ctx.map_query(query, callback)
+      qry = query.Query(kind='Foo')
+      res = yield self.ctx.map_query(qry, callback)
       raise tasks.Return(res)
     res = foo().get_result()
     self.assertEqual(res, [1, 2, 3])
@@ -239,8 +240,8 @@ class ContextTests(unittest.TestCase):
     @tasks.task
     def foo():
       yield self.create_entities()
-      query = datastore_query.Query(app='_', kind='Foo')
-      res = yield self.ctx.map_query(query, callback, merge_future=mfut)
+      qry = query.Query(kind='Foo')
+      res = yield self.ctx.map_query(qry, callback, merge_future=mfut)
       self.assertEqual(res, None)
       vals = set()
       for i in range(3):

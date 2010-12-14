@@ -228,32 +228,34 @@ class Context(object):
 
     @tasks.task
     def helper():
-      rpc = query.run_async(self._conn, options)
-      while rpc is not None:
-        batch = yield rpc
-        rpc = batch.next_batch_async(options)
-        for ent in batch.results:
-          key = ent.key
-          if key in self._cache:
-            if self._cache[key] is None:
-              # This is a weird case.  Apparently this entity was
-              # deleted concurrently with the query.  Let's just
-              # pretend he delete happened first.
-              logging.info('Conflict: entity %s was deleted', key)
-              continue
-            # Replace the entity the callback will see with the one
-            # from the cache.
-            if ent != self._cache[key]:
-              logging.info('Conflict: entity %s was modified', key)
-            ent = self._cache[key]
-          else:
-            if self.should_cache(key):
-              self._cache[key] = ent
-          if callback is None:
-            val = ent
-          else:
-            val = callback(ent)  # TODO: If this raises, log and ignore
-          mfut.putq(val)
+      inq = tasks.SerialQueueFuture()
+      query.run_to_queue(inq, self._conn, options)
+      while True:
+        try:
+          ent = yield inq.getq()
+        except EOFError:
+          break
+        key = ent.key
+        if key in self._cache:
+          if self._cache[key] is None:
+            # This is a weird case.  Apparently this entity was
+            # deleted concurrently with the query.  Let's just
+            # pretend the delete happened first.
+            logging.info('Conflict: entity %s was deleted', key)
+            continue
+          # Replace the entity the callback will see with the one
+          # from the cache.
+          if ent != self._cache[key]:
+            logging.info('Conflict: entity %s was modified', key)
+          ent = self._cache[key]
+        else:
+          if self.should_cache(key):
+            self._cache[key] = ent
+        if callback is None:
+          val = ent
+        else:
+          val = callback(ent)  # TODO: If this raises, log and ignore
+        mfut.putq(val)
       mfut.complete()
 
     helper()
