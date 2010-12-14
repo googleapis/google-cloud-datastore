@@ -297,7 +297,6 @@ class Query(object):
       return multiquery.looper(ctx=ctx, options=options)
     qf = tasks.SerialQueueFuture()
     ctx.map_query(query=self, callback=None, options=options, merge_future=qf)
-    # XXX The map_query() returns a Future that nobody will wait for.
     return qf
 
   # NOTE: This is an iterating generator, not a coroutine!
@@ -486,7 +485,7 @@ class MultiQuery(object):
           item.entity = ent
           heapq.heappush(state, item)
       qf.complete()
-    inner()  # XXX But nobody will be waiting for this.
+    inner()
     return qf
 
   # NOTE: This is an iterating generator, not a coroutine!

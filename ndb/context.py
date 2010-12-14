@@ -229,7 +229,6 @@ class Context(object):
     @tasks.task
     def helper():
       rpc = query.run_async(self._conn, options)
-      count = 0
       while rpc is not None:
         batch = yield rpc
         rpc = batch.next_batch_async(options)
@@ -250,15 +249,11 @@ class Context(object):
           else:
             if self.should_cache(key):
               self._cache[key] = ent
-          count += 1
           if callback is None:
             val = ent
           else:
             val = callback(ent)  # TODO: If this raises, log and ignore
-          if not isinstance(val, tasks.Future):
-            mfut.putq(val)
-          else:
-            mfut.add_dependent(val)
+          mfut.putq(val)
       mfut.complete()
 
     helper()

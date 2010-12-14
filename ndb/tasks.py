@@ -357,16 +357,17 @@ def sleep(dt):
   eventloop.queue_task(dt, fut.set_result, None)
   return fut
 
+
 class MultiFuture(Future):
   """A Future that depends on multiple other Futures.
 
   The protocol from the caller's POV is:
 
     mf = MultiFuture()
-    mf.add_dependent(<some other Future>)
-    mf.add_dependent(<some other Future>)
+    mf.add_dependent(<some other Future>)  -OR- mf.putq(<some value>)
+    mf.add_dependent(<some other Future>)  -OR- mf.putq(<some value>)
       .
-      . (More mf.add_dependent() calls)
+      . (More mf.add_dependent() and/or mf.putq() calls)
       .
     mf.complete()  # No more dependents will be added.
       .
@@ -410,8 +411,11 @@ class MultiFuture(Future):
       self.set_result([r.get_result() for r in self._results])
 
   def putq(self, value):
-    fut = Future()
-    fut.set_result(value)
+    if isinstance(value, Future):
+      fut = value
+    else:
+      fut = Future()
+      fut.set_result(value)
     self.add_dependent(fut)
 
   def add_dependent(self, fut):
@@ -473,8 +477,11 @@ class QueueFuture(Future):
       self._mark_finished()
 
   def putq(self, value):
-    fut = Future()
-    fut.set_result(value)
+    if isinstance(value, Future):
+      fut = value
+    else:
+      fut = Future()
+      fut.set_result(value)
     self.add_dependent(fut)
 
   def add_dependent(self, fut):
@@ -554,12 +561,15 @@ class SerialQueueFuture(Future):
       self.set_result(None)
 
   def putq(self, value):
-    if self._waiting:
-      waiter = self._waiting.popleft()
-      waiter.set_result(value)
-      return
-    fut = Future()
-    fut.set_result(value)
+    if isinstance(value, Future):
+      fut = value
+    else:
+      if self._waiting:
+        waiter = self._waiting.popleft()
+        waiter.set_result(value)
+        return
+      fut = Future()
+      fut.set_result(value)
     self.add_dependent(fut)
 
   def add_dependent(self, fut):
@@ -616,6 +626,14 @@ class ReducingFuture(Future):
     self._full = True
     if not self._dependents:
       self._mark_finished()
+
+  def putq(self, value):
+    if isinstance(value, Future):
+      fut = value
+    else:
+      fut = Future()
+      fut.set_result(value)
+    self.add_dependent(fut)
 
   def add_dependent(self, fut):
     assert not self._full

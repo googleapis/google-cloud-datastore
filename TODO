@@ -1,7 +1,51 @@
-Go public.
+Go more public.
+
+Fix up code: style, docstrings, TODOs.  Increase coverage again.
+
+Separate tutorial, user guide, reference manual.  Explain the things
+that Brett & Nick asked in feedback.
 
 Finalize Query API.  Add Model.all().  Decide what to call
 Query.looper().  Add Query.map().
+
+If Query/map support requires tasks, does it require a context?  Or
+just a connection?  Try to be uniform about this.  (Problem: Query/map
+is a fair amount of code, whereas Model/get/put/delete just wrap
+Connection methods.  In any case move map_query() mostly into Query
+and MultiQuery class; the run_async() API doesn't work for mapping
+over a MultiQuery.
+
+May need a pipelining API so you can do things like
+
+    - data source -> queue 1
+    - queue 1 -> map/filter -> queue 2
+    - queue 2 -> map/filter -> queue 3
+    - queue 3 -> data sink
+
+Applications:
+
+    - query to raw queue
+    - cache lookup + update + remove deleted entities
+    - call callback
+    - merge queues in multi-query situation
+
+Example:
+
+    while True:
+      try: val = yield q_in.getq()
+      except EOFError: break
+      val = my_map(val)  # Returns None if filtered out
+      if val is not None:
+	q_out.putq(val)
+
+Or instead if the last 3 lines:
+
+      for v in my_map(val):
+        q_out.putq(val)
+
+Or alternatively:
+
+      my_map(val, q_out)  # my_map may be a task
 
 Make Model().get()/put()/delete() async.  Add get_or_insert().
 
