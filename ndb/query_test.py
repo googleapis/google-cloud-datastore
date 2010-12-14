@@ -103,7 +103,8 @@ class QueryTests(unittest.TestCase):
     q = query.Query(kind='Foo').where(tags__eq='jill').order_by('name')
     @context.taskify
     def foo():
-      it = q.looper()
+      it = tasks.SerialQueueFuture()
+      q.run_to_queue(it, model.conn)
       res = []
       while True:
         try:
@@ -119,7 +120,8 @@ class QueryTests(unittest.TestCase):
     q = q.order_by('name')
     @context.taskify
     def foo():
-      it = q.looper()
+      it = tasks.SerialQueueFuture()
+      q.run_to_queue(it, model.conn)
       res = []
       while True:
         try:

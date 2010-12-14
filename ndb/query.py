@@ -313,17 +313,6 @@ class Query(object):
         return MultiQuery(subqueries, order=self.__order)
     return None
 
-  # TODO: Pick a better name; decide on context or not.
-  def looper(self, ctx=None, options=None):
-    if ctx is None:
-      ctx = context.get_default_context()
-    multiquery = self._maybe_multi_query()
-    if multiquery is not None:
-      return multiquery.looper(ctx=ctx, options=options)
-    qf = tasks.SerialQueueFuture()
-    ctx.map_query(query=self, callback=None, options=options, merge_future=qf)
-    return qf
-
   @property
   def kind(self):
     return self.__kind
@@ -474,6 +463,8 @@ class MultiQuery(object):
   @tasks.task
   def run_to_queue(self, queue, conn, options=None):
     """Run this query, putting entities into the given queue."""
+    # Create a list of (first-entity, subquery-iterator) tuples.
+    # TODO: Use the specified sort order.
     assert options is None  # Don't know what to do with these yet.
     state = []
     for subq in self.__subqueries:
@@ -485,7 +476,25 @@ class MultiQuery(object):
         continue
       else:
         state.append(_SubQueryIteratorState(ent, subit, self.__order))
+
+    # Now turn it into a sorted heap.  The heapq module claims that
+    # calling heapify() is more efficient than calling heappush() for
+    # each item.
     heapq.heapify(state)
+
+    # Repeatedly yield the lowest entity from the state vector,
+    # filtering duplicates.  This is essentially a multi-way merge
+    # sort.  One would think it should be possible to filter
+    # duplicates simply by dropping other entities already in the
+    # state vector that are equal to the lowest entity, but because of
+    # the weird sorting of repeated properties, we have to explicitly
+    # keep a set of all keys, so we can remove later occurrences.
+    # Yes, this means that the output may not be sorted correctly.
+    # Too bad.  (I suppose you can do this in constant memory bounded
+    # by the maximum number of entries in relevant repeated
+    # properties, but I'm too lazy for now.  And yes, all this means
+    # MultiQuery is a bit of a toy.  But where it works, it beats
+    # expecting the user to do this themselves.)
     keys_seen = set()
     while state:
       item = heapq.heappop(state)
@@ -502,60 +511,3 @@ class MultiQuery(object):
         item.entity = ent
         heapq.heappush(state, item)
     queue.complete()
-
-  # TODO: Pick a better name; decide on context or not.
-  def looper(self, ctx=None, options=None):
-    assert options is None  # Don't know what to do with these yet.
-    if ctx is None:
-      ctx = context.get_default_context()
-    qf = tasks.SerialQueueFuture()
-    @tasks.task
-    def inner():
-      # Create a list of (first-entity, subquery-iterator) tuples.
-      # TODO: Use the specified sort order.
-      state = []
-      for subq in self.__subqueries:
-        subit = subq.looper(ctx)
-        try:
-          ent = yield subit.getq()
-        except EOFError:
-          continue
-        else:
-          state.append(_SubQueryIteratorState(ent, subit, self.__order))
-
-      # Now turn it into a sorted heap.  The heapq module claims that
-      # calling heapify() is more efficient than calling heappush() for
-      # each item.
-      heapq.heapify(state)
-
-      # Repeatedly yield the lowest entity from the state vector,
-      # filtering duplicates.  This is essentially a multi-way merge
-      # sort.  One would think it should be possible to filter
-      # duplicates simply by dropping other entities already in the
-      # state vector that are equal to the lowest entity, but because of
-      # the weird sorting of repeated properties, we have to explicitly
-      # keep a set of all keys, so we can remove later occurrences.
-      # Yes, this means that the output may not be sorted correctly.
-      # Too bad.  (I suppose you can do this in constant memory bounded
-      # by the maximum number of entries in relevant repeated
-      # properties, but I'm too lazy for now.  And yes, all this means
-      # MultiQuery is a bit of a toy.  But where it works, it beats
-      # expecting the user to do this themselves.)
-      keys_seen = set()
-      while state:
-        item = heapq.heappop(state)
-        ent = item.entity
-        if ent.key not in keys_seen:
-          keys_seen.add(ent.key)
-          qf.putq(ent)
-        subit = item.iterator
-        try:
-          ent = yield subit.getq()
-        except EOFError:
-          pass
-        else:
-          item.entity = ent
-          heapq.heappush(state, item)
-      qf.complete()
-    inner()
-    return qf
