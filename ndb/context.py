@@ -230,6 +230,7 @@ class Context(object):
     def helper():
       inq = tasks.SerialQueueFuture()
       query.run_to_queue(inq, self._conn, options)
+      is_ancestor_query = query.ancestor is not None
       while True:
         try:
           ent = yield inq.getq()
@@ -237,6 +238,7 @@ class Context(object):
           break
         key = ent.key
         if key in self._cache:
+          # Assume the cache is more up to date.
           if self._cache[key] is None:
             # This is a weird case.  Apparently this entity was
             # deleted concurrently with the query.  Let's just
@@ -249,7 +251,7 @@ class Context(object):
             logging.info('Conflict: entity %s was modified', key)
           ent = self._cache[key]
         else:
-          if self.should_cache(key):
+          if is_ancestor_query and self.should_cache(key):
             self._cache[key] = ent
         if callback is None:
           val = ent

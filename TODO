@@ -7,8 +7,6 @@ Fix up code: style, docstrings, TODOs.  Increase coverage again.
 Separate tutorial, user guide, reference manual.  Explain the things
 that Brett & Nick asked in feedback.
 
-Query should not update cache unless it's an ancestor query.
-
 Add Query methods going through default context for map and iter (and
 possibly a fetch()).
 
