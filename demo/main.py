@@ -215,24 +215,27 @@ class AccountPage(webapp.RequestHandler):
   @context.taskify
   def post(self):
     # TODO: XSRF protection.
-    user = users.get_current_user()
-    if not user:
-      self.redirect(users.create_login_url('/account'))
-      return
-    account = yield get_account(user.user_id())
-    if self.request.get('delete'):
-      if account:
-        yield context.delete(account.key)
+    @context.task
+    def helper():
+      user = users.get_current_user()
+      if not user:
+        self.redirect(users.create_login_url('/account'))
+        return
+      account = yield get_account(user.user_id())
+      if self.request.get('delete'):
+        if account:
+          yield context.delete(account.key)
+        self.redirect('/account')
+        return
+      if not account:
+        account = Account(key=account_key(user.user_id()),
+                          email=user.email(), userid=user.user_id())
+      nickname = self.request.get('nickname')
+      if nickname:
+        account.nickname = nickname
+      yield context.put(account)
       self.redirect('/account')
-      return
-    if not account:
-      account = Account(key=account_key(user.user_id()),
-                        email=user.email(), userid=user.user_id())
-    nickname = self.request.get('nickname')
-    if nickname:
-      account.nickname = nickname
-    yield context.put(account)
-    self.redirect('/account')
+    yield context.transaction(helper)
 
 
 urls = [
