@@ -1,3 +1,5 @@
+Explain at the top of the tutorial why you async APIs are good.
+
 Go more public.
 
 Fix up code: style, docstrings, TODOs.  Increase coverage again.
