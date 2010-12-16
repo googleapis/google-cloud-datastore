@@ -275,19 +275,13 @@ class Query(object):
     if multiquery is not None:
       multiquery.run_to_queue(queue, conn, options=options)  # No return value.
       return
-    rpc = self.run_async(conn, options)
+    rpc = self._get_query(conn).run_async(conn, options)
     while rpc is not None:
       batch = yield rpc
       rpc = batch.next_batch_async(options)
       for ent in batch.results:
         queue.putq(ent)
     queue.complete()
-
-  def run_async(self, conn, options=None):
-    return self._get_query(conn).run_async(conn, options)
-
-  def run(self, conn, options=None):
-    return self._get_query(conn).run(conn, options)
 
   def _maybe_multi_query(self):
     filter = self.__filter
@@ -487,8 +481,8 @@ class MultiQuery(object):
   # a where() call with an __in or __ne operator.  In the future
   # or_where() can also use this.  Note that some options must be
   # interpreted by MultiQuery instead of passed to the underlying
-  # Query's run_async() methode, e.g. offset (though not necessarily
-  # limit, and I'm not sure about cursors).
+  # Queries' methods, e.g. offset (though not necessarily limit, and
+  # I'm not sure about cursors).
 
   def __init__(self, subqueries, order=None):
     assert isinstance(subqueries, list), subqueries

@@ -50,23 +50,13 @@ class QueryTests(unittest.TestCase):
   def testBasicQuery(self):
     q = query.Query(kind='Foo')
     q = q.where(name__ge='joe').where(name__le='moe').where()
-    res = []
-    rpc = q.run_async(model.conn)
-    while rpc is not None:
-      batch = rpc.get_result()
-      rpc = batch.next_batch_async()
-      res.extend(batch.results)
+    res = list(q)
     self.assertEqual(res, [self.joe, self.moe])
 
   def testOrderedQuery(self):
     q = query.Query(kind='Foo')
     q = q.order_by('rate').order_by().order_by(('name', query.DESC))
-    res = []
-    rpc = q.run_async(model.conn)
-    while rpc is not None:
-      batch = rpc.get_result()
-      rpc = batch.next_batch_async()
-      res.extend(batch.results)
+    res = list(q)
     self.assertEqual(res, [self.moe, self.joe, self.jill])
 
   def testQueryAttributes(self):
