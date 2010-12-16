@@ -278,8 +278,6 @@ class Query(object):
       except EOFError:
         return
 
-  # TODO: Need an API parallel to context.iter_query().
-
   @tasks.task
   def run_to_queue(self, queue, conn, options=None):
     """Run this query, putting entities into the given queue."""
@@ -396,6 +394,27 @@ class Query(object):
       assert isinstance(arg, basestring)
       order.append((arg, DESC))
     return self.order_by(*order)
+
+  # Datastore API using the default context.
+
+  def iter(self, options=None):
+    it = context.iter_query(self, options=options)
+    while True:
+      try:
+        entity = it.getq().get_result()
+      except EOFError:
+        break
+      else:
+        yield entity
+
+  __iter__ = iter  # So you can say "for x in q: ...".
+
+  def iter_async(self, options=None):
+    # TODO: Make it so that the caller can say:
+    # while (yield it.has_next_async()):
+    #   entity = it.next()
+    #   ...use entity...
+    return context.iter_query(self, options=options)
 
 
 class _SubQueryIteratorState(object):
