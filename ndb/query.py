@@ -230,9 +230,6 @@ class DisjunctionNode(Node):
 
 class Query(object):
 
-  # TODO: Add an all() or select() class method to Model that returns
-  # a Query instance.
-
   @datastore_rpc._positional(1)
   def __init__(self, kind=None, ancestor=None, filter=None, order=None):
     if ancestor is not None:
@@ -386,6 +383,47 @@ class Query(object):
 
   __iter__ = iter
 
+  # TODO: support the rest for MultiQuery.
+
+  def map(self, callback, options=None, merge_future=None):
+    return self.map_async(callback, options=options,
+                          merge_future=merge_future).get_result()
+
+  def map_async(self, callback, options=None, merge_future=None):
+    return context.get_default_context().map_query(self, callback,
+                                                   options=options,
+                                                   merge_future=merge_future)
+
+  def fetch(self, limit, offset=0):
+    return self.fetch_async(limit, offset).get_result()
+
+  @tasklets.tasklet
+  def fetch_async(self, limit, offset=0):
+    options = datastore_query.QueryOptions(limit=limit,
+                                           prefetch_size=limit,
+                                           batch_size=limit,
+                                           offset=offset)
+    res = []
+    it = self.iter(options)
+    while (yield it.has_next_async()):
+      res.append(it.next())
+    raise tasklets.Return(res)
+
+  def count(self, limit):
+    return self.count_async(limit).get_result()
+
+  @tasklets.tasklet
+  def count_async(self, limit):
+    conn = context.get_default_context()._conn
+    options = datastore_query.QueryOptions(offset=limit, limit=0)
+    rpc = self._get_query(conn).run_async(conn, options)
+    total = 0
+    while rpc is not None:
+      batch = yield rpc
+      rpc = batch.next_batch_async(options)
+      total += batch.skipped_results
+    raise tasklets.Return(total)
+
 
 class QueryIterator(object):
   """This iterator works both for synchronous and async callers!
@@ -499,7 +537,7 @@ class MultiQuery(object):
     assert options is None  # Don't know what to do with these yet.
     state = []
     for subq in self.__subqueries:
-      subit = tasklets.SerialQueueFuture()  # TODO: info.
+      subit = tasklets.SerialQueueFuture('MultiQuery.run_to_queue')
       subq.run_to_queue(subit, conn)
       try:
         ent = yield subit.getq()

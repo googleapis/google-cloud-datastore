@@ -93,7 +93,7 @@ class QueryTests(unittest.TestCase):
     res = list(qq)
     self.assertEqual(res, [self.jill, self.joe])
 
-  def testLooper(self):
+  def testIterAsync(self):
     q = query.Query(kind='Foo').where(tags__eq='jill').order_by('name')
     @context.synctasklet
     def foo():
@@ -104,6 +104,71 @@ class QueryTests(unittest.TestCase):
         res.append(val)
       self.assertEqual(res, [self.jill, self.joe])
     foo()
+
+  def testMap(self):
+    q = query.Query(kind='Foo').where(tags__eq='jill').order_by('name')
+    callback = lambda e: e.name
+    @tasklets.tasklet
+    def callback_async(e):
+      yield tasklets.sleep(0.01)
+      raise tasklets.Return(e.name)
+    self.assertEqual(q.map(callback), ['jill', 'joe'])
+    self.assertEqual(q.map(callback_async), ['jill', 'joe'])
+
+  def testMapAsync(self):
+    q = query.Query(kind='Foo').where(tags__eq='jill').order_by('name')
+    callback = lambda e: e.name
+    @tasklets.tasklet
+    def callback_async(e):
+      yield tasklets.sleep(0.01)
+      raise tasklets.Return(e.name)
+    @tasklets.synctasklet
+    def foo():
+      fut = q.map_async(callback)
+      res = yield fut
+      self.assertEqual(res, ['jill', 'joe'])
+      fut = q.map_async(callback_async)
+      res = yield fut
+      self.assertEqual(res, ['jill', 'joe'])
+    foo()
+
+  def testFetch(self):
+    q = query.Query(kind='Foo').where(tags__eq='jill').order_by('name')
+    self.assertEqual(q.fetch(10), [self.jill, self.joe])
+    self.assertEqual(q.fetch(1), [self.jill])
+
+  def testFetchAsync(self):
+    q = query.Query(kind='Foo').where(tags__eq='jill').order_by('name')
+    @tasklets.synctasklet
+    def foo():
+      res = yield q.fetch_async(10)
+      self.assertEqual(res, [self.jill, self.joe])
+      res = yield q.fetch_async(1)
+      self.assertEqual(res, [self.jill])
+    foo()
+
+  def testFetchEmpty(self):
+    q = query.Query(kind='Foo').where(tags__eq='jillian')
+    self.assertEqual(q.fetch(1), [])
+
+  def testCount(self):
+    q = query.Query(kind='Foo').where(tags__eq='jill').order_by('name')
+    self.assertEqual(q.count(10), 2)
+    self.assertEqual(q.count(1), 1)
+
+  def testCountAsync(self):
+    q = query.Query(kind='Foo').where(tags__eq='jill').order_by('name')
+    @tasklets.synctasklet
+    def foo():
+      res = yield q.count_async(10)
+      self.assertEqual(res, 2)
+      res = yield q.count_async(1)
+      self.assertEqual(res, 1)
+    foo()
+
+  def testCountEmpty(self):
+    q = query.Query(kind='Foo').where(tags__eq='jillian')
+    self.assertEqual(q.count(1), 0)
 
   def testMultiQueryIterator(self):
     q = query.Query(kind='Foo').where(tags__in=['joe', 'jill'])
