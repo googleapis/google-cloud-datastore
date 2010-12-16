@@ -16,7 +16,8 @@ from ndb import model, tasklets, eventloop, utils
 class AutoBatcher(object):
 
   def __init__(self, todo_tasklet):
-    self._todo_tasklet = todo_tasklet  # Tasklet called with list of (future, arg) pairs
+    # todo_tasklet is a tasklet to be called with list of (future, arg) pairs
+    self._todo_tasklet = todo_tasklet
     self._todo = []  # List of (future, arg) pairs
     self._running = None  # Currently running tasklet, if any
 
