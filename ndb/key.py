@@ -129,6 +129,23 @@ class Key(object):
     urlsafe = base64.b64encode(self.__reference.Encode())
     return urlsafe.rstrip('=').replace('+', '-').replace('/', '_')
 
+  # Datastore API using the default context.
+  # These use local import since otherwise they'd be recursive imports.
+
+  def get(self):
+    return self.get_async().get_result()
+
+  def get_async(self):
+    from ndb import context
+    return context.get(self)
+
+  def delete(self):
+    return self.delete_async().get_result()
+
+  def delete_async(self):
+    from ndb import context
+    return context.delete(self)
+
 @positional(1)
 def _ConstructReference(cls, pairs=None, flat=None,
                         reference=None, serialized=None, urlsafe=None):

@@ -8,6 +8,7 @@ import unittest
 
 from google.appengine.api import apiproxy_stub_map
 from google.appengine.api import datastore_file_stub
+from google.appengine.api.memcache import memcache_stub
 from google.appengine.datastore import datastore_rpc
 from google.appengine.datastore import datastore_query
 
@@ -28,12 +29,15 @@ class QueryTests(unittest.TestCase):
   def setUp(self):
     os.environ['APPLICATION_ID'] = '_'
     self.set_up_stubs()
+    context.set_default_context(context.Context())
     self.create_entities()
 
   def set_up_stubs(self):
     apiproxy_stub_map.apiproxy = apiproxy_stub_map.APIProxyStubMap()
     ds_stub = datastore_file_stub.DatastoreFileStub('_', None)
     apiproxy_stub_map.apiproxy.RegisterStub('datastore_v3', ds_stub)
+    mc_stub = memcache_stub.MemcacheServiceStub()
+    apiproxy_stub_map.apiproxy.RegisterStub('memcache', mc_stub)
 
   def create_entities(self):
     self.joe = Foo(name='joe', tags=['joe', 'jill', 'hello'], rate=1)

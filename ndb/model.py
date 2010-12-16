@@ -239,30 +239,39 @@ class Model(object):
     from ndb.query import Query  # Import late to avoid circular imports.
     return Query(kind=cls.GetKind(), **kwds)
 
-  # TODO: Make the below db methods asynchronous and use contexts.
-
-  @classmethod
-  def get(cls, key):
-    # TODO: Make this a method on the Key class?
-    assert key.kind() == cls.GetKind()
-    return conn.get([key])[0]
+  # Datastore API using the default context.
+  # These use local import since otherwise they'd be recursive imports.
 
   def put(self):
-    key = conn.put([self])[0]
-    if self._key != key:
-      self._key = key
-    return key
+    return self.put_async().get_result()
 
-  def delete(self):
-    # TODO: Make this a method on the Key class too?
-    assert key.kind() == self.GetKind()
-    conn.delete([self.key])
+  def put_async(self):
+    from ndb import context
+    return context.put(self)
 
   @classmethod
-  def allocate_ids(cls, key, size=None, max=None):
-    # TODO: Make this a method on the Key class?
-    assert key.kind() == self.GetKind()
-    return conn.allocate_ids(key, size=size, max=max)
+  def get_or_insert(cls, name, parent=None, **kwds):
+    return cls.get_or_insert_async(cls, name=name, parent=parent, **kwds)
+
+  @classmethod
+  def get_or_insert_async(cls, name, parent=None, **kwds):
+    from ndb import context
+    return context.get_or_insert(cls, name=name, parent=parent, **kwds)
+
+  @classmethod
+  def allocate_ids(cls, size=None, max=None, parent=None):
+    return cls.allocate_ids(cls, size=size, max=max, parent=parent)
+
+  @classmethod
+  def allocate_ids_async(cls, size=None, max=None, parent=None):
+    from ndb import context
+    if parent is None:
+      pairs = []
+    else:
+      pairs = parent.pairs()
+    pairs.append((cls.GetKind(), None))
+    key = Key(pairs=pairs)
+    return context.allocate_ids(key, size=size, max=max)
 
 # TODO: More Property types
 
