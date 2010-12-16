@@ -95,7 +95,7 @@ class QueryTests(unittest.TestCase):
 
   def testLooper(self):
     q = query.Query(kind='Foo').where(tags__eq='jill').order_by('name')
-    @context.taskletify
+    @context.synctasklet
     def foo():
       it = iter(q)
       res = []
@@ -108,7 +108,7 @@ class QueryTests(unittest.TestCase):
   def testMultiQueryIterator(self):
     q = query.Query(kind='Foo').where(tags__in=['joe', 'jill'])
     q = q.order_by('name')
-    @context.taskletify
+    @context.synctasklet
     def foo():
       it = iter(q)
       res = []

@@ -34,7 +34,7 @@ class EventLoop(object):
     self.rpcs = {}
 
   # TODO: Rename to queue_callback?
-  def queue_tasklet(self, delay, callable, *args, **kwds):
+  def queue_call(self, delay, callable, *args, **kwds):
     """Schedule a function call at a specific time in the future."""
     if delay is None:
       when = 0
@@ -139,9 +139,9 @@ def get_event_loop():
     os.environ[_EVENT_LOOP_KEY] = '1'
   return ev
 
-def queue_tasklet(*args, **kwds):
+def queue_call(*args, **kwds):
   ev = get_event_loop()
-  ev.queue_tasklet(*args, **kwds)
+  ev.queue_call(*args, **kwds)
 
 def queue_rpc(rpc, callable=None, *args, **kwds):
   ev = get_event_loop()

@@ -103,7 +103,7 @@ class TaskletTests(unittest.TestCase):
       f.add_callback(self.universal_callback, f)
       def wake(fut, result):
         fut.set_result(result)
-      self.ev.queue_tasklet(i*0.01, wake, f, i)
+      self.ev.queue_call(i*0.01, wake, f, i)
       self.futs.append(f)
     return set(self.futs)
 
@@ -212,7 +212,7 @@ class TaskletTests(unittest.TestCase):
       yield q
       self.assertRaises(EOFError, q.getq().get_result)
       yield q
-    @tasklets.taskletify
+    @tasklets.synctasklet
     def foo():
       yield producer(), consumer()
     foo()

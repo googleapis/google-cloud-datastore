@@ -1,5 +1,3 @@
-Rename taskletify and queue_tasklet to better things.
-
 Merge MagicFuture back into tasklet.Future class.
 
 Explain at the top of the tutorial why async APIs are good.

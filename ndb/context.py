@@ -30,7 +30,7 @@ class AutoBatcher(object):
       # which puts them at absolute time 0 (i.e. ASAP -- still on a
       # FIFO basis).  Callbacks explicitly scheduled with a delay of 0
       # are only run after all immediately runnable tasklets have run.
-      eventloop.queue_tasklet(0, self._autobatcher_callback)
+      eventloop.queue_call(0, self._autobatcher_callback)
     self._todo.append((fut, arg))
     return fut
 
@@ -348,7 +348,7 @@ def toplevel(func):
     __ndb_debug__ = utils.func_info(func)
     tasklets.Future.clear_all_pending()
     self.ctx = Context()
-    return tasklets.taskletify(func)(self, *args)
+    return tasklets.synctasklet(func)(self, *args)
   return add_context_wrapper
 
 
@@ -403,7 +403,7 @@ def tasklet(func):
       # the "raise Return(...)" idiom, we'll extract the return value.
       result = get_return_value(err)
     if tasklets.is_generator(result):
-      eventloop.queue_tasklet(None, fut._help_tasklet_along, result)
+      eventloop.queue_call(None, fut._help_tasklet_along, result)
     else:
       fut.set_result(result)
     return fut
@@ -411,8 +411,8 @@ def tasklet(func):
   return context_tasklet_wrapper
 
 
-def taskletify(func):
-  # TODOL Update docstring?
+def synctasklet(func):
+  # TODO: Update docstring?
   """Decorator to run a function as a tasklet when called.
 
   Use this to wrap a request handler function that will be called by
@@ -420,13 +420,13 @@ def taskletify(func):
   webapp.RequestHandler.get method).
   """
   @utils.wrapping(func)
-  def context_taskletify_wrapper(*args):
+  def context_synctasklet_wrapper(*args):
     __ndb_debug__ = utils.func_info(func)
     tasklets.Future.clear_all_pending()
     set_default_context(Context())
     taskletfunc = tasklet(func)
     return taskletfunc(*args).get_result()
-  return context_taskletify_wrapper
+  return context_synctasklet_wrapper
 
 
 # Functions using the default context.

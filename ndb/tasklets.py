@@ -175,7 +175,7 @@ class Future(object):
 
   def add_callback(self, callback, *args, **kwds):
     if self._done:
-      eventloop.queue_tasklet(None, callback, *args, **kwds)
+      eventloop.queue_call(None, callback, *args, **kwds)
     else:
       self._callbacks.append((callback, args, kwds))
 
@@ -186,7 +186,7 @@ class Future(object):
     logging.debug('_all_pending: remove successful %s', self)
     self._all_pending.remove(self)
     for callback, args, kwds  in self._callbacks:
-      eventloop.queue_tasklet(None, callback, *args, **kwds)
+      eventloop.queue_call(None, callback, *args, **kwds)
 
   def set_exception(self, exc, tb=None):
     assert isinstance(exc, BaseException)
@@ -200,7 +200,7 @@ class Future(object):
     else:
       logging.debug('_all_pending: not found %s', self)
     for callback, args, kwds in self._callbacks:
-      eventloop.queue_tasklet(None, callback, *args, **kwds)
+      eventloop.queue_call(None, callback, *args, **kwds)
 
   def done(self):
     return self._done
@@ -354,7 +354,7 @@ def sleep(dt):
     yield tasklets.sleep(0.5)  # Sleep for half a sec.
   """
   fut = Future('sleep(%.3f)' % dt)
-  eventloop.queue_tasklet(dt, fut.set_result, None)
+  eventloop.queue_call(dt, fut.set_result, None)
   return fut
 
 
@@ -715,14 +715,14 @@ def tasklet(func):
       # the "raise Return(...)" idiom, we'll extract the return value.
       result = get_return_value(err)
     if is_generator(result):
-      eventloop.queue_tasklet(None, fut._help_tasklet_along, result)
+      eventloop.queue_call(None, fut._help_tasklet_along, result)
     else:
       fut.set_result(result)
     return fut
 
   return tasklet_wrapper
 
-def taskletify(func):
+def synctasklet(func):
   """Decorator to run a function as a tasklet when called.
 
   Use this to wrap a request handler function that will be called by
@@ -730,11 +730,11 @@ def taskletify(func):
   webapp.RequestHandler.get method).
   """
   @utils.wrapping(func)
-  def taskletify_wrapper(*args):
+  def synctasklet_wrapper(*args):
     __ndb_debug__ = utils.func_info(func)
     taskletfunc = tasklet(func)
     return taskletfunc(*args).get_result()
-  return taskletify_wrapper
+  return synctasklet_wrapper
 
 # TODO: Rework the following into documentation.
 

@@ -314,7 +314,7 @@ class ContextTests(unittest.TestCase):
     self.assertEqual(arg, 42)
 
   def testDefaultContextTransaction(self):
-    @context.taskletify
+    @context.synctasklet
     def outer():
       ctx1 = context.get_default_context()
       @context.tasklet
@@ -332,7 +332,7 @@ class ContextTests(unittest.TestCase):
     self.assertEqual(b, 42)
 
   def testExplicitTransactionClearsDefaultContext(self):
-    @context.taskletify
+    @context.synctasklet
     def outer():
       ctx1 = context.get_default_context()
       @tasklets.tasklet
