@@ -7,11 +7,10 @@ Fix up code: style, docstrings, TODOs.  Increase coverage again.
 Separate tutorial, user guide, reference manual.  Explain the things
 that Brett & Nick asked in feedback.
 
-Add Query methods going through default context for map and iter (and
-possibly a fetch()).
-
-Make Model().get()/put()/delete() async and go through default
-context.  Add Model.get_or_insert().
+Add Query methods going through default context for map(callback),
+map_async(callback), fetch(limit), fetch_async(limit), count(limit),
+count_async(limit).  Remove iterate(), run() and run_async().  Maybe
+make run_to_queue() less accessible (since it needs a connection)?
 
 Add a public API for QueryOptions.
 
