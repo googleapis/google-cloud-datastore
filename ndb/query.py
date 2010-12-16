@@ -398,23 +398,58 @@ class Query(object):
   # Datastore API using the default context.
 
   def iter(self, options=None):
-    it = context.iter_query(self, options=options)
-    while True:
+    return QueryIterator(self, options=options)
+
+  __iter__ = iter
+
+
+class QueryIterator(object):
+  """This iterator works both for synchronous and async callers!
+
+  For synchronous callers, just use:
+
+    for entity in Account.all():
+      <use entity>
+
+  Async callers use this idiom:
+
+    it = iter(Account.all())
+    while (yield it.has_next_async()):
+      entity = it.next()
+      <use entity>
+  """
+
+  def __init__(self, query, options=None):
+    self._iter = context.iter_query(query, options=options)
+    self._fut = None
+
+  def __iter__(self):
+    return self
+
+  def has_next(self):
+    return self.has_next_async().get_result()
+
+  @tasks.task
+  def has_next_async(self):
+    if self._fut is None:
+      self._fut = self._iter.getq()
+    flag = True
+    try:
+      yield self._fut
+    except EOFError:
+      flag = False
+    raise tasks.Return(flag)
+
+  def next(self):
+    if self._fut is None:
+      self._fut = self._iter.getq()
+    try:
       try:
-        entity = it.getq().get_result()
+        return self._fut.get_result()
       except EOFError:
-        break
-      else:
-        yield entity
-
-  __iter__ = iter  # So you can say "for x in q: ...".
-
-  def iter_async(self, options=None):
-    # TODO: Make it so that the caller can say:
-    # while (yield it.has_next_async()):
-    #   entity = it.next()
-    #   ...use entity...
-    return context.iter_query(self, options=options)
+        raise StopIteration
+    finally:
+      self._fut = None
 
 
 class _SubQueryIteratorState(object):
