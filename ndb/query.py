@@ -268,16 +268,6 @@ class Query(object):
                                          order=order)
     return self.__query
 
-  # NOTE: This is an iterating generator, not a coroutine!
-  def iterate(self, conn, options=None):
-    queue = tasks.SerialQueueFuture()
-    self.run_to_queue(queue, conn, options)
-    while True:
-      try:
-        yield queue.getq().get_result()
-      except EOFError:
-        return
-
   @tasks.task
   def run_to_queue(self, queue, conn, options=None):
     """Run this query, putting entities into the given queue."""
@@ -505,18 +495,7 @@ class MultiQuery(object):
     assert all(isinstance(subq, Query) for subq in subqueries), subqueries
     self.__subqueries = subqueries
     self.__order = order
-
-  # NOTE: This is an iterating generator, not a coroutine!
-  def iterate(self, conn, options=None):
-    # TODO: Maybe this should be a helper function?  It is identical
-    # to Query.iterate().
-    queue = tasks.SerialQueueFuture()
-    self.run_to_queue(queue, conn, options)
-    while True:
-      try:
-        yield queue.getq().get_result()
-      except EOFError:
-        return
+    self.ancestor = None  # Hack for map_query().
 
   @tasks.task
   def run_to_queue(self, queue, conn, options=None):
@@ -569,3 +548,10 @@ class MultiQuery(object):
         item.entity = ent
         heapq.heappush(state, item)
     queue.complete()
+
+  # Datastore API using the default context.
+
+  def iter(self, options=None):
+    return QueryIterator(self, options=options)
+
+  __iter__ = iter

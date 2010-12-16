@@ -100,50 +100,42 @@ class QueryTests(unittest.TestCase):
     q1 = query.Query(kind='Foo').where(tags__eq='jill').order_by('name')
     q2 = query.Query(kind='Foo').where(tags='joe').order_by('name')
     qq = query.MultiQuery([q1, q2], [('name', query.ASC)])
-    res = list(qq.iterate(model.conn))
+    res = list(qq)
     self.assertEqual(res, [self.jill, self.joe])
 
   def testLooper(self):
     q = query.Query(kind='Foo').where(tags__eq='jill').order_by('name')
     @context.taskify
     def foo():
-      it = tasks.SerialQueueFuture()
-      q.run_to_queue(it, model.conn)
+      it = iter(q)
       res = []
-      while True:
-        try:
-          val = yield it.getq()
-        except EOFError:
-          break
+      while (yield it.has_next_async()):
+        val = it.next()
         res.append(val)
       self.assertEqual(res, [self.jill, self.joe])
     foo()
 
-  def testMultiQueryLooper(self):
+  def testMultiQueryIterator(self):
     q = query.Query(kind='Foo').where(tags__in=['joe', 'jill'])
     q = q.order_by('name')
     @context.taskify
     def foo():
-      it = tasks.SerialQueueFuture()
-      q.run_to_queue(it, model.conn)
+      it = iter(q)
       res = []
-      while True:
-        try:
-          val = yield it.getq()
-        except EOFError:
-          break
+      while (yield it.has_next_async()):
+        val = it.next()
         res.append(val)
       self.assertEqual(res, [self.jill, self.joe])
     foo()
 
   def testNotEqualOperator(self):
     q = query.Query(kind='Foo').where(rate__ne=2)
-    res = list(q.iterate(model.conn))
+    res = list(q)
     self.assertEqual(res, [self.joe, self.moe])
 
   def testInOperator(self):
     q = query.Query(kind='Foo').where(tags__in=('jill', 'hello'))
-    res = list(q.iterate(model.conn))
+    res = list(q)
     self.assertEqual(res, [self.joe, self.jill])
 
   def testFullDistributiveLaw(self):
