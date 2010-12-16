@@ -16,7 +16,7 @@ from ndb import context
 from ndb import eventloop
 from ndb import model
 from ndb import query
-from ndb import tasks
+from ndb import tasklets
 
 
 class MyAutoBatcher(context.AutoBatcher):
@@ -27,10 +27,10 @@ class MyAutoBatcher(context.AutoBatcher):
   def reset_log(cls):
     cls._log = []
 
-  def __init__(self, todo_task):
+  def __init__(self, todo_tasklet):
     def wrap(*args):
       self.__class__._log.append(args)
-      return todo_task(*args)
+      return todo_tasklet(*args)
     super(MyAutoBatcher, self).__init__(wrap)
 
 
@@ -57,7 +57,7 @@ class ContextTests(unittest.TestCase):
     os.environ['APPLICATION_ID'] = '_'
 
   def testContext_AutoBatcher_Get(self):
-    @tasks.task
+    @tasklets.tasklet
     def foo():
       key1 = model.Key(flat=['Foo', 1])
       key2 = model.Key(flat=['Foo', 2])
@@ -68,12 +68,12 @@ class ContextTests(unittest.TestCase):
       ent1 = yield fut1
       ent2 = yield fut2
       ent3 = yield fut3
-      raise tasks.Return([ent1, ent2, ent3])
+      raise tasklets.Return([ent1, ent2, ent3])
     ents = foo().get_result()
     self.assertEqual(ents, [None, None, None])
     self.assertEqual(len(MyAutoBatcher._log), 1)
 
-  @tasks.task
+  @tasklets.tasklet
   def create_entities(self):
     key0 = model.Key(flat=['Foo', None])
     ent1 = model.Model(key=key0)
@@ -85,7 +85,7 @@ class ContextTests(unittest.TestCase):
     key1 = yield fut1
     key2 = yield fut2
     key3 = yield fut3
-    raise tasks.Return([key1, key2, key3])
+    raise tasklets.Return([key1, key2, key3])
 
   def testContext_AutoBatcher_Put(self):
     keys = self.create_entities().get_result()
@@ -94,7 +94,7 @@ class ContextTests(unittest.TestCase):
     self.assertEqual(len(MyAutoBatcher._log), 1)
 
   def testContext_AutoBatcher_Delete(self):
-    @tasks.task
+    @tasklets.tasklet
     def foo():
       key1 = model.Key(flat=['Foo', 1])
       key2 = model.Key(flat=['Foo', 2])
@@ -109,7 +109,7 @@ class ContextTests(unittest.TestCase):
     self.assertEqual(len(MyAutoBatcher._log), 1)
 
   def testContext_Cache(self):
-    @tasks.task
+    @tasklets.tasklet
     def foo():
       key1 = model.Key(flat=('Foo', 1))
       ent1 = model.Expando(key=key1, foo=42, bar='hello')
@@ -127,7 +127,7 @@ class ContextTests(unittest.TestCase):
   def testContext_CachePolicy(self):
     def should_cache(key):
       return False
-    @tasks.task
+    @tasklets.tasklet
     def foo():
       key1 = model.Key(flat=('Foo', 1))
       ent1 = model.Expando(key=key1, foo=42, bar='hello')
@@ -144,7 +144,7 @@ class ContextTests(unittest.TestCase):
     foo().check_success()
 
   def testContext_Memcache(self):
-    @tasks.task
+    @tasklets.tasklet
     def foo():
       key1 = model.Key(flat=('Foo', 1))
       key2 = model.Key(flat=('Foo', 2))
@@ -153,7 +153,7 @@ class ContextTests(unittest.TestCase):
       k1, k2 = yield self.ctx.put(ent1), self.ctx.put(ent2)
       self.assertEqual(k1, key1)
       self.assertEqual(k2, key2)
-      yield tasks.sleep(0.01)  # Let other task complete.
+      yield tasklets.sleep(0.01)  # Let other tasklet complete.
       keys = [k1.urlsafe(), k2.urlsafe()]
       results = memcache.get_multi(keys)
       self.assertEqual(
@@ -163,7 +163,7 @@ class ContextTests(unittest.TestCase):
     foo().check_success()
 
   def testContext_CacheQuery(self):
-    @tasks.task
+    @tasklets.tasklet
     def foo():
       key1 = model.Key(flat=('Foo', 1))
       key2 = model.Key(flat=('Foo', 2))
@@ -174,7 +174,7 @@ class ContextTests(unittest.TestCase):
       self.assertTrue(key2 in self.ctx._cache)  # Whitebox.
       self.assertEqual(key1, key1a)
       self.assertEqual(key2, key2a)
-      @tasks.task
+      @tasklets.tasklet
       def callback(ent):
         return ent
       qry = query.Query(kind='Foo')
@@ -185,7 +185,7 @@ class ContextTests(unittest.TestCase):
     foo().check_success()
 
   def testContext_AllocateIds(self):
-    @tasks.task
+    @tasklets.tasklet
     def foo():
       key = model.Key(flat=('Foo', 1))
       lo_hi = yield self.ctx.allocate_ids(key, size=10)
@@ -195,49 +195,49 @@ class ContextTests(unittest.TestCase):
     foo().check_success()
 
   def testContext_MapQuery(self):
-    @tasks.task
+    @tasklets.tasklet
     def callback(ent):
       return ent.key.flat()[-1]
-    @tasks.task
+    @tasklets.tasklet
     def foo():
       yield self.create_entities()
       qry = query.Query(kind='Foo')
       res = yield self.ctx.map_query(qry, callback)
-      raise tasks.Return(res)
+      raise tasklets.Return(res)
     res = foo().get_result()
     self.assertEqual(set(res), set([1, 2, 3]))
 
   def testContext_MapQuery_NoCallback(self):
-    @tasks.task
+    @tasklets.tasklet
     def foo():
       yield self.create_entities()
       qry = query.Query(kind='Foo')
       res = yield self.ctx.map_query(qry, None)
-      raise tasks.Return(res)
+      raise tasklets.Return(res)
     res = foo().get_result()
     self.assertEqual(len(res), 3)
     for i, ent in enumerate(res):
       self.assertTrue(isinstance(ent, model.Model))
       self.assertEqual(ent.key.flat(), ['Foo', i+1])
 
-  def testContext_MapQuery_NonTaskCallback(self):
+  def testContext_MapQuery_NonTaskletCallback(self):
     def callback(ent):
       return ent.key.flat()[-1]
-    @tasks.task
+    @tasklets.tasklet
     def foo():
       yield self.create_entities()
       qry = query.Query(kind='Foo')
       res = yield self.ctx.map_query(qry, callback)
-      raise tasks.Return(res)
+      raise tasklets.Return(res)
     res = foo().get_result()
     self.assertEqual(res, [1, 2, 3])
 
   def testContext_MapQuery_CustomFuture(self):
-    mfut = tasks.QueueFuture()
-    @tasks.task
+    mfut = tasklets.QueueFuture()
+    @tasklets.tasklet
     def callback(ent):
       return ent.key.flat()[-1]
-    @tasks.task
+    @tasklets.tasklet
     def foo():
       yield self.create_entities()
       qry = query.Query(kind='Foo')
@@ -249,12 +249,12 @@ class ContextTests(unittest.TestCase):
         vals.add(val)
       fail = mfut.getq()
       self.assertRaises(EOFError, fail.get_result)
-      raise tasks.Return(vals)
+      raise tasklets.Return(vals)
     res = foo().get_result()
     self.assertEqual(res, set([1, 2, 3]))
 
   def testContext_IterQuery(self):
-    @tasks.task
+    @tasklets.tasklet
     def foo():
       yield self.create_entities()
       qry = query.Query(kind='Foo')
@@ -266,7 +266,7 @@ class ContextTests(unittest.TestCase):
         except EOFError:
           break
         res.append(ent)
-      raise tasks.Return(res)
+      raise tasklets.Return(res)
     res = foo().get_result()
     self.assertEqual(len(res), 3)
     for i, ent in enumerate(res):
@@ -274,12 +274,12 @@ class ContextTests(unittest.TestCase):
       self.assertEqual(ent.key.flat(), ['Foo', i+1])
 
   def testContext_TransactionFailed(self):
-    @tasks.task
+    @tasklets.tasklet
     def foo():
       key = model.Key(flat=('Foo', 1))
       ent = model.Expando(key=key, bar=1)
       yield self.ctx.put(ent)
-      @tasks.task
+      @tasklets.tasklet
       def callback(ctx):
         self.assertTrue(key not in ctx._cache)  # Whitebox.
         e = yield ctx.get(key)
@@ -294,7 +294,7 @@ class ContextTests(unittest.TestCase):
     # This also tests Context.transaction()
     class Mod(model.Model):
       data = model.StringProperty()
-    @tasks.task
+    @tasklets.tasklet
     def foo():
       ent = yield self.ctx.get_or_insert(Mod, 'a', data='hello')
       assert isinstance(ent, Mod)
@@ -314,10 +314,10 @@ class ContextTests(unittest.TestCase):
     self.assertEqual(arg, 42)
 
   def testDefaultContextTransaction(self):
-    @context.taskify
+    @context.taskletify
     def outer():
       ctx1 = context.get_default_context()
-      @context.task
+      @context.tasklet
       def inner():
         ctx2 = context.get_default_context()
         self.assertTrue(ctx1 is not ctx2)
@@ -327,27 +327,27 @@ class ContextTests(unittest.TestCase):
       a = yield context.transaction(inner)
       ctx1a = context.get_default_context()
       self.assertTrue(ctx1 is ctx1a)
-      raise tasks.Return(a)
+      raise tasklets.Return(a)
     b = outer()
     self.assertEqual(b, 42)
 
   def testExplicitTransactionClearsDefaultContext(self):
-    @context.taskify
+    @context.taskletify
     def outer():
       ctx1 = context.get_default_context()
-      @tasks.task
+      @tasklets.tasklet
       def inner(ctx):
         self.assertTrue(context.get_default_context() is None)
         key = model.Key('Account', 1)
         ent = yield ctx.get(key)
         self.assertTrue(context.get_default_context() is None)
         self.assertTrue(ent is None)
-        raise tasks.Return(42)
+        raise tasklets.Return(42)
       fut = ctx1.transaction(inner)
       self.assertEqual(context.get_default_context(), ctx1)
       val = yield fut
       self.assertEqual(context.get_default_context(), ctx1)
-      raise tasks.Return(val)
+      raise tasklets.Return(val)
     val = outer()
     self.assertEqual(val, 42)
     self.assertTrue(context.get_default_context() is None)

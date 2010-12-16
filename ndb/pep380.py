@@ -2,7 +2,7 @@
 
 import sys
 
-from ndb.tasks import is_generator, Return, get_return_value
+from ndb.tasklets import is_generator, Return, get_return_value
 
 def gwrap(func):
   """Decorator to emulate PEP 380 behavior.
@@ -16,7 +16,7 @@ def gwrap(func):
   replace 'yield g' with 'yield from g' and 'raise Return(x)' with
   'return x', and everything will work exactly the same as before.
 
-  NOTE: This is not quite the same as @task, which offers event loop
+  NOTE: This is not quite the same as @tasklet, which offers event loop
   integration.
   """
   def gwrap_wrapper(*args, **kwds):

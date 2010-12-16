@@ -1,17 +1,17 @@
-"""A task decorator.
+"""A tasklet decorator.
 
-Tasks are a way to write concurrently running functions without
-threads; tasks are executed by an event loop and can suspend
+Tasklets are a way to write concurrently running functions without
+threads; tasklets are executed by an event loop and can suspend
 themselves blocking for I/O or some other operation using a yield
 statement.  The notion of a blocking operation is abstracted into the
-Future class, but a task may also yield an RPC in order to wait for
+Future class, but a tasklet may also yield an RPC in order to wait for
 that RPC to complete.
 
-The @task decorator wraps generator function so that when it is
+The @tasklet decorator wraps generator function so that when it is
 called, a Future is returned while the generator is executed by the
 event loop.  For example:
 
-  @task
+  @tasklet
   def foo():
     a = yield <some Future>
     c = yield <another Future>
@@ -24,39 +24,39 @@ event loop.  For example:
 
 Note that blocking until the Future's result is available using
 get_result() is somewhat inefficient (though not vastly -- it is not
-busy-waiting).  In most cases such code should be rewritten as a task
+busy-waiting).  In most cases such code should be rewritten as a tasklet
 instead:
 
-  @task
-  def main_task():
+  @tasklet
+  def main_tasklet():
     f = foo()
     x = yield f
     print x
 
-Calling a task automatically schedules it with the event loop:
+Calling a tasklet automatically schedules it with the event loop:
 
   def main():
-    f = main_task()
-    eventloop.run()  # Run until no tasks left to do
+    f = main_tasklet()
+    eventloop.run()  # Run until no tasklets left to do
     assert f.done()
 
 As a special feature, if the wrapped function is not a generator
 function, its return value is returned via the Future.  This makes the
 following two equivalent:
 
-  @task
+  @tasklet
   def foo():
     return 42
 
-  @task
+  @tasklet
   def foo():
     if False: yield  # The presence of 'yield' makes foo a generator
     raise Return(42)  # Or, after PEP 380, return 42
 
 This feature (inspired by Monocle) is handy in case you are
-implementing an interface that expects tasks but you have no need to
+implementing an interface that expects tasklets but you have no need to
 suspend -- there's no need to insert a dummy yield in order to make
-the task into a generator.
+the tasklet into a generator.
 """
 
 import collections
@@ -133,7 +133,7 @@ class Future(object):
       state = 'pending'
     line = '?'
     for line in self._where:
-      if 'ndb/tasks.py' not in line:
+      if 'ndb/tasklets.py' not in line:
         break
     if self._info:
       line += ' for %s;' % self._info
@@ -175,7 +175,7 @@ class Future(object):
 
   def add_callback(self, callback, *args, **kwds):
     if self._done:
-      eventloop.queue_task(None, callback, *args, **kwds)
+      eventloop.queue_tasklet(None, callback, *args, **kwds)
     else:
       self._callbacks.append((callback, args, kwds))
 
@@ -186,7 +186,7 @@ class Future(object):
     logging.debug('_all_pending: remove successful %s', self)
     self._all_pending.remove(self)
     for callback, args, kwds  in self._callbacks:
-      eventloop.queue_task(None, callback, *args, **kwds)
+      eventloop.queue_tasklet(None, callback, *args, **kwds)
 
   def set_exception(self, exc, tb=None):
     assert isinstance(exc, BaseException)
@@ -200,7 +200,7 @@ class Future(object):
     else:
       logging.debug('_all_pending: not found %s', self)
     for callback, args, kwds in self._callbacks:
-      eventloop.queue_task(None, callback, *args, **kwds)
+      eventloop.queue_tasklet(None, callback, *args, **kwds)
 
   def done(self):
     return self._done
@@ -265,7 +265,7 @@ class Future(object):
       all = set(f for f in all if f.state == cls.RUNNING)
       ev.run1()
 
-  def _help_task_along(self, gen, val=None, exc=None, tb=None):
+  def _help_tasklet_along(self, gen, val=None, exc=None, tb=None):
     # XXX Docstring
     info = utils.gen_info(gen)
     __ndb_debug__ = info
@@ -324,16 +324,16 @@ class Future(object):
         return
       if is_generator(value):
         assert False  # TODO: emulate PEP 380 here?
-      assert False  # A task shouldn't yield plain values.
+      assert False  # A tasklet shouldn't yield plain values.
 
   def _on_rpc_completion(self, rpc, gen):
     try:
       result = rpc.get_result()
     except Exception, err:
       _, _, tb = sys.exc_info()
-      self._help_task_along(gen, exc=err, tb=tb)
+      self._help_tasklet_along(gen, exc=err, tb=tb)
     else:
-      self._help_task_along(gen, result)
+      self._help_tasklet_along(gen, result)
 
   def _on_future_completion(self, future, gen):
     if self._next is future:
@@ -342,19 +342,19 @@ class Future(object):
       logging.debug('%s is no longer blocked waiting for %s', self, future)
     exc = future.get_exception()
     if exc is not None:
-      self._help_task_along(gen, exc=exc, tb=future.get_traceback())
+      self._help_tasklet_along(gen, exc=exc, tb=future.get_traceback())
     else:
       val = future.get_result()  # This won't raise an exception.
-      self._help_task_along(gen, val)
+      self._help_tasklet_along(gen, val)
 
 def sleep(dt):
   """Public function to sleep some time.
 
   Example:
-    yield tasks.sleep(0.5)  # Sleep for half a sec.
+    yield tasklets.sleep(0.5)  # Sleep for half a sec.
   """
   fut = Future('sleep(%.3f)' % dt)
-  eventloop.queue_task(dt, fut.set_result, None)
+  eventloop.queue_tasklet(dt, fut.set_result, None)
   return fut
 
 
@@ -600,7 +600,7 @@ class ReducingFuture(Future):
   """A Queue following the same protocol as MultiFuture.
 
   However the result, instead of being a list of results of dependent
-  Futures, is computed by calling a 'reducer' task.  The reducer task
+  Futures, is computed by calling a 'reducer' tasklet.  The reducer tasklet
   takes a list of values and returns a single value.  It may be called
   multiple times on sublists of values and should behave like
   e.g. sum().
@@ -680,7 +680,7 @@ class ReducingFuture(Future):
 # To use this, raise Return(<your return value>).  The semantics
 # are exactly the same as raise StopIteration(<your return value>)
 # but using Return clarifies that you are intending this to be the
-# return value of a task.
+# return value of a tasklet.
 # TODO: According to Monocle authors Steve and Greg Hazel, Twisted
 # used an exception to signal a return value from a generator early
 # on, and they found out it was error-prone.  Should I worry?
@@ -696,18 +696,18 @@ def get_return_value(err):
     result = err.args
   return result
 
-def task(func):
+def tasklet(func):
   # XXX Docstring
 
   @utils.wrapping(func)
-  def task_wrapper(*args, **kwds):
+  def tasklet_wrapper(*args, **kwds):
     # XXX Docstring
 
     # TODO: make most of this a public function so you can take a bare
-    # generator and turn it into a task dynamically.  (Monocle has
+    # generator and turn it into a tasklet dynamically.  (Monocle has
     # this I believe.)
     # __ndb_debug__ = utils.func_info(func)
-    fut = Future('task %s' % utils.func_info(func))
+    fut = Future('tasklet %s' % utils.func_info(func))
     try:
       result = func(*args, **kwds)
     except StopIteration, err:
@@ -715,42 +715,42 @@ def task(func):
       # the "raise Return(...)" idiom, we'll extract the return value.
       result = get_return_value(err)
     if is_generator(result):
-      eventloop.queue_task(None, fut._help_task_along, result)
+      eventloop.queue_tasklet(None, fut._help_tasklet_along, result)
     else:
       fut.set_result(result)
     return fut
 
-  return task_wrapper
+  return tasklet_wrapper
 
-def taskify(func):
-  """Decorator to run a function as a task when called.
+def taskletify(func):
+  """Decorator to run a function as a tasklet when called.
 
   Use this to wrap a request handler function that will be called by
   some web application framework (e.g. a Django view function or a
   webapp.RequestHandler.get method).
   """
   @utils.wrapping(func)
-  def taskify_wrapper(*args):
+  def taskletify_wrapper(*args):
     __ndb_debug__ = utils.func_info(func)
-    taskfunc = task(func)
-    return taskfunc(*args).get_result()
-  return taskify_wrapper
+    taskletfunc = tasklet(func)
+    return taskletfunc(*args).get_result()
+  return taskletify_wrapper
 
 # TODO: Rework the following into documentation.
 
-# A task/coroutine/generator can yield the following things:
-# - Another task/coroutine/generator; this is entirely equivalent to
-#   "for x in g: yield x"; this is handled entirely by the @task wrapper.
-#   (Actually, not.  @task returns a function that when called returns
+# A tasklet/coroutine/generator can yield the following things:
+# - Another tasklet/coroutine/generator; this is entirely equivalent to
+#   "for x in g: yield x"; this is handled entirely by the @tasklet wrapper.
+#   (Actually, not.  @tasklet returns a function that when called returns
 #   a Future.  You can use the pep380 module's @gwrap decorator to support
 #   yielding bare generators though.)
-# - An RPC (or MultiRpc); the task will be resumed when this completes.
+# - An RPC (or MultiRpc); the tasklet will be resumed when this completes.
 #   This does not use the RPC's callback mechanism.
-# - A Future; the task will be resumed when the Future is done.
+# - A Future; the tasklet will be resumed when the Future is done.
 #   This uses the Future's callback mechanism.
 
 # A Future can be used in several ways:
-# - Yield it from a task; see above.
+# - Yield it from a tasklet; see above.
 # - Check (poll) its status via f.done.
 # - Call its wait() method, perhaps indirectly via check_success()
 #   or get_result().  This invokes the event loop.
@@ -759,23 +759,23 @@ def taskify(func):
 
 # XXX HIRO XXX
 
-# - A task is a (generator) function decorated with @task.
+# - A tasklet is a (generator) function decorated with @tasklet.
 
-# - Calling a task schedules the function for execution and returns a Future.
+# - Calling a tasklet schedules the function for execution and returns a Future.
 
-# - A function implementing a task may:
+# - A function implementing a tasklet may:
 #   = yield a Future; this waits for the Future which returns f.get_result();
 #   = yield an RPC; this waits for the RPC and then returns rpc.get_result();
 #   = raise Return(result); this sets the outer Future's result;
 #   = raise StopIteration or return; this sets the outer Future's result;
 #   = raise another exception: this sets the outer Future's exception.
 
-# - If a function implementing a task is not a generator it will be
-#   immediately executed to completion and the task wrapper will
+# - If a function implementing a tasklet is not a generator it will be
+#   immediately executed to completion and the tasklet wrapper will
 #   return a Future that is already done.  (XXX Alternative behavior:
 #   it schedules the call to be run by the event loop.)
 
-# - Code not running in a task can call f.get_result() or f.wait() on
+# - Code not running in a tasklet can call f.get_result() or f.wait() on
 #   a future.  This is implemented by a simple loop like the following:
 
 #     while not self.done:
@@ -793,7 +793,7 @@ def taskify(func):
 #   Future will take care of this issue.
 
 # - The important insight is that when a generator function
-#   implementing a task yields, raises or returns, there is always a
+#   implementing a tasklet yields, raises or returns, there is always a
 #   wrapper that catches this event and either turns it into a
 #   callback sent to the event loop, or sets the result or exception
-#   for the task's Future.
+#   for the tasklet's Future.

@@ -18,7 +18,7 @@ from google.appengine.datastore import datastore_rpc
 from ndb import context
 from ndb import eventloop
 from ndb import model
-from ndb import tasks
+from ndb import tasklets
 
 HOME_PAGE = """
 <script>
@@ -93,7 +93,7 @@ def get_account(userid):
   return context.get(account_key(userid))
 
 
-@context.task
+@context.tasklet
 def get_nickname(userid):
   """Return a Future for a nickname from an account."""
   account = yield get_account(userid)
@@ -101,12 +101,12 @@ def get_nickname(userid):
     nickname = 'Unregistered'
   else:
     nickname = account.nickname or account.email
-  raise tasks.Return(nickname)
+  raise tasklets.Return(nickname)
 
 
 class HomePage(webapp.RequestHandler):
 
-  @context.taskify
+  @context.taskletify
   def get(self):
     nickname = 'Anonymous'
     user = users.get_current_user()
@@ -127,7 +127,7 @@ class HomePage(webapp.RequestHandler):
     options = datastore_query.QueryOptions(batch_size=13, limit=43)
     return qry, options
 
-  @context.task
+  @context.tasklet
   def _hp_callback(self, message):
     nickname = 'Anonymous'
     if message.userid:
@@ -169,9 +169,9 @@ class HomePage(webapp.RequestHandler):
     text = '%s - %s - %s<br>' % (cgi.escape(nickname),
                                  time.ctime(message.when),
                                  escbody)
-    raise tasks.Return((-message.when, text))
+    raise tasklets.Return((-message.when, text))
 
-  @context.taskify
+  @context.taskletify
   def post(self):
     # TODO: XSRF protection.
     body = self.request.get('body', '').strip()
@@ -187,7 +187,7 @@ class HomePage(webapp.RequestHandler):
 
 class AccountPage(webapp.RequestHandler):
 
-  @context.taskify
+  @context.taskletify
   def get(self):
     user = users.get_current_user()
     if not user:
@@ -212,10 +212,10 @@ class AccountPage(webapp.RequestHandler):
               }
     self.response.out.write(ACCOUNT_PAGE % values)
 
-  @context.taskify
+  @context.taskletify
   def post(self):
     # TODO: XSRF protection.
-    @context.task
+    @context.tasklet
     def helper():
       user = users.get_current_user()
       if not user:

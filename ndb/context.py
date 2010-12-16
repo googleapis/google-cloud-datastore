@@ -11,26 +11,26 @@ from google.appengine.api import memcache
 
 from google.appengine.datastore import datastore_rpc
 
-from ndb import model, tasks, eventloop, utils
+from ndb import model, tasklets, eventloop, utils
 
 class AutoBatcher(object):
 
-  def __init__(self, todo_task):
-    self._todo_task = todo_task  # Task called with list of (future, arg) pairs
+  def __init__(self, todo_tasklet):
+    self._todo_tasklet = todo_tasklet  # Tasklet called with list of (future, arg) pairs
     self._todo = []  # List of (future, arg) pairs
-    self._running = None  # Currently running task, if any
+    self._running = None  # Currently running tasklet, if any
 
   def __repr__(self):
-    return '%s(%s)' % (self.__class__.__name__, self._todo_task.__name__)
+    return '%s(%s)' % (self.__class__.__name__, self._todo_tasklet.__name__)
 
   def add(self, arg):
-    fut = tasks.Future('%s.add(%s)' % (self, arg))
+    fut = tasklets.Future('%s.add(%s)' % (self, arg))
     if not self._todo:  # Schedule the callback
-      # We use the fact that regular tasks are queued at time None,
+      # We use the fact that regular tasklets are queued at time None,
       # which puts them at absolute time 0 (i.e. ASAP -- still on a
       # FIFO basis).  Callbacks explicitly scheduled with a delay of 0
-      # are only run after all immediately runnable tasks have run.
-      eventloop.queue_task(0, self._autobatcher_callback)
+      # are only run after all immediately runnable tasklets have run.
+      eventloop.queue_tasklet(0, self._autobatcher_callback)
     self._todo.append((fut, arg))
     return fut
 
@@ -48,13 +48,13 @@ class AutoBatcher(object):
     todo = self._todo
     self._todo = []  # Get ready for the next batch
     logging.info('AutoBatcher(%s): %d items',
-                 self._todo_task.__name__, len(todo))
-    self._running = self._todo_task(todo)
+                 self._todo_tasklet.__name__, len(todo))
+    self._running = self._todo_tasklet(todo)
     # Add a callback to the Future to propagate exceptions,
     # since this Future is not normally checked otherwise.
     self._running.add_callback(self._running.check_success)
 
-  @tasks.task
+  @tasklets.tasklet
   def flush(self):
     while self._running or self._todo:
       if self._running:
@@ -74,22 +74,22 @@ class Context(object):
       conn = model.conn  # TODO: Get rid of this?
     self._conn = conn
     self._auto_batcher_class = auto_batcher_class
-    self._get_batcher = auto_batcher_class(self._get_task)
-    self._put_batcher = auto_batcher_class(self._put_task)
-    self._delete_batcher = auto_batcher_class(self._delete_task)
+    self._get_batcher = auto_batcher_class(self._get_tasklet)
+    self._put_batcher = auto_batcher_class(self._put_tasklet)
+    self._delete_batcher = auto_batcher_class(self._delete_tasklet)
     self._cache = {}
     self._cache_policy = None
     self._memcache_policy = None
     # TODO: Also add a way to compute the memcache expiration time.
 
-  @tasks.task
+  @tasklets.tasklet
   def flush(self):
     yield (self._get_batcher.flush(),
            self._put_batcher.flush(),
            self._delete_batcher.flush())
 
-  @tasks.task
-  def _get_task(self, todo):
+  @tasklets.tasklet
+  def _get_tasklet(self, todo):
     assert todo
     # First check memcache.
     keys = set(key for _, key in todo)
@@ -115,8 +115,8 @@ class Context(object):
       for ent, (fut, _) in zip(results, todo):
         fut.set_result(ent)
 
-  @tasks.task
-  def _put_task(self, todo):
+  @tasklets.tasklet
+  def _put_tasklet(self, todo):
     assert todo
     # TODO: What if the same entity is being put twice?
     # TODO: What if two entities with the same key are being put?
@@ -148,8 +148,8 @@ class Context(object):
         logging.info('memcache failed to set %d out of %d keys: %s',
                      len(failures), len(mapping), badkeys)
 
-  @tasks.task
-  def _delete_task(self, todo):
+  @tasklets.tasklet
+  def _delete_tasklet(self, todo):
     assert todo
     keys = set(key for (_, key) in todo)
     yield self._conn.async_delete(None, keys)
@@ -181,13 +181,13 @@ class Context(object):
     return self._memcache_policy(key)
 
   # TODO: What about conflicting requests to different autobatchers,
-  # e.g. task A calls get() on a given key while task B calls
+  # e.g. tasklet A calls get() on a given key while tasklet B calls
   # delete()?  The outcome is nondeterministic, depending on which
   # autobatcher gets run first.  Maybe we should just flag such
   # conflicts as errors, with an overridable policy to resolve them
   # differently?
 
-  @tasks.task
+  @tasklets.tasklet
   def get(self, key):
     if key in self._cache:
       entity = self._cache[key]  # May be None, meaning "doesn't exist".
@@ -195,9 +195,9 @@ class Context(object):
       entity = yield self._get_batcher.add(key)
       if self.should_cache(key):
         self._cache[key] = entity
-    raise tasks.Return(entity)
+    raise tasklets.Return(entity)
 
-  @tasks.task
+  @tasklets.tasklet
   def put(self, entity):
     key = yield self._put_batcher.add(entity)
     if entity.key != key:
@@ -207,28 +207,28 @@ class Context(object):
     if self.should_cache(key):
       # TODO: What if by now the entity is already in the cache?
       self._cache[key] = entity
-    raise tasks.Return(key)
+    raise tasklets.Return(key)
 
-  @tasks.task
+  @tasklets.tasklet
   def delete(self, key):
     yield self._delete_batcher.add(key)
     if key in self._cache:
       self._cache[key] = None
 
-  @tasks.task
+  @tasklets.tasklet
   def allocate_ids(self, key, size=None, max=None):
     lo_hi = yield self._conn.async_allocate_ids(None, key, size, max)
-    raise tasks.Return(lo_hi)
+    raise tasklets.Return(lo_hi)
 
   @datastore_rpc._positional(3)
   def map_query(self, query, callback, options=None, merge_future=None):
     mfut = merge_future
     if mfut is None:
-      mfut = tasks.MultiFuture('map_query')
+      mfut = tasklets.MultiFuture('map_query')
 
-    @tasks.task
+    @tasklets.tasklet
     def helper():
-      inq = tasks.SerialQueueFuture()
+      inq = tasklets.SerialQueueFuture()
       query.run_to_queue(inq, self._conn, options)
       is_ancestor_query = query.ancestor is not None
       while True:
@@ -266,12 +266,12 @@ class Context(object):
   @datastore_rpc._positional(2)
   def iter_query(self, query, options=None):
     return self.map_query(query, callback=None, options=options,
-                          merge_future=tasks.SerialQueueFuture())
+                          merge_future=tasklets.SerialQueueFuture())
 
-  @tasks.task
+  @tasklets.tasklet
   def transaction(self, callback, retry=3, entity_group=None):
     # Will invoke callback(ctx) one or more times with ctx set to a new,
-    # transactional Context.  Returns a Future.  Callback must be a task.
+    # transactional Context.  Returns a Future.  Callback must be a tasklet.
     if entity_group is not None:
       app = entity_group._Key__reference.app()
     else:
@@ -289,7 +289,7 @@ class Context(object):
       tctx.set_memcache_policy(lambda key: False)
       set_default_context(None)
       fut = callback(tctx)
-      assert isinstance(fut, tasks.Future)
+      assert isinstance(fut, tasklets.Future)
       try:
         try:
           result = yield fut
@@ -305,7 +305,7 @@ class Context(object):
           # TODO: This is questionable when self is transactional.
           self._cache.update(tctx._cache)
           self._flush_memcache(tctx._cache)
-          raise tasks.Return(result)
+          raise tasklets.Return(result)
     # Out of retries
     raise datastore_errors.TransactionFailedError(
       'The transaction could not be committed. Please try again.')
@@ -316,7 +316,7 @@ class Context(object):
       memkeys = [key.urlsafe() for key in keys]
       memcache.delete_multi(memkeys)
 
-  @tasks.task
+  @tasklets.tasklet
   def get_or_insert(self, model_class, name, parent=None, **kwds):
     # TODO: Test the heck out of this, in all sorts of evil scenarios.
     assert isinstance(name, basestring) and name
@@ -329,26 +329,26 @@ class Context(object):
     # TODO: Can (and should) the cache be trusted here?
     ent = yield self.get(key)
     if ent is None:
-      @tasks.task
+      @tasklets.tasklet
       def txn(ctx):
         ent = yield ctx.get(key)
         if ent is None:
           ent = model_class(**kwds)  # TODO: Check for forbidden keys
           ent.key = key
           yield ctx.put(ent)
-        raise tasks.Return(ent)
+        raise tasklets.Return(ent)
       ent = yield self.transaction(txn)
-    raise tasks.Return(ent)
+    raise tasklets.Return(ent)
 
 
 def toplevel(func):
-  """Decorator that adds a fresh Context as self.ctx *and* taskifies it."""
+  """Decorator that adds a fresh Context as self.ctx *and* taskletifies it."""
   @utils.wrapping(func)
   def add_context_wrapper(self, *args):
     __ndb_debug__ = utils.func_info(func)
-    tasks.Future.clear_all_pending()
+    tasklets.Future.clear_all_pending()
     self.ctx = Context()
-    return tasks.taskify(func)(self, *args)
+    return tasklets.taskletify(func)(self, *args)
   return add_context_wrapper
 
 
@@ -366,8 +366,8 @@ def set_default_context(new_context):
 
 
 # TODO: Rename to something less cute.
-class MagicFuture(tasks.Future):
-  """A Future that keeps track of a default Context for its task."""
+class MagicFuture(tasklets.Future):
+  """A Future that keeps track of a default Context for its tasklet."""
 
   def __init__(self, info, default_context):
     assert (default_context is None or
@@ -375,26 +375,26 @@ class MagicFuture(tasks.Future):
     super(MagicFuture, self).__init__(info)
     self.default_context = default_context
 
-  def _help_task_along(self, gen, val=None, exc=None, tb=None):
+  def _help_tasklet_along(self, gen, val=None, exc=None, tb=None):
     save_context = get_default_context()
     try:
       set_default_context(self.default_context)
-      super(MagicFuture, self)._help_task_along(gen, val=val, exc=exc, tb=tb)
+      super(MagicFuture, self)._help_tasklet_along(gen, val=val, exc=exc, tb=tb)
     finally:
       set_default_context(save_context)
 
 
-def task(func):
-  """Decorator like @tasks.task that maintains a default Context."""
+def tasklet(func):
+  """Decorator like @tasklets.tasklet that maintains a default Context."""
 
   @utils.wrapping(func)
-  def context_task_wrapper(*args, **kwds):
+  def context_tasklet_wrapper(*args, **kwds):
 
     # TODO: make most of this a public function so you can take a bare
-    # generator and turn it into a task dynamically.  (Monocle has
+    # generator and turn it into a tasklet dynamically.  (Monocle has
     # this I believe.)
     # __ndb_debug__ = utils.func_info(func)
-    fut = MagicFuture('context.task %s' % utils.func_info(func),
+    fut = MagicFuture('context.tasklet %s' % utils.func_info(func),
                       get_default_context())
     try:
       result = func(*args, **kwds)
@@ -402,31 +402,31 @@ def task(func):
       # Just in case the function is not a generator but still uses
       # the "raise Return(...)" idiom, we'll extract the return value.
       result = get_return_value(err)
-    if tasks.is_generator(result):
-      eventloop.queue_task(None, fut._help_task_along, result)
+    if tasklets.is_generator(result):
+      eventloop.queue_tasklet(None, fut._help_tasklet_along, result)
     else:
       fut.set_result(result)
     return fut
 
-  return context_task_wrapper
+  return context_tasklet_wrapper
 
 
-def taskify(func):
+def taskletify(func):
   # TODOL Update docstring?
-  """Decorator to run a function as a task when called.
+  """Decorator to run a function as a tasklet when called.
 
   Use this to wrap a request handler function that will be called by
   some web application framework (e.g. a Django view function or a
   webapp.RequestHandler.get method).
   """
   @utils.wrapping(func)
-  def context_taskify_wrapper(*args):
+  def context_taskletify_wrapper(*args):
     __ndb_debug__ = utils.func_info(func)
-    tasks.Future.clear_all_pending()
+    tasklets.Future.clear_all_pending()
     set_default_context(Context())
-    taskfunc = task(func)
-    return taskfunc(*args).get_result()
-  return context_taskify_wrapper
+    taskletfunc = tasklet(func)
+    return taskletfunc(*args).get_result()
+  return context_taskletify_wrapper
 
 
 # Functions using the default context.

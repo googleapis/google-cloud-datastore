@@ -15,7 +15,7 @@ from google.appengine.datastore import datastore_query
 from ndb import context
 from ndb import model
 from ndb import query
-from ndb import tasks
+from ndb import tasklets
 
 
 class Foo(model.Model):
@@ -95,7 +95,7 @@ class QueryTests(unittest.TestCase):
 
   def testLooper(self):
     q = query.Query(kind='Foo').where(tags__eq='jill').order_by('name')
-    @context.taskify
+    @context.taskletify
     def foo():
       it = iter(q)
       res = []
@@ -108,7 +108,7 @@ class QueryTests(unittest.TestCase):
   def testMultiQueryIterator(self):
     q = query.Query(kind='Foo').where(tags__in=['joe', 'jill'])
     q = q.order_by('name')
-    @context.taskify
+    @context.taskletify
     def foo():
       it = iter(q)
       res = []

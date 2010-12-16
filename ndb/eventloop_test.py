@@ -18,14 +18,14 @@ class EventLoopTests(unittest.TestCase):
       del os.environ[eventloop._EVENT_LOOP_KEY]
     self.ev = eventloop.get_event_loop()
 
-  def testQueueTask(self):
+  def testQueueTasklet(self):
     def f(): return 1
     def g(): return 2
     def h(): return 3
     t_before = time.time()
-    eventloop.queue_task(1, f, 42, 'hello', a=1, b=2)
-    eventloop.queue_task(3, h, c=3, d=4)
-    eventloop.queue_task(2, g, 100, 'abc')
+    eventloop.queue_tasklet(1, f, 42, 'hello', a=1, b=2)
+    eventloop.queue_tasklet(3, h, c=3, d=4)
+    eventloop.queue_tasklet(2, g, 100, 'abc')
     t_after = time.time()
     self.assertEqual(len(self.ev.queue), 3)
     [(t1, f1, a1, k1), (t2, f2, a2, k2), (t3, f3, a3, k3)] = self.ev.queue
@@ -48,8 +48,8 @@ class EventLoopTests(unittest.TestCase):
     record = []
     def foo(arg):
       record.append(arg)
-    eventloop.queue_task(0.2, foo, 42)
-    eventloop.queue_task(0.1, foo, arg='hello')
+    eventloop.queue_tasklet(0.2, foo, 42)
+    eventloop.queue_tasklet(0.1, foo, arg='hello')
     eventloop.run()
     self.assertEqual(record, ['hello', 42])
 
@@ -60,7 +60,7 @@ class EventLoopTests(unittest.TestCase):
     record = []
     def foo(arg):
       record.append(arg)
-    eventloop.queue_task(0.1, foo, 42)
+    eventloop.queue_tasklet(0.1, foo, 42)
     conn = datastore_rpc.Connection()
     config = datastore_rpc.Configuration(on_completion=foo)
     rpc = conn.async_get(config, [])

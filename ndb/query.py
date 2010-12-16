@@ -9,7 +9,7 @@ from google.appengine.datastore import datastore_rpc
 
 from ndb import context
 from ndb import model
-from ndb import tasks
+from ndb import tasklets
 
 
 ASC = datastore_query.PropertyOrder.ASCENDING
@@ -268,7 +268,7 @@ class Query(object):
                                          order=order)
     return self.__query
 
-  @tasks.task
+  @tasklets.tasklet
   def run_to_queue(self, queue, conn, options=None):
     """Run this query, putting entities into the given queue."""
     multiquery = self._maybe_multi_query()
@@ -413,7 +413,7 @@ class QueryIterator(object):
   def has_next(self):
     return self.has_next_async().get_result()
 
-  @tasks.task
+  @tasklets.tasklet
   def has_next_async(self):
     if self._fut is None:
       self._fut = self._iter.getq()
@@ -422,7 +422,7 @@ class QueryIterator(object):
       yield self._fut
     except EOFError:
       flag = False
-    raise tasks.Return(flag)
+    raise tasklets.Return(flag)
 
   def next(self):
     if self._fut is None:
@@ -491,7 +491,7 @@ class MultiQuery(object):
     self.__order = order
     self.ancestor = None  # Hack for map_query().
 
-  @tasks.task
+  @tasklets.tasklet
   def run_to_queue(self, queue, conn, options=None):
     """Run this query, putting entities into the given queue."""
     # Create a list of (first-entity, subquery-iterator) tuples.
@@ -499,7 +499,7 @@ class MultiQuery(object):
     assert options is None  # Don't know what to do with these yet.
     state = []
     for subq in self.__subqueries:
-      subit = tasks.SerialQueueFuture()  # TODO: info.
+      subit = tasklets.SerialQueueFuture()  # TODO: info.
       subq.run_to_queue(subit, conn)
       try:
         ent = yield subit.getq()
