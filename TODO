@@ -1,4 +1,4 @@
-Explain at the top of the tutorial why you async APIs are good.
+Explain at the top of the tutorial why async APIs are good.
 
 Go more public.
 
@@ -9,8 +9,7 @@ that Brett & Nick asked in feedback.
 
 Add Query methods going through default context for map(callback),
 map_async(callback), fetch(limit), fetch_async(limit), count(limit),
-count_async(limit).  Remove iterate(), run() and run_async().  Maybe
-make run_to_queue() less accessible (since it needs a connection)?
+count_async(limit).
 
 Add a public API for QueryOptions.
 
