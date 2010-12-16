@@ -1,17 +1,14 @@
-Merge MagicFuture back into tasklet.Future class.
+Make default context management part of regular tasklets + Futures.
 
-Explain at the top of the tutorial why async APIs are good.
+Add Query methods going through default context for map(callback),
+map_async(callback), fetch(limit), fetch_async(limit), count(limit),
+count_async(limit).
 
 Go more public.
 
 Fix up code: style, docstrings, TODOs.  Increase coverage again.
 
-Separate tutorial, user guide, reference manual.  Explain the things
-that Brett & Nick asked in feedback.
-
-Add Query methods going through default context for map(callback),
-map_async(callback), fetch(limit), fetch_async(limit), count(limit),
-count_async(limit).
+Separate tutorial, user guide, reference manual.
 
 Add a public API for QueryOptions.
 
