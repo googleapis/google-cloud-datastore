@@ -271,8 +271,9 @@ class Context(object):
 
   @tasklets.tasklet
   def transaction(self, callback, retry=3, entity_group=None):
-    # Will invoke callback(ctx) one or more times with ctx set to a new,
-    # transactional Context.  Returns a Future.  Callback must be a tasklet.
+    # Will invoke callback() one or more times with the default
+    # context set to a new, transactional Context.  Returns a Future.
+    # Callback may be a tasklet.
     if entity_group is not None:
       app = entity_group._Key__reference.app()
     else:
@@ -288,12 +289,12 @@ class Context(object):
       tctx = self.__class__(conn=tconn,
                             auto_batcher_class=self._auto_batcher_class)
       tctx.set_memcache_policy(lambda key: False)
-      tasklets.set_default_context(None)
-      fut = callback(tctx)
-      assert isinstance(fut, tasklets.Future)
+      tasklets.set_default_context(tctx)
       try:
         try:
-          result = yield fut
+          result = callback()
+          if isinstance(result, tasklets.Future):
+            result = yield result
         finally:
           yield tctx.flush()
       except Exception, err:
@@ -331,12 +332,12 @@ class Context(object):
     ent = yield self.get(key)
     if ent is None:
       @tasklets.tasklet
-      def txn(ctx):
-        ent = yield ctx.get(key)
+      def txn():
+        ent = yield key.get_async()
         if ent is None:
           ent = model_class(**kwds)  # TODO: Check for forbidden keys
           ent.key = key
-          yield ctx.put(ent)
+          yield ent.put_async()
         raise tasklets.Return(ent)
       ent = yield self.transaction(txn)
     raise tasklets.Return(ent)
@@ -357,14 +358,10 @@ def toplevel(func):
   return add_context_wrapper
 
 
-# TODO: Kill this, use the long form in the call sites.
-def transaction(callback, *args, **kwds):
-  def callback_wrapper(ctx):
-    # TODO: Set the default context in Context.transaction()?
-    save_context = tasklets.get_default_context()
-    try:
-      tasklets.set_default_context(ctx)
-      return callback()
-    finally:
-      tasklets.set_default_context(save_context)
-  return tasklets.get_default_context().transaction(callback_wrapper, *args, **kwds)
+# Transaction API using the default context.
+
+def transaction(callback):
+  return transaction_async(callback).get_result()
+
+def transaction_async(callback):
+  return tasklets.get_default_context().transaction(callback)

@@ -281,12 +281,13 @@ class ContextTests(unittest.TestCase):
       ent = model.Expando(key=key, bar=1)
       yield self.ctx.put(ent)
       @tasklets.tasklet
-      def callback(ctx):
+      def callback():
+        ctx = tasklets.get_default_context()
         self.assertTrue(key not in ctx._cache)  # Whitebox.
-        e = yield ctx.get(key)
+        e = yield key.get_async()
         self.assertTrue(key in ctx._cache)  # Whitebox.
         e.bar = 2
-        yield ctx.put(e)
+        yield e.put_async()
       yield self.ctx.transaction(callback)
       self.assertEqual(self.ctx._cache[key].bar, 2)
     foo().check_success()
@@ -326,7 +327,7 @@ class ContextTests(unittest.TestCase):
         self.assertTrue(isinstance(ctx2._conn,
                                    datastore_rpc.TransactionalConnection))
         return 42
-      a = yield context.transaction(inner)
+      a = yield tasklets.get_default_context().transaction(inner)
       ctx1a = tasklets.get_default_context()
       self.assertTrue(ctx1 is ctx1a)
       raise tasklets.Return(a)
@@ -339,11 +340,12 @@ class ContextTests(unittest.TestCase):
     def outer():
       ctx1 = tasklets.get_default_context()
       @tasklets.tasklet
-      def inner(ctx):
-        self.assertTrue(tasklets.get_default_context() is None)
+      def inner():
+        ctx = tasklets.get_default_context()
+        self.assertTrue(ctx is not ctx1)
         key = model.Key('Account', 1)
-        ent = yield ctx.get(key)
-        self.assertTrue(tasklets.get_default_context() is None)
+        ent = yield key.get_async()
+        self.assertTrue(tasklets.get_default_context() is ctx)
         self.assertTrue(ent is None)
         raise tasklets.Return(42)
       fut = ctx1.transaction(inner)

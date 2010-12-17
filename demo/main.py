@@ -235,7 +235,7 @@ class AccountPage(webapp.RequestHandler):
         account.nickname = nickname
       yield account.put_async()
       self.redirect('/account')
-    yield context.transaction(helper)
+    yield context.transaction_async(helper)
 
 
 urls = [
