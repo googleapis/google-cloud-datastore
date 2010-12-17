@@ -30,11 +30,12 @@ _OPS = {
 
 class Binding(object):
 
-  def __init__(self, value=None):
+  def __init__(self, value=None, key=None):
     self.value = value
+    self.key = key
 
   def __repr__(self):
-    return '%s(%r)' % (self.__class__.__name__, self.value)
+    return '%s(%r, %r)' % (self.__class__.__name__, self.value, self.key)
 
   def resolve(self):
     value = self.value
@@ -226,6 +227,42 @@ class DisjunctionNode(Node):
     if nodes == self.__nodes:
       return self
     return DisjunctionNode(nodes)
+
+
+def gql(query_string):
+  from google.appengine.ext import gql
+
+  def _args_to_val(func, args):
+    vals = []
+    for arg in args:
+      if isinstance(arg, (int, long, basestring)):
+        val = Binding(None, arg)
+      elif isinstance(arg, gql.Literal):
+        val = arg.Get()
+      else:
+        assert False, 'Unexpected arg (%r)' % arg
+      vals.append(val)
+    if func == 'nop':
+      assert len(vals) == 1
+      return vals[0]
+    if func == 'list':
+      return vals
+    assert False, 'Unexpected func (%r)' % func
+
+  gql_qry = gql.GQL(query_string)
+  flt = gql_qry.filters()
+  filters = []
+  for ((name, op), values) in flt.iteritems():
+    op = op.lower()
+    assert op in _OPS.values()
+    for (func, args) in values:
+      val = _args_to_val(func, args)
+      filters.append(FilterNode(name, op, val))
+  if filters:
+    filter = ConjunctionNode(filters)
+  else:
+    filter = None
+  return Query(kind=gql_qry._entity, filter=filter)
 
 
 class Query(object):
