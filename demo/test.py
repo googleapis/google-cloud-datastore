@@ -2,16 +2,16 @@
 
 import time
 
-from demo.main import model, context, Message, Account, account_key
+from demo.main import model, context, tasklets, Message, Account, account_key
 
 
 def setup():
   ctx = context.Context()
-  context.set_default_context(ctx)
+  tasklets.set_default_context(ctx)
 
 
 def main():
-  conn = setup()
+  setup()
   print 'Content-type: text/plain'
   print
   qry = Message.all().order_by_desc('when')

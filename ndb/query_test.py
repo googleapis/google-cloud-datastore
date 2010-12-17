@@ -29,7 +29,7 @@ class QueryTests(unittest.TestCase):
   def setUp(self):
     os.environ['APPLICATION_ID'] = '_'
     self.set_up_stubs()
-    context.set_default_context(context.Context())
+    tasklets.set_default_context(context.Context())
     self.create_entities()
 
   def set_up_stubs(self):
@@ -95,7 +95,7 @@ class QueryTests(unittest.TestCase):
 
   def testIterAsync(self):
     q = query.Query(kind='Foo').where(tags__eq='jill').order_by('name')
-    @context.synctasklet
+    @tasklets.synctasklet
     def foo():
       it = iter(q)
       res = []
@@ -173,7 +173,7 @@ class QueryTests(unittest.TestCase):
   def testMultiQueryIterator(self):
     q = query.Query(kind='Foo').where(tags__in=['joe', 'jill'])
     q = q.order_by('name')
-    @context.synctasklet
+    @tasklets.synctasklet
     def foo():
       it = iter(q)
       res = []

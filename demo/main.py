@@ -93,7 +93,7 @@ def get_account(userid):
   return context.get(account_key(userid))
 
 
-@context.tasklet
+@tasklets.tasklet
 def get_nickname(userid):
   """Return a Future for a nickname from an account."""
   account = yield get_account(userid)
@@ -127,7 +127,7 @@ class HomePage(webapp.RequestHandler):
     options = datastore_query.QueryOptions(batch_size=13, limit=43)
     return qry, options
 
-  @context.tasklet
+  @tasklets.tasklet
   def _hp_callback(self, message):
     nickname = 'Anonymous'
     if message.userid:
@@ -215,7 +215,7 @@ class AccountPage(webapp.RequestHandler):
   @context.toplevel
   def post(self):
     # TODO: XSRF protection.
-    @context.tasklet
+    @tasklets.tasklet
     def helper():
       user = users.get_current_user()
       if not user:

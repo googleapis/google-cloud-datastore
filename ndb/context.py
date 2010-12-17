@@ -288,7 +288,7 @@ class Context(object):
       tctx = self.__class__(conn=tconn,
                             auto_batcher_class=self._auto_batcher_class)
       tctx.set_memcache_policy(lambda key: False)
-      set_default_context(None)
+      tasklets.set_default_context(None)
       fut = callback(tctx)
       assert isinstance(fut, tasklets.Future)
       try:
@@ -357,44 +357,39 @@ def toplevel(func):
   return add_context_wrapper
 
 
-# TODO: Fix the dependents, kill these.
-from ndb.tasklets import tasklet, synctasklet
-from ndb.tasklets import get_default_context, set_default_context
-
-
 # Functions using the default context.
 # TODO: Kill these, use the long form in the call sites.
 
 def get(*args, **kwds):
-  return get_default_context().get(*args, **kwds)
+  return tasklets.get_default_context().get(*args, **kwds)
 
 def put(*args, **kwds):
-  return get_default_context().put(*args, **kwds)
+  return tasklets.get_default_context().put(*args, **kwds)
 
 def delete(*args, **kwds):
-  return get_default_context().delete(*args, **kwds)
+  return tasklets.get_default_context().delete(*args, **kwds)
 
 def allocate_ids(*args, **kwds):
-  return get_default_context().allocate_ids(*args, **kwds)
+  return tasklets.get_default_context().allocate_ids(*args, **kwds)
 
 def map_query(*args, **kwds):
-  return get_default_context().map_query(*args, **kwds)
+  return tasklets.get_default_context().map_query(*args, **kwds)
 
 def iter_query(*args, **kwds):
-  return get_default_context().iter_query(*args, **kwds)
+  return tasklets.get_default_context().iter_query(*args, **kwds)
 
 def transaction(callback, *args, **kwds):
   def callback_wrapper(ctx):
-    # TODO: Is this right?
-    save_context = get_default_context()
+    # TODO: Set the default context in Context.transaction()?
+    save_context = tasklets.get_default_context()
     try:
-      set_default_context(ctx)
+      tasklets.set_default_context(ctx)
       return callback()
     finally:
-      set_default_context(save_context)
-  return get_default_context().transaction(callback_wrapper, *args, **kwds)
+      tasklets.set_default_context(save_context)
+  return tasklets.get_default_context().transaction(callback_wrapper, *args, **kwds)
 
 def get_or_insert(*args, **kwds):
-  return get_default_context().get_or_insert(*args, **kwds)
+  return tasklets.get_default_context().get_or_insert(*args, **kwds)
 
 # TODO: Add flush() and cache policy API?

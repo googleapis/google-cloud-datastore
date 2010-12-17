@@ -316,18 +316,18 @@ class ContextTests(unittest.TestCase):
     self.assertTrue(ctx is not old_ctx)
 
   def testDefaultContextTransaction(self):
-    @context.synctasklet
+    @tasklets.synctasklet
     def outer():
-      ctx1 = context.get_default_context()
-      @context.tasklet
+      ctx1 = tasklets.get_default_context()
+      @tasklets.tasklet
       def inner():
-        ctx2 = context.get_default_context()
+        ctx2 = tasklets.get_default_context()
         self.assertTrue(ctx1 is not ctx2)
         self.assertTrue(isinstance(ctx2._conn,
                                    datastore_rpc.TransactionalConnection))
         return 42
       a = yield context.transaction(inner)
-      ctx1a = context.get_default_context()
+      ctx1a = tasklets.get_default_context()
       self.assertTrue(ctx1 is ctx1a)
       raise tasklets.Return(a)
     b = outer()
@@ -335,25 +335,25 @@ class ContextTests(unittest.TestCase):
 
   def testExplicitTransactionClearsDefaultContext(self):
     old_ctx = tasklets.get_default_context()
-    @context.synctasklet
+    @tasklets.synctasklet
     def outer():
-      ctx1 = context.get_default_context()
+      ctx1 = tasklets.get_default_context()
       @tasklets.tasklet
       def inner(ctx):
-        self.assertTrue(context.get_default_context() is None)
+        self.assertTrue(tasklets.get_default_context() is None)
         key = model.Key('Account', 1)
         ent = yield ctx.get(key)
-        self.assertTrue(context.get_default_context() is None)
+        self.assertTrue(tasklets.get_default_context() is None)
         self.assertTrue(ent is None)
         raise tasklets.Return(42)
       fut = ctx1.transaction(inner)
-      self.assertEqual(context.get_default_context(), ctx1)
+      self.assertEqual(tasklets.get_default_context(), ctx1)
       val = yield fut
-      self.assertEqual(context.get_default_context(), ctx1)
+      self.assertEqual(tasklets.get_default_context(), ctx1)
       raise tasklets.Return(val)
     val = outer()
     self.assertEqual(val, 42)
-    self.assertTrue(context.get_default_context() is old_ctx)
+    self.assertTrue(tasklets.get_default_context() is old_ctx)
 
 
 def main():
