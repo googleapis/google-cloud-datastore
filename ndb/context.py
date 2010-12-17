@@ -72,7 +72,7 @@ class Context(object):
 
   def __init__(self, conn=None, auto_batcher_class=AutoBatcher):
     if conn is None:
-      conn = model.conn  # TODO: Get rid of this?
+      conn = model.conn  # TODO: Get rid of this.
     self._conn = conn
     self._auto_batcher_class = auto_batcher_class
     self._get_batcher = auto_batcher_class(self._get_tasklet)
@@ -343,94 +343,27 @@ class Context(object):
 
 
 def toplevel(func):
-  """Decorator that adds a fresh Context as self.ctx *and* taskletifies it."""
+  """A sync tasklet that sets a fresh default Context.
+
+  Use this for toplevel view functions such as
+  webapp.RequestHandler.get() or Django view functions.
+  """
   @utils.wrapping(func)
   def add_context_wrapper(self, *args):
     __ndb_debug__ = utils.func_info(func)
     tasklets.Future.clear_all_pending()
-    self.ctx = Context()
+    tasklets.set_default_context(Context())
     return tasklets.synctasklet(func)(self, *args)
   return add_context_wrapper
 
 
-# TODO: Use thread-local for this.
-_default_context = None
-
-def get_default_context():
-  return _default_context
-
-def set_default_context(new_context):
-  assert (new_context is None or
-          isinstance(new_context, Context)), repr(new_context)
-  global _default_context
-  _default_context = new_context
-
-
-# TODO: Rename to something less cute.
-class MagicFuture(tasklets.Future):
-  """A Future that keeps track of a default Context for its tasklet."""
-
-  def __init__(self, info, default_context):
-    assert (default_context is None or
-            isinstance(default_context, Context)), repr(default_context)
-    super(MagicFuture, self).__init__(info)
-    self.default_context = default_context
-
-  def _help_tasklet_along(self, gen, val=None, exc=None, tb=None):
-    save_context = get_default_context()
-    try:
-      set_default_context(self.default_context)
-      super(MagicFuture, self)._help_tasklet_along(gen, val=val, exc=exc, tb=tb)
-    finally:
-      set_default_context(save_context)
-
-
-def tasklet(func):
-  """Decorator like @tasklets.tasklet that maintains a default Context."""
-
-  @utils.wrapping(func)
-  def context_tasklet_wrapper(*args, **kwds):
-
-    # TODO: make most of this a public function so you can take a bare
-    # generator and turn it into a tasklet dynamically.  (Monocle has
-    # this I believe.)
-    # __ndb_debug__ = utils.func_info(func)
-    fut = MagicFuture('context.tasklet %s' % utils.func_info(func),
-                      get_default_context())
-    try:
-      result = func(*args, **kwds)
-    except StopIteration, err:
-      # Just in case the function is not a generator but still uses
-      # the "raise Return(...)" idiom, we'll extract the return value.
-      result = get_return_value(err)
-    if tasklets.is_generator(result):
-      eventloop.queue_call(None, fut._help_tasklet_along, result)
-    else:
-      fut.set_result(result)
-    return fut
-
-  return context_tasklet_wrapper
-
-
-def synctasklet(func):
-  # TODO: Update docstring?
-  """Decorator to run a function as a tasklet when called.
-
-  Use this to wrap a request handler function that will be called by
-  some web application framework (e.g. a Django view function or a
-  webapp.RequestHandler.get method).
-  """
-  @utils.wrapping(func)
-  def context_synctasklet_wrapper(*args):
-    __ndb_debug__ = utils.func_info(func)
-    tasklets.Future.clear_all_pending()
-    set_default_context(Context())
-    taskletfunc = tasklet(func)
-    return taskletfunc(*args).get_result()
-  return context_synctasklet_wrapper
+# TODO: Fix the dependents, kill these.
+from ndb.tasklets import tasklet, synctasklet
+from ndb.tasklets import get_default_context, set_default_context
 
 
 # Functions using the default context.
+# TODO: Kill these, use the long form in the call sites.
 
 def get(*args, **kwds):
   return get_default_context().get(*args, **kwds)

@@ -107,6 +107,7 @@ class Future(object):
     __ndb_debug__ = 'SKIP'  # Hide this frame from self._where
     self._info = info  # Info from the caller about this Future's purpose.
     self._where = utils.get_stack()
+    self._context = None
     self._reset()
 
   def _reset(self):
@@ -270,13 +271,19 @@ class Future(object):
     info = utils.gen_info(gen)
     __ndb_debug__ = info
     try:
-      if exc is not None:
-        logging.debug('Throwing %s(%s) into %s',
-                      exc.__class__.__name__, exc, info)
-        value = gen.throw(exc.__class__, exc, tb)
-      else:
-        logging.debug('Sending %r to %s', val, info)
-        value = gen.send(val)
+      save_context = get_default_context()
+      try:
+        set_default_context(self._context)
+        if exc is not None:
+          logging.debug('Throwing %s(%s) into %s',
+                        exc.__class__.__name__, exc, info)
+          value = gen.throw(exc.__class__, exc, tb)
+        else:
+          logging.debug('Sending %r to %s', val, info)
+          value = gen.send(val)
+          self._context = get_default_context()
+      finally:
+        set_default_context(save_context)
 
     except StopIteration, err:
       result = get_return_value(err)
@@ -708,6 +715,7 @@ def tasklet(func):
     # this I believe.)
     # __ndb_debug__ = utils.func_info(func)
     fut = Future('tasklet %s' % utils.func_info(func))
+    fut._context = get_default_context()
     try:
       result = func(*args, **kwds)
     except StopIteration, err:
@@ -735,6 +743,16 @@ def synctasklet(func):
     taskletfunc = tasklet(func)
     return taskletfunc(*args).get_result()
   return synctasklet_wrapper
+
+# TODO: Use thread-local for this.
+_default_context = None
+
+def get_default_context():
+  return _default_context
+
+def set_default_context(new_context):
+  global _default_context
+  _default_context = new_context
 
 # TODO: Rework the following into documentation.
 

@@ -16,6 +16,12 @@ test:
 	  PYTHONPATH=$(GAEPATH):. $(PYTHON) -m ndb.`basename $$i .py` $(FLAGS); \
 	done
 
+query_test:
+	PYTHONPATH=$(GAEPATH):. $(PYTHON) -m ndb.query_test $(FLAGS)
+
+context_test:
+	PYTHONPATH=$(GAEPATH):. $(PYTHON) -m ndb.context_test $(FLAGS)
+
 c cov cove cover coverage:
 	coverage erase
 	for i in $(TESTS); \

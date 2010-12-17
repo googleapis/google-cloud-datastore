@@ -106,7 +106,7 @@ def get_nickname(userid):
 
 class HomePage(webapp.RequestHandler):
 
-  @context.synctasklet
+  @context.toplevel
   def get(self):
     nickname = 'Anonymous'
     user = users.get_current_user()
@@ -171,7 +171,7 @@ class HomePage(webapp.RequestHandler):
                                  escbody)
     raise tasklets.Return((-message.when, text))
 
-  @context.synctasklet
+  @context.toplevel
   def post(self):
     # TODO: XSRF protection.
     body = self.request.get('body', '').strip()
@@ -187,7 +187,7 @@ class HomePage(webapp.RequestHandler):
 
 class AccountPage(webapp.RequestHandler):
 
-  @context.synctasklet
+  @context.toplevel
   def get(self):
     user = users.get_current_user()
     if not user:
@@ -212,7 +212,7 @@ class AccountPage(webapp.RequestHandler):
               }
     self.response.out.write(ACCOUNT_PAGE % values)
 
-  @context.synctasklet
+  @context.toplevel
   def post(self):
     # TODO: XSRF protection.
     @context.tasklet

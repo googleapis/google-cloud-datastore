@@ -1,5 +1,6 @@
 """Tests for context.py."""
 
+import logging
 import os
 import re
 import sys
@@ -306,12 +307,13 @@ class ContextTests(unittest.TestCase):
     class Demo(object):
       @context.toplevel
       def method(self, arg):
-        return (self.ctx, arg)
+        return (tasklets.get_default_context(), arg)
     a = Demo()
-    self.assertFalse(hasattr(a, 'ctx'))
+    old_ctx = tasklets.get_default_context()
     ctx, arg = a.method(42)
     self.assertTrue(isinstance(ctx, context.Context))
     self.assertEqual(arg, 42)
+    self.assertTrue(ctx is not old_ctx)
 
   def testDefaultContextTransaction(self):
     @context.synctasklet
@@ -332,6 +334,7 @@ class ContextTests(unittest.TestCase):
     self.assertEqual(b, 42)
 
   def testExplicitTransactionClearsDefaultContext(self):
+    old_ctx = tasklets.get_default_context()
     @context.synctasklet
     def outer():
       ctx1 = context.get_default_context()
@@ -350,10 +353,11 @@ class ContextTests(unittest.TestCase):
       raise tasklets.Return(val)
     val = outer()
     self.assertEqual(val, 42)
-    self.assertTrue(context.get_default_context() is None)
+    self.assertTrue(context.get_default_context() is old_ctx)
 
 
 def main():
+  ##logging.basicConfig(level=logging.INFO)
   unittest.main()
 
 
