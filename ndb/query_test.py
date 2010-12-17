@@ -244,7 +244,7 @@ class QueryTests(unittest.TestCase):
     self.assertEqual(qry.order, None)
     self.assertEqual(bindings, {1: query.Binding(None, 1)})
 
-  def testGqlBasic(self):
+  def testGqlFilter(self):
     qry, options, bindings = query.parse_gql(
       "SELECT * FROM Kind WHERE prop1 = 1 AND prop2 = 'a'")
     self.assertEqual(qry.kind, 'Kind')
@@ -255,6 +255,21 @@ class QueryTests(unittest.TestCase):
                         query.FilterNode('prop2', '=', 'a')]))
     self.assertEqual(qry.order, None)
     self.assertEqual(bindings, {})
+
+  def testGqlOrder(self):
+    qry, options, bindings = query.parse_gql(
+      'SELECT * FROM Kind ORDER BY prop1')
+    self.assertEqual(qry.order, [('prop1', query.ASC)])
+
+  def testGqlOffset(self):
+    qry, options, bindings = query.parse_gql(
+      'SELECT * FROM Kind OFFSET 2')
+    self.assertEqual(options.offset, 2)
+
+  def testGqlLimit(self):
+    qry, options, bindings = query.parse_gql(
+      'SELECT * FROM Kind LIMIT 2')
+    self.assertEqual(options.limit, 2)
 
   def testGqlBindings(self):
     qry, options, bindings = query.parse_gql(

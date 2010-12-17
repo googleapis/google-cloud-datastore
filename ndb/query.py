@@ -298,10 +298,18 @@ def parse_gql(query_string):
     filter = ConjunctionNode(filters)
   else:
     filter = None
+  order = gql_qry.orderings() or None
   qry = Query(kind=gql_qry._entity,
               ancestor=ancestor,
-              filter=filter)  # XXX order
-  options = datastore_query.QueryOptions()  # XXX offset, limit
+              filter=filter,
+              order=order)
+  offset = gql_qry.offset()
+  if offset < 0:
+    offset = None
+  limit = gql_qry.limit()
+  if limit < 0:
+    limit = None
+  options = datastore_query.QueryOptions(offset=offset, limit=limit)
   return qry, options, bindings
 
 
