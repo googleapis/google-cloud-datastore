@@ -263,6 +263,10 @@ def _args_to_val(func, args, bindings):
     return vals[0]
   if func == 'list':
     return vals
+  if func == 'key':
+    if len(vals) == 1 and isinstance(vals[0], basestring):
+      return model.Key(urlsafe=vals[0])
+    assert False, 'Unexpected key args (%r)' % (vals,)
   assert False, 'Unexpected func (%r)' % func
 
 

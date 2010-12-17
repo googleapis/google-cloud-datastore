@@ -244,6 +244,16 @@ class QueryTests(unittest.TestCase):
     self.assertEqual(qry.order, None)
     self.assertEqual(bindings, {1: query.Binding(None, 1)})
 
+  def testGqlAncestor(self):
+    key = model.Key('Foo', 42)
+    qry, options, bindings = query.parse_gql(
+      "SELECT * FROM Kind WHERE ANCESTOR IS KEY('%s')" % key.urlsafe())
+    self.assertEqual(qry.kind, 'Kind')
+    self.assertEqual(qry.ancestor, key)
+    self.assertEqual(qry.filter, None)
+    self.assertEqual(qry.order, None)
+    self.assertEqual(bindings, {})
+
   def testGqlFilter(self):
     qry, options, bindings = query.parse_gql(
       "SELECT * FROM Kind WHERE prop1 = 1 AND prop2 = 'a'")
