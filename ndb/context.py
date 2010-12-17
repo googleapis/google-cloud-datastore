@@ -357,27 +357,7 @@ def toplevel(func):
   return add_context_wrapper
 
 
-# Functions using the default context.
-# TODO: Kill these, use the long form in the call sites.
-
-def get(*args, **kwds):
-  return tasklets.get_default_context().get(*args, **kwds)
-
-def put(*args, **kwds):
-  return tasklets.get_default_context().put(*args, **kwds)
-
-def delete(*args, **kwds):
-  return tasklets.get_default_context().delete(*args, **kwds)
-
-def allocate_ids(*args, **kwds):
-  return tasklets.get_default_context().allocate_ids(*args, **kwds)
-
-def map_query(*args, **kwds):
-  return tasklets.get_default_context().map_query(*args, **kwds)
-
-def iter_query(*args, **kwds):
-  return tasklets.get_default_context().iter_query(*args, **kwds)
-
+# TODO: Kill this, use the long form in the call sites.
 def transaction(callback, *args, **kwds):
   def callback_wrapper(ctx):
     # TODO: Set the default context in Context.transaction()?
@@ -388,8 +368,3 @@ def transaction(callback, *args, **kwds):
     finally:
       tasklets.set_default_context(save_context)
   return tasklets.get_default_context().transaction(callback_wrapper, *args, **kwds)
-
-def get_or_insert(*args, **kwds):
-  return tasklets.get_default_context().get_or_insert(*args, **kwds)
-
-# TODO: Add flush() and cache policy API?

@@ -535,7 +535,8 @@ class QueryIterator(object):
   """
 
   def __init__(self, query, options=None):
-    self._iter = context.iter_query(query, options=options)
+    ctx = tasklets.get_default_context()
+    self._iter = ctx.iter_query(query, options=options)
     self._fut = None
 
   def __iter__(self):

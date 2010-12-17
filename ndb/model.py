@@ -248,8 +248,8 @@ class Model(object):
     return self.put_async().get_result()
 
   def put_async(self):
-    from ndb import context
-    return context.put(self)
+    from ndb import tasklets
+    return tasklets.get_default_context().put(self)
 
   @classmethod
   def get_or_insert(cls, name, parent=None, **kwds):
@@ -257,8 +257,9 @@ class Model(object):
 
   @classmethod
   def get_or_insert_async(cls, name, parent=None, **kwds):
-    from ndb import context
-    return context.get_or_insert(cls, name=name, parent=parent, **kwds)
+    from ndb import tasklets
+    ctx = tasklets.get_default_context()
+    return ctx.get_or_insert(cls, name=name, parent=parent, **kwds)
 
   @classmethod
   def allocate_ids(cls, size=None, max=None, parent=None):
@@ -266,14 +267,14 @@ class Model(object):
 
   @classmethod
   def allocate_ids_async(cls, size=None, max=None, parent=None):
-    from ndb import context
+    from ndb import tasklets
     if parent is None:
       pairs = []
     else:
       pairs = parent.pairs()
     pairs.append((cls.GetKind(), None))
     key = Key(pairs=pairs)
-    return context.allocate_ids(key, size=size, max=max)
+    return tasklets.get_default_context().allocate_ids(key, size=size, max=max)
 
 # TODO: More Property types
 

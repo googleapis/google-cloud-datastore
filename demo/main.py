@@ -90,7 +90,7 @@ def account_key(userid):
 
 def get_account(userid):
   """Return a Future for an Account."""
-  return context.get(account_key(userid))
+  return account_key(userid).get_async()
 
 
 @tasklets.tasklet
@@ -118,7 +118,7 @@ class HomePage(webapp.RequestHandler):
               }
     self.response.out.write(HOME_PAGE % values)
     qry, options = self._make_query()
-    pairs = yield context.map_query(qry, self._hp_callback, options=options)
+    pairs = yield qry.map_async(self._hp_callback, options=options)
     for key, text in pairs:
       self.response.out.write(text)
 
@@ -143,7 +143,7 @@ class HomePage(webapp.RequestHandler):
       post = body[m.end():]
       title = ''
       key = model.Key(flat=[UrlSummary.GetKind(), url])
-      summary = yield context.get(key)
+      summary = yield key.get_async()
       if not summary or summary.when < time.time() - UrlSummary.MAX_AGE:
         rpc = urlfetch.create_rpc(deadline=0.5)
         urlfetch.make_fetch_call(rpc, url,allow_truncated=True)
@@ -159,7 +159,7 @@ class HomePage(webapp.RequestHandler):
             title = m.group(1).strip()
           summary = UrlSummary(key=key, url=url, title=title,
                                when=time.time())
-          yield context.put(summary)
+          yield summary.put_async()
       hover = ''
       if summary.title:
         hover = ' title="%s"' % summary.title
@@ -181,7 +181,7 @@ class HomePage(webapp.RequestHandler):
       if user:
         userid = user.user_id()
       message = Message(body=body, when=time.time(), userid=userid)
-      yield context.put(message)  # Synchronous.
+      yield message.put_async()
     self.redirect('/')
 
 
@@ -224,7 +224,7 @@ class AccountPage(webapp.RequestHandler):
       account = yield get_account(user.user_id())
       if self.request.get('delete'):
         if account:
-          yield context.delete(account.key)
+          yield account.key.delete_async()
         self.redirect('/account')
         return
       if not account:
@@ -233,7 +233,7 @@ class AccountPage(webapp.RequestHandler):
       nickname = self.request.get('nickname')
       if nickname:
         account.nickname = nickname
-      yield context.put(account)
+      yield account.put_async()
       self.redirect('/account')
     yield context.transaction(helper)
 
