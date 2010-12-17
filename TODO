@@ -1,5 +1,3 @@
-Make default context management part of regular tasklets + Futures.
-
 Go more public.
 
 Fix up code: style, docstrings, TODOs.  Increase coverage again.
