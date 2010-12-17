@@ -227,6 +227,50 @@ class QueryTests(unittest.TestCase):
                         FilterNode('name', '=', 'moe')])])
     self.assertEqual(filter, expected)
 
+  def testGqlMinimal(self):
+    qry, options, bindings = query.parse_gql('SELECT * FROM Kind')
+    self.assertEqual(qry.kind, 'Kind')
+    self.assertEqual(qry.ancestor, None)
+    self.assertEqual(qry.filter, None)
+    self.assertEqual(qry.order, None)
+    self.assertEqual(bindings, {})
+
+  def testGqlMinimal(self):
+    qry, options, bindings = query.parse_gql('SELECT * FROM Kind')
+    self.assertEqual(qry.kind, 'Kind')
+    self.assertEqual(qry.ancestor, None)
+    self.assertEqual(qry.filter, None)
+    self.assertEqual(qry.order, None)
+    self.assertEqual(bindings, {})
+
+  def testGqlBasic(self):
+    qry, options, bindings = query.parse_gql(
+      "SELECT * FROM Kind WHERE prop1 = 1 AND prop2 = 'a'")
+    self.assertEqual(qry.kind, 'Kind')
+    self.assertEqual(qry.ancestor, None)
+    self.assertEqual(qry.filter,
+                     query.ConjunctionNode(
+                       [query.FilterNode('prop1', '=', 1),
+                        query.FilterNode('prop2', '=', 'a')]))
+    self.assertEqual(qry.order, None)
+    self.assertEqual(bindings, {})
+
+  def testGqlBindings(self):
+    qry, options, bindings = query.parse_gql(
+      "SELECT * FROM Kind WHERE prop1 = :1 AND prop2 = :foo")
+    self.assertEqual(qry.kind, 'Kind')
+    self.assertEqual(qry.ancestor, None)
+    self.assertEqual(qry.filter,
+                     query.ConjunctionNode(
+                       [query.FilterNode('prop1', '=',
+                                         query.Binding(None, 1)),
+                        query.FilterNode('prop2', '=',
+                                         query.Binding(None, 'foo'))]))
+    self.assertEqual(qry.order, None)
+    self.assertEqual(bindings, {1: query.Binding(None, 1),
+                                'foo': query.Binding(None, 'foo')})
+    
+
 
 def main():
   unittest.main()

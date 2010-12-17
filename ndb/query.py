@@ -6,6 +6,7 @@ from google.appengine.api import datastore_errors
 from google.appengine.api import datastore_types
 from google.appengine.datastore import datastore_query
 from google.appengine.datastore import datastore_rpc
+from google.appengine.ext import gql
 
 from ndb import context
 from ndb import model
@@ -36,6 +37,11 @@ class Binding(object):
 
   def __repr__(self):
     return '%s(%r, %r)' % (self.__class__.__name__, self.value, self.key)
+
+  def __eq__(self, other):
+    if not isinstance(other, Binding):
+      return NotImplemented
+    return self.value == other.value and self.key == other.key
 
   def resolve(self):
     value = self.value
@@ -108,6 +114,9 @@ class FilterNode(Node):
     self.__value = value
     return self
 
+  def _sort_key(self):
+    return (self.__name, self.__opsymbol, self.__value)
+
   def __repr__(self):
     return '%s(%r, %r, %r)' % (self.__class__.__name__,
                                self.__name, self.__opsymbol, self.__value)
@@ -118,6 +127,12 @@ class FilterNode(Node):
     return (self.__name == other.__name and
             self.__opsymbol == other.__opsymbol and
             self.__value == other.__value)
+
+  def __lt__(self, other):
+    if not isinstance(other, FilterNode):
+      return NotImplemented
+    return self._sort_key() < other._sort_key()
+    
 
   def _to_filter(self):
     assert self.__opsymbol not in ('!=', 'in'), self.__opsymbol
@@ -229,40 +244,57 @@ class DisjunctionNode(Node):
     return DisjunctionNode(nodes)
 
 
-def gql(query_string):
-  from google.appengine.ext import gql
-
-  def _args_to_val(func, args):
-    vals = []
-    for arg in args:
-      if isinstance(arg, (int, long, basestring)):
-        val = Binding(None, arg)
-      elif isinstance(arg, gql.Literal):
-        val = arg.Get()
+def _args_to_val(func, args, bindings):
+  vals = []
+  for arg in args:
+    if isinstance(arg, (int, long, basestring)):
+      if arg in bindings:
+        val = bindings[arg]
       else:
-        assert False, 'Unexpected arg (%r)' % arg
-      vals.append(val)
-    if func == 'nop':
-      assert len(vals) == 1
-      return vals[0]
-    if func == 'list':
-      return vals
-    assert False, 'Unexpected func (%r)' % func
+        val = Binding(None, arg)
+        bindings[arg] = val
+    elif isinstance(arg, gql.Literal):
+      val = arg.Get()
+    else:
+      assert False, 'Unexpected arg (%r)' % arg
+    vals.append(val)
+  if func == 'nop':
+    assert len(vals) == 1
+    return vals[0]
+  if func == 'list':
+    return vals
+  assert False, 'Unexpected func (%r)' % func
 
+
+def parse_gql(query_string):
+  """Parse a GQL query string.
+
+  Args:
+    query_string: Full GQL query, e.g. 'SELECT * FROM Kind WHERE prop = 1'.
+
+  Returns:
+    A tuple (query, options, bindings) where query is a Query instance,
+    options a datastore_query.QueryOptions instance, and bindings a dict
+    mapping integers and strings to Binding instances.
+  """
   gql_qry = gql.GQL(query_string)
   flt = gql_qry.filters()
+  bindings = {}
   filters = []
   for ((name, op), values) in flt.iteritems():
     op = op.lower()
     assert op in _OPS.values()
     for (func, args) in values:
-      val = _args_to_val(func, args)
+      val = _args_to_val(func, args, bindings)
       filters.append(FilterNode(name, op, val))
   if filters:
+    filters.sort()  # For predictable tests.
     filter = ConjunctionNode(filters)
   else:
     filter = None
-  return Query(kind=gql_qry._entity, filter=filter)
+  qry = Query(kind=gql_qry._entity, filter=filter)  # XXX ancestor, order
+  options = datastore_query.QueryOptions()  # XXX offset, limit
+  return qry, options, bindings
 
 
 class Query(object):
