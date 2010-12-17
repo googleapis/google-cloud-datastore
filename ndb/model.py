@@ -135,9 +135,11 @@ class Model(object):
     self_values = [(name, value)
                    for name, value in self._values.iteritems()
                    if value is not None]
+    self_values.sort()
     other_values = [(name, value)
                     for name, value in other._values.iteritems()
                     if value is not None]
+    other_values.sort()
     return self_values == other_values
 
   def __ne__(self, other):
