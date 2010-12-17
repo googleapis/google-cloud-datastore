@@ -283,7 +283,7 @@ class QueryTests(unittest.TestCase):
 
   def testGqlBindings(self):
     qry, options, bindings = query.parse_gql(
-      "SELECT * FROM Kind WHERE prop1 = :1 AND prop2 = :foo")
+      'SELECT * FROM Kind WHERE prop1 = :1 AND prop2 = :foo')
     self.assertEqual(qry.kind, 'Kind')
     self.assertEqual(qry.ancestor, None)
     self.assertEqual(qry.filter,
@@ -295,7 +295,14 @@ class QueryTests(unittest.TestCase):
     self.assertEqual(qry.order, None)
     self.assertEqual(bindings, {1: query.Binding(None, 1),
                                 'foo': query.Binding(None, 'foo')})
-    
+
+  def testResolveBindings(self):
+    qry, options, bindings = query.parse_gql(
+      'SELECT * FROM Foo WHERE name = :1')
+    bindings[1].value = 'joe'
+    self.assertEqual(list(qry), [self.joe])
+    bindings[1].value = 'jill'
+    self.assertEqual(list(qry), [self.jill])
 
 
 def main():

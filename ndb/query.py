@@ -68,7 +68,7 @@ class Node(object):
     raise TypeError('Nodes cannot be ordered')
   __le__ = __lt__ = __ge__ = __gt__ = __unordered
 
-  def _to_filter(self):
+  def _to_filter(self, bindings):
     raise NotImplementedError
 
   def resolve(self):
@@ -85,7 +85,7 @@ class FalseNode(Node):
       return NotImplemented
     return True
 
-  def _to_filter(self):
+  def _to_filter(self, bindings):
     # TODO: Or use make_filter(name, '=', []) ?
     raise ValueError('Cannot convert FalseNode to predicate')
 
@@ -134,11 +134,12 @@ class FilterNode(Node):
     return self._sort_key() < other._sort_key()
     
 
-  def _to_filter(self):
+  def _to_filter(self, bindings):
     assert self.__opsymbol not in ('!=', 'in'), self.__opsymbol
     value = self.__value
     if isinstance(value, Binding):
-      value = self.resolve()
+      bindings[value.key] = value
+      value = value.resolve()
     return datastore_query.make_filter(self.__name, self.__opsymbol, value)
 
   def resolve(self):
@@ -197,8 +198,8 @@ class ConjunctionNode(Node):
       return NotImplemented
     return self.__nodes == other.__nodes
 
-  def _to_filter(self):
-    filters = [node._to_filter() for node in self.__nodes]
+  def _to_filter(self, bindings):
+    filters = [node._to_filter(bindings) for node in self.__nodes]
     return datastore_query.CompositeFilter(_AND, filters)
 
   def resolve(self):
@@ -334,25 +335,28 @@ class Query(object):
     if self.__query is not None:
       return self.__query
     kind = self.__kind
-    ancestor = self.__ancestor  # TODO: What if it is a Binding?
+    ancestor = self.__ancestor
+    bindings = {}
+    if isinstance(ancestor, Binding):
+      bindings[ancestor.key] = ancestor
+      ancestor = ancestor.resolve()
     filter = self.__filter
     order = self.__order
     if ancestor is not None:
       ancestor = model.conn.adapter.key_to_pb(ancestor)
     if filter is not None:
-      filter = filter._to_filter()
+      filter = filter._to_filter(bindings)
     if order:
       order = [datastore_query.PropertyOrder(*o) for o in order]
       if len(order) == 1:
         order = order[0]
       else:
         order = datastore_query.CompositeOrder(order)
-    # TODO: Don't cache if there were Bindings, or invalidate cache
-    # if bound values change.
-    self.__query = datastore_query.Query(kind=kind, ancestor=ancestor,
-                                         filter_predicate=filter,
-                                         order=order)
-    return self.__query
+    dsqry = datastore_query.Query(kind=kind, ancestor=ancestor,
+                                  filter_predicate=filter, order=order)
+    if not bindings:
+      self.__query = dsqry
+    return dsqry
 
   @tasklets.tasklet
   def run_to_queue(self, queue, conn, options=None):
