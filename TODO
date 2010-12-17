@@ -1,7 +1,5 @@
 Make default context management part of regular tasklets + Futures.
 
-Add support for binding values to queries.
-
 Go more public.
 
 Fix up code: style, docstrings, TODOs.  Increase coverage again.
