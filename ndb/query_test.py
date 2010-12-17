@@ -235,13 +235,14 @@ class QueryTests(unittest.TestCase):
     self.assertEqual(qry.order, None)
     self.assertEqual(bindings, {})
 
-  def testGqlMinimal(self):
-    qry, options, bindings = query.parse_gql('SELECT * FROM Kind')
+  def testGqlAncestor(self):
+    qry, options, bindings = query.parse_gql(
+      'SELECT * FROM Kind WHERE ANCESTOR IS :1')
     self.assertEqual(qry.kind, 'Kind')
-    self.assertEqual(qry.ancestor, None)
+    self.assertEqual(qry.ancestor, query.Binding(None, 1))
     self.assertEqual(qry.filter, None)
     self.assertEqual(qry.order, None)
-    self.assertEqual(bindings, {})
+    self.assertEqual(bindings, {1: query.Binding(None, 1)})
 
   def testGqlBasic(self):
     qry, options, bindings = query.parse_gql(

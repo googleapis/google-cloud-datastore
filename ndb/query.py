@@ -278,11 +278,17 @@ def parse_gql(query_string):
     mapping integers and strings to Binding instances.
   """
   gql_qry = gql.GQL(query_string)
+  ancestor = None
   flt = gql_qry.filters()
   bindings = {}
   filters = []
   for ((name, op), values) in flt.iteritems():
     op = op.lower()
+    if op == 'is' and name == gql.GQL._GQL__ANCESTOR:
+      assert len(values) == 1
+      [(func, args)] = values
+      ancestor = _args_to_val(func, args, bindings)
+      continue
     assert op in _OPS.values()
     for (func, args) in values:
       val = _args_to_val(func, args, bindings)
@@ -292,7 +298,9 @@ def parse_gql(query_string):
     filter = ConjunctionNode(filters)
   else:
     filter = None
-  qry = Query(kind=gql_qry._entity, filter=filter)  # XXX ancestor, order
+  qry = Query(kind=gql_qry._entity,
+              ancestor=ancestor,
+              filter=filter)  # XXX order
   options = datastore_query.QueryOptions()  # XXX offset, limit
   return qry, options, bindings
 
@@ -301,7 +309,7 @@ class Query(object):
 
   @datastore_rpc._positional(1)
   def __init__(self, kind=None, ancestor=None, filter=None, order=None):
-    if ancestor is not None:
+    if ancestor is not None and not isinstance(ancestor, Binding):
       lastid = ancestor.pairs()[-1][1]
       assert lastid, 'ancestor cannot be an incomplete key'
     self.__kind = kind  # String
@@ -314,7 +322,7 @@ class Query(object):
     if self.__query is not None:
       return self.__query
     kind = self.__kind
-    ancestor = self.__ancestor
+    ancestor = self.__ancestor  # TODO: What if it is a Binding?
     filter = self.__filter
     order = self.__order
     if ancestor is not None:
