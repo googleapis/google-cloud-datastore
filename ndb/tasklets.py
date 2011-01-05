@@ -271,9 +271,9 @@ class Future(object):
     info = utils.gen_info(gen)
     __ndb_debug__ = info
     try:
-      save_context = get_default_context()
+      save_context = get_context()
       try:
-        set_default_context(self._context)
+        set_context(self._context)
         if exc is not None:
           logging.debug('Throwing %s(%s) into %s',
                         exc.__class__.__name__, exc, info)
@@ -281,9 +281,9 @@ class Future(object):
         else:
           logging.debug('Sending %r to %s', val, info)
           value = gen.send(val)
-          self._context = get_default_context()
+          self._context = get_context()
       finally:
-        set_default_context(save_context)
+        set_context(save_context)
 
     except StopIteration, err:
       result = get_return_value(err)
@@ -715,7 +715,7 @@ def tasklet(func):
     # this I believe.)
     # __ndb_debug__ = utils.func_info(func)
     fut = Future('tasklet %s' % utils.func_info(func))
-    fut._context = get_default_context()
+    fut._context = get_context()
     try:
       result = func(*args, **kwds)
     except StopIteration, err:
@@ -747,10 +747,10 @@ def synctasklet(func):
 # TODO: Use thread-local for this.
 _default_context = None
 
-def get_default_context():
+def get_context():
   return _default_context
 
-def set_default_context(new_context):
+def set_context(new_context):
   global _default_context
   _default_context = new_context
 

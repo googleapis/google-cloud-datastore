@@ -289,7 +289,7 @@ class Context(object):
       tctx = self.__class__(conn=tconn,
                             auto_batcher_class=self._auto_batcher_class)
       tctx.set_memcache_policy(lambda key: False)
-      tasklets.set_default_context(tctx)
+      tasklets.set_context(tctx)
       try:
         try:
           result = callback()
@@ -353,7 +353,7 @@ def toplevel(func):
   def add_context_wrapper(self, *args):
     __ndb_debug__ = utils.func_info(func)
     tasklets.Future.clear_all_pending()
-    tasklets.set_default_context(Context())
+    tasklets.set_context(Context())
     return tasklets.synctasklet(func)(self, *args)
   return add_context_wrapper
 
@@ -364,4 +364,4 @@ def transaction(callback):
   return transaction_async(callback).get_result()
 
 def transaction_async(callback):
-  return tasklets.get_default_context().transaction(callback)
+  return tasklets.get_context().transaction(callback)

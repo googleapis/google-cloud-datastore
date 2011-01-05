@@ -29,7 +29,7 @@ class QueryTests(unittest.TestCase):
   def setUp(self):
     os.environ['APPLICATION_ID'] = '_'
     self.set_up_stubs()
-    tasklets.set_default_context(context.Context())
+    tasklets.set_context(context.Context())
     self.create_entities()
 
   def set_up_stubs(self):

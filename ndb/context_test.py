@@ -282,7 +282,7 @@ class ContextTests(unittest.TestCase):
       yield self.ctx.put(ent)
       @tasklets.tasklet
       def callback():
-        ctx = tasklets.get_default_context()
+        ctx = tasklets.get_context()
         self.assertTrue(key not in ctx._cache)  # Whitebox.
         e = yield key.get_async()
         self.assertTrue(key in ctx._cache)  # Whitebox.
@@ -308,9 +308,9 @@ class ContextTests(unittest.TestCase):
     class Demo(object):
       @context.toplevel
       def method(self, arg):
-        return (tasklets.get_default_context(), arg)
+        return (tasklets.get_context(), arg)
     a = Demo()
-    old_ctx = tasklets.get_default_context()
+    old_ctx = tasklets.get_context()
     ctx, arg = a.method(42)
     self.assertTrue(isinstance(ctx, context.Context))
     self.assertEqual(arg, 42)
@@ -319,43 +319,43 @@ class ContextTests(unittest.TestCase):
   def testDefaultContextTransaction(self):
     @tasklets.synctasklet
     def outer():
-      ctx1 = tasklets.get_default_context()
+      ctx1 = tasklets.get_context()
       @tasklets.tasklet
       def inner():
-        ctx2 = tasklets.get_default_context()
+        ctx2 = tasklets.get_context()
         self.assertTrue(ctx1 is not ctx2)
         self.assertTrue(isinstance(ctx2._conn,
                                    datastore_rpc.TransactionalConnection))
         return 42
-      a = yield tasklets.get_default_context().transaction(inner)
-      ctx1a = tasklets.get_default_context()
+      a = yield tasklets.get_context().transaction(inner)
+      ctx1a = tasklets.get_context()
       self.assertTrue(ctx1 is ctx1a)
       raise tasklets.Return(a)
     b = outer()
     self.assertEqual(b, 42)
 
   def testExplicitTransactionClearsDefaultContext(self):
-    old_ctx = tasklets.get_default_context()
+    old_ctx = tasklets.get_context()
     @tasklets.synctasklet
     def outer():
-      ctx1 = tasklets.get_default_context()
+      ctx1 = tasklets.get_context()
       @tasklets.tasklet
       def inner():
-        ctx = tasklets.get_default_context()
+        ctx = tasklets.get_context()
         self.assertTrue(ctx is not ctx1)
         key = model.Key('Account', 1)
         ent = yield key.get_async()
-        self.assertTrue(tasklets.get_default_context() is ctx)
+        self.assertTrue(tasklets.get_context() is ctx)
         self.assertTrue(ent is None)
         raise tasklets.Return(42)
       fut = ctx1.transaction(inner)
-      self.assertEqual(tasklets.get_default_context(), ctx1)
+      self.assertEqual(tasklets.get_context(), ctx1)
       val = yield fut
-      self.assertEqual(tasklets.get_default_context(), ctx1)
+      self.assertEqual(tasklets.get_context(), ctx1)
       raise tasklets.Return(val)
     val = outer()
     self.assertEqual(val, 42)
-    self.assertTrue(tasklets.get_default_context() is old_ctx)
+    self.assertTrue(tasklets.get_context() is old_ctx)
 
 
 def main():

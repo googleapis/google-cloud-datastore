@@ -483,9 +483,9 @@ class Query(object):
                           merge_future=merge_future).get_result()
 
   def map_async(self, callback, options=None, merge_future=None):
-    return tasklets.get_default_context().map_query(self, callback,
-                                                    options=options,
-                                                    merge_future=merge_future)
+    return tasklets.get_context().map_query(self, callback,
+                                            options=options,
+                                            merge_future=merge_future)
 
   def fetch(self, limit, offset=0):
     return self.fetch_async(limit, offset).get_result()
@@ -507,7 +507,7 @@ class Query(object):
 
   @tasklets.tasklet
   def count_async(self, limit):
-    conn = tasklets.get_default_context()._conn
+    conn = tasklets.get_context()._conn
     options = datastore_query.QueryOptions(offset=limit, limit=0)
     rpc = self._get_query(conn).run_async(conn, options)
     total = 0
@@ -535,7 +535,7 @@ class QueryIterator(object):
   """
 
   def __init__(self, query, options=None):
-    ctx = tasklets.get_default_context()
+    ctx = tasklets.get_context()
     self._iter = ctx.iter_query(query, options=options)
     self._fut = None
 

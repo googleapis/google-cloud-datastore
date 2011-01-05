@@ -137,14 +137,14 @@ class Key(object):
 
   def get_async(self):
     from ndb import tasklets
-    return tasklets.get_default_context().get(self)
+    return tasklets.get_context().get(self)
 
   def delete(self):
     return self.delete_async().get_result()
 
   def delete_async(self):
     from ndb import tasklets
-    return tasklets.get_default_context().delete(self)
+    return tasklets.get_context().delete(self)
 
 @positional(1)
 def _ConstructReference(cls, pairs=None, flat=None,

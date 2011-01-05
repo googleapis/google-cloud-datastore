@@ -7,7 +7,7 @@ from demo.main import model, context, tasklets, Message, Account, account_key
 
 def setup():
   ctx = context.Context()
-  tasklets.set_default_context(ctx)
+  tasklets.set_context(ctx)
 
 
 def main():
