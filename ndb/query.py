@@ -132,7 +132,6 @@ class FilterNode(Node):
     if not isinstance(other, FilterNode):
       return NotImplemented
     return self._sort_key() < other._sort_key()
-    
 
   def _to_filter(self, bindings):
     assert self.__opsymbol not in ('!=', 'in'), self.__opsymbol
@@ -343,7 +342,7 @@ class Query(object):
     filter = self.__filter
     order = self.__order
     if ancestor is not None:
-      ancestor = model.conn.adapter.key_to_pb(ancestor)
+      ancestor = connection.adapter.key_to_pb(ancestor)
     if filter is not None:
       filter = filter._to_filter(bindings)
     if order:

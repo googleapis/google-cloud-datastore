@@ -37,8 +37,9 @@ class ModelAdapter(datastore_rpc.AbstractAdapter):
     pb = ent.ToPb()
     return pb
 
-# TODO: Move or kill this?  Make it a method?
-conn = datastore_rpc.Connection(adapter=ModelAdapter())
+def make_connection(config=None):
+  """Create a new Connection object with the right adapter."""
+  return datastore_rpc.Connection(adapter=ModelAdapter(), config=config)
 
 class MetaModel(type):
   """Metaclass for Model."""

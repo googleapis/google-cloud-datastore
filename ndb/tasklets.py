@@ -744,15 +744,30 @@ def synctasklet(func):
     return taskletfunc(*args).get_result()
   return synctasklet_wrapper
 
+
+_CONTEXT_KEY = '__CONTEXT__'
+
 # TODO: Use thread-local for this.
-_default_context = None
+_context = None
 
 def get_context():
-  return _default_context
+  global _context
+  ctx = None
+  if os.getenv(_CONTEXT_KEY):
+    ctx = _context
+  if ctx is None:
+    ctx = make_default_context()
+    set_context(ctx)
+  return ctx
+
+def make_default_context():
+  import context  # Late import to deal with circular imports.
+  return context.Context()
 
 def set_context(new_context):
-  global _default_context
-  _default_context = new_context
+  global _context
+  os.environ[_CONTEXT_KEY] = '1'
+  _context = new_context
 
 # TODO: Rework the following into documentation.
 

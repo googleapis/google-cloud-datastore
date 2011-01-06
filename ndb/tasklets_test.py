@@ -22,6 +22,8 @@ class TaskletTests(unittest.TestCase):
   def setUp(self):
     if eventloop._EVENT_LOOP_KEY in os.environ:
       del os.environ[eventloop._EVENT_LOOP_KEY]
+    if tasklets._CONTEXT_KEY in os.environ:
+      del os.environ[tasklets._CONTEXT_KEY]
     self.ev = eventloop.get_event_loop()
     self.log = []
 
@@ -293,10 +295,10 @@ class TaskletTests(unittest.TestCase):
     apiproxy_stub_map.apiproxy = apiproxy_stub_map.APIProxyStubMap()
     stub = datastore_file_stub.DatastoreFileStub('_', None)
     apiproxy_stub_map.apiproxy.RegisterStub('datastore_v3', stub)
+    return model.make_connection()
 
   def testTasklets_YieldRpcs(self):
-    self.set_up_datastore()
-    conn = model.conn
+    conn = self.set_up_datastore()
     @tasklets.tasklet
     def main_tasklet():
       rpc1 = conn.async_get(None, [])

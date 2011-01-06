@@ -16,17 +16,18 @@ class PendingTests(unittest.TestCase):
     apiproxy_stub_map.apiproxy = apiproxy_stub_map.APIProxyStubMap()
     stub = datastore_file_stub.DatastoreFileStub('_', None)
     apiproxy_stub_map.apiproxy.RegisterStub('datastore_v3', stub)
+    self.conn = model.make_connection()
 
   def testBasicSetup1(self):
     ent = model.Expando()
     ent.foo = 'bar'
-    rpc = model.conn.async_put(None, [ent])
+    rpc = self.conn.async_put(None, [ent])
     [key] = rpc.get_result()
     self.assertEqual(key, model.Key(flat=['Expando', 1]))
 
   def testBasicSetup2(self):
     key = model.Key(flat=['Expando', 1])
-    rpc = model.conn.async_get(None, [key])
+    rpc = self.conn.async_get(None, [key])
     [ent] = rpc.get_result()
     self.assertTrue(ent is None)
 
@@ -48,7 +49,7 @@ class PendingTests(unittest.TestCase):
   def testCallHooks(self):
     self.SetUpCallHooks()
     key = model.Key(flat=['Expando', 1])
-    rpc = model.conn.async_get(None, [key])
+    rpc = self.conn.async_get(None, [key])
     self.assertEqual(len(self.pre_args), 1)
     self.assertEqual(self.post_args, [])
     [ent] = rpc.get_result()
@@ -60,25 +61,25 @@ class PendingTests(unittest.TestCase):
   def testCallHooks_Pending(self):
     self.SetUpCallHooks()
     key = model.Key(flat=['Expando', 1])
-    rpc = model.conn.async_get(None, [key])
-    model.conn.wait_for_all_pending_rpcs()
+    rpc = self.conn.async_get(None, [key])
+    self.conn.wait_for_all_pending_rpcs()
     self.assertEqual(rpc.state, 2)  # FINISHING
     self.assertEqual(len(self.pre_args), 1)
     self.assertEqual(len(self.post_args), 1)  # NAILED IT!
-    self.assertEqual(model.conn.get_pending_rpcs(), set())
+    self.assertEqual(self.conn.get_pending_rpcs(), set())
 
   def NastyCallback(self, rpc):
     [ent] = rpc.get_result()
     key = model.Key(flat=['Expando', 1])
-    newrpc = model.conn.async_get(None, [key])
+    newrpc = self.conn.async_get(None, [key])
 
   def testCallHooks_Pending_CallbackAddsMore(self):
     self.SetUpCallHooks()
     conf = datastore_rpc.Configuration(on_completion=self.NastyCallback)
     key = model.Key(flat=['Expando', 1])
-    rpc = model.conn.async_get(conf, [key])
-    model.conn.wait_for_all_pending_rpcs()
-    self.assertEqual(model.conn.get_pending_rpcs(), set())
+    rpc = self.conn.async_get(conf, [key])
+    self.conn.wait_for_all_pending_rpcs()
+    self.assertEqual(self.conn.get_pending_rpcs(), set())
 
 def main():
   unittest.main()

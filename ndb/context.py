@@ -72,7 +72,7 @@ class Context(object):
 
   def __init__(self, conn=None, auto_batcher_class=AutoBatcher):
     if conn is None:
-      conn = model.conn  # TODO: Get rid of this.
+      conn = datastore_rpc.Connection(adapter=model.ModelAdapter())
     self._conn = conn
     self._auto_batcher_class = auto_batcher_class
     self._get_batcher = auto_batcher_class(self._get_tasklet)
@@ -353,7 +353,9 @@ def toplevel(func):
   def add_context_wrapper(self, *args):
     __ndb_debug__ = utils.func_info(func)
     tasklets.Future.clear_all_pending()
-    tasklets.set_context(Context())
+    # Reset context; a new one will be created on the first call to
+    # get_context().
+    tasklets.set_context(None)
     return tasklets.synctasklet(func)(self, *args)
   return add_context_wrapper
 

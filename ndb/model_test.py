@@ -365,6 +365,7 @@ class ModelTests(unittest.TestCase):
 
   def setUp(self):
     model.Model.ResetKindMap()
+    self.conn = model.make_connection()
 
   def tearDown(self):
     self.assertTrue(model.Model._properties == {})
@@ -424,7 +425,7 @@ class ModelTests(unittest.TestCase):
     self.assertEqual(MyModel.q.GetValue(ent), 'hello')
     self.assertEqual(MyModel.d.GetValue(ent), 2.5)
     self.assertEqual(MyModel.k.GetValue(ent), k)
-    pb = model.conn.adapter.entity_to_pb(ent)
+    pb = self.conn.adapter.entity_to_pb(ent)
     self.assertEqual(str(pb), INDEXED_PB)
 
     ent = MyModel()
@@ -559,7 +560,7 @@ class ModelTests(unittest.TestCase):
     self.assertEqual(MyModel.qq.GetValue(ent), 'hello')
     self.assertEqual(MyModel.dd.GetValue(ent), 2.5)
     self.assertEqual(MyModel.kk.GetValue(ent), k)
-    pb = model.conn.adapter.entity_to_pb(ent)
+    pb = self.conn.adapter.entity_to_pb(ent)
     self.assertEqual(str(pb), INDEXED_PB)
 
     ent = MyModel()
@@ -859,6 +860,7 @@ class DatastoreTests(unittest.TestCase):
     apiproxy_stub_map.apiproxy = apiproxy_stub_map.APIProxyStubMap()
     stub = datastore_file_stub.DatastoreFileStub('_', None)
     apiproxy_stub_map.apiproxy.RegisterStub('datastore_v3', stub)
+    self.conn = model.make_connection()
 
   def testMultipleStructuredProperty(self):
     class Address(model.Model):
@@ -876,9 +878,9 @@ class DatastoreTests(unittest.TestCase):
     self.assertEqual(m.address[0].text, 'San Francisco')
     self.assertEqual(m.address[1].label, 'home')
     self.assertEqual(m.address[1].text, 'Mountain View')
-    [k] = model.conn.put([m])
+    [k] = self.conn.put([m])
     m.key = k  # Connection.put() doesn't do this!
-    [m2] = model.conn.get([k])
+    [m2] = self.conn.get([k])
     self.assertEqual(m2, m)
 
 def main():
