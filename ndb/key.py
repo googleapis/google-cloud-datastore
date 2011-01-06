@@ -6,9 +6,9 @@ TODO: docstrings, style
 import base64
 import os
 
-from google.appengine.datastore import entity_pb
-
+from google.appengine.api import namespace_manager
 from google.appengine.datastore import datastore_rpc
+from google.appengine.datastore import entity_pb
 
 positional = datastore_rpc._positional
 
@@ -177,11 +177,15 @@ def _ConstructReference(cls, pairs=None, flat=None,
       pairs = [(flat[i], flat[i+1]) for i in xrange(0, len(flat), 2)]
     assert pairs
     reference = _ReferenceFromPairs(pairs)
+    # An empty app id means to use the default app id.
     if not app:
       app = _DefaultAppId()
+    # Always set the app id, since it is mandatory.
     reference.set_app(app)
-    if not namespace:
+    # An empty namespace overrides the default namespace.
+    if namespace is None:
       namespace = _DefaultNamespace()
+    # Only set the namespace if it is not empty.
     if namespace:
       reference.set_name_space(namespace)
   else:
@@ -195,7 +199,7 @@ def _ConstructReference(cls, pairs=None, flat=None,
       reference = _ReferenceFromReference(reference)
     # One shouldn't specify app= or namespace= together with
     # reference=, serialized= or urlsafe=, but if one does, the values
-    # must match what is already in the referernce.
+    # must match what is already in the reference.
     if app is not None:
       assert app == reference.app(), (app, reference.app())
     if namespace is not None:
@@ -256,4 +260,4 @@ def _DefaultAppId():
   return os.getenv('APPLICATION_ID', '_')
 
 def _DefaultNamespace():
-  return ''
+  return namespace_manager.get_namespace()
