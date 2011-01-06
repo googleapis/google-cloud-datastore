@@ -325,6 +325,10 @@ class Context(object):
     if parent is None:
       pairs = []
     else:
+      # The parent shouldn't override the app or namespace,
+      # since we don't allow overriding those otherwise either.
+      assert parent.app() == model._DefaultAppId()
+      assert parent.namespace() == model._DefaultNamespace()
       pairs = list(parent.pairs())
     pairs.append((model_class.GetKind(), name))
     key = model.Key(pairs=pairs)
