@@ -76,6 +76,18 @@ class KeyTests(unittest.TestCase):
     k = key.Key('Kind', 1)
     self.assertEqual(repr(k), "Key('Kind', 1)")
 
+  def testRepr_Unicode(self):
+    k = key.Key('Kind', u'\u1234')
+    self.assertEqual(repr(k), "Key('Kind', '\\xe1\\x88\\xb4')")
+
+  def testRepr_App(self):
+    k = key.Key('Kind', 1, app='foo')
+    self.assertEqual(repr(k), "Key('Kind', 1, app='foo')")
+
+  def testRepr_Namespace(self):
+    k = key.Key('Kind', 1, namespace='foo')
+    self.assertEqual(repr(k), "Key('Kind', 1, namespace='foo')")
+
   def testUnicode(self):
     flat_input = [u'Kind\u1234', 1, 'Subkind', u'foobar\u4321']
     flat = [flat_input[0].encode('utf8'), flat_input[1],

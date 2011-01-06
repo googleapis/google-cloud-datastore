@@ -52,9 +52,8 @@ class Key(object):
   def __repr__(self):
     args = []
     for item in self._flat():
-      if isinstance(item, unicode):
-        item = item.encoded('utf8')
       if isinstance(item, basestring):
+        assert isinstance(item, str)  # No unicode should make it here.
         args.append(repr(item))
       else:
         args.append(str(item))
