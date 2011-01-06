@@ -29,9 +29,8 @@ class Key(object):
     Key(<dict>)  # If X is a dict, Key(X) == Key(**X)
 
   Other keyword arguments:
-    Key(..., app=<appid>, namespace=<namespace>)
-
-  TODO: parent
+    Key(..., app=<appid>, namespace=<namespace>, parent=<key>)
+    # Override app id, namespace, parent key.
   """
 
   __slots__ = ['__reference']
@@ -166,7 +165,7 @@ class Key(object):
 @positional(1)
 def _ConstructReference(cls, pairs=None, flat=None,
                         reference=None, serialized=None, urlsafe=None,
-                        app=None, namespace=None):
+                        app=None, namespace=None, parent=None):
   assert cls is Key
   howmany = (bool(pairs) + bool(flat) +
              bool(reference) + bool(serialized) + bool(urlsafe))
@@ -176,6 +175,13 @@ def _ConstructReference(cls, pairs=None, flat=None,
       assert len(flat) % 2 == 0
       pairs = [(flat[i], flat[i+1]) for i in xrange(0, len(flat), 2)]
     assert pairs
+    if parent is not None:
+      pairs[:0] = parent.pairs()
+      if app:
+        assert app == parent.app(), (app, parent.app())
+      if namespace is not None:
+        assert namespace == parent.namespace(), (namespace,
+                                                 parent.namespace())
     reference = _ReferenceFromPairs(pairs)
     # An empty app id means to use the default app id.
     if not app:
@@ -189,6 +195,8 @@ def _ConstructReference(cls, pairs=None, flat=None,
     if namespace:
       reference.set_name_space(namespace)
   else:
+    # You can't combine parent= with reference=, serialized= or urlsafe=.
+    assert parent is None
     if urlsafe:
       serialized = _DecodeUrlSafe(urlsafe)
     if serialized:
@@ -197,9 +205,9 @@ def _ConstructReference(cls, pairs=None, flat=None,
     # TODO: assert that each element has a type and either an id or a name
     if not serialized:
       reference = _ReferenceFromReference(reference)
-    # One shouldn't specify app= or namespace= together with
-    # reference=, serialized= or urlsafe=, but if one does, the values
-    # must match what is already in the reference.
+    # You needn't specify app= or namespace= together with reference=,
+    # serialized= or urlsafe=, but if you do, their values must match
+    # what is already in the reference.
     if app is not None:
       assert app == reference.app(), (app, reference.app())
     if namespace is not None:
