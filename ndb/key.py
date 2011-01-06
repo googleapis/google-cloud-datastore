@@ -96,6 +96,12 @@ class Key(object):
              'app': self.app(),
              'namespace': self.namespace()},)
 
+  def parent(self):
+    pairs = self.pairs()
+    if len(pairs) <= 1:
+      return None
+    return Key(pairs=pairs[:-1], app=self.app(), namespace=self.namespace())
+
   def namespace(self):
     return self.__reference.name_space()
 
@@ -178,9 +184,13 @@ def _ConstructReference(cls, pairs=None, flat=None,
       pairs[:0] = parent.pairs()
       if app:
         assert app == parent.app(), (app, parent.app())
+      else:
+        app = parent.app()
       if namespace is not None:
         assert namespace == parent.namespace(), (namespace,
                                                  parent.namespace())
+      else:
+        namespace = parent.namespace()
     reference = _ReferenceFromPairs(pairs)
     # An empty app id means to use the default app id.
     if not app:

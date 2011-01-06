@@ -68,6 +68,25 @@ class KeyTests(unittest.TestCase):
     self.assertEqual(k.urlsafe(), urlsafe)
     self.assertEqual(k.reference(), r)
 
+    k = key.Key(reference=r, app=r.app(), namespace='')
+    self.assertTrue(k._reference() is not r)
+    self.assertEqual(k.serialized(), serialized)
+    self.assertEqual(k.urlsafe(), urlsafe)
+    self.assertEqual(k.reference(), r)
+
+  def testParent(self):
+    p = key.Key('Kind', 1, app='app1', namespace='ns1')
+    self.assertEqual(p.parent(), None)
+
+    k = key.Key('Subkind', 'foobar', parent=p)
+    self.assertEqual(k.flat(), ['Kind', 1, 'Subkind', 'foobar'])
+    self.assertEqual(k.parent(), p)
+
+    k = key.Key('Subkind', 'foobar', parent=p,
+                app=p.app(), namespace=p.namespace())
+    self.assertEqual(k.flat(), ['Kind', 1, 'Subkind', 'foobar'])
+    self.assertEqual(k.parent(), p)
+
   def testRepr(self):
     k = key.Key('Kind', 1L, 'Subkind', 'foobar')
     self.assertEqual(repr(k),
