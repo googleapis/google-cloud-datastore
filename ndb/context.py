@@ -275,7 +275,7 @@ class Context(object):
     # context set to a new, transactional Context.  Returns a Future.
     # Callback may be a tasklet.
     if entity_group is not None:
-      app = entity_group._Key__reference.app()
+      app = entity_group.app()
     else:
       app = model._DefaultAppId()
     yield self.flush()

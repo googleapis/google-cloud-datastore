@@ -63,7 +63,7 @@ class KeyTests(unittest.TestCase):
     self.assertEqual(k.reference(), r)
 
     k = key.Key(reference=r)
-    self.assertTrue(k._Key__reference is not r)
+    self.assertTrue(k._reference() is not r)
     self.assertEqual(k.serialized(), serialized)
     self.assertEqual(k.urlsafe(), urlsafe)
     self.assertEqual(k.reference(), r)

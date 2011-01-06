@@ -159,7 +159,7 @@ class Model(object):
       ref = _ReferenceFromPairs([(self.GetKind(), None)], pb.mutable_key())
       ref.set_app(_DefaultAppId())  # TODO: Move into _ReferenceFromPairs?
     else:
-      ref = key._Key__reference  # Don't copy
+      ref = key._reference()  # Don't copy
       pb.mutable_key().CopyFrom(ref)
     group = pb.mutable_entity_group()
     elem = ref.path().element(0)
@@ -458,7 +458,7 @@ class KeyProperty(Property):
   def DbSetValue(self, v, p, value):
     assert isinstance(value, Key)
     # See datastore_types.PackKey
-    ref = value._Key__reference  # Don't copy
+    ref = value._reference()  # Don't copy
     rv = v.mutable_referencevalue()  # A Reference
     rv.set_app(ref.app())
     if ref.has_name_space():
@@ -619,7 +619,7 @@ class GenericProperty(Property):
       v.set_doublevalue(value)
     elif isinstance(value, Key):
       # See datastore_types.PackKey
-      ref = value._Key__reference  # Don't copy
+      ref = value._reference()  # Don't copy
       rv = v.mutable_referencevalue()  # A Reference
       rv.set_app(ref.app())
       if ref.has_name_space():

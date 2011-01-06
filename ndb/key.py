@@ -26,9 +26,12 @@ class Key(object):
     Key(kind, idorname, ...)  # Same as Key(flat=[kind, idorname, ...])
 
   Backdoor constructor form:
-    Key(<dict>)  # If X is a doct, Key(X) == Key(**X)
+    Key(<dict>)  # If X is a dict, Key(X) == Key(**X)
 
-  TODO: namespace, appid, parent
+  Other keyword arguments:
+    Key(..., app=<appid>, namespace=<namespace>)
+
+  TODO: parent
   """
 
   __slots__ = ['__reference']
@@ -56,6 +59,10 @@ class Key(object):
         args.append(repr(item))
       else:
         args.append(str(item))
+    if self.app() != _DefaultAppId():
+      args.append('app=%r' % self.app())
+    if self.namespace() != _DefaultNamespace():
+      args.append('namespace=%r' % self.namespace())
     return 'Key(%s)' % ', '.join(args)
 
   __str__ = __repr__
@@ -66,8 +73,9 @@ class Key(object):
   def __eq__(self, other):
     if not isinstance(other, Key):
       return NotImplemented
-    # TODO: app, namespace
-    return tuple(self._pairs()) == tuple(other._pairs())
+    return (tuple(self._pairs()) == tuple(other._pairs()) and
+            self.app() == other.app() and
+            self.namespace() == other.namespace())
 
   def __ne__(self, other):
     if not isinstance(other, Key):
@@ -75,7 +83,9 @@ class Key(object):
     return not self.__eq__(other)
 
   def __getstate__(self):
-    return ({'pairs': tuple(self._pairs())},)
+    return ({'pairs': tuple(self._pairs()),
+             'app': self.app(),
+             'namespace': self.namespace()},)
 
   def __setstate__(self, state):
     assert len(state) == 1
@@ -84,8 +94,15 @@ class Key(object):
     self.__reference = _ConstructReference(self.__class__, **kwargs)
 
   def __getnewargs__(self):
-    # TODO: app, namespace
-    return ({'pairs': tuple(self._pairs())},)
+    return ({'pairs': tuple(self._pairs()),
+             'app': self.app(),
+             'namespace': self.namespace()},)
+
+  def namespace(self):
+    return self.__reference.name_space()
+
+  def app(self):
+    return self.__reference.app()
 
   def pairs(self):
     return list(self._pairs())
@@ -114,12 +131,12 @@ class Key(object):
     return kind
 
   def reference(self):
-    # TODO: In order to guarantee immutability, this must make a copy.
-    # But most uses are from internal code which won't touch the
-    # result and prefers to skip the copy.  What to do about this
-    # moral dilemma?  Currently everybody uses k._Key__reference,
-    # which seems the worst possible outcome.
     return _ReferenceFromReference(self.__reference)
+
+  def _reference(self):
+    # Backdoor to access self.__reference without copying.
+    # The caller should not mutate the return value.
+    return self.__reference
 
   def serialized(self):
     return self.__reference.Encode()
@@ -148,7 +165,8 @@ class Key(object):
 
 @positional(1)
 def _ConstructReference(cls, pairs=None, flat=None,
-                        reference=None, serialized=None, urlsafe=None):
+                        reference=None, serialized=None, urlsafe=None,
+                        app=None, namespace=None):
   assert cls is Key
   howmany = (bool(pairs) + bool(flat) +
              bool(reference) + bool(serialized) + bool(urlsafe))
@@ -159,6 +177,13 @@ def _ConstructReference(cls, pairs=None, flat=None,
       pairs = [(flat[i], flat[i+1]) for i in xrange(0, len(flat), 2)]
     assert pairs
     reference = _ReferenceFromPairs(pairs)
+    if not app:
+      app = _DefaultAppId()
+    reference.set_app(app)
+    if not namespace:
+      namespace = _DefaultNamespace()
+    if namespace:
+      reference.set_name_space(namespace)
   else:
     if urlsafe:
       serialized = _DecodeUrlSafe(urlsafe)
@@ -168,8 +193,14 @@ def _ConstructReference(cls, pairs=None, flat=None,
     # TODO: assert that each element has a type and either an id or a name
     if not serialized:
       reference = _ReferenceFromReference(reference)
-  if not reference.app():
-    reference.set_app(_DefaultAppId())
+    # One shouldn't specify app= or namespace= together with
+    # reference=, serialized= or urlsafe=, but if one does, the values
+    # must match what is already in the referernce.
+    if app is not None:
+      assert app == reference.app(), (app, reference.app())
+    if namespace is not None:
+      assert namespace == reference.name_space(), (namespace,
+                                                   reference.name_space())
   return reference
 
 def _ReferenceFromPairs(pairs, reference=None):
@@ -223,3 +254,6 @@ def _DecodeUrlSafe(urlsafe):
 
 def _DefaultAppId():
   return os.getenv('APPLICATION_ID', '_')
+
+def _DefaultNamespace():
+  return ''
