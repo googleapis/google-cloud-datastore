@@ -82,27 +82,108 @@ __all__ = ['Key']
 class Key(object):
   """An immutable datastore key.
 
-  Long constructor forms:
-    Key(pairs=[(kind, idorname), (kind, idorname), ...])
-    Key(flat=[kind, idorname, kind, idorname, ...])
-    Key(reference=<reference>)
-    Key(serialized=<serialized reference>)
-    Key(urlsafe=<urlsafe base64 encoded serialized reference>)
+  For flexibility and convenience, multiple constructor signatures are
+  supported.
 
-  Short constructor form:
-    Key(kind, idorname, ...)  # Same as Key(flat=[kind, idorname, ...])
+  The primary way to construct a key is using positional arguments:
+  - Key(kind1, id1, kind2, id2, ...).
 
-  Backdoor constructor form:
-    Key(<dict>)  # If X is a dict, Key(X) == Key(**X)
+  This is shorthand for either of the following two longer forms:
+  - Key(pairs=[(kind1, id1), (kind2, id2), ...])
+  - Key(flat=[kind1, id1, kind2, id2, ...])
 
-  Other keyword arguments:
-    Key(..., app=<appid>, namespace=<namespace>, parent=<key>)
-    # Override app id, namespace, parent key.
+  Either of the above constructor forms can additional pass in another
+  key using parent=<key>.  The (kind, id) pairs of the parent key are
+  inserted before the (kind, id) pairs passed explicitly.
+
+  You can also construct a Key from a 'url-safe' encoded string:
+  - Key(urlsafe=<string>)
+
+  For esoteric purposes the following constructors exist:
+  - Key(reference=<reference>) -- passing in a low-level Reference object
+  - Key(serialized=<string>) -- passing in a serialized low-level Reference
+  - Key(<dict>) -- for unpickling, the same as Key(**<dict>)
+
+  The 'url-safe' string is really a websafe-base64-encoded serialized
+  Reference, but it's best to think of it as just an opaque unique
+  string.
+
+  Additional constructor keyword arguments:
+  - app=<string> -- specify the application id
+  - namespace=<string> -- specify the namespace
+
+  If a Reference is passed (using one of reference, serialized or
+  urlsafe), the args and namespace keywords must match what is already
+  present in the Reference (after decoding if necessary).  The parent
+  keyword cannot be combined with a Refence in any form.
+
+
+  Keys are immutable, which means that a Key object cannot be modified
+  once it has been created.  This is enforced by the implementation as
+  well as Python allows.
+
+  For access to the contents of a key, the following methods and
+  operations are supported:
+
+  - repr(key), str(key) -- return a string representation resembling
+    the shortest constructor form, omitting the app and namespace
+    unless they differ from the default value.
+
+  - key1 == key2, key1 != key2 -- comparison for equality between Keys.
+
+  - hash(key) -- a hash value sufficient for storing Keys in a dict.
+
+  - key.pairs() -- a list of (kind, id) pairs.
+
+  - key.flat() -- a list of flattened kind and id values, i.e.
+    [kind1, id1, kind2, id2, ...].
+
+  - key.app() -- the application id.
+
+  - key.namespace() -- the namespace.
+
+  - key.kind() -- a shortcut for key.pairs()[-1][0].
+
+  - key.parent() -- a Key constructed from all but the last (kind, id)
+    pairs.
+
+  - key.urlsafe() -- a websafe-base64-encoded serialized Reference.
+
+  - key.serialized() -- a serialized Reference.
+
+  - key.reference() -- a Reference object.  Since Reference objects are
+    mutable, this returns a brand new Reference object.
+
+  - key._reference() -- the Reference object contained in the Key.
+    The caller promises not to mutate it.
+
+  - key._pairs() -- an iterator, equivalent to iter(key.pairs()).
+
+  - key._flat() -- an iterator, equivalent to iter(key.flat()).
+
+  Keys also support interaction with the datastore; these methods are
+  the only ones that engage in any kind of I/O activity.  For Future
+  objects, see the document for ndb/tasklets.py.
+
+  - key.get() -- return the entity referred to by the Key, or None if
+    no such entity exists.
+
+  - key.get_async() -- return a Future whose eventual return value is
+    the entity referred to by the Key.  If no such entity exists, a
+    Future is still returned, and the Future's eventual return value
+    will be None.
+
+  - key.delete() -- delete the entity referred to by the Key.  This is
+    a no-op if no such entity exists.
+
+  - key.delete_async() -- return a Future which represents the eventual
+    deletion of the entity referred to by the key.
   """
 
   __slots__ = ['__reference']
 
   def __new__(cls, *_args, **kwargs):
+    """Constructor.  See the class docstring for arguments."""
     if _args:
       if len(_args) == 1 and isinstance(_args[0], dict):
         # For pickling only: one positional argument is allowed,
@@ -135,6 +216,10 @@ class Key(object):
   __str__ = __repr__
 
   def __hash__(self):
+    # This ignores app and namespace, which is fine since hash()
+    # doesn't need to return a unique value -- it only needs to ensure
+    # that the hashes of equal keys are equal, not the other way
+    # around.
     return hash(tuple(self._pairs()))
 
   def __eq__(self, other):
