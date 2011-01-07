@@ -1,7 +1,73 @@
-"""Key class and associated stuff.
+"""The Key class, and associated utilities.
 
-TODO: docstrings, style
+A Key encapsulates the following pieces of information, which together
+uniquely designate a (possible) entity in the App Engine datastore:
+
+- an application id (a string)
+- a namespace (a string)
+- a list of one or more (kind, id) pairs where kind is a string and id
+  is either a string or an integer.
+
+The appication id must always be part of the key, but since most
+applications can only access their own entities, it defaults to the
+current application id and you rarely need to worry about it.  It must
+not be empty.
+
+The namespace designates a top-level partition of the key space for a
+particular application.  If you've never heard of namespaces, you can
+safely ignore this feature.
+
+Most of the action is in the (kind, id) pairs.  A key must have at
+least one (kind, id) pair.  The last (kind, id) pair gives the kind
+and the id of the entity that the key refers to, the others merely
+specify a 'parent key'.
+
+The kind is a string giving the name of the model class used to
+represent the entity.  (In more traditional databases this would be
+the table name.)  A model class is a Python class derived from
+ndb.Model; see the documentation for ndb/model.py.  Only the class
+name itself is used as the kind.  This means all your model classes
+must be uniquely named within one application.  You can override this
+on a per-class basis.
+
+The id is either a string or an integer.  When the id is a string, the
+application is in control of how it assigns ids: For example, if you
+could use an email address as the id for Account entities.
+
+To use integer ids, you must let the datastore choose a uniqe id for
+an entity when it is first inserted into the datastore.  You can set
+the id to None to represent the key for an entity that hasn't yet been
+inserted into the datastore.  The final key (including the assigned
+id) will be returned after the entity is successfully inserted into
+the datastore.
+
+A key for which the id of the last (kind, id) pair is set to None is
+called an incomplete key.  Such keys can only be used to insert
+entities into the datastore.
+
+A key with exactly one (kind, id) pair is called a toplevel key or a
+root key.  Toplevel keys are also used as entity groups, which play a
+role in transaction management.
+
+If there is more than one (kind, id) pair, all but the last pair
+represent the 'ancestor path', also known as the key of the 'parent
+entity'.
+
+Other constraints:
+
+- Kinds and string ids must not be empty and must be at most 500 bytes
+  long (after UTF-8 encoding, if given as Python unicode objects).
+
+- Integer ids must be at least 1 and less than 2**63.
+
+For more info about namespaces, see
+http://code.google.com/appengine/docs/python/multitenancy/overview.html.
+The namespace defaults to the 'default namespace' selected by the
+namespace manager.  To explicitly select the empty namespace pass
+namespace=''.
 """
+
+__author__ = 'guido@google.com (Guido van Rossum)'
 
 import base64
 import os
@@ -10,7 +76,8 @@ from google.appengine.api import namespace_manager
 from google.appengine.datastore import datastore_rpc
 from google.appengine.datastore import entity_pb
 
-positional = datastore_rpc._positional
+__all__ = ['Key']
+
 
 class Key(object):
   """An immutable datastore key.
@@ -52,7 +119,9 @@ class Key(object):
   def __repr__(self):
     args = []
     for item in self._flat():
-      if isinstance(item, basestring):
+      if not item:
+        args.append('None')
+      elif isinstance(item, basestring):
         assert isinstance(item, str)  # No unicode should make it here.
         args.append(repr(item))
       else:
@@ -167,7 +236,7 @@ class Key(object):
     from ndb import tasklets
     return tasklets.get_context().delete(self)
 
-@positional(1)
+@datastore_rpc._positional(1)
 def _ConstructReference(cls, pairs=None, flat=None,
                         reference=None, serialized=None, urlsafe=None,
                         app=None, namespace=None, parent=None):

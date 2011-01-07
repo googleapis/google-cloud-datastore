@@ -87,15 +87,25 @@ class KeyTests(unittest.TestCase):
     self.assertEqual(k.flat(), ['Kind', 1, 'Subkind', 'foobar'])
     self.assertEqual(k.parent(), p)
 
-  def testRepr(self):
+  def testRepr_Inferior(self):
     k = key.Key('Kind', 1L, 'Subkind', 'foobar')
     self.assertEqual(repr(k),
                      "Key('Kind', 1, 'Subkind', 'foobar')")
     self.assertEqual(repr(k), str(k))
+
+  def testRepr_Toplevel(self):
     k = key.Key('Kind', 1)
     self.assertEqual(repr(k), "Key('Kind', 1)")
 
-  def testRepr_Unicode(self):
+  def testRepr_Incomplete(self):
+    k = key.Key('Kind', None)
+    self.assertEqual(repr(k), "Key('Kind', None)")
+
+  def testRepr_UnicodeKind(self):
+    k = key.Key(u'\u1234', 1)
+    self.assertEqual(repr(k), "Key('\\xe1\\x88\\xb4', 1)")
+
+  def testRepr_UnicodeId(self):
     k = key.Key('Kind', u'\u1234')
     self.assertEqual(repr(k), "Key('Kind', '\\xe1\\x88\\xb4')")
 
