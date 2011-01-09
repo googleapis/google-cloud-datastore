@@ -270,6 +270,10 @@ def _args_to_val(func, args, bindings):
   assert False, 'Unexpected func (%r)' % func
 
 
+# TODO: Not everybody likes GQL.
+
+# TODO: GQL doesn't support querying for structured property values.
+
 def parse_gql(query_string):
   """Parse a GQL query string.
 
@@ -329,6 +333,8 @@ class Query(object):
     self.__filter = filter  # Node subclass
     self.__order = order  # List/tuple of (propname, direction)
     self.__query = None  # Cache for datastore_query.Query instance
+
+  # TODO: __repr__().
 
   def _get_query(self, connection):
     if self.__query is not None:
@@ -402,9 +408,15 @@ class Query(object):
   def order(self):
     return self.__order
 
+  # TODO: Filter on structured properties.
+
+  # TODO: Initial feedback suggests people don't like this query
+  # syntax much.  Also the order in which filters are specified
+  # needs to be preserved.  Back to the drawing board...
+
   def where(self, **kwds):
     # NOTE: Filters specified this way are not ordered; to force
-    # ordered filters, use q.filter(...).filter(...).
+    # ordered filters, use q.where(...).where(...).
     # TODO: What about renamed properties?  The kwd should be the
     # Python name, but the Query should use the datastore name.  We'd
     # need the actual Model class to suport this though, or at least
