@@ -1,6 +1,46 @@
 """Model and Property classes and associated stuff.
 
+A model class represents the structure of entities stored in the
+datastore.  Applications define model classes to indicate the
+structure of their entities, then instantiate those model classes
+to create entities.
+
+All model classes must inherit (directly or indirectly) from Model.
+Through the magic of metaclasses, straightforward assignments in the
+model class definition can be used to declare the model's structure:
+
+  class Person(Model):
+    name = StringProperty()
+    age = IntegerProperty()
+
+We can now create a Person entity and write it to the datastore:
+
+  p = Person(name='Arthur Dent', age=42)
+  k = p.put()
+
+The return value from put() is a Key (see the documentation for
+ndb/key.py), which can be used to retrieve the same entity later:
+
+  p2 = k.get()
+  assert p2 == p
+
+To update an entity, simple change its attributes and write it back
+(note that this doesn't change the key):
+
+  p2.name = 'Arthur Philip Dent'
+  p2.put()
+
+We can also delete an entity:
+
+  k.delete()
+
+The property definitions in the class body tell the system XXX.
+TODO HIRO
+
 TODO: docstrings, style, asserts
+TODO: get full property name out of StructuredProperty
+TODO: reject bad property values upon assignment
+TODO: reject unknown property names in assignment
 """
 
 import datetime
