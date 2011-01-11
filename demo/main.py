@@ -123,7 +123,7 @@ class HomePage(webapp.RequestHandler):
       self.response.out.write(text)
 
   def _make_query(self):
-    qry = Message.query().order_by_desc('when')
+    qry = Message.query().order(-Message.when)
     options = datastore_query.QueryOptions(batch_size=13, limit=43)
     return qry, options
 
