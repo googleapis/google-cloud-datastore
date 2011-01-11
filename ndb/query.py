@@ -590,12 +590,12 @@ class QueryIterator(object):
 
   For synchronous callers, just use:
 
-    for entity in Account.all():
+    for entity in Account.query():
       <use entity>
 
   Async callers use this idiom:
 
-    it = iter(Account.all())
+    it = iter(Account.query())
     while (yield it.has_next_async()):
       entity = it.next()
       <use entity>
