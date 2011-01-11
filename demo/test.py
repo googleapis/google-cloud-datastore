@@ -14,7 +14,7 @@ def main():
   setup()
   print 'Content-type: text/plain'
   print
-  qry = Message.all().order_by_desc('when')
+  qry = Message.query().order_by_desc('when')
   for msg in qry:
     print msg.userid, time.ctime(msg.when), repr(msg.body)
     if msg.userid is not None:

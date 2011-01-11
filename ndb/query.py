@@ -1,4 +1,24 @@
-"""Higher-level Query wrapper."""
+"""Higher-level Query wrapper.
+
+There are perhaps too many query APIs in the world.
+
+The fundamental API here uses Property objects to represent
+properties, overloads the 6 comparisons operators to represent filters
+on property values, and supports AND and OR operations.  For example:
+
+class Employee(Model):
+  name = StringProperty()
+  age = IntegerProperty()
+  rank = IntegerProperty()
+
+  @classmethod
+  def seniors(cls, min_age, min_rank):
+    return cls.query().filter(AND(cls.age >= min_age, cls.rank >= min_rank))
+
+for emp in Employee.seniors(42, 5):
+  print emp.name, emp.age, emp.rank
+
+"""
 
 import heapq
 
@@ -244,6 +264,22 @@ class DisjunctionNode(Node):
     return DisjunctionNode(nodes)
 
 
+def AND(*args):
+  assert args
+  assert all(isinstance(Node, arg) for arg in args)
+  if len(args) == 1:
+    return args[0]
+  return ConjunctionNode(args)
+
+
+def OR(*args):
+  assert args
+  assert all(isinstance(Node, arg) for arg in args)
+  if len(args) == 1:
+    return args[0]
+  return DisjunctionNode(args)
+
+
 def _args_to_val(func, args, bindings):
   vals = []
   for arg in args:
@@ -410,23 +446,22 @@ class Query(object):
 
   # TODO: Filter on structured properties.
 
-  # TODO: Initial feedback suggests people don't like this query
-  # syntax much.  Also the order in which filters are specified
-  # needs to be preserved.  Back to the drawing board...
+  # TODO Rename where() to filter().  (That means renaming the .filter
+  # property.)
 
-  def where(self, **kwds):
-    # NOTE: Filters specified this way are not ordered; to force
-    # ordered filters, use q.where(...).where(...).
-    # TODO: What about renamed properties?  The kwd should be the
-    # Python name, but the Query should use the datastore name.  We'd
-    # need the actual Model class to suport this though, or at least
-    # the actual Property instance.
-    if not kwds:
+  def where(self, *args, **kwds):
+    # TODO: get rid of **kwds
+    # NOTE: Filters specified using **kwds are not ordered; to force
+    # ordered filters, use positional args.
+    if not args and not kwds:
       return self
     preds = []
     f = self.filter
     if f:
       preds.append(f)
+    for arg in args:
+      assert isinstance(arg, Node)
+      preds.append(arg)
     for key, value in kwds.iteritems():
       for opname, opsymbol in _OPS.iteritems():
         if key.endswith(opname):
@@ -449,7 +484,7 @@ class Query(object):
     return self.__class__(kind=self.kind, ancestor=self.ancestor,
                           order=self.order, filter=pred)
 
-  # TODO: Add or_where() -- client-side query merging.
+  # TODO: Change this to .order(<property>) or .order(-<property>).
 
   def order_by(self, *args):
     # q.order_by('prop1', ('prop2', DESC))

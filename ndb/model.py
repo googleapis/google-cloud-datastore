@@ -62,6 +62,8 @@ lists; if there is only one value, the list has only one element.
 TODO: default and other keywords affecting validation.
 
 TODO: More on StructuredProperty.
+
+TODO: Querying support.
 """
 
 __author__ = 'guido@google.com (Guido van Rossum)'
@@ -325,7 +327,7 @@ class Model(object):
     cls._kind_map.clear()
 
   @classmethod
-  def all(cls, **kwds):
+  def query(cls, **kwds):
     from ndb.query import Query  # Import late to avoid circular imports.
     return Query(kind=cls.GetKind(), **kwds)
 
@@ -403,6 +405,31 @@ class Property(object):
         args.append(s)
     s = '%s(%s)' % (self.__class__.__name__, ', '.join(args))
     return s
+
+  def _comparison(self, op, other):
+    from ndb.query import FilterNode  # Import late to avoid circular imports.
+    return FilterNode(self.name, op, other)
+
+  def __eq__(self, other):
+    return self._comparison('=', other)
+
+  def __ne__(self, other):
+    return self._comparison('!=', other)
+
+  def __lt__(self, other):
+    return self._comparison('<', other)
+
+  def __le__(self, other):
+    return self._comparison('<=', other)
+
+  def __gt__(self, other):
+    return self._comparison('>', other)
+
+  def __ge__(self, other):
+    return self._comparison('>=', other)
+
+  def IN(self, other):
+    return self._comparison('in', other)
 
   def FixUp(self, name):
     self.code_name = name

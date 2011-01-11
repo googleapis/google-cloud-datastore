@@ -394,18 +394,18 @@ class ModelTests(unittest.TestCase):
     class MyModel(model.Model):
       p = model.IntegerProperty()
 
-    q = MyModel.all()
+    q = MyModel.query()
     self.assertTrue(isinstance(q, query.Query))
     self.assertEqual(q.kind, 'MyModel')
     self.assertEqual(q.ancestor, None)
 
     k = model.Key(flat=['Model', 1])
-    q = MyModel.all(ancestor=k)
+    q = MyModel.query(ancestor=k)
     self.assertEqual(q.kind, 'MyModel')
     self.assertEqual(q.ancestor, k)
 
     k0 = model.Key(flat=['Model', None])
-    self.assertRaises(Exception, MyModel.all, ancestor=k0)
+    self.assertRaises(Exception, MyModel.query, ancestor=k0)
 
   def testProperty(self):
     class MyModel(model.Model):
