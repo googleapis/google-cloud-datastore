@@ -748,6 +748,69 @@ class ModelTests(unittest.TestCase):
       "Person(key=Key('Person', 42), "
       "address=Address(city='SF', street='345 Spear'), name='Google')")
 
+  def testModelRepr_RenamedProperty(self):
+    class Address(model.Model):
+      street = model.StringProperty('Street')
+      city = model.StringProperty('City')
+    a = Address(street='345 Spear', city='SF')
+    self.assertEqual(repr(a), "Address(city='SF', street='345 Spear')")
+
+  def testModel_RenameAlias(self):
+    class Person(model.Model):
+      name = model.StringProperty('Name')
+    p = Person(name='Fred')
+    self.assertRaises(AttributeError, getattr, p, 'Name')
+    self.assertRaises(AttributeError, Person, Name='Fred')
+    # Unfortunately, p.Name = 'boo' just sets p.__dict__['Name'] = 'boo'.
+    self.assertRaises(AttributeError, getattr, p, 'foo')
+
+  def testExpando_RenameAlias(self):
+    class Person(model.Expando):
+      name = model.StringProperty('Name')
+
+    p = Person(name='Fred')
+    self.assertEqual(p.name, 'Fred')
+    self.assertEqual(p.Name, 'Fred')
+    self.assertEqual(p._values, {'Name': 'Fred'})
+    self.assertTrue(p._properties, Person._properties)
+
+    p = Person(Name='Fred')
+    self.assertEqual(p.name, 'Fred')
+    self.assertEqual(p.Name, 'Fred')
+    self.assertEqual(p._values, {'Name': 'Fred'})
+    self.assertTrue(p._properties, Person._properties)
+
+    p = Person()
+    p.Name = 'Fred'
+    self.assertEqual(p.name, 'Fred')
+    self.assertEqual(p.Name, 'Fred')
+    self.assertEqual(p._values, {'Name': 'Fred'})
+    self.assertTrue(p._properties, Person._properties)
+
+    self.assertRaises(AttributeError, getattr, p, 'foo')
+
+  def testModel_RenameSwap(self):
+    class Person(model.Model):
+      foo = model.StringProperty('bar')
+      bar = model.StringProperty('foo')
+    p = Person(foo='foo', bar='bar')
+    self.assertEqual(p._values,
+                     {'foo': 'bar', 'bar': 'foo'})
+
+  def testExpando_RenameSwap(self):
+    class Person(model.Expando):
+      foo = model.StringProperty('bar')
+      bar = model.StringProperty('foo')
+    p = Person(foo='foo', bar='bar', baz='baz')
+    self.assertEqual(p._values,
+                     {'foo': 'bar', 'bar': 'foo', 'baz': 'baz'})
+    p = Person()
+    p.foo = 'foo'
+    p.bar = 'bar'
+    p.baz = 'baz'
+    self.assertEqual(p._values,
+                     {'foo': 'bar', 'bar': 'foo', 'baz': 'baz'})
+
   def testPropertyRepr(self):
     p = model.Property()
     self.assertEqual(repr(p), 'Property()')
@@ -808,6 +871,18 @@ class ModelTests(unittest.TestCase):
     p.d = 2.5
     pb = p.ToPb()
     self.assertEqual(str(pb), GOLDEN_PB)
+
+  def testExpandoRepr(self):
+    class Person(model.Expando):
+      name = model.StringProperty('Name')
+      city = model.StringProperty('City')
+    p = Person(name='Guido', zip='00000')
+    p.city= 'SF'
+    self.assertEqual(repr(p),
+                     "Person(city='SF', name='Guido', zip='00000')")
+    # White box confirmation.
+    self.assertEqual(p._values,
+                     {'City': 'SF', 'Name': 'Guido', 'zip': '00000'})
 
   def testExpandoNested(self):
     p = model.Expando()

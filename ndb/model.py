@@ -129,10 +129,14 @@ class Model(object):
 
   def __repr__(self):
     args = []
+    done = set()
+    for prop in self._properties.itervalues():
+      if prop.name in self._values:
+        args.append('%s=%r' % (prop.code_name, self._values[prop.name]))
+        done.add(prop.name)
+    args.sort()
     if self._key is not None:
-      args.append('key=%r' % self._key)
-    for name_value in sorted(self._values.iteritems()):
-      args.append('%s=%r' % name_value)
+      args.insert(0, 'key=%r' % self._key)
     s = '%s(%s)' % (self.__class__.__name__, ', '.join(args))
     return s
 
@@ -322,6 +326,7 @@ class Model(object):
 class Property(object):
   # TODO: Separate 'simple' properties from base Property class
 
+  code_name = None
   name = None
   indexed = True
   repeated = False
@@ -356,6 +361,7 @@ class Property(object):
     return s
 
   def FixUp(self, name):
+    self.code_name = name
     if self.name is None:
       self.name = name
 
@@ -683,18 +689,23 @@ class Expando(Model):
       setattr(self, name, value)
 
   def __getattr__(self, name):
+    if (name.startswith('_') or
+        isinstance(getattr(self.__class__, name, None), Property)):
+      return super(Expando, self).__getattr__(name)
     prop = self._properties.get(name)
     if prop is None:
       return super(Expando, self).__getattribute__(name)
     return prop.GetValue(self)
 
   def __setattr__(self, name, value):
-    if name.startswith('_') or name in self._properties:
+    if (name.startswith('_') or
+        isinstance(getattr(self.__class__, name, None), Property)):
       return super(Expando, self).__setattr__(name, value)
     self.CloneProperties()
     if isinstance(value, Model):
       prop = StructuredProperty(Model, name)
     else:
       prop = GenericProperty(name)
+    prop.code_name = name
     self._properties[name] = prop
     prop.SetValue(self, value)
