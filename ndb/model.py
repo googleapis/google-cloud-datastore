@@ -86,6 +86,13 @@ __all__ = ['Key', 'ModelAdapter', 'MetaModel', 'Model', 'Expando']
 
 
 class ModelAdapter(datastore_rpc.AbstractAdapter):
+  """Conveersions between 'our' Key and Model classes and protobufs.
+
+  This is needed to construct a Connection object, which in turn is
+  needed to construct a Context object.
+
+  See the base class docstring for more info about the signatures.
+  """
 
   def pb_to_key(self, pb):
     return Key(reference=pb)
@@ -96,9 +103,11 @@ class ModelAdapter(datastore_rpc.AbstractAdapter):
   def pb_to_entity(self, pb):
     kind = None
     if pb.has_key():
-      key = Key(reference=pb.key())  # TODO: Avoid doing this twice
-      for kind, _ in key.pairs():
-        pass  # As a side effect, set kind to the key's last kind
+      # TODO: Fix the inefficiency here: we extract the key just so we
+      # can get the kind just so we can find the intended model class,
+      # but the key is extracted again and stored in the entity by FromPb().
+      key = Key(reference=pb.key())
+      kind = key.kind()
     # When unpacking an unknown kind, default to Expando.
     modelclass = Model._kind_map.get(kind, Expando)
     ent = modelclass()
