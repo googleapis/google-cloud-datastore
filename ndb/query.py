@@ -366,8 +366,8 @@ class Query(object):
       assert lastid, 'ancestor cannot be an incomplete key'
     self.__kind = kind  # String
     self.__ancestor = ancestor  # Key
-    self.__filter = filter  # Node subclass
-    self.__order = order  # List/tuple of (propname, direction)
+    self.__filters = filter  # Node subclass
+    self.__orders = order  # List/tuple of (propname, direction)
     self.__query = None  # Cache for datastore_query.Query instance
 
   # TODO: __repr__().
@@ -381,8 +381,8 @@ class Query(object):
     if isinstance(ancestor, Binding):
       bindings[ancestor.key] = ancestor
       ancestor = ancestor.resolve()
-    filter = self.__filter
-    order = self.__order
+    filter = self.__filters
+    order = self.__orders
     if ancestor is not None:
       ancestor = connection.adapter.key_to_pb(ancestor)
     if filter is not None:
@@ -415,7 +415,7 @@ class Query(object):
     queue.complete()
 
   def _maybe_multi_query(self):
-    filter = self.__filter
+    filter = self.__filters
     if filter is not None:
       filter = filter.resolve()
       if isinstance(filter, DisjunctionNode):
@@ -423,9 +423,9 @@ class Query(object):
         subqueries = []
         for subfilter in filter:
           subquery = Query(kind=self.__kind, ancestor=self.__ancestor,
-                           filter=subfilter, order=self.__order)
+                           filter=subfilter, order=self.__orders)
           subqueries.append(subquery)
-        return MultiQuery(subqueries, order=self.__order)
+        return MultiQuery(subqueries, order=self.__orders)
     return None
 
   @property
@@ -437,12 +437,12 @@ class Query(object):
     return self.__ancestor
 
   @property
-  def filter(self):
-    return self.__filter
+  def filters(self):
+    return self.__filters
 
   @property
-  def order(self):
-    return self.__order
+  def orders(self):
+    return self.__orders
 
   # TODO: Filter on structured properties.
 
@@ -456,7 +456,7 @@ class Query(object):
     if not args and not kwds:
       return self
     preds = []
-    f = self.filter
+    f = self.filters
     if f:
       preds.append(f)
     for arg in args:
@@ -482,7 +482,7 @@ class Query(object):
     else:
       pred = ConjunctionNode(preds)
     return self.__class__(kind=self.kind, ancestor=self.ancestor,
-                          order=self.order, filter=pred)
+                          order=self.orders, filter=pred)
 
   # TODO: Change this to .order(<property>) or .order(-<property>).
 
@@ -492,7 +492,7 @@ class Query(object):
     if not args:
       return self
     order = []
-    o = self.order
+    o = self.orders
     if o:
       order.extend(o)
     for arg in args:
@@ -504,7 +504,7 @@ class Query(object):
         direction = ASC
       order.append((propname, direction))
     return self.__class__(kind=self.kind, ancestor=self.ancestor,
-                          filter=self.filter, order=order)
+                          filter=self.filters, order=order)
 
   def order_by_desc(self, *args):
     # q.order_by_desc('prop1', 'prop2') is equivalent to
@@ -617,19 +617,19 @@ class QueryIterator(object):
 class _SubQueryIteratorState(object):
   # Helper class for MultiQuery.
 
-  def __init__(self, entity, iterator, order):
+  def __init__(self, entity, iterator, orders):
     self.entity = entity
     self.iterator = iterator
-    self.order = order
+    self.orders = orders
 
   def __cmp__(self, other):
     assert isinstance(other, _SubQueryIteratorState)
-    assert self.order == other.order
+    assert self.orders == other.orders
     our_entity = self.entity
     their_entity = other.entity
     # TODO: Renamed properties again.
-    if self.order:
-      for propname, direction in self.order:
+    if self.orders:
+      for propname, direction in self.orders:
         our_value = getattr(our_entity, propname, None)
         their_value = getattr(their_entity, propname, None)
         # NOTE: Repeated properties sort by lowest value when in

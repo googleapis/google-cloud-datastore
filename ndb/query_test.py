@@ -63,28 +63,28 @@ class QueryTests(unittest.TestCase):
     q = query.Query(kind='Foo')
     self.assertEqual(q.kind, 'Foo')
     self.assertEqual(q.ancestor, None)
-    self.assertEqual(q.filter, None)
-    self.assertEqual(q.order, None)
+    self.assertEqual(q.filters, None)
+    self.assertEqual(q.orders, None)
 
     key = model.Key('Barba', 'papa')
     q = query.Query(kind='Foo', ancestor=key)
     self.assertEqual(q.kind, 'Foo')
     self.assertEqual(q.ancestor, key)
-    self.assertEqual(q.filter, None)
-    self.assertEqual(q.order, None)
+    self.assertEqual(q.filters, None)
+    self.assertEqual(q.orders, None)
 
     q = q.where(rate__eq=1)
     self.assertEqual(q.kind, 'Foo')
     self.assertEqual(q.ancestor, key)
-    self.assertEqual(q.filter, query.FilterNode('rate', '=', 1))
-    self.assertEqual(q.order, None)
+    self.assertEqual(q.filters, query.FilterNode('rate', '=', 1))
+    self.assertEqual(q.orders, None)
 
     q = q.order_by_desc('name')
     self.assertEqual(q.kind, 'Foo')
     self.assertEqual(q.ancestor, key)
-    self.assertEqual(q.filter, query.FilterNode('rate', '=', 1))
+    self.assertEqual(q.filters, query.FilterNode('rate', '=', 1))
     expected_order = [('name', query.DESC)]
-    self.assertEqual(q.order, expected_order)
+    self.assertEqual(q.orders, expected_order)
 
   def testModernQuerySyntax(self):
     class Employee(model.Model):
@@ -95,7 +95,7 @@ class QueryTests(unittest.TestCase):
       def seniors(cls, min_age, min_rank):
         return cls.query().where(cls.age >= min_age, cls.rank >= min_rank)
     q = Employee.seniors(42, 5)
-    self.assertEqual(q.filter,
+    self.assertEqual(q.filters,
                      query.ConjunctionNode(
                        [query.FilterNode('Age', '>=', 42),
                         query.FilterNode('rank', '>=', 5)]))
@@ -222,13 +222,13 @@ class QueryTests(unittest.TestCase):
                         FilterNode('rate', '=', 1)]),
        ConjunctionNode([FilterNode('tags', '=', 'hello'),
                         FilterNode('rate', '=', 2)])])
-    self.assertEqual(q.filter, expected)
+    self.assertEqual(q.filters, expected)
 
   def testHalfDistributiveLaw(self):
     DisjunctionNode = query.DisjunctionNode
     ConjunctionNode = query.ConjunctionNode
     FilterNode = query.FilterNode
-    filter = ConjunctionNode(
+    filters = ConjunctionNode(
       [FilterNode('tags', 'in', ['jill', 'hello']),
        ConjunctionNode([FilterNode('rate', '=', 1),
                         FilterNode('name', '=', 'moe')])])
@@ -239,14 +239,14 @@ class QueryTests(unittest.TestCase):
        ConjunctionNode([FilterNode('tags', '=', 'hello'),
                         FilterNode('rate', '=', 1),
                         FilterNode('name', '=', 'moe')])])
-    self.assertEqual(filter, expected)
+    self.assertEqual(filters, expected)
 
   def testGqlMinimal(self):
     qry, options, bindings = query.parse_gql('SELECT * FROM Kind')
     self.assertEqual(qry.kind, 'Kind')
     self.assertEqual(qry.ancestor, None)
-    self.assertEqual(qry.filter, None)
-    self.assertEqual(qry.order, None)
+    self.assertEqual(qry.filters, None)
+    self.assertEqual(qry.orders, None)
     self.assertEqual(bindings, {})
 
   def testGqlAncestor(self):
@@ -254,8 +254,8 @@ class QueryTests(unittest.TestCase):
       'SELECT * FROM Kind WHERE ANCESTOR IS :1')
     self.assertEqual(qry.kind, 'Kind')
     self.assertEqual(qry.ancestor, query.Binding(None, 1))
-    self.assertEqual(qry.filter, None)
-    self.assertEqual(qry.order, None)
+    self.assertEqual(qry.filters, None)
+    self.assertEqual(qry.orders, None)
     self.assertEqual(bindings, {1: query.Binding(None, 1)})
 
   def testGqlAncestor(self):
@@ -264,8 +264,8 @@ class QueryTests(unittest.TestCase):
       "SELECT * FROM Kind WHERE ANCESTOR IS KEY('%s')" % key.urlsafe())
     self.assertEqual(qry.kind, 'Kind')
     self.assertEqual(qry.ancestor, key)
-    self.assertEqual(qry.filter, None)
-    self.assertEqual(qry.order, None)
+    self.assertEqual(qry.filters, None)
+    self.assertEqual(qry.orders, None)
     self.assertEqual(bindings, {})
 
   def testGqlFilter(self):
@@ -273,17 +273,17 @@ class QueryTests(unittest.TestCase):
       "SELECT * FROM Kind WHERE prop1 = 1 AND prop2 = 'a'")
     self.assertEqual(qry.kind, 'Kind')
     self.assertEqual(qry.ancestor, None)
-    self.assertEqual(qry.filter,
+    self.assertEqual(qry.filters,
                      query.ConjunctionNode(
                        [query.FilterNode('prop1', '=', 1),
                         query.FilterNode('prop2', '=', 'a')]))
-    self.assertEqual(qry.order, None)
+    self.assertEqual(qry.orders, None)
     self.assertEqual(bindings, {})
 
   def testGqlOrder(self):
     qry, options, bindings = query.parse_gql(
       'SELECT * FROM Kind ORDER BY prop1')
-    self.assertEqual(qry.order, [('prop1', query.ASC)])
+    self.assertEqual(qry.orders, [('prop1', query.ASC)])
 
   def testGqlOffset(self):
     qry, options, bindings = query.parse_gql(
@@ -300,13 +300,13 @@ class QueryTests(unittest.TestCase):
       'SELECT * FROM Kind WHERE prop1 = :1 AND prop2 = :foo')
     self.assertEqual(qry.kind, 'Kind')
     self.assertEqual(qry.ancestor, None)
-    self.assertEqual(qry.filter,
+    self.assertEqual(qry.filters,
                      query.ConjunctionNode(
                        [query.FilterNode('prop1', '=',
                                          query.Binding(None, 1)),
                         query.FilterNode('prop2', '=',
                                          query.Binding(None, 'foo'))]))
-    self.assertEqual(qry.order, None)
+    self.assertEqual(qry.orders, None)
     self.assertEqual(bindings, {1: query.Binding(None, 1),
                                 'foo': query.Binding(None, 'foo')})
 
