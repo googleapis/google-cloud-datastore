@@ -34,24 +34,56 @@ We can also delete an entity:
 
   k.delete()
 
-The property definitions in the class body tell the system XXX.
-TODO HIRO
+The property definitions in the class body tell the system the names
+and the types of the fields to be stored in the datastore, whether
+they must be indexed, their default value, and more.
 
-TODO: docstrings, style, asserts
-TODO: get full property name out of StructuredProperty
-TODO: reject bad property values upon assignment
-TODO: reject unknown property names in assignment
+Many different Property types exist, including StringProperty
+(strings), IntegerProperty (64-bit signed integers), FloatProperties
+(double precision floating point numbers).  Some more specialized
+properties also exist: TextProperty represents a longer string that is
+not indexed (StringProperty is limited to 500 bytes); BlobProperty
+represents an uninterpreted, unindexed byte string; KeyProperty
+represents a datastore Key.  Finally, StructuredProperty represents a
+field that is itself structured like an entity -- more about these
+later.
+
+TODO: DatetimeProperty etc.
+
+Most Property classes have the same constructor signature.  They
+accept several optional keyword arguments: name=<string> to change the
+name used to store the property value in the datastore,
+indexed=<boolean> to indicate whether the property should be indexed
+(allowing queries on this property's value), and repeated=<boolean> to
+indicate that this property can have multiple values in the same
+entity.  Repeated properties are always represented using Python
+lists; if there is only one value, the list has only one element.
+
+TODO: default and other keywords affecting validation.
+
+TODO: More on StructuredProperty.
 """
+
+__author__ = 'guido@google.com (Guido van Rossum)'
+
+# TODO: docstrings, style.
+# TODO: Change asserts to better exceptions.
+# TODO: get full property name out of StructuredProperty
+# TODO: validation; at least reject bad property types upon assignment
+# TODO: reject unknown property names in assignment (for Model) (?)
 
 import datetime
 import logging
 
+from google.appengine.datastore import datastore_rpc
 from google.appengine.datastore import entity_pb
 
-from google.appengine.datastore import datastore_rpc
+import ndb.key
+Key = ndb.key.Key  # For export.
 
-# NOTE: Key is meant for export, too.
-from ndb.key import Key, _ReferenceFromPairs, _DefaultAppId
+# Property and its subclasses are added later.
+__all__ = ['Key', 'ModelAdapter', 'MetaModel', 'Model', 'Expando']
+
 
 class ModelAdapter(datastore_rpc.AbstractAdapter):
 
@@ -81,12 +113,14 @@ def make_connection(config=None):
   """Create a new Connection object with the right adapter."""
   return datastore_rpc.Connection(adapter=ModelAdapter(), config=config)
 
+
 class MetaModel(type):
   """Metaclass for Model."""
 
   def __init__(cls, name, bases, classdict):
     super(MetaModel, cls).__init__(name, bases, classdict)
     cls.FixUpProperties()
+
 
 class Model(object):
   """A mutable datastore entity."""
@@ -200,8 +234,8 @@ class Model(object):
     # TODO: Move the key stuff into ModelAdapter.entity_to_pb()?
     key = self._key
     if key is None:
-      ref = _ReferenceFromPairs([(self.GetKind(), None)], pb.mutable_key())
-      ref.set_app(_DefaultAppId())  # TODO: Move into _ReferenceFromPairs?
+      ref = ndb.key._ReferenceFromPairs([(self.GetKind(), None)],
+                                        reference=pb.mutable_key())
     else:
       ref = key._reference()  # Don't copy
       pb.mutable_key().CopyFrom(ref)
@@ -323,6 +357,7 @@ class Model(object):
 
 # TODO: More Property types
 
+
 class Property(object):
   # TODO: Separate 'simple' properties from base Property class
 
@@ -438,6 +473,7 @@ class Property(object):
           value = [oldval, val]
     entity._values[self.name] = value
 
+
 class IntegerProperty(Property):
 
   def DbSetValue(self, v, p, value):
@@ -449,6 +485,7 @@ class IntegerProperty(Property):
       return None
     return int(v.int64value())
 
+
 class FloatProperty(Property):
 
   def DbSetValue(self, v, p, value):
@@ -459,6 +496,7 @@ class FloatProperty(Property):
     if not v.has_doublevalue():
       return None
     return v.doublevalue()
+
 
 class StringProperty(Property):
 
@@ -482,8 +520,10 @@ class StringProperty(Property):
       except UnicodeDecodeError:
         return raw
 
+
 class TextProperty(StringProperty):
   indexed = False
+
 
 class BlobProperty(Property):
   indexed = False
@@ -496,6 +536,7 @@ class BlobProperty(Property):
     if not v.has_stringvalue():
       return None
     return v.stringvalue()
+
 
 class KeyProperty(Property):
   # TODO: namespaces
@@ -525,6 +566,7 @@ class KeyProperty(Property):
     for elem in rv.pathelement_list():
       path.add_element().CopyFrom(elem)
     return Key(reference=ref)
+
 
 class StructuredProperty(Property):
 
@@ -600,6 +642,7 @@ class StructuredProperty(Property):
       subentity = self.modelclass()
       values.append(subentity)
     prop.Deserialize(subentity, p, depth + 1)
+
 
 _EPOCH = datetime.datetime.utcfromtimestamp(0)
 
@@ -682,6 +725,7 @@ class GenericProperty(Property):
       # TODO: point, user, blobkey, date, time, atom and gdata types
       assert False, type(value)
 
+
 class Expando(Model):
 
   def SetAttributes(self, kwds):
@@ -709,3 +753,9 @@ class Expando(Model):
     prop.code_name = name
     self._properties[name] = prop
     prop.SetValue(self, value)
+
+
+# Update __all__ to contain all Property subclasses.
+for _name, _object in globals().items():
+  if _name.endswith('Property') and issubclass(_object, Property):
+    __all__.append(_name)

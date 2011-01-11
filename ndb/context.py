@@ -11,6 +11,7 @@ from google.appengine.api import memcache
 
 from google.appengine.datastore import datastore_rpc
 
+import ndb.key
 from ndb import model, tasklets, eventloop, utils
 
 class AutoBatcher(object):
@@ -277,7 +278,7 @@ class Context(object):
     if entity_group is not None:
       app = entity_group.app()
     else:
-      app = model._DefaultAppId()
+      app = ndb.key._DefaultAppId()
     yield self.flush()
     for i in range(1 + max(0, retry)):
       transaction = yield self._conn.async_begin_transaction(None, app)

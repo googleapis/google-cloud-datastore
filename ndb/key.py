@@ -69,6 +69,8 @@ namespace=''.
 
 __author__ = 'guido@google.com (Guido van Rossum)'
 
+# TODO: Change asserts to better exceptions.
+
 import base64
 import os
 
@@ -408,18 +410,7 @@ def _ConstructReference(cls, pairs=None, flat=None,
                                                  parent.namespace())
       else:
         namespace = parent.namespace()
-    reference = _ReferenceFromPairs(pairs)
-    # An empty app id means to use the default app id.
-    if not app:
-      app = _DefaultAppId()
-    # Always set the app id, since it is mandatory.
-    reference.set_app(app)
-    # An empty namespace overrides the default namespace.
-    if namespace is None:
-      namespace = _DefaultNamespace()
-    # Only set the namespace if it is not empty.
-    if namespace:
-      reference.set_name_space(namespace)
+    reference = _ReferenceFromPairs(pairs, app=app, namespace=namespace)
   else:
     # You can't combine parent= with reference=, serialized= or urlsafe=.
     assert parent is None
@@ -442,11 +433,12 @@ def _ConstructReference(cls, pairs=None, flat=None,
   return reference
 
 
-def _ReferenceFromPairs(pairs, reference=None):
+def _ReferenceFromPairs(pairs, reference=None, app=None, namespace=None):
   """Construct a Reference from a list of pairs.
 
   If a Reference is passed in as the second argument, it is modified
-  in place.  The app and namespace are left unset.
+  in place.  The app and namespace are set from the corresponding
+  keyword arguments, with the customary defaults.
   """
   if reference is None:
     reference = entity_pb.Reference()
@@ -473,6 +465,17 @@ def _ReferenceFromPairs(pairs, reference=None):
       last = True
     else:
       assert False, 'bad idorname (%r)' % (idorname,)
+  # An empty app id means to use the default app id.
+  if not app:
+    app = _DefaultAppId()
+  # Always set the app id, since it is mandatory.
+  reference.set_app(app)
+  # An empty namespace overrides the default namespace.
+  if namespace is None:
+    namespace = _DefaultNamespace()
+  # Only set the namespace if it is not empty.
+  if namespace:
+    reference.set_name_space(namespace)
   return reference
 
 
