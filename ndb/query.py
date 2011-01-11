@@ -6,17 +6,18 @@ The fundamental API here uses Property objects to represent
 properties, overloads the 6 comparisons operators to represent filters
 on property values, and supports AND and OR operations.  For example:
 
-class Employee(Model):
-  name = StringProperty()
-  age = IntegerProperty()
-  rank = IntegerProperty()
+  class Employee(Model):
+    name = StringProperty()
+    age = IntegerProperty()
+    rank = IntegerProperty()
 
-  @classmethod
-  def seniors(cls, min_age, min_rank):
-    return cls.query().filter(AND(cls.age >= min_age, cls.rank >= min_rank))
+    @classmethod
+    def seniors(cls, min_age, min_rank):
+      return cls.query().filter(AND(cls.age >= min_age,
+                                    cls.rank >= min_rank)).order(cls.name)
 
-for emp in Employee.seniors(42, 5):
-  print emp.name, emp.age, emp.rank
+  for emp in Employee.seniors(42, 5):
+    print emp.name, emp.age, emp.rank
 
 """
 
@@ -264,6 +265,9 @@ class DisjunctionNode(Node):
     return DisjunctionNode(nodes)
 
 
+# TODO: Change ConjunctionNode and DisjunctionNode signatures so that
+# AND and OR can just be aliases for them -- or possibly even rename.
+
 def AND(*args):
   assert args
   assert all(isinstance(Node, arg) for arg in args)
@@ -339,14 +343,23 @@ def parse_gql(query_string):
       filters.append(FilterNode(name, op, val))
   if filters:
     filters.sort()  # For predictable tests.
-    filter = ConjunctionNode(filters)
+    filters = ConjunctionNode(filters)
   else:
-    filter = None
-  order = gql_qry.orderings() or None
+    filters = None
+  orderings = gql_qry.orderings()
+  orders = []
+  for (name, direction) in orderings:
+    orders.append(datastore_query.PropertyOrder(name, direction))
+  if not orders:
+    orders = None
+  elif len(orders) == 1:
+    orders = orders[0]
+  else:
+    orders = datastore_query.CompositeOrder(orders)
   qry = Query(kind=gql_qry._entity,
               ancestor=ancestor,
-              filter=filter,
-              order=order)
+              filters=filters,
+              orders=orders)
   offset = gql_qry.offset()
   if offset < 0:
     offset = None
@@ -360,14 +373,18 @@ def parse_gql(query_string):
 class Query(object):
 
   @datastore_rpc._positional(1)
-  def __init__(self, kind=None, ancestor=None, filter=None, order=None):
+  def __init__(self, kind=None, ancestor=None, filters=None, orders=None):
     if ancestor is not None and not isinstance(ancestor, Binding):
       lastid = ancestor.pairs()[-1][1]
       assert lastid, 'ancestor cannot be an incomplete key'
+    if filters is not None:
+      assert isinstance(filters, Node)
+    if orders is not None:
+      assert isinstance(orders, datastore_query.Order)
     self.__kind = kind  # String
     self.__ancestor = ancestor  # Key
-    self.__filters = filter  # Node subclass
-    self.__orders = order  # List/tuple of (propname, direction)
+    self.__filters = filters  # None or Node subclass
+    self.__orders = orders  # None or datastore_query.Order instance
     self.__query = None  # Cache for datastore_query.Query instance
 
   # TODO: __repr__().
@@ -381,20 +398,15 @@ class Query(object):
     if isinstance(ancestor, Binding):
       bindings[ancestor.key] = ancestor
       ancestor = ancestor.resolve()
-    filter = self.__filters
-    order = self.__orders
+    filters = self.__filters
     if ancestor is not None:
       ancestor = connection.adapter.key_to_pb(ancestor)
-    if filter is not None:
-      filter = filter._to_filter(bindings)
-    if order:
-      order = [datastore_query.PropertyOrder(*o) for o in order]
-      if len(order) == 1:
-        order = order[0]
-      else:
-        order = datastore_query.CompositeOrder(order)
-    dsqry = datastore_query.Query(kind=kind, ancestor=ancestor,
-                                  filter_predicate=filter, order=order)
+    if filters is not None:
+      filters = filters._to_filter(bindings)
+    dsqry = datastore_query.Query(kind=kind,
+                                  ancestor=ancestor,
+                                  filter_predicate=filters,
+                                  order=self.__orders)
     if not bindings:
       self.__query = dsqry
     return dsqry
@@ -415,17 +427,17 @@ class Query(object):
     queue.complete()
 
   def _maybe_multi_query(self):
-    filter = self.__filters
-    if filter is not None:
-      filter = filter.resolve()
-      if isinstance(filter, DisjunctionNode):
+    filters = self.__filters
+    if filters is not None:
+      filters = filters.resolve()
+      if isinstance(filters, DisjunctionNode):
         # Switch to a MultiQuery.
         subqueries = []
-        for subfilter in filter:
+        for subfilter in filters:
           subquery = Query(kind=self.__kind, ancestor=self.__ancestor,
-                           filter=subfilter, order=self.__orders)
+                           filters=subfilter, orders=self.__orders)
           subqueries.append(subquery)
-        return MultiQuery(subqueries, order=self.__orders)
+        return MultiQuery(subqueries, orders=self.__orders)
     return None
 
   @property
@@ -482,38 +494,42 @@ class Query(object):
     else:
       pred = ConjunctionNode(preds)
     return self.__class__(kind=self.kind, ancestor=self.ancestor,
-                          order=self.orders, filter=pred)
+                          orders=self.orders, filters=pred)
 
-  # TODO: Change this to .order(<property>) or .order(-<property>).
+  # TODO: Change this to .order(<property>, -<property>, ...).
 
   def order_by(self, *args):
     # q.order_by('prop1', ('prop2', DESC))
     # TODO: Again with the renamed properties.
     if not args:
       return self
-    order = []
-    o = self.orders
+    orderings = []
+    o = self.__orders
     if o:
-      order.extend(o)
+      orderings.extend(orders_to_orderings(o))
     for arg in args:
       if isinstance(arg, tuple):
         propname, direction = arg
         assert direction in (ASC, DESC), direction
-      else:
+      elif isinstance(arg, basestring):
         propname = arg
         direction = ASC
-      order.append((propname, direction))
+      else:
+        assert False, arg
+      orderings.append((propname, direction))
+    orders = orderings_to_orders(orderings)
     return self.__class__(kind=self.kind, ancestor=self.ancestor,
-                          filter=self.filters, order=order)
+                          filters=self.filters, orders=orders)
 
+  # TODO: Deprecate this.
   def order_by_desc(self, *args):
     # q.order_by_desc('prop1', 'prop2') is equivalent to
     # q.order_by(('prop1', DESC), ('prop2', DESC)).
-    order = []
+    orders = []
     for arg in args:
       assert isinstance(arg, basestring)
-      order.append((arg, DESC))
-    return self.order_by(*order)
+      orders.append((arg, DESC))
+    return self.order_by(*orders)
 
   # Datastore API using the default context.
 
@@ -617,19 +633,19 @@ class QueryIterator(object):
 class _SubQueryIteratorState(object):
   # Helper class for MultiQuery.
 
-  def __init__(self, entity, iterator, orders):
+  def __init__(self, entity, iterator, orderings):
     self.entity = entity
     self.iterator = iterator
-    self.orders = orders
+    self.orderings = orderings
 
   def __cmp__(self, other):
     assert isinstance(other, _SubQueryIteratorState)
-    assert self.orders == other.orders
+    assert self.orderings == other.orderings
     our_entity = self.entity
     their_entity = other.entity
     # TODO: Renamed properties again.
-    if self.orders:
-      for propname, direction in self.orders:
+    if self.orderings:
+      for propname, direction in self.orderings:
         our_value = getattr(our_entity, propname, None)
         their_value = getattr(their_entity, propname, None)
         # NOTE: Repeated properties sort by lowest value when in
@@ -662,11 +678,13 @@ class MultiQuery(object):
   # Queries' methods, e.g. offset (though not necessarily limit, and
   # I'm not sure about cursors).
 
-  def __init__(self, subqueries, order=None):
+  def __init__(self, subqueries, orders=None):
     assert isinstance(subqueries, list), subqueries
     assert all(isinstance(subq, Query) for subq in subqueries), subqueries
+    if orders is not None:
+      assert isinstance(orders, datastore_query.Order)
     self.__subqueries = subqueries
-    self.__order = order
+    self.__orders = orders
     self.ancestor = None  # Hack for map_query().
 
   @tasklets.tasklet
@@ -676,6 +694,7 @@ class MultiQuery(object):
     # TODO: Use the specified sort order.
     assert options is None  # Don't know what to do with these yet.
     state = []
+    orderings = orders_to_orderings(self.__orders)
     for subq in self.__subqueries:
       subit = tasklets.SerialQueueFuture('MultiQuery.run_to_queue')
       subq.run_to_queue(subit, conn)
@@ -684,7 +703,7 @@ class MultiQuery(object):
       except EOFError:
         continue
       else:
-        state.append(_SubQueryIteratorState(ent, subit, self.__order))
+        state.append(_SubQueryIteratorState(ent, subit, orderings))
 
     # Now turn it into a sorted heap.  The heapq module claims that
     # calling heapify() is more efficient than calling heappush() for
@@ -727,3 +746,32 @@ class MultiQuery(object):
     return QueryIterator(self, options=options)
 
   __iter__ = iter
+
+
+def order_to_ordering(order):
+  pb = order._to_pb()
+  return (pb.property(), pb.direction())  # TODO: What about UTF-8?
+
+
+def orders_to_orderings(orders):
+  if orders is None:
+    return []
+  if isinstance(orders, datastore_query.PropertyOrder):
+    return [order_to_ordering(orders)]
+  if isinstance(orders, datastore_query.CompositeOrder):
+    return [order_to_ordering(o) for o in orders._to_pbs()]
+  assert False, orders
+
+
+def ordering_to_order(ordering):
+  name, direction = ordering
+  return datastore_query.PropertyOrder(name, direction)
+
+
+def orderings_to_orders(orderings):
+  orders = [ordering_to_order(o) for o in orderings]
+  if not orders:
+    return None
+  if len(orders) == 1:
+    return orders[0]
+  return datastore_query.CompositeOrder(orders)

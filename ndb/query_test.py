@@ -84,7 +84,7 @@ class QueryTests(unittest.TestCase):
     self.assertEqual(q.ancestor, key)
     self.assertEqual(q.filters, query.FilterNode('rate', '=', 1))
     expected_order = [('name', query.DESC)]
-    self.assertEqual(q.orders, expected_order)
+    self.assertEqual(query.orders_to_orderings(q.orders), expected_order)
 
   def testModernQuerySyntax(self):
     class Employee(model.Model):
@@ -103,7 +103,7 @@ class QueryTests(unittest.TestCase):
   def testMultiQuery(self):
     q1 = query.Query(kind='Foo').where(tags__eq='jill').order_by('name')
     q2 = query.Query(kind='Foo').where(tags='joe').order_by('name')
-    qq = query.MultiQuery([q1, q2], [('name', query.ASC)])
+    qq = query.MultiQuery([q1, q2], query.ordering_to_order(('name', query.ASC)))
     res = list(qq)
     self.assertEqual(res, [self.jill, self.joe])
 
@@ -283,7 +283,8 @@ class QueryTests(unittest.TestCase):
   def testGqlOrder(self):
     qry, options, bindings = query.parse_gql(
       'SELECT * FROM Kind ORDER BY prop1')
-    self.assertEqual(qry.orders, [('prop1', query.ASC)])
+    self.assertEqual(query.orders_to_orderings(qry.orders),
+                     [('prop1', query.ASC)])
 
   def testGqlOffset(self):
     qry, options, bindings = query.parse_gql(
