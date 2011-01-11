@@ -461,7 +461,7 @@ class Query(object):
   # TODO Rename where() to filter().  (That means renaming the .filter
   # property.)
 
-  def where(self, *args, **kwds):
+  def filter(self, *args, **kwds):
     # TODO: get rid of **kwds
     # NOTE: Filters specified using **kwds are not ordered; to force
     # ordered filters, use positional args.
@@ -498,8 +498,8 @@ class Query(object):
 
   # TODO: Change this to .order(<property>, -<property>, ...).
 
-  def order_by(self, *args):
-    # q.order_by('prop1', ('prop2', DESC))
+  def order(self, *args):
+    # q.order('prop1', ('prop2', DESC))
     # TODO: Again with the renamed properties.
     if not args:
       return self
@@ -508,10 +508,10 @@ class Query(object):
     if o:
       orderings.extend(orders_to_orderings(o))
     for arg in args:
-      if isinstance(arg, tuple):
+      if isinstance(arg, tuple):  # TODO: Deprecate this.
         propname, direction = arg
         assert direction in (ASC, DESC), direction
-      elif isinstance(arg, basestring):
+      elif isinstance(arg, basestring):  # TODO: Deprecate this.
         propname = arg
         direction = ASC
       elif isinstance(arg, model.Property):
@@ -525,16 +525,6 @@ class Query(object):
     orders = orderings_to_orders(orderings)
     return self.__class__(kind=self.kind, ancestor=self.ancestor,
                           filters=self.filters, orders=orders)
-
-  # TODO: Deprecate this.
-  def order_by_desc(self, *args):
-    # q.order_by_desc('prop1', 'prop2') is equivalent to
-    # q.order_by(('prop1', DESC), ('prop2', DESC)).
-    orders = []
-    for arg in args:
-      assert isinstance(arg, basestring)
-      orders.append((arg, DESC))
-    return self.order_by(*orders)
 
   # Datastore API using the default context.
 
