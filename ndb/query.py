@@ -514,6 +514,11 @@ class Query(object):
       elif isinstance(arg, basestring):
         propname = arg
         direction = ASC
+      elif isinstance(arg, model.Property):
+        propname = arg.code_name
+        direction = ASC
+      elif isinstance(arg, datastore_query.PropertyOrder):
+        propname, direction = order_to_ordering(arg)
       else:
         assert False, arg
       orderings.append((propname, direction))
@@ -759,7 +764,8 @@ def orders_to_orderings(orders):
   if isinstance(orders, datastore_query.PropertyOrder):
     return [order_to_ordering(orders)]
   if isinstance(orders, datastore_query.CompositeOrder):
-    return [order_to_ordering(o) for o in orders._to_pbs()]
+    # TODO: What about UTF-8?
+    return [(pb.property(), pb.direction())for pb in orders._to_pbs()]
   assert False, orders
 
 

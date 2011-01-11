@@ -93,17 +93,22 @@ class QueryTests(unittest.TestCase):
       rank = model.IntegerProperty()
       @classmethod
       def seniors(cls, min_age, min_rank):
-        return cls.query().where(cls.age >= min_age, cls.rank >= min_rank)
+        q = cls.query().where(cls.age >= min_age, cls.rank <= min_rank)
+        q = q.order_by(cls.name, -cls.age)
+        return q
     q = Employee.seniors(42, 5)
     self.assertEqual(q.filters,
                      query.ConjunctionNode(
                        [query.FilterNode('Age', '>=', 42),
-                        query.FilterNode('rank', '>=', 5)]))
+                        query.FilterNode('rank', '<=', 5)]))
+    self.assertEqual(query.orders_to_orderings(q.orders),
+                     [('name', query.ASC), ('Age', query.DESC)])
 
   def testMultiQuery(self):
     q1 = query.Query(kind='Foo').where(tags__eq='jill').order_by('name')
     q2 = query.Query(kind='Foo').where(tags='joe').order_by('name')
-    qq = query.MultiQuery([q1, q2], query.ordering_to_order(('name', query.ASC)))
+    qq = query.MultiQuery([q1, q2],
+                          query.ordering_to_order(('name', query.ASC)))
     res = list(qq)
     self.assertEqual(res, [self.jill, self.joe])
 

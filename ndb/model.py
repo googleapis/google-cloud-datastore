@@ -77,6 +77,7 @@ __author__ = 'guido@google.com (Guido van Rossum)'
 import datetime
 import logging
 
+from google.appengine.datastore import datastore_query
 from google.appengine.datastore import datastore_rpc
 from google.appengine.datastore import entity_pb
 
@@ -430,6 +431,14 @@ class Property(object):
 
   def IN(self, other):
     return self._comparison('in', other)
+
+  def __neg__(self):
+    return datastore_query.PropertyOrder(
+      self.name, datastore_query.PropertyOrder.DESCENDING)
+
+  def __pos__(self):
+    # So you can write q.order(-cls.age, +cls.name).
+    return datastore_query.PropertyOrder(self.name)
 
   def FixUp(self, name):
     self.code_name = name
