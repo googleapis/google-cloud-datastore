@@ -121,6 +121,25 @@ class QueryTests(unittest.TestCase):
     q3 = q2.order(Bar.foo.rate, -Bar.foo.name, +Bar.foo.rate)
     self.assertEqual(q3.fetch(10), [b3, b2])
 
+  def testQueryForNestedStructuredProperty(self):
+    class Bar(model.Model):
+      name = model.StringProperty()
+      foo = model.StructuredProperty(Foo)
+    class Bak(model.Model):
+      bar = model.StructuredProperty(Bar)
+    class Baz(model.Model):
+      bar = model.StructuredProperty(Bar)
+      bak = model.StructuredProperty(Bak)
+      rank = model.IntegerProperty()
+    b1 = Baz(bar=Bar(foo=Foo(name='a')))
+    b1.put()
+    b2 = Baz(bar=Bar(foo=Foo(name='b')), bak=Bak(bar=Bar(foo=Foo(name='c'))))
+    b2.put()
+    q1 = Baz.query().filter(Baz.bar.foo.name >= 'a')
+    self.assertEqual(q1.fetch(10), [b1, b2])
+    q2 = Baz.query().filter(Baz.bak.bar.foo.name >= 'a')
+    self.assertEqual(q2.fetch(10), [b2])
+
   def testMultiQuery(self):
     q1 = query.Query(kind='Foo').filter(Foo.tags == 'jill').order(Foo.name)
     q2 = query.Query(kind='Foo').filter(Foo.tags == 'joe').order(Foo.name)

@@ -635,9 +635,18 @@ class StructuredProperty(Property):
 
   def FixUp(self, code_name):
     super(StructuredProperty, self).FixUp(code_name)
+    self.FixUpNestedProperties()
+
+  def FixUpNestedProperties(self):
     for name, prop in self._modelclass._properties.iteritems():
       prop_copy = copy.copy(prop)
       prop_copy._name = self._name + '.' + prop._name
+      if isinstance(prop_copy, StructuredProperty):
+        # Guard against simple recursive model definitions.
+        # See model_test: testRecursiveStructuredProperty().
+        # TODO: Guard against indirect recursion.
+        if prop_copy._modelclass is not self._modelclass:
+          prop_copy.FixUpNestedProperties()
       setattr(self, prop._code_name, prop_copy)
 
   def Serialize(self, entity, pb, prefix='', parent_repeated=False):

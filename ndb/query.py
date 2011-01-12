@@ -517,8 +517,6 @@ class Query(object):
   def orders(self):
     return self.__orders
 
-  # TODO: Filter on structured properties.
-
   def filter(self, *args):
     if not args:
       return self
