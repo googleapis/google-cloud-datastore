@@ -118,6 +118,8 @@ class QueryTests(unittest.TestCase):
     self.assertEqual(q1.fetch(10), [b1, b2, b3])
     q2 = Bar.query().filter(Bar.foo.rate >= 2)
     self.assertEqual(q2.fetch(10), [b2, b3])
+    q3 = q2.order(Bar.foo.rate, -Bar.foo.name, +Bar.foo.rate)
+    self.assertEqual(q3.fetch(10), [b3, b2])
 
   def testMultiQuery(self):
     q1 = query.Query(kind='Foo').filter(Foo.tags == 'jill').order(Foo.name)
