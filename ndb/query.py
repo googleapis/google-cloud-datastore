@@ -560,30 +560,26 @@ class Query(object):
   # TODO: Change this to .order(<property>, -<property>, ...).
 
   def order(self, *args):
-    # q.order('prop1', ('prop2', DESC))
-    # TODO: Again with the renamed properties.
+    # q.order(Eployee.name, -Employee.age)
     if not args:
       return self
-    orderings = []
+    orders = []
     o = self.__orders
     if o:
-      orderings.extend(orders_to_orderings(o))
+      orders.append(o)
     for arg in args:
-      if isinstance(arg, tuple):  # TODO: Deprecate this.
-        propname, direction = arg
-        assert direction in (ASC, DESC), direction
-      elif isinstance(arg, basestring):  # TODO: Deprecate this.
-        propname = arg
-        direction = ASC
-      elif isinstance(arg, model.Property):
-        propname = arg.code_name
-        direction = ASC
-      elif isinstance(arg, datastore_query.PropertyOrder):
-        propname, direction = order_to_ordering(arg)
+      if isinstance(arg, model.Property):
+        orders.append(datastore_query.PropertyOrder(arg.code_name, ASC))
+      elif isinstance(arg, datastore_query.Order):
+        orders.append(arg)
       else:
         assert False, arg
-      orderings.append((propname, direction))
-    orders = orderings_to_orders(orderings)
+    if not orders:
+      orders = None
+    elif len(orders) == 1:
+      orders = orders[0]
+    else:
+      orders = datastore_query.CompositeOrder(orders)
     return self.__class__(kind=self.kind, ancestor=self.ancestor,
                           filters=self.filters, orders=orders)
 
