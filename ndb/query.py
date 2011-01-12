@@ -2,9 +2,12 @@
 
 There are perhaps too many query APIs in the world.
 
-The fundamental API here uses Property objects to represent
-properties, overloads the 6 comparisons operators to represent filters
-on property values, and supports AND and OR operations.  For example:
+The fundamental API here overloads the 6 comparisons operators to
+represent filters on property values, and supports AND and OR
+operations (implemented as functions -- Python's 'and' and 'or'
+operators cannot be overloaded, and the '&' and '|' operators have a
+priority that conflicts with the priority of comparison operators).
+For example:
 
   class Employee(Model):
     name = StringProperty()
@@ -19,7 +22,62 @@ on property values, and supports AND and OR operations.  For example:
   for emp in Employee.seniors(42, 5):
     print emp.name, emp.age, emp.rank
 
+The 'in' operator cannot be overloaded, but is supported through the
+IN() method.  For example:
+
+  Employee.query().filter(Employee.rank.IN([4, 5, 6]))
+
+Sort orders are supported through the order() method; unary minus is
+overloaded on the Property class to represent a descending order:
+
+  Employee.query().order(Employee.name, -Employee.age)
+
+Besides using AND() and OR(), filters can also be combined by
+repeatedly calling .filter():
+
+  q1 = Employee.query()  # A query that returns all employees
+  q2 = q1.filter(Employee.age >= 30)  # Only those over 30
+  q3 = q2.filter(Employee.age < 40)  # Only those in their 30s
+
+Query objects are immutable, so these methods always return a new
+Query object; the above calls to filter() do not affect q1.
+
+Sort orders can also be combined this way, and .filter() and .order()
+calls may be intermixed:
+
+  q4 = q3.order(Employee.name)
+  q5 = q4.order(-Employee.age)
+  q6 = q5.filter(Employee.rank == 5)
+
+The simplest way to retrieve Query results is a for-loop:
+
+  for emp in q3:
+    print emp.name, emp.age
+
+Some other operations:
+
+  q.map(callback) # Call the callback function for each query result
+  q.fetch(N) # Return a list of the first N results
+  q.count(N) # Return the number of results, with a maximum of N
+
+These have asynchronous variants as well, which return a Future; to
+get the operation's ultimate result, yield the Future (when inside a
+tasklet) or call the Future's get_result() method (outside a tasklet):
+
+  q.map_async(callback)  # Callback may be a task or a plain function
+  q.fetch_async(N)
+  q.count_async(N)
+
+Finally, there's an idiom to efficiently loop over the Query results
+in a tasklet, properly yielding when appropriate:
+
+  it = iter(q)
+  while (yield it.has_next_async()):
+    emp = it.next()
+    print emp.name, emp.age
 """
+
+__author__ = 'guido@google.com (Guido van Rossum)'
 
 import heapq
 
@@ -33,7 +91,10 @@ from ndb import context
 from ndb import model
 from ndb import tasklets
 
+__all__ = ['Binding', 'AND', 'OR', 'parse_gql', 'Query']
 
+
+# TODO: Make these protected.
 ASC = datastore_query.PropertyOrder.ASCENDING
 DESC = datastore_query.PropertyOrder.DESCENDING
 
