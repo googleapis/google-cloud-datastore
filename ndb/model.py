@@ -70,10 +70,10 @@ __author__ = 'guido@google.com (Guido van Rossum)'
 
 # TODO: docstrings, style.
 # TODO: Change asserts to better exceptions.
-# TODO: get full property name out of StructuredProperty
 # TODO: validation; at least reject bad property types upon assignment
 # TODO: reject unknown property names in assignment (for Model) (?)
 
+import copy
 import datetime
 import logging
 
@@ -442,10 +442,10 @@ class Property(object):
     # So you can write q.order(-cls.age, +cls.name).
     return datastore_query.PropertyOrder(self._name)
 
-  def FixUp(self, name):
-    self._code_name = name
+  def FixUp(self, code_name):
+    self._code_name = code_name
     if self._name is None:
-      self._name = name
+      self._name = code_name
 
   def SetValue(self, entity, value):
     if self._repeated:
@@ -632,6 +632,13 @@ class StructuredProperty(Property):
     if self._repeated:
       assert not modelclass._has_repeated
     self._modelclass = modelclass
+
+  def FixUp(self, code_name):
+    super(StructuredProperty, self).FixUp(code_name)
+    for name, prop in self._modelclass._properties.iteritems():
+      prop_copy = copy.copy(prop)
+      prop_copy._name = self._name + '.' + prop._name
+      setattr(self, prop._code_name, prop_copy)
 
   def Serialize(self, entity, pb, prefix='', parent_repeated=False):
     # entity -> pb; pb is an EntityProto message

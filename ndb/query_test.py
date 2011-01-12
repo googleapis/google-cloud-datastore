@@ -104,6 +104,21 @@ class QueryTests(unittest.TestCase):
     self.assertEqual(query.orders_to_orderings(q.orders),
                      [('name', query.ASC), ('Age', query.DESC)])
 
+  def testQueryForStructuredProperty(self):
+    class Bar(model.Model):
+      name = model.StringProperty()
+      foo = model.StructuredProperty(Foo)
+    b1 = Bar(name='b1', foo=Foo(name='nest', rate=1, tags=['tag1', 'tag2']))
+    b1.put()
+    b2 = Bar(name='b2', foo=Foo(name='best', rate=2, tags=['tag2', 'tag3']))
+    b2.put()
+    b3 = Bar(name='b3', foo=Foo(name='rest', rate=2, tags=['tag2']))
+    b3.put()
+    q1 = Bar.query().order(Bar.name)
+    self.assertEqual(q1.fetch(10), [b1, b2, b3])
+    q2 = Bar.query().filter(Bar.foo.rate >= 2)
+    self.assertEqual(q2.fetch(10), [b2, b3])
+
   def testMultiQuery(self):
     q1 = query.Query(kind='Foo').filter(Foo.tags == 'jill').order(Foo.name)
     q2 = query.Query(kind='Foo').filter(Foo.tags == 'joe').order(Foo.name)
