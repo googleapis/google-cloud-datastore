@@ -519,14 +519,8 @@ class Query(object):
 
   # TODO: Filter on structured properties.
 
-  # TODO Rename where() to filter().  (That means renaming the .filter
-  # property.)
-
-  def filter(self, *args, **kwds):
-    # TODO: get rid of **kwds
-    # NOTE: Filters specified using **kwds are not ordered; to force
-    # ordered filters, use positional args.
-    if not args and not kwds:
+  def filter(self, *args):
+    if not args:
       return self
     preds = []
     f = self.filters
@@ -535,19 +529,6 @@ class Query(object):
     for arg in args:
       assert isinstance(arg, Node)
       preds.append(arg)
-    for key, value in kwds.iteritems():
-      for opname, opsymbol in _OPS.iteritems():
-        if key.endswith(opname):
-          name = key[:-len(opname)]
-          pred = FilterNode(name, opsymbol, value)
-          preds.append(pred)
-          break
-      else:
-        if '__' not in key:
-          pred = FilterNode(key, '=', value)
-          preds.append(pred)
-        else:
-          assert False, 'No valid operator (%r)' % key  # TODO: proper exc.
     if not preds:
       pred = None
     elif len(preds) == 1:
