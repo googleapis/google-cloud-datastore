@@ -177,9 +177,9 @@ class Model(object):
     args = []
     done = set()
     for prop in self._properties.itervalues():
-      if prop.name in self._values:
-        args.append('%s=%r' % (prop.code_name, self._values[prop.name]))
-        done.add(prop.name)
+      if prop._name in self._values:
+        args.append('%s=%r' % (prop._code_name, self._values[prop._name]))
+        done.add(prop._name)
     args.sort()
     if self._key is not None:
       args.insert(0, 'key=%r' % self._key)
@@ -297,12 +297,12 @@ class Model(object):
     self.CloneProperties()
     if p.name() != next and not p.name().endswith('.' + next):
       prop = StructuredProperty(Expando, next)
-      self._values[prop.name] = Expando()
+      self._values[prop._name] = Expando()
     else:
       prop = GenericProperty(next,
                              repeated=p.multiple(),
                              indexed=indexed)
-    self._properties[prop.name] = prop
+    self._properties[prop._name] = prop
     return prop
 
   @classmethod
@@ -318,9 +318,9 @@ class Model(object):
         assert not name.startswith('_')
         # TODO: Tell prop the class, for error message.
         prop.FixUp(name)
-        if prop.repeated:
+        if prop._repeated:
           cls._has_repeated = True
-        cls._properties[prop.name] = prop
+        cls._properties[prop._name] = prop
     cls._kind_map[cls.GetKind()] = cls
 
   @classmethod
@@ -373,23 +373,23 @@ class Model(object):
 class Property(object):
   # TODO: Separate 'simple' properties from base Property class
 
-  code_name = None
-  name = None
-  indexed = True
-  repeated = False
+  _code_name = None
+  _name = None
+  _indexed = True
+  _repeated = False
 
-  _attributes = ['name', 'indexed', 'repeated']
+  _attributes = ['_name', '_indexed', '_repeated']
   _positional = 1
 
   @datastore_rpc._positional(1 + _positional)
   def __init__(self, name=None, indexed=None, repeated=None):
     if name is not None:
       assert '.' not in name  # The '.' is used elsewhere.
-      self.name = name
+      self._name = name
     if indexed is not None:
-      self.indexed = indexed
+      self._indexed = indexed
     if repeated is not None:
-      self.repeated = repeated
+      self._repeated = repeated
 
   def __repr__(self):
     args = []
@@ -402,6 +402,8 @@ class Property(object):
         else:
           s = repr(val)
         if i >= cls._positional:
+          if attr.startswith('_'):
+            attr = attr[1:]
           s = '%s=%s' % (attr, s)
         args.append(s)
     s = '%s(%s)' % (self.__class__.__name__, ', '.join(args))
@@ -409,7 +411,7 @@ class Property(object):
 
   def _comparison(self, op, other):
     from ndb.query import FilterNode  # Import late to avoid circular imports.
-    return FilterNode(self.name, op, other)
+    return FilterNode(self._name, op, other)
 
   def __eq__(self, other):
     return self._comparison('=', other)
@@ -434,30 +436,32 @@ class Property(object):
 
   def __neg__(self):
     return datastore_query.PropertyOrder(
-      self.name, datastore_query.PropertyOrder.DESCENDING)
+      self._name, datastore_query.PropertyOrder.DESCENDING)
 
   def __pos__(self):
     # So you can write q.order(-cls.age, +cls.name).
-    return datastore_query.PropertyOrder(self.name)
+    return datastore_query.PropertyOrder(self._name)
 
   def FixUp(self, name):
-    self.code_name = name
-    if self.name is None:
-      self.name = name
+    self._code_name = name
+    if self._name is None:
+      self._name = name
 
   def SetValue(self, entity, value):
-    if self.repeated:
+    if self._repeated:
       assert isinstance(value, list)
     else:
       assert not isinstance(value, list)
     # TODO: validation
-    entity._values[self.name] = value
+    entity._values[self._name] = value
+
+  # TODO: Rename these methods to start with _.
 
   def GetValue(self, entity):
-     value = entity._values.get(self.name)
-     if value is None and self.repeated:
+     value = entity._values.get(self._name)
+     if value is None and self._repeated:
        value = []
-       entity._values[self.name] = value
+       entity._values[self._name] = value
      return value
 
   def __get__(self, obj, cls=None):
@@ -472,18 +476,18 @@ class Property(object):
 
   def Serialize(self, entity, pb, prefix='', parent_repeated=False):
     # entity -> pb; pb is an EntityProto message
-    value = entity._values.get(self.name)
-    if value is None and self.repeated:
+    value = entity._values.get(self._name)
+    if value is None and self._repeated:
       value = []
     elif not isinstance(value, list):
       value = [value]
     for val in value:
-      if self.indexed:
+      if self._indexed:
         p = pb.add_property()
       else:
         p = pb.add_raw_property()
-      p.set_name(prefix + self.name)
-      p.set_multiple(self.repeated or parent_repeated)
+      p.set_name(prefix + self._name)
+      p.set_multiple(self._repeated or parent_repeated)
       v = p.mutable_value()
       if val is not None:
         self.DbSetValue(v, p, val)
@@ -493,20 +497,20 @@ class Property(object):
     # In this class, depth is unused.
     v = p.value()
     val = self.DbGetValue(v, p)
-    if self.repeated:
-      if self.name in entity._values:
-        value = entity._values[self.name]
+    if self._repeated:
+      if self._name in entity._values:
+        value = entity._values[self._name]
         if not isinstance(value, list):
           value = [value]
         value.append(val)
       else:
         value = [val]
     else:
-      if self.name not in entity._values:
+      if self._name not in entity._values:
         value = val
       else:
         # Maybe upgrade to a list property.  Or ignore null.
-        oldval = entity._values[self.name]
+        oldval = entity._values[self._name]
         if val is None:
           value = oldval
         elif oldval is None:
@@ -516,13 +520,13 @@ class Property(object):
           value = oldval
         else:
           value = [oldval, val]
-    entity._values[self.name] = value
+    entity._values[self._name] = value
 
 
 class IntegerProperty(Property):
 
   def DbSetValue(self, v, p, value):
-    assert isinstance(value, (bool, int, long)), (self.name)
+    assert isinstance(value, (bool, int, long)), (self._name)
     v.set_int64value(value)
 
   def DbGetValue(self, v, p):
@@ -534,7 +538,7 @@ class IntegerProperty(Property):
 class FloatProperty(Property):
 
   def DbSetValue(self, v, p, value):
-    assert isinstance(value, (bool, int, long, float)), (self.name)
+    assert isinstance(value, (bool, int, long, float)), (self._name)
     v.set_doublevalue(float(value))
 
   def DbGetValue(self, v, p):
@@ -567,11 +571,11 @@ class StringProperty(Property):
 
 
 class TextProperty(StringProperty):
-  indexed = False
+  _indexed = False
 
 
 class BlobProperty(Property):
-  indexed = False
+  _indexed = False
 
   def DbSetValue(self, v, p, value):
     assert isinstance(value, str)
@@ -615,9 +619,9 @@ class KeyProperty(Property):
 
 class StructuredProperty(Property):
 
-  modelclass = None
+  _modelclass = None
 
-  _attributes = ['modelclass'] + Property._attributes
+  _attributes = ['_modelclass'] + Property._attributes
   _positional = 2
 
   @datastore_rpc._positional(1 + _positional)
@@ -625,19 +629,19 @@ class StructuredProperty(Property):
     super(StructuredProperty, self).__init__(name=name,
                                              indexed=indexed,
                                              repeated=repeated)
-    if self.repeated:
+    if self._repeated:
       assert not modelclass._has_repeated
-    self.modelclass = modelclass
+    self._modelclass = modelclass
 
   def Serialize(self, entity, pb, prefix='', parent_repeated=False):
     # entity -> pb; pb is an EntityProto message
-    value = entity._values.get(self.name)
+    value = entity._values.get(self._name)
     if value is None:
       # TODO: Is this the right thing for queries?
       # Skip structured values that are None.
       return
-    cls = self.modelclass
-    if self.repeated:
+    cls = self._modelclass
+    if self._repeated:
       assert isinstance(value, list)
       values = value
     else:
@@ -646,16 +650,16 @@ class StructuredProperty(Property):
     for value in values:
       # TODO: Avoid re-sorting for repeated values.
       for name, prop in sorted(value._properties.iteritems()):
-        prop.Serialize(value, pb, prefix + self.name + '.',
-                       self.repeated or parent_repeated)
+        prop.Serialize(value, pb, prefix + self._name + '.',
+                       self._repeated or parent_repeated)
 
   def Deserialize(self, entity, p, depth=1):
-    if not self.repeated:
-      subentity = entity._values.get(self.name)
+    if not self._repeated:
+      subentity = entity._values.get(self._name)
       if subentity is None:
-        subentity = self.modelclass()
-        entity._values[self.name] = subentity
-      assert isinstance(subentity, self.modelclass)
+        subentity = self._modelclass()
+        entity._values[self._name] = subentity
+      assert isinstance(subentity, self._modelclass)
       prop = subentity.GetPropertyFor(p, depth=depth)
       prop.Deserialize(subentity, p, depth + 1)
       return
@@ -666,25 +670,25 @@ class StructuredProperty(Property):
     parts = name.split('.')
     assert len(parts) > depth, (depth, name, parts)
     next = parts[depth]
-    prop = self.modelclass._properties.get(next)
+    prop = self._modelclass._properties.get(next)
     assert prop is not None  # QED
 
-    if self.name in entity._values:
-      values = entity._values[self.name]
+    if self._name in entity._values:
+      values = entity._values[self._name]
       if not isinstance(values, list):
         values = [values]
     else:
       values = []
-    entity._values[self.name] = values
+    entity._values[self._name] = values
     # Find the first subentity that doesn't have a value for this
     # property yet.
     for sub in values:
-      assert isinstance(sub, self.modelclass)
-      if prop.name not in sub._values:
+      assert isinstance(sub, self._modelclass)
+      if prop._name not in sub._values:
         subentity = sub
         break
     else:
-      subentity = self.modelclass()
+      subentity = self._modelclass()
       values.append(subentity)
     prop.Deserialize(subentity, p, depth + 1)
 
@@ -795,7 +799,7 @@ class Expando(Model):
       prop = StructuredProperty(Model, name)
     else:
       prop = GenericProperty(name)
-    prop.code_name = name
+    prop._code_name = name
     self._properties[name] = prop
     prop.SetValue(self, value)
 

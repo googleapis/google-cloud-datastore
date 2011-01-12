@@ -550,7 +550,7 @@ class Query(object):
       orders.append(o)
     for arg in args:
       if isinstance(arg, model.Property):
-        orders.append(datastore_query.PropertyOrder(arg.code_name, ASC))
+        orders.append(datastore_query.PropertyOrder(arg._code_name, ASC))
       elif isinstance(arg, datastore_query.Order):
         orders.append(arg)
       else:
