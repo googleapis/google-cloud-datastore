@@ -59,6 +59,9 @@ indicate that this property can have multiple values in the same
 entity.  Repeated properties are always represented using Python
 lists; if there is only one value, the list has only one element.
 
+The StructuredProperty is different; it lets you define a
+sub-structure for your entities.
+
 TODO: default and other keywords affecting validation.
 
 TODO: More on StructuredProperty.
@@ -599,6 +602,8 @@ class FloatProperty(Property):
 
 class StringProperty(Property):
 
+  # TODO: Enforce size limit when indexed.
+
   def DbSetValue(self, v, p, value):
     assert isinstance(value, basestring)
     if isinstance(value, unicode):
@@ -621,10 +626,20 @@ class StringProperty(Property):
 
 
 class TextProperty(StringProperty):
+
+  # TODO: Maybe just use StringProperty(indexed=False)?
+
   _indexed = False
+
+  def __init__(self, *args, **kwds):
+    assert not kwds.get('indexed', False)
+    super(TextProperty, self).__init__(*args, **kwds)
 
 
 class BlobProperty(Property):
+
+  # TODO: Enforce size limit when indexed.
+
   _indexed = False
 
   def DbSetValue(self, v, p, value):
