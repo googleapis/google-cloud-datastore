@@ -256,6 +256,20 @@ class ContextTests(unittest.TestCase):
     res = foo().get_result()
     self.assertEqual(res, set([1, 2, 3]))
 
+  def testContext_MapQuery_KeysOnly(self):
+    qo = query.QueryOptions(keys_only=True)
+    @tasklets.tasklet
+    def callback(key):
+      return key.pairs()[-1]
+    @tasklets.tasklet
+    def foo():
+      yield self.create_entities()
+      qry = query.Query(kind='Foo')
+      res = yield self.ctx.map_query(qry, callback, options=qo)
+      raise tasklets.Return(res)
+    res = foo().get_result()
+    self.assertEqual(set(res), set([('Foo', 1), ('Foo', 2), ('Foo', 3)]))
+
   def testContext_IterQuery(self):
     @tasklets.tasklet
     def foo():

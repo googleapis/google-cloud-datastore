@@ -238,23 +238,26 @@ class Context(object):
           ent = yield inq.getq()
         except EOFError:
           break
-        key = ent.key
-        if key in self._cache:
-          # Assume the cache is more up to date.
-          if self._cache[key] is None:
-            # This is a weird case.  Apparently this entity was
-            # deleted concurrently with the query.  Let's just
-            # pretend the delete happened first.
-            logging.info('Conflict: entity %s was deleted', key)
-            continue
-          # Replace the entity the callback will see with the one
-          # from the cache.
-          if ent != self._cache[key]:
-            logging.info('Conflict: entity %s was modified', key)
-          ent = self._cache[key]
+        if isinstance(ent, model.Key):
+          pass  # It was a keys-only query and ent is really a Key.
         else:
-          if is_ancestor_query and self.should_cache(key):
-            self._cache[key] = ent
+          key = ent.key
+          if key in self._cache:
+            # Assume the cache is more up to date.
+            if self._cache[key] is None:
+              # This is a weird case.  Apparently this entity was
+              # deleted concurrently with the query.  Let's just
+              # pretend the delete happened first.
+              logging.info('Conflict: entity %s was deleted', key)
+              continue
+            # Replace the entity the callback will see with the one
+            # from the cache.
+            if ent != self._cache[key]:
+              logging.info('Conflict: entity %s was modified', key)
+            ent = self._cache[key]
+          else:
+            if is_ancestor_query and self.should_cache(key):
+              self._cache[key] = ent
         if callback is None:
           val = ent
         else:

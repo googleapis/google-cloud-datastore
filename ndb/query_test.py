@@ -206,6 +206,11 @@ class QueryTests(unittest.TestCase):
     q = query.Query(kind='Foo').filter(Foo.tags == 'jillian')
     self.assertEqual(q.fetch(1), [])
 
+  def testFetchKeysOnly(self):
+    qo = query.QueryOptions(keys_only=True)
+    q = query.Query(kind='Foo').filter(Foo.tags == 'jill').order(Foo.name)
+    self.assertEqual(q.fetch(10, options=qo), [self.jill.key, self.joe.key])
+
   def testCount(self):
     q = query.Query(kind='Foo').filter(Foo.tags == 'jill').order(Foo.name)
     self.assertEqual(q.count(10), 2)

@@ -91,8 +91,9 @@ from ndb import context
 from ndb import model
 from ndb import tasklets
 
-__all__ = ['Binding', 'AND', 'OR', 'parse_gql', 'Query']
+__all__ = ['Binding', 'AND', 'OR', 'parse_gql', 'Query', 'QueryOptions']
 
+QueryOptions = datastore_query.QueryOptions  # For export.
 
 # TODO: Make these protected.
 ASC = datastore_query.PropertyOrder.ASCENDING
@@ -427,7 +428,7 @@ def parse_gql(query_string):
   limit = gql_qry.limit()
   if limit < 0:
     limit = None
-  options = datastore_query.QueryOptions(offset=offset, limit=limit)
+  options = QueryOptions(offset=offset, limit=limit)
   return qry, options, bindings
 
 
@@ -580,28 +581,29 @@ class Query(object):
                                             options=options,
                                             merge_future=merge_future)
 
-  def fetch(self, limit, offset=0):
-    return self.fetch_async(limit, offset).get_result()
+  def fetch(self, limit, offset=0, options=None):
+    return self.fetch_async(limit, offset, options=options).get_result()
 
   @tasklets.tasklet
-  def fetch_async(self, limit, offset=0):
-    options = datastore_query.QueryOptions(limit=limit,
-                                           prefetch_size=limit,
-                                           batch_size=limit,
-                                           offset=offset)
+  def fetch_async(self, limit, offset=0, options=None):
+    options = QueryOptions(limit=limit,
+                           prefetch_size=limit,
+                           batch_size=limit,
+                           offset=offset,
+                           config=options)
     res = []
     it = self.iter(options)
     while (yield it.has_next_async()):
       res.append(it.next())
     raise tasklets.Return(res)
 
-  def count(self, limit):
-    return self.count_async(limit).get_result()
+  def count(self, limit, options=None):
+    return self.count_async(limit, options=options).get_result()
 
   @tasklets.tasklet
-  def count_async(self, limit):
+  def count_async(self, limit, options=None):
     conn = tasklets.get_context()._conn
-    options = datastore_query.QueryOptions(offset=limit, limit=0)
+    options = QueryOptions(offset=limit, limit=0, config=options)
     rpc = self._get_query(conn).run_async(conn, options)
     total = 0
     while rpc is not None:
