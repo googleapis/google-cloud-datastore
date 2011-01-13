@@ -355,13 +355,17 @@ def toplevel(func):
   webapp.RequestHandler.get() or Django view functions.
   """
   @utils.wrapping(func)
-  def add_context_wrapper(self, *args):
+  def add_context_wrapper(*args):
     __ndb_debug__ = utils.func_info(func)
     tasklets.Future.clear_all_pending()
     # Reset context; a new one will be created on the first call to
     # get_context().
     tasklets.set_context(None)
-    return tasklets.synctasklet(func)(self, *args)
+    ctx = tasklets.get_context()
+    try:
+      return tasklets.synctasklet(func)(*args)
+    finally:
+      eventloop.run()  # Ensure writes are flushed, etc.
   return add_context_wrapper
 
 
