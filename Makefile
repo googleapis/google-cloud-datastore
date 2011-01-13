@@ -55,6 +55,9 @@ deploy:
 	appcfg.py update .
 
 python:
+	PYTHONSTARTUP=./startup.py PYTHONPATH=$(GAEPATH):. $(PYTHON)
+
+python_raw:
 	PYTHONPATH=$(GAEPATH):. $(PYTHON)
 
 zip:
