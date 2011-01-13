@@ -112,6 +112,7 @@ class ModelAdapter(datastore_rpc.AbstractAdapter):
       key = Key(reference=pb.key())
       kind = key.kind()
     # When unpacking an unknown kind, default to Expando.
+    # TODO: This could be risky; it should be an explicitly selected option.
     modelclass = Model._kind_map.get(kind, Expando)
     ent = modelclass()
     ent.FromPb(pb)
