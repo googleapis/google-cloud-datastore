@@ -5,13 +5,12 @@ import time
 from demo.main import model, context, tasklets, Message, Account, account_key
 
 
-def setup():
-  ctx = context.Context()
-  tasklets.set_context(ctx)
+class LogRecord(model.Model):
+  timestamp = model.FloatProperty()
 
 
+@context.toplevel
 def main():
-  setup()
   print 'Content-type: text/plain'
   print
   qry = Message.query().order(-Message.when)
@@ -23,6 +22,8 @@ def main():
         print '  * Bad account'
       else:
         print '  * Account', act.nickname, act.email
+  log = LogRecord(timestamp=time.time())
+  log.put_async()
 
 
 if __name__ == '__main__':

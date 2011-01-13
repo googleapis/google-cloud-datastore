@@ -94,7 +94,7 @@ class KindError(datastore_errors.BadValueError):
 
 
 class ModelAdapter(datastore_rpc.AbstractAdapter):
-  """Conveersions between 'our' Key and Model classes and protobufs.
+  """Conversions between 'our' Key and Model classes and protobufs.
 
   This is needed to construct a Connection object, which in turn is
   needed to construct a Context object.
@@ -137,15 +137,23 @@ class ModelAdapter(datastore_rpc.AbstractAdapter):
     pb = ent.ToPb()
     return pb
 
+
 def make_connection(config=None, default_model=None):
-  """Create a new Connection object with the right adapter."""
+  """Create a new Connection object with the right adapter.
+
+  Optionally you can pass in a datastore_rpc.Configuration object.
+  """
   return datastore_rpc.Connection(
       adapter=ModelAdapter(default_model),
       config=config)
 
 
 class MetaModel(type):
-  """Metaclass for Model."""
+  """Metaclass for Model.
+
+  This exists to fix up the properties -- they need to know their name.
+  This is accomplished by calling the class's FixProperties() method.
+  """
 
   def __init__(cls, name, bases, classdict):
     super(MetaModel, cls).__init__(name, bases, classdict)
@@ -153,7 +161,31 @@ class MetaModel(type):
 
 
 class Model(object):
-  """A mutable datastore entity."""
+  """A class describing datastore entities.
+
+  Model instances are usually called entities.  All model classes
+  inheriting from Model automatically have MetaModel as their
+  metaclass, so that the properties are fixed up properly after the
+  class once the class is defined.
+
+  Because of this, you cannot use the same Property object to describe
+  multiple properties -- you must create separate Property objects for
+  each property.  E.g. this does not work:
+
+    wrong_prop = StringProperty()
+    class Wrong(Model):
+      wrong1 = wrong_prop
+      wrong2 = wrong_prop
+
+  The kind is normally equal to the class name (exclusive of the
+  module name or any other parent scope).  To override the kind,
+  define a class method named GetKind(), as follows:
+
+    class MyModel(Model):
+      @classmethod
+      def GetKind(cls):
+        return 'AnotherKind'
+  """
 
   __metaclass__ = MetaModel
 
