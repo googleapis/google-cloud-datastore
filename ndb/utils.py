@@ -1,3 +1,4 @@
+import logging
 import os
 import sys
 
@@ -61,3 +62,19 @@ def code_info(code, lineno=None):
   if lineno is None:
     lineno = code.co_firstlineno
   return '%s(%s:%s)' % (funcname, filename, lineno)
+
+
+# Hack for running tests with verbose logging.  If there are two or
+# more -v flags, turn on INFO logging; if there are 3 or more, DEBUG.
+# (A single -v just tells unittest.main() to print the name of each
+# test; we don't want to interfere with that.)
+if sys.argv[0].endswith('_test.py'):
+  v = 0
+  for arg in sys.argv[1:]:
+    if arg.startswith('-v'):
+      v += arg.count('v')
+  if v >= 2:
+    level = logging.INFO
+    if v >= 3:
+      level = logging.DEBUG
+    logging.basicConfig(level=level)

@@ -295,7 +295,7 @@ class Future(object):
       _, _, tb = sys.exc_info()
       logging.warning('%s raised %s(%s)',
                       info, err.__class__.__name__, err,
-                      exc_info=(logging.getLogger().level <= logging.DEBUG))
+                      exc_info=(logging.getLogger().level <= logging.INFO))
       self.set_exception(err, tb)
       return
 
