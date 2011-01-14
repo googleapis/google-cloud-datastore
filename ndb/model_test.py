@@ -408,6 +408,19 @@ class ModelTests(unittest.TestCase):
     k0 = model.Key(flat=['Model', None])
     self.assertRaises(Exception, MyModel.query, ancestor=k0)
 
+  def testQueryWithFilter(self):
+    class MyModel(model.Model):
+      p = model.IntegerProperty()
+
+    q = MyModel.query(MyModel.p >= 0)
+    self.assertTrue(isinstance(q, query.Query))
+    self.assertEqual(q.kind, 'MyModel')
+    self.assertEqual(q.ancestor, None)
+    self.assertTrue(q.filters is not None)
+
+    q2 = MyModel.query().filter(MyModel.p >= 0)
+    self.assertEqual(q.filters, q2.filters)
+
   def testProperty(self):
     class MyModel(model.Model):
       p = model.IntegerProperty()

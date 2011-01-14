@@ -381,9 +381,12 @@ class Model(object):
     cls._kind_map.clear()
 
   @classmethod
-  def query(cls, **kwds):
+  def query(cls, *args, **kwds):
     from ndb.query import Query  # Import late to avoid circular imports.
-    return Query(kind=cls.GetKind(), **kwds)
+    qry = Query(kind=cls.GetKind(), **kwds)
+    if args:
+      qry = qry.filter(*args)
+    return qry
 
   # Datastore API using the default context.
   # These use local import since otherwise they'd be recursive imports.
