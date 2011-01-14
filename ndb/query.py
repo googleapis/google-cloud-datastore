@@ -15,9 +15,12 @@ For example:
     rank = IntegerProperty()
 
     @classmethod
-    def seniors(cls, min_age, min_rank):
-      return cls.query().filter(AND(cls.age >= min_age,
-                                    cls.rank >= min_rank)).order(cls.name)
+    def demographic(cls, min_age, max_age):
+      return cls.query().filter(AND(cls.age >= min_age, cls.age <= max_age))
+
+    @classmethod
+    def ranked(cls, rank):
+      return cls.query(cls.rank == rank).order(cls.age)
 
   for emp in Employee.seniors(42, 5):
     print emp.name, emp.age, emp.rank
@@ -45,8 +48,8 @@ Query object; the above calls to filter() do not affect q1.
 Sort orders can also be combined this way, and .filter() and .order()
 calls may be intermixed:
 
-  q4 = q3.order(Employee.name)
-  q5 = q4.order(-Employee.age)
+  q4 = q3.order(-Employee.age)
+  q5 = q4.order(Employee.name)
   q6 = q5.filter(Employee.rank == 5)
 
 The simplest way to retrieve Query results is a for-loop:
@@ -332,7 +335,7 @@ class DisjunctionNode(Node):
 
 def AND(*args):
   assert args
-  assert all(isinstance(Node, arg) for arg in args)
+  assert all(isinstance(arg, Node) for arg in args)
   if len(args) == 1:
     return args[0]
   return ConjunctionNode(args)
