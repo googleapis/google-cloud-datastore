@@ -48,7 +48,7 @@ represents a datastore Key.  Finally, StructuredProperty represents a
 field that is itself structured like an entity -- more about these
 later.
 
-TODO: DatetimeProperty etc.
+TODO: DatetimeProperty, GeoPointProperty, UserProperty, etc.
 
 Most Property classes have the same constructor signature.  They
 accept several optional keyword arguments: name=<string> to change the
@@ -462,30 +462,42 @@ class Property(object):
     s = '%s(%s)' % (self.__class__.__name__, ', '.join(args))
     return s
 
-  def _comparison(self, op, other):
+  def _comparison(self, op, value):
     from ndb.query import FilterNode  # Import late to avoid circular imports.
-    return FilterNode(self._name, op, other)
+    if value is not None:
+      # TODO: Allow query.Binding instances?
+      value = self.Validate(value)
+    return FilterNode(self._name, op, value)
 
-  def __eq__(self, other):
-    return self._comparison('=', other)
+  def __eq__(self, value):
+    return self._comparison('=', value)
 
-  def __ne__(self, other):
-    return self._comparison('!=', other)
+  def __ne__(self, value):
+    return self._comparison('!=', value)
 
-  def __lt__(self, other):
-    return self._comparison('<', other)
+  def __lt__(self, value):
+    return self._comparison('<', value)
 
-  def __le__(self, other):
-    return self._comparison('<=', other)
+  def __le__(self, value):
+    return self._comparison('<=', value)
 
-  def __gt__(self, other):
-    return self._comparison('>', other)
+  def __gt__(self, value):
+    return self._comparison('>', value)
 
-  def __ge__(self, other):
-    return self._comparison('>=', other)
+  def __ge__(self, value):
+    return self._comparison('>=', value)
 
-  def IN(self, other):
-    return self._comparison('in', other)
+  def IN(self, value):
+    from ndb.query import FilterNode  # Import late to avoid circular imports.
+    if not isinstance(value, (list, tuple)):
+      raise datastore_errors.BadValueError('Expected list or tuple, got %r' %
+                                           (value,))
+    values = []
+    for val in value:
+      if val is not None:
+        val is self.Validate(val)
+        values.append(val)
+    return FilterNode(self._name, 'in', values)
 
   def __neg__(self):
     return datastore_query.PropertyOrder(
@@ -495,6 +507,12 @@ class Property(object):
     # So you can write q.order(-cls.age, +cls.name).
     return datastore_query.PropertyOrder(self._name)
 
+  # TODO: Rename these methods to start with _.
+
+  def Validate(self, value):
+    # Return value, or default if it is None, or raise BadValueError.
+    return value
+
   def FixUp(self, code_name):
     self._code_name = code_name
     if self._name is None:
@@ -502,13 +520,18 @@ class Property(object):
 
   def SetValue(self, entity, value):
     if self._repeated:
-      assert isinstance(value, list)
+      if not isinstance(value, (list, tuple)):
+        raise datastore_errors.BadValueError('Expected list or tuple, got %r' %
+                                             (value,))
+      values = []
+      for val in value:
+        if val is not None:
+          self.Validate(val)
+        values.append(val)
     else:
-      assert not isinstance(value, list)
-    # TODO: validation
+      if value is not None:
+        value = self.Validate(value)
     entity._values[self._name] = value
-
-  # TODO: Rename these methods to start with _.
 
   def GetValue(self, entity):
      value = entity._values.get(self._name)
@@ -578,6 +601,12 @@ class Property(object):
 
 class IntegerProperty(Property):
 
+  def Validate(self, value):
+    if not isinstance(value, (int, long)):
+      raise datastore_errors.BadValueError('Expected integer, got %r' %
+                                           (value,))
+    return int(value)
+
   def DbSetValue(self, v, p, value):
     assert isinstance(value, (bool, int, long)), (self._name)
     v.set_int64value(value)
@@ -589,6 +618,12 @@ class IntegerProperty(Property):
 
 
 class FloatProperty(Property):
+
+  def Validate(self, value):
+    if not isinstance(value, (int, long, float)):
+      raise datastore_errors.BadValueError('Expected float, got %r' %
+                                           (value,))
+    return float(value)
 
   def DbSetValue(self, v, p, value):
     assert isinstance(value, (bool, int, long, float)), (self._name)
@@ -603,6 +638,13 @@ class FloatProperty(Property):
 class StringProperty(Property):
 
   # TODO: Enforce size limit when indexed.
+
+  def Validate(self, value):
+    if not isinstance(value, basestring):
+      raise datastore_errors.BadValueError('Expected string, got %r' %
+                                           (value,))
+    # TODO: Always convert to Unicode?  But what if it's unconvertible?
+    return value
 
   def DbSetValue(self, v, p, value):
     assert isinstance(value, basestring)
@@ -642,6 +684,12 @@ class BlobProperty(Property):
 
   _indexed = False
 
+  def Validate(self, value):
+    if not isinstance(value, str):
+      raise datastore_errors.BadValueError('Expected 8-bit string, got %r' %
+                                           (value,))
+    return value
+
   def DbSetValue(self, v, p, value):
     assert isinstance(value, str)
     v.set_stringvalue(value)
@@ -653,8 +701,19 @@ class BlobProperty(Property):
 
 
 class KeyProperty(Property):
+
   # TODO: namespaces
   # TODO: optionally check the kind (validation)
+
+  def Validate(self, value):
+    if not isinstance(value, Key):
+      raise datastore_errors.BadValueError('Expected Key, got %r' % (value,))
+    # Reject incomplete keys.
+    last = value.pairs()[-1]
+    if not last[-1]:
+      raise datastore_errors.BadValueError('Expected complete Key, got %r' %
+                                           (value,))
+    return value
 
   def DbSetValue(self, v, p, value):
     assert isinstance(value, Key)
@@ -713,6 +772,12 @@ class StructuredProperty(Property):
         if prop_copy._modelclass is not self._modelclass:
           prop_copy.FixUpNestedProperties()
       setattr(self, prop._code_name, prop_copy)
+
+  def Validate(self, value):
+    if not isinstance(value, self._modelclass):
+      raise datastore_errors.BadValueError('Expected %s instance, got %r' %
+                                           (self._modelclass.__name__, value))
+    return value
 
   def Serialize(self, entity, pb, prefix='', parent_repeated=False):
     # entity -> pb; pb is an EntityProto message

@@ -8,6 +8,7 @@ import re
 import unittest
 
 from google.appengine.api import apiproxy_stub_map
+from google.appengine.api import datastore_errors
 from google.appengine.api import datastore_file_stub
 from google.appengine.datastore import entity_pb
 
@@ -822,6 +823,49 @@ class ModelTests(unittest.TestCase):
       city = model.StringProperty()
     p = model.StructuredProperty(Address, 'foo')
     self.assertEqual(repr(p), "StructuredProperty(Address, 'foo')")
+
+  def testValidation(self):
+    class All(model.Model):
+      s = model.StringProperty()
+      i = model.IntegerProperty()
+      f = model.FloatProperty()
+      t = model.TextProperty()
+      b = model.BlobProperty()
+      k = model.KeyProperty()
+    BVE = datastore_errors.BadValueError
+    a = All()
+
+    a.s = None
+    a.s = 'abc'
+    a.s = u'def'
+    a.s = '\xff'  # Not UTF-8.
+    self.assertRaises(BVE, setattr, a, 's', 0)
+
+    a.i = None
+    a.i = 42
+    a.i = 123L
+    self.assertRaises(BVE, setattr, a, 'i', '')
+
+    a.f = None
+    a.f = 42
+    a.f = 3.14
+    self.assertRaises(BVE, setattr, a, 'f', '')
+
+    a.t = None
+    a.t = 'abc'
+    a.t = u'def'
+    a.t = '\xff'  # Not UTF-8.
+    self.assertRaises(BVE, setattr, a, 't', 0)
+
+    a.b = None
+    a.b = 'abc'
+    a.b = '\xff'
+    self.assertRaises(BVE, setattr, a, 'b', u'')
+    self.assertRaises(BVE, setattr, a, 'b', u'')
+
+    a.k = None
+    a.k = model.Key('Foo', 42)
+    self.assertRaises(BVE, setattr, a, 'k', '')
 
   def testEmptyList(self):
     class Person(model.Model):
