@@ -30,7 +30,14 @@ class Employee(Model):
   def ranked(cls, rank):
     return cls.query(cls.rank == rank).order(cls.age)
 
-for (name, age, rank) in [('Joe', 21, 1), ('Jim', 30, 2), ('Jane', 23, 1)]:
-  Employee(name=name, age=age, rank=rank).put()
+class Manager(Employee):
+  report = StructuredProperty(Employee, repeated=True)
 
-del name, age, rank
+reports = []
+for (name, age, rank) in [('Joe', 21, 1), ('Jim', 30, 2), ('Jane', 23, 1)]:
+  emp = Employee(name=name, age=age, rank=rank)
+  emp.put()
+  reports.append(emp)
+
+boss = Manager(name='Fred', age=42, rank=4, report=reports)
+boss.put()

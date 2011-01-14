@@ -776,6 +776,24 @@ class StructuredProperty(Property):
           prop_copy.FixUpNestedProperties()
       setattr(self, prop._code_name, prop_copy)
 
+  def _comparison(self, op, value):
+    if op != '=':
+      raise datastore_errors.BadFilterError(
+        'StructuredProperty filter can only use ==')
+    # Import late to avoid circular imports.
+    from ndb.query import FilterNode, ConjunctionNode
+    value = self.Validate(value)  # None is not allowed!
+    filters = []
+    for name, val in value._values.iteritems():
+      if val is not None:
+        filters.append(FilterNode(self._name + '.' + name, op, val))
+    if not filters:
+      raise datastore_errors.BadFilterError(
+        'StructuredProperty filter without any values')
+    if len(filters) == 1:
+      return filters[0]
+    return ConjunctionNode(filters)
+
   def Validate(self, value):
     if not isinstance(value, self._modelclass):
       raise datastore_errors.BadValueError('Expected %s instance, got %r' %
