@@ -107,7 +107,7 @@ class ModelAdapter(datastore_rpc.AbstractAdapter):
 
   def __init__(self, default_model=None):
     """Constructor.
-    
+
     Args:
       default_model: If an implementation for the kind cannot be found, use this
         model class. If none is specified, an exception will be thrown
@@ -837,6 +837,50 @@ class StructuredProperty(Property):
       subentity = self._modelclass()
       values.append(subentity)
     prop.Deserialize(subentity, p, depth + 1)
+
+
+class LocalStructuredProperty(Property):
+  """Substructure that is serialized to an opaque blob.
+
+  This looks like StructuredProperty on the Python side, but is
+  written to the datastore as a single opaque blob.  It is indexed
+  and you cannot query for subproperties.
+  """
+
+  _indexed = False
+  _modelclass = None
+
+  _attributes = ['_modelclass'] + Property._attributes
+  _positional = 2
+
+  @datastore_rpc._positional(1 + _positional)
+  def __init__(self, modelclass, name=None, indexed=None, repeated=None):
+    assert not indexed
+    super(LocalStructuredProperty, self).__init__(name=name, repeated=repeated)
+    if self._repeated:
+      assert not modelclass._has_repeated
+    self._modelclass = modelclass
+
+  def Validate(self, value):
+    if not isinstance(value, self._modelclass):
+      raise datastore_errors.BadValueError('Expected %s instance, got %r' %
+                                           (self._modelclass.__name__, value))
+    return value
+
+  def DbSetValue(self, v, p, value):
+    pb = value.ToPb()
+    serialized = pb.Encode()
+    v.set_stringvalue(serialized)
+
+  def DbGetValue(self, v, p):
+    if not v.has_stringvalue():
+      return None
+    serialized = v.stringvalue()
+    pb = entity_pb.EntityProto(serialized)
+    entity = self._modelclass()
+    entity.FromPb(pb)
+    entity.key = None
+    return entity
 
 
 _EPOCH = datetime.datetime.utcfromtimestamp(0)

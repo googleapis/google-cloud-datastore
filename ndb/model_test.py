@@ -867,6 +867,45 @@ class ModelTests(unittest.TestCase):
     a.k = model.Key('Foo', 42)
     self.assertRaises(BVE, setattr, a, 'k', '')
 
+  def testLocalStructuredProperty(self):
+    class Address(model.Model):
+      street = model.StringProperty()
+      city = model.StringProperty()
+    class Person(model.Model):
+      name = model.StringProperty()
+      address = model.LocalStructuredProperty(Address)
+
+    p = Person()
+    p.name = 'Google'
+    a = Address(street='1600 Amphitheatre')
+    p.address = a
+    p.address.city = 'Mountain View'
+    self.assertEqual(Person.name.GetValue(p), 'Google')
+    self.assertEqual(p.name, 'Google')
+    self.assertEqual(Person.address.GetValue(p), a)
+    self.assertEqual(Address.street.GetValue(a), '1600 Amphitheatre')
+    self.assertEqual(Address.city.GetValue(a), 'Mountain View')
+
+    pb = p.ToPb()
+    # TODO: Validate pb
+
+    p = Person()
+    p.FromPb(pb)
+    self.assertEqual(p.name, 'Google')
+    self.assertEqual(p.address.street, '1600 Amphitheatre')
+    self.assertEqual(p.address.city, 'Mountain View')
+    self.assertEqual(p.address, a)
+
+    # Now try with an empty address
+    p = Person()
+    p.name = 'Google'
+    self.assertTrue(p.address is None)
+    pb = p.ToPb()
+    p = Person()
+    p.FromPb(pb)
+    self.assertTrue(p.address is None)
+    self.assertEqual(p.name, 'Google')
+
   def testEmptyList(self):
     class Person(model.Model):
       name = model.StringProperty(repeated=True)
