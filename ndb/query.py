@@ -600,6 +600,16 @@ class Query(object):
       res.append(it.next())
     raise tasklets.Return(res)
 
+  def get(self, options=None):
+    return self.get_async(options=options).get_result()
+
+  @tasklets.tasklet
+  def get_async(self, options=None):
+    res = yield self.fetch_async(1, options=options)
+    if not res:
+      raise tasklets.Return(None)
+    raise tasklets.Return(res[0])
+
   def count(self, limit, options=None):
     return self.count_async(limit, options=options).get_result()
 
