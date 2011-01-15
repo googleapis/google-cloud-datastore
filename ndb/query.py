@@ -157,6 +157,12 @@ class Node(object):
   def _to_filter(self, bindings):
     raise NotImplementedError
 
+  def _post_filters(self):
+    return None
+
+  def apply(self, entity):
+    return True
+
   def resolve(self):
     raise NotImplementedError
 
@@ -235,6 +241,29 @@ class FilterNode(Node):
       return self
 
 
+class PostFilterNode(Node):
+
+  def __new__(cls, filter_func, filter_arg):
+    self = super(PostFilterNode, cls).__new__(cls)
+    self.filter_func = filter_func
+    self.filter_arg = filter_arg
+    return self
+
+  def apply(self, entity):
+    return self.filter_func(self.filter_arg, entity)
+
+  def __eq__(self, other):
+    if not isinstance(other, PostFilterNode):
+      return NotImplemented
+    return self is other
+
+  def _to_filter(self, bindings):
+    return None
+
+  def resolve(self):
+    return self
+
+
 class ConjunctionNode(Node):
   # AND
 
@@ -284,8 +313,26 @@ class ConjunctionNode(Node):
     return self.__nodes == other.__nodes
 
   def _to_filter(self, bindings):
-    filters = [node._to_filter(bindings) for node in self.__nodes]
+    filters = filter(None,
+                     (node._to_filter(bindings) for node in self.__nodes))
     return datastore_query.CompositeFilter(_AND, filters)
+
+  def _post_filters(self):
+    post_filters = [node for node in self.__nodes
+                    if isinstance(node, PostFilterNode)]
+    if not post_filters:
+      return None
+    if len(post_filters) == 1:
+      return post_filters[0]
+    if post_filters == self.__nodes:
+      return self
+    return ConjunctionNode(post_filters)
+
+  def apply(self, entity):
+    for node in self.__nodes:
+      if not node.apply(entity):
+        return False
+    return true
 
   def resolve(self):
     nodes = [node.resolve() for node in self.__nodes]
@@ -450,31 +497,28 @@ class Query(object):
     self.__ancestor = ancestor  # Key
     self.__filters = filters  # None or Node subclass
     self.__orders = orders  # None or datastore_query.Order instance
-    self.__query = None  # Cache for datastore_query.Query instance
 
   # TODO: __repr__().
 
   def _get_query(self, connection):
-    if self.__query is not None:
-      return self.__query
     kind = self.__kind
     ancestor = self.__ancestor
     bindings = {}
     if isinstance(ancestor, Binding):
       bindings[ancestor.key] = ancestor
       ancestor = ancestor.resolve()
-    filters = self.__filters
     if ancestor is not None:
       ancestor = connection.adapter.key_to_pb(ancestor)
+    filters = self.__filters
+    post_filters = None
     if filters is not None:
+      post_filters = filters._post_filters()
       filters = filters._to_filter(bindings)
     dsqry = datastore_query.Query(kind=kind,
                                   ancestor=ancestor,
                                   filter_predicate=filters,
                                   order=self.__orders)
-    if not bindings:
-      self.__query = dsqry
-    return dsqry
+    return dsqry, post_filters
 
   @tasklets.tasklet
   def run_to_queue(self, queue, conn, options=None):
@@ -483,11 +527,16 @@ class Query(object):
     if multiquery is not None:
       multiquery.run_to_queue(queue, conn, options=options)  # No return value.
       return
-    rpc = self._get_query(conn).run_async(conn, options)
+    dsqry, post_filters = self._get_query(conn)
+    rpc = dsqry.run_async(conn, options)
     while rpc is not None:
       batch = yield rpc
       rpc = batch.next_batch_async(options)
       for ent in batch.results:
+        if post_filters:
+          # TODO: Emulate offset and limit here.
+          if not post_filters.apply(ent):
+            continue
         queue.putq(ent)
     queue.complete()
 
@@ -617,7 +666,11 @@ class Query(object):
   def count_async(self, limit, options=None):
     conn = tasklets.get_context()._conn
     options = QueryOptions(offset=limit, limit=0, config=options)
-    rpc = self._get_query(conn).run_async(conn, options)
+    dsqry, post_filters = self._get_query(conn)
+    if post_filters:
+      raise datastore_errors.BadQueryError(
+        'Post-filters are not supported for count().')
+    rpc = dsqry.run_async(conn, options)
     total = 0
     while rpc is not None:
       batch = yield rpc

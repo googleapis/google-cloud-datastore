@@ -781,7 +781,7 @@ class StructuredProperty(Property):
       raise datastore_errors.BadFilterError(
         'StructuredProperty filter can only use ==')
     # Import late to avoid circular imports.
-    from ndb.query import FilterNode, ConjunctionNode
+    from ndb.query import FilterNode, ConjunctionNode, PostFilterNode
     value = self.Validate(value)  # None is not allowed!
     filters = []
     for name, val in value._values.iteritems():
@@ -792,7 +792,26 @@ class StructuredProperty(Property):
         'StructuredProperty filter without any values')
     if len(filters) == 1:
       return filters[0]
+    filters.append(PostFilterNode(self._filter_func, value))
     return ConjunctionNode(filters)
+
+  def _filter_func(self, value, entity):
+    if isinstance(entity, Key):
+      raise datastore_errors.BadQueryError(
+        'StructuredProperty filter cannot be used with keys_only query')
+    subentities = getattr(entity, self._code_name, None)
+    if subentities is None:
+      return False
+    if not isinstance(subentities, list):
+      subentities = [subentities]
+    for subentity in subentities:
+      for name, val in value._values.iteritems():
+        if val is not None:
+          if subentity._values.get(name) != val:
+            break
+      else:
+        return True
+    return False
 
   def Validate(self, value):
     if not isinstance(value, self._modelclass):
