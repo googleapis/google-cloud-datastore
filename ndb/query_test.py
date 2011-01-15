@@ -140,6 +140,38 @@ class QueryTests(unittest.TestCase):
     q2 = Baz.query().filter(Baz.bak.bar.foo.name >= 'a')
     self.assertEqual(q2.fetch(10), [b2])
 
+  def testQueryForWholeStructure(self):
+    class Employee(model.Model):
+      name = model.StringProperty()
+      rank = model.IntegerProperty()
+    class Manager(Employee):
+      report = model.StructuredProperty(Employee, repeated=True)
+    reports_a = []
+    for i in range(3):
+      e = Employee(name=str(i), rank=i)
+      e.put()
+      reports_a.append(e)
+    reports_b = []
+    for i in range(3, 6):
+      e = Employee(name=str(i), rank=0)
+      e.put()
+      reports_b.append(e)
+    mgr_a = Manager(name='a', report=reports_a)
+    mgr_a.put()
+    mgr_b = Manager(name='b', report=reports_b)
+    mgr_b.put()
+    res = list(Manager.query(Manager.report == Employee(name='1', rank=1)))
+    self.assertEqual(res, [mgr_a])
+    res = list(Manager.query(Manager.report == Employee(rank=0)))
+    self.assertEqual(res, [mgr_a, mgr_b])
+    res = list(Manager.query(Manager.report == Employee(rank=0, name='3')))
+    self.assertEqual(res, [mgr_b])
+    res = list(Manager.query(Manager.report == Employee(rank=0, name='1')))
+    self.assertEqual(res, [])
+    res = list(Manager.query(Manager.report == Employee(rank=0, name='0'),
+                             Manager.report == Employee(rank=1, name='1')))
+    self.assertEqual(res, [mgr_a])
+
   def testMultiQuery(self):
     q1 = query.Query(kind='Foo').filter(Foo.tags == 'jill').order(Foo.name)
     q2 = query.Query(kind='Foo').filter(Foo.tags == 'joe').order(Foo.name)

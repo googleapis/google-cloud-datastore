@@ -332,7 +332,7 @@ class ConjunctionNode(Node):
     for node in self.__nodes:
       if not node.apply(entity):
         return False
-    return true
+    return True
 
   def resolve(self):
     nodes = [node.resolve() for node in self.__nodes]
