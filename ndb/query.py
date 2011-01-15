@@ -528,15 +528,30 @@ class Query(object):
       multiquery.run_to_queue(queue, conn, options=options)  # No return value.
       return
     dsqry, post_filters = self._get_query(conn)
+    orig_options = options
+    if (post_filters and options is not None and
+        (options.offset or options.limit is not None)):
+      options = datastore_query.QueryOptions(offset=None, limit=None,
+                                             config=orig_options)
+      assert options.limit is None and options.limit is None
     rpc = dsqry.run_async(conn, options)
+    skipped = 0
+    count = 0
     while rpc is not None:
       batch = yield rpc
       rpc = batch.next_batch_async(options)
       for ent in batch.results:
         if post_filters:
-          # TODO: Emulate offset and limit here.
           if not post_filters.apply(ent):
             continue
+          if orig_options is not options:
+            if orig_options.offset and skipped < orig_options.offset:
+              skipped += 1
+              continue
+            if orig_options.limit is not None and count >= orig_options.limit:
+              rpc = None  # Quietly throw away the next batch.
+              break
+            count += 1
         queue.putq(ent)
     queue.complete()
 
