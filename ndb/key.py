@@ -204,6 +204,7 @@ class Key(object):
     We produce a short string that conveys all relevant information,
     suppressing app and namespace when they are equal to the default.
     """
+    # TODO: Instead of "Key('Foo', 1)" perhaps return "Key(Foo, 1)" ?
     args = []
     for item in self._flat():
       if not item:
@@ -446,7 +447,14 @@ def _ReferenceFromPairs(pairs, reference=None, app=None, namespace=None):
   last = False
   for kind, idorname in pairs:
     assert not last, 'incomplete entry must be last'
-    assert isinstance(kind, basestring)
+    if not isinstance(kind, basestring):
+      if isinstance(kind, type):
+        # Late import to avoid cycles.
+        from ndb.model import Model
+        modelclass = kind
+        assert issubclass(modelclass, Model), repr(modelclass)
+        kind = modelclass.GetKind()
+      assert isinstance(kind, basestring), (repr(modelclass), repr(kind))
     if isinstance(kind, unicode):
       kind = kind.encode('utf8')
     assert 1 <= len(kind) <= 500

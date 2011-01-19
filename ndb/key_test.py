@@ -162,6 +162,19 @@ class KeyTests(unittest.TestCase):
                       key.Key, flat=['Kind', None, 'Subkind', 1])
     self.assertRaises(AssertionError, key.Key, flat=['Kind', ()])
 
+  def testKindFromModel(self):
+    from ndb import model
+    class M(model.Model):
+      pass
+    class N(model.Model):
+      @classmethod
+      def GetKind(cls):
+        return 'NN'
+    k = key.Key(M, 1)
+    self.assertEqual(k, key.Key('M', 1))
+    k = key.Key('X', 1, N, 2, 'Y', 3)
+    self.assertEqual(k, key.Key('X', 1, 'NN', 2, 'Y', 3))
+
 
 def main():
   unittest.main()
