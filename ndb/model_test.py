@@ -1023,6 +1023,37 @@ class ModelTests(unittest.TestCase):
     self.assertEqual(q.foo, 42)
     self.assertEqual(q.bar.hello, 'hello')
 
+  def testComputedProperty(self):
+    class ComputedTest(model.Model):
+      name = model.StringProperty()
+      name_lower = model.ComputedProperty(lambda self: self.name.lower())
+
+      @model.ComputedProperty
+      def size(self):
+        return len(self.name)
+
+      def _compute_hash(self):
+        return hash(self.name)
+      hash = model.ComputedProperty(_compute_hash, name='hashcode')
+
+    m = ComputedTest(name='Foobar')
+    pb = m.ToPb()
+
+    for p in pb.property_list():
+      if p.name() == 'name_lower':
+        self.assertEqual(p.value().stringvalue(), 'foobar')
+        break
+    else:
+      self.assert_(False, "name_lower not found in PB")
+
+    m = ComputedTest()
+    m.FromPb(pb)
+    self.assertEqual(m.name, 'Foobar')
+    self.assertEqual(m.name_lower, 'foobar')
+    self.assertEqual(m.size, 6)
+    self.assertEqual(m.hash, hash('Foobar'))
+
+
 class DatastoreTests(unittest.TestCase):
   """Tests that actually interact with the (stub) Datastore."""
   # TODO: Merge this into ModelTests so there's less code duplication.

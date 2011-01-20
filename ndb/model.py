@@ -89,11 +89,16 @@ import ndb.key
 Key = ndb.key.Key  # For export.
 
 # Property and its subclasses are added later.
-__all__ = ['Key', 'ModelAdapter', 'MetaModel', 'Model', 'Expando', 'KindError']
+__all__ = ['Key', 'ModelAdapter', 'MetaModel', 'Model', 'Expando', 'KindError',
+           'ComputedProperty', 'ComputedPropertyError']
 
 
 class KindError(datastore_errors.BadValueError):
   """Raised when an implementation for a kind can't be found."""
+
+
+class ComputedPropertyError(datastore_errors.Error):
+  """Raised when attempting to assign a value to a computed property."""
 
 
 class ModelAdapter(datastore_rpc.AbstractAdapter):
@@ -230,8 +235,8 @@ class Model(object):
     args = []
     done = set()
     for prop in self._properties.itervalues():
-      if prop._name in self._values:
-        args.append('%s=%r' % (prop._code_name, self._values[prop._name]))
+      if prop.HasValue(self):
+        args.append('%s=%r' % (prop._code_name, prop.RetrieveValue(self)))
         done.add(prop._name)
     args.sort()
     if self._key is not None:
@@ -521,6 +526,9 @@ class Property(object):
     if self._name is None:
       self._name = code_name
 
+  def StoreValue(self, entity, value):
+    entity._values[self._name] = value
+
   def SetValue(self, entity, value):
     if self._repeated:
       if not isinstance(value, (list, tuple)):
@@ -534,13 +542,19 @@ class Property(object):
     else:
       if value is not None:
         value = self.Validate(value)
-    entity._values[self._name] = value
+    self.StoreValue(entity, value)
+
+  def HasValue(self, entity):
+    return self._name in entity._values
+
+  def RetrieveValue(self, entity):
+    return entity._values.get(self._name)
 
   def GetValue(self, entity):
-     value = entity._values.get(self._name)
+     value = self.RetrieveValue(entity)
      if value is None and self._repeated:
        value = []
-       entity._values[self._name] = value
+       self.StoreValue(entity, value)
      return value
 
   def __get__(self, obj, cls=None):
@@ -555,7 +569,7 @@ class Property(object):
 
   def Serialize(self, entity, pb, prefix='', parent_repeated=False):
     # entity -> pb; pb is an EntityProto message
-    value = entity._values.get(self._name)
+    value = self.RetrieveValue(entity)
     if value is None and self._repeated:
       value = []
     elif not isinstance(value, list):
@@ -577,19 +591,19 @@ class Property(object):
     v = p.value()
     val = self.DbGetValue(v, p)
     if self._repeated:
-      if self._name in entity._values:
-        value = entity._values[self._name]
+      if self.HasValue(entity):
+        value = self.RetrieveValue(entity)
         if not isinstance(value, list):
           value = [value]
         value.append(val)
       else:
         value = [val]
     else:
-      if self._name not in entity._values:
+      if not self.HasValue(entity):
         value = val
       else:
+        oldval = self.RetrieveValue(entity)
         # Maybe upgrade to a list property.  Or ignore null.
-        oldval = entity._values[self._name]
         if val is None:
           value = oldval
         elif oldval is None:
@@ -599,7 +613,10 @@ class Property(object):
           value = oldval
         else:
           value = [oldval, val]
-    entity._values[self._name] = value
+    try:
+      self.StoreValue(entity, value)
+    except ComputedPropertyError, e:
+      pass
 
 
 class IntegerProperty(Property):
@@ -784,7 +801,8 @@ class StructuredProperty(Property):
     from ndb.query import FilterNode, ConjunctionNode, PostFilterNode
     value = self.Validate(value)  # None is not allowed!
     filters = []
-    for name, val in value._values.iteritems():
+    for name, prop in value._properties.iteritems():
+      val = prop.RetrieveValue(value)
       if val is not None:
         filters.append(FilterNode(self._name + '.' + name, op, val))
     if not filters:
@@ -805,9 +823,10 @@ class StructuredProperty(Property):
     if not isinstance(subentities, list):
       subentities = [subentities]
     for subentity in subentities:
-      for name, val in value._values.iteritems():
+      for name, prop in value._properties.iteritems():
+        val = prop.RetrieveValue(value)
         if val is not None:
-          if subentity._values.get(name) != val:
+          if prop.RetrieveValue(subentity) != val:
             break
       else:
         return True
@@ -821,7 +840,7 @@ class StructuredProperty(Property):
 
   def Serialize(self, entity, pb, prefix='', parent_repeated=False):
     # entity -> pb; pb is an EntityProto message
-    value = entity._values.get(self._name)
+    value = self.RetrieveValue(entity)
     if value is None:
       # TODO: Is this the right thing for queries?
       # Skip structured values that are None.
@@ -841,10 +860,10 @@ class StructuredProperty(Property):
 
   def Deserialize(self, entity, p, depth=1):
     if not self._repeated:
-      subentity = entity._values.get(self._name)
+      subentity = self.RetrieveValue(entity)
       if subentity is None:
         subentity = self._modelclass()
-        entity._values[self._name] = subentity
+        self.StoreValue(entity, subentity)
       assert isinstance(subentity, self._modelclass)
       prop = subentity.GetPropertyFor(p, depth=depth)
       prop.Deserialize(subentity, p, depth + 1)
@@ -859,18 +878,17 @@ class StructuredProperty(Property):
     prop = self._modelclass._properties.get(next)
     assert prop is not None  # QED
 
-    if self._name in entity._values:
-      values = entity._values[self._name]
-      if not isinstance(values, list):
-        values = [values]
-    else:
+    values = self.RetrieveValue(entity)
+    if values is None:
       values = []
-    entity._values[self._name] = values
+    elif not isinstance(values, list):
+      values = [values]
+    self.StoreValue(entity, values)
     # Find the first subentity that doesn't have a value for this
     # property yet.
     for sub in values:
       assert isinstance(sub, self._modelclass)
-      if prop._name not in sub._values:
+      if not prop.HasValue(sub):
         subentity = sub
         break
     else:
@@ -1003,6 +1021,56 @@ class GenericProperty(Property):
     else:
       # TODO: point, user, blobkey, date, time, atom and gdata types
       assert False, type(value)
+
+
+class ComputedProperty(GenericProperty):
+  """A property that has its value determined by a user-supplied function.
+
+  Computed properties cannot be set directly, but are instead generated by a
+  function when required. They are useful to provide fields in the datastore
+  that can be used for filtering or sorting without having to manually set the
+  value in code - for example, sorting on the length of a BlobProperty, or
+  using an equality filter to check if another field is not empty.
+
+  ComputedProperty can be declared as a regular property, passing a function as
+  the first argument, or it can be used as a decorator for the function that
+  does the calculation.
+
+  Example:
+
+  >>> class DatastoreFile(Model):
+  ...   name = StringProperty()
+  ...   name_lower = ComputedProperty(lambda self: self.name.lower())
+  ...
+  ...   data = BlobProperty()
+  ...
+  ...   @ComputedProperty
+  ...   def size(self):
+  ...     return len(self.data)
+  ...
+  ...   def _compute_hash(self):
+  ...     return hashlib.sha1(self.data).hexdigest()
+  ...   hash = ComputedProperty(_compute_hash, name='sha1')
+  """
+
+  def __init__(self, derive_func, *args, **kwargs):
+    """Constructor.
+
+    Args:
+      func: A function that takes one argument, the model instance, and returns
+            a calculated value.
+    """
+    super(ComputedProperty, self).__init__(*args, **kwargs)
+    self.__derive_func = derive_func
+
+  def HasValue(self, entity):
+    return True
+
+  def StoreValue(self, entity, value):
+    raise ComputedPropertyError("Cannot assign to a ComputedProperty")
+
+  def RetrieveValue(self, entity):
+    return self.__derive_func(entity)
 
 
 class Expando(Model):
