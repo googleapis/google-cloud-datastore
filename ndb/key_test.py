@@ -12,7 +12,7 @@ class KeyTests(unittest.TestCase):
 
   def testShort(self):
     k0 = key.Key('Kind', None)
-    self.assertEqual(k0.flat(), ['Kind', 0])
+    self.assertEqual(k0.flat(), ['Kind', None])
     k1 = key.Key('Kind', 1)
     self.assertEqual(k1.flat(), ['Kind', 1])
     k2 = key.Key('Parent', 42, 'Kind', 1)

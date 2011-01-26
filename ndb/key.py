@@ -293,6 +293,8 @@ class Key(object):
         idorname = elem.id()
       else:
         idorname = elem.name()
+      if not idorname:
+        idorname = None
       yield (kind, idorname)
 
   def flat(self):
