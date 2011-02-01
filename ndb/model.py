@@ -79,6 +79,7 @@ __author__ = 'guido@google.com (Guido van Rossum)'
 import copy
 import datetime
 import logging
+import zlib
 
 from google.appengine.api import datastore_errors
 from google.appengine.datastore import datastore_query
@@ -897,27 +898,33 @@ class StructuredProperty(Property):
     prop.Deserialize(subentity, p, depth + 1)
 
 
+_MEANING_COMPRESSED = 18
+
+
 class LocalStructuredProperty(Property):
   """Substructure that is serialized to an opaque blob.
 
   This looks like StructuredProperty on the Python side, but is
-  written to the datastore as a single opaque blob.  It is indexed
+  written to the datastore as a single opaque blob.  It is not indexed
   and you cannot query for subproperties.
   """
 
   _indexed = False
+  _compressed = False
   _modelclass = None
 
-  _attributes = ['_modelclass'] + Property._attributes
+  _attributes = ['_modelclass'] + Property._attributes + ['_compressed']
   _positional = 2
 
   @datastore_rpc._positional(1 + _positional)
-  def __init__(self, modelclass, name=None, indexed=None, repeated=None):
+  def __init__(self, modelclass, name=None, indexed=None, repeated=None,
+               compressed=False):
     assert not indexed
     super(LocalStructuredProperty, self).__init__(name=name, repeated=repeated)
     if self._repeated:
       assert not modelclass._has_repeated
     self._modelclass = modelclass
+    self._compressed = compressed
 
   def Validate(self, value):
     if not isinstance(value, self._modelclass):
@@ -928,12 +935,19 @@ class LocalStructuredProperty(Property):
   def DbSetValue(self, v, p, value):
     pb = value.ToPb()
     serialized = pb.Encode()
-    v.set_stringvalue(serialized)
+    if self._compressed:
+      p.set_meaning(_MEANING_COMPRESSED)
+      v.set_stringvalue(zlib.compress(serialized))
+    else:
+      p.set_meaning(entity_pb.Property.BLOB)
+      v.set_stringvalue(serialized)
 
   def DbGetValue(self, v, p):
     if not v.has_stringvalue():
       return None
     serialized = v.stringvalue()
+    if p.has_meaning() and p.meaning() == _MEANING_COMPRESSED:
+      serialized = zlib.decompress(serialized)
     pb = entity_pb.EntityProto(serialized)
     entity = self._modelclass()
     entity.FromPb(pb)
