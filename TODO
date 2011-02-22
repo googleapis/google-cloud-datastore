@@ -8,3 +8,8 @@ Handle exceptions in callbacks uniformly.
 
 Ensure that Models are pickled as pbs, so caching doesn't have
 to do anything special.
+
+Make keys-only and other query options also kwd args to Query????
+
+Make it possible to decide whether an Expando's dynamic properties are
+indexed or not.
