@@ -482,6 +482,44 @@ class ModelTests(unittest.TestCase):
     self.assertEqual(MyModel.t.GetValue(ent), u'Hello world\u1234')
     self.assertEqual(MyModel.b.GetValue(ent), '\x00\xff')
 
+  def DateAndOrTimePropertyTest(self, propclass, t1, t2):
+    class Person(model.Model):
+      name = model.StringProperty()
+      ctime = propclass(auto_now_add=True)
+      mtime = propclass(auto_now=True)
+      atime = propclass()
+      times =  propclass(repeated=True)
+
+    p = Person()
+    p.atime = t1
+    p.times = [t1, t2]
+    self.assertEqual(p.ctime, None)
+    self.assertEqual(p.mtime, None)
+    pb = p.ToPb()
+    self.assertNotEqual(p.ctime, None)
+    self.assertNotEqual(p.mtime, None)
+    q = Person()
+    q.FromPb(pb)
+    self.assertEqual(q.ctime, p.ctime)
+    self.assertEqual(q.mtime, p.mtime)
+    self.assertEqual(q.atime, t1)
+    self.assertEqual(q.times, [t1, t2])
+
+  def testDateTimeProperty(self):
+    self.DateAndOrTimePropertyTest(model.DateTimeProperty,
+                                   datetime.datetime(1982, 12, 1, 9, 0, 0),
+                                   datetime.datetime(1995, 4, 15, 5, 0, 0))
+
+  def testDateProperty(self):
+    self.DateAndOrTimePropertyTest(model.DateProperty,
+                                   datetime.date(1982, 12, 1),
+                                   datetime.date(1995, 4, 15))
+
+  def testTimeProperty(self):
+    self.DateAndOrTimePropertyTest(model.TimeProperty,
+                                   datetime.time(9, 0, 0),
+                                   datetime.time(5, 0, 0, 500))
+
   def testStructuredProperty(self):
     class Address(model.Model):
       street = model.StringProperty()

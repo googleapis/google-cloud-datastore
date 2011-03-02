@@ -765,6 +765,133 @@ class KeyProperty(Property):
     return Key(reference=ref)
 
 
+_EPOCH = datetime.datetime.utcfromtimestamp(0)
+
+class DateTimeProperty(Property):
+
+  # NOTE: Unlike Django, auto_now_add can be overridden by setting the
+  # value before writing the entity.  And unlike classic db, auto_now
+  # does not supply a default value.  Also unlike classic db, when the
+  # entity is written, the property values are updated to match what
+  # was written.  Finally, beware that this also updates the value in
+  # the in-process cache, *and* that auto_now_add may interact weirdly
+  # with transaction retries (a retry of a property with auto_now_add
+  # set will reuse the value that was set on the first try).
+
+  _attributes = Property._attributes + ['_auto_now', '_auto_now_add']
+
+  @datastore_rpc._positional(1 + Property._positional)
+  def __init__(self, name=None, indexed=None, repeated=None,
+               auto_now=False, auto_now_add=False):
+    if repeated:
+      assert not auto_now
+      assert not auto_now_add
+    super(DateTimeProperty, self).__init__(name=name,
+                                           indexed=indexed,
+                                           repeated=repeated)
+    self._auto_now = auto_now
+    self._auto_now_add = auto_now_add
+
+  def Validate(self, value):
+    if not isinstance(value, datetime.datetime):
+      raise datastore_errors.BadValueError('Expected datetime, got %r' %
+                                           (value,))
+    return value
+
+  def Now(self):
+    return datetime.datetime.now()
+
+  def Serialize(self, entity, *rest):
+    if (self._auto_now or
+        (self._auto_now_add and self.RetrieveValue(entity) is None)):
+      value = self.Now()
+      self.StoreValue(entity, value)
+    super(DateTimeProperty, self).Serialize(entity, *rest)
+
+  def DbSetValue(self, v, p, value):
+    assert isinstance(value, datetime.datetime)
+    assert value.tzinfo is None
+    dt = value - _EPOCH
+    ival = dt.microseconds + 1000000 * (dt.seconds + 24*3600 * dt.days)
+    v.set_int64value(ival)
+    p.set_meaning(entity_pb.Property.GD_WHEN)
+
+  def DbGetValue(self, v, p):
+    if not v.has_int64value():
+      return None
+    ival = v.int64value()
+    return _EPOCH + datetime.timedelta(microseconds=ival)
+
+
+def _date_to_datetime(value):
+  """Convert a date to a datetime for datastore storage.
+
+  Args:
+    value: A datetime.date object.
+
+  Returns:
+    A datetime object with time set to 0:00.
+  """
+  assert isinstance(value, datetime.date)
+  return datetime.datetime(value.year, value.month, value.day)
+
+
+def _time_to_datetime(value):
+  """Convert a time to a datetime for datastore storage.
+
+  Args:
+    value: A datetime.time object.
+
+  Returns:
+    A datetime object with date set to 1970-01-01.
+  """
+  assert isinstance(value, datetime.time)
+  return datetime.datetime(1970, 1, 1,
+                           value.hour, value.minute, value.second,
+                           value.microsecond)
+
+
+class DateProperty(DateTimeProperty):
+
+  def Validate(self, value):
+    if (not isinstance(value, datetime.date) or
+        isinstance(value, datetime.datetime)):
+      raise datastore_errors.BadValueError('Expected date, got %r' %
+                                           (value,))
+    return value
+
+  def Now(self):
+    return datetime.date.today()
+
+  def DbSetValue(self, v, p, value):
+    value = _date_to_datetime(value)
+    super(DateProperty, self).DbSetValue(v, p, value)
+
+  def DbGetValue(self, v, p):
+    value = super(DateProperty, self).DbGetValue(v, p)
+    return value.date()
+
+
+class TimeProperty(DateTimeProperty):
+
+  def Validate(self, value):
+    if not isinstance(value, datetime.time):
+      raise datastore_errors.BadValueError('Expected time, got %r' %
+                                           (value,))
+    return value
+
+  def Now(self):
+    return datetime.datetime.now().time()
+
+  def DbSetValue(self, v, p, value):
+    value = _time_to_datetime(value)
+    super(TimeProperty, self).DbSetValue(v, p, value)
+
+  def DbGetValue(self, v, p):
+    value = super(TimeProperty, self).DbGetValue(v, p)
+    return value.time()
+
+
 class StructuredProperty(Property):
 
   _modelclass = None
@@ -957,8 +1084,6 @@ class LocalStructuredProperty(Property):
     entity.key = None
     return entity
 
-
-_EPOCH = datetime.datetime.utcfromtimestamp(0)
 
 class GenericProperty(Property):
   # This is mainly used for orphans but can also be used explicitly
