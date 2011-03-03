@@ -87,6 +87,21 @@ class KeyTests(unittest.TestCase):
     self.assertEqual(k.flat(), ['Kind', 1, 'Subkind', 'foobar'])
     self.assertEqual(k.parent(), p)
 
+  def testRoot(self):
+    p = key.Key('Kind', 1, app='app1', namespace='ns1')
+    self.assertEqual(p.root(), p)
+
+    k = key.Key('Subkind', 'foobar', parent=p)
+    self.assertEqual(k.flat(), ['Kind', 1, 'Subkind', 'foobar'])
+    self.assertEqual(k.root(), p)
+
+    k2 = key.Key('Subsubkind', 42, parent=k,
+                app=p.app(), namespace=p.namespace())
+    self.assertEqual(k2.flat(), ['Kind', 1,
+                                 'Subkind', 'foobar',
+                                 'Subsubkind', 42])
+    self.assertEqual(k2.root(), p)
+
   def testRepr_Inferior(self):
     k = key.Key('Kind', 1L, 'Subkind', 'foobar')
     self.assertEqual(repr(k),

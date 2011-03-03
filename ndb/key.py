@@ -273,6 +273,13 @@ class Key(object):
       return None
     return Key(pairs=pairs[:-1], app=self.app(), namespace=self.namespace())
 
+  def root(self):
+    """Return the root key.  This is either self or the highest parent."""
+    pairs = self.pairs()
+    if len(pairs) <= 1:
+      return self
+    return Key(pairs=pairs[:1], app=self.app(), namespace=self.namespace())
+
   def namespace(self):
     """Return the namespace."""
     return self.__reference.name_space()
