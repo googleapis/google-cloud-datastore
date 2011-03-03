@@ -48,8 +48,6 @@ represents a datastore Key.  Finally, StructuredProperty represents a
 field that is itself structured like an entity -- more about these
 later.
 
-TODO: DatetimeProperty, GeoPointProperty, UserProperty, etc.
-
 Most Property classes have similar constructor signatures.  They
 accept several optional keyword arguments: name=<string> to change the
 name used to store the property value in the datastore,
@@ -62,11 +60,9 @@ lists; if there is only one value, the list has only one element.
 The StructuredProperty is different; it lets you define a
 sub-structure for your entities.
 
-TODO: default and other keywords affecting validation.
-
 TODO: More on StructuredProperty.
 
-TODO: Querying support.
+TODO: Document Query support.
 """
 
 __author__ = 'guido@google.com (Guido van Rossum)'
@@ -74,6 +70,10 @@ __author__ = 'guido@google.com (Guido van Rossum)'
 # TODO: docstrings, style.
 # TODO: Change asserts to better exceptions.
 # TODO: reject unknown property names in assignment (for Model) (?)
+# TODO: default, validator, choices arguments to Property.__init__().
+# TODO: BooleanProperty, GeoPointProperty, UserProperty,
+#   BlobKeyProperty, and possibly the (rarely used) tagged values:
+#   Category, Link, Email, IM, PhoneNumber, PostalAddress, Rating.
 
 import copy
 import datetime
@@ -715,7 +715,9 @@ class BlobProperty(Property):
   def DbSetValue(self, v, p, value):
     assert isinstance(value, str)
     v.set_stringvalue(value)
-    if not self._indexed:
+    if self._indexed:
+      p.set_meaning(entity_pb.Property.BYTESTRING)
+    else:
       p.set_meaning(entity_pb.Property.BLOB)
 
   def DbGetValue(self, v, p):
@@ -1133,11 +1135,12 @@ class GenericProperty(Property):
     # TODO: use a dict mapping types to functions
     if isinstance(value, str):
       v.set_stringvalue(value)
-      # TODO: Set meaning to BLOB if it's not UTF-8?
+      # TODO: Set meaning to BLOB or BYTESTRING if it's not UTF-8?
+      # (Or TEXT if unindexed.)
     elif isinstance(value, unicode):
       v.set_stringvalue(value.encode('utf8'))
-      # TODO: I don't think this is correct; TEXT implies unindexed IIUC.
-      p.set_meaning(entity_pb.Property.TEXT)
+      if not self._indexed:
+        p.set_meaning(entity_pb.Property.TEXT)
     elif isinstance(value, bool):  # Must test before int!
       v.set_booleanvalue(value)
     elif isinstance(value, (int, long)):
