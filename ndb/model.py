@@ -81,7 +81,8 @@ example:
              address=Address(street='4 Privet Drive', city='Little Whinging'))
   k.put()
 
-This would write a single 'Person' entity with three attributes:
+This would write a single 'Person' entity with three attributes (as
+you could verify using the Datastore Viewer in the Admin Console):
 
   name = 'Harry Potter'
   address.street = '4 Privet Drive'
@@ -124,9 +125,8 @@ from google.appengine.datastore import entity_pb
 import ndb.key
 Key = ndb.key.Key  # For export.
 
-# Property and its subclasses are added later.
-__all__ = ['Key', 'ModelAdapter', 'MetaModel', 'Model', 'Expando', 'KindError',
-           'ComputedProperty', 'ComputedPropertyError']
+# Property and Error classes are added later.
+__all__ = ['Key', 'ModelAdapter', 'MetaModel', 'Model', 'Expando']
 
 
 class KindError(datastore_errors.BadValueError):
@@ -1283,7 +1283,8 @@ class Expando(Model):
     prop.SetValue(self, value)
 
 
-# Update __all__ to contain all Property subclasses.
+# Update __all__ to contain all Property and Exception subclasses.
 for _name, _object in globals().items():
-  if _name.endswith('Property') and issubclass(_object, Property):
+  if ((_name.endswith('Property') and issubclass(_object, Property)) or
+      (_name.endswith('Error') and issubclass(_object, Exception))):
     __all__.append(_name)
