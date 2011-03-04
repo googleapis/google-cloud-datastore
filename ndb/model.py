@@ -40,13 +40,16 @@ they must be indexed, their default value, and more.
 
 Many different Property types exist, including StringProperty (short
 strings), IntegerProperty (64-bit signed integers), FloatProperty
-(double precision floating point numbers).  Some more specialized
-properties also exist: TextProperty represents a longer string that is
-not indexed (StringProperty is limited to 500 bytes); BlobProperty
-represents an uninterpreted, unindexed byte string; KeyProperty
-represents a datastore Key.  Finally, StructuredProperty represents a
-field that is itself structured like an entity -- more about these
-later.
+(double precision floating point numbers), and DateTimeProperty (a
+datetime object -- note that App Engine always uses UTC for a
+timezone).  Some more specialized properties also exist: TextProperty
+represents a longer string that is not indexed (StringProperty is
+limited to 500 bytes); BlobProperty represents an uninterpreted,
+unindexed byte string; KeyProperty represents a datastore Key;
+DateProperty and TimeProperty represent dates and times separately
+(although usually DateTimeProperty is more convenient).  Finally,
+StructuredProperty represents a field that is itself structured like
+an entity -- more about these later.
 
 Most Property classes have similar constructor signatures.  They
 accept several optional keyword arguments: name=<string> to change the
@@ -58,9 +61,42 @@ entity.  Repeated properties are always represented using Python
 lists; if there is only one value, the list has only one element.
 
 The StructuredProperty is different; it lets you define a
-sub-structure for your entities.
+sub-structure for your entities.  The substructure itself is defined
+using a model class, and the attribute value is an instance of that
+model class.  However it is not stored in the datastore as a separate
+entity; instead, its attribute values are included in the parent
+entity using a naming convention (the name of the structured attribute
+followed by a dot followed by the name of the subattribute).  For
+example:
 
-TODO: More on StructuredProperty.
+  class Address(Model):
+    street = StringProperty()
+    city = StringProperty()
+
+  class Person(Model):
+    name = StringProperty()
+    addr = StructuredProperty(Address)
+
+  p = Person(name='Harry Potter',
+             address=Address(street='4 Privet Drive', city='Little Whinging'))
+  k.put()
+
+This would write a single 'Person' entity with three attributes:
+
+  name = 'Harry Potter'
+  address.street = '4 Privet Drive'
+  address.city = 'Little Whinging'
+
+Structured property types can be nested and have the repeated flag
+set, but in a hierarchy of nested structured property types, only one
+level can be repeated.  It is fine to have multiple structured
+properties referencing the same model class.
+
+It is also fine to use the same model class both as a top-level entity
+class and as for a structured property; however queries for the model
+class will only return the top-level entities.
+
+TODO: Document Expando.
 
 TODO: Document Query support.
 """
