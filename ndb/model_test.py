@@ -32,6 +32,13 @@ entity_group <
   }
 >
 property <
+  name: "b"
+  value <
+    booleanValue: true
+  >
+  multiple: false
+>
+property <
   name: "d"
   value <
     doubleValue: 2.5
@@ -432,6 +439,7 @@ class ModelTests(unittest.TestCase):
 
   def testProperty(self):
     class MyModel(model.Model):
+      b = model.BooleanProperty()
       p = model.IntegerProperty()
       q = model.StringProperty()
       d = model.FloatProperty()
@@ -440,10 +448,12 @@ class ModelTests(unittest.TestCase):
     ent = MyModel()
     k = model.Key(flat=['MyModel', 42])
     ent.key = k
+    MyModel.b.SetValue(ent, True)
     MyModel.p.SetValue(ent, 42)
     MyModel.q.SetValue(ent, 'hello')
     MyModel.d.SetValue(ent, 2.5)
     MyModel.k.SetValue(ent, k)
+    self.assertEqual(MyModel.b.GetValue(ent), True)
     self.assertEqual(MyModel.p.GetValue(ent), 42)
     self.assertEqual(MyModel.q.GetValue(ent), 'hello')
     self.assertEqual(MyModel.d.GetValue(ent), 2.5)
@@ -605,6 +615,7 @@ class ModelTests(unittest.TestCase):
 
   def testRenamedProperty(self):
     class MyModel(model.Model):
+      bb = model.BooleanProperty('b')
       pp = model.IntegerProperty('p')
       qq = model.StringProperty('q')
       dd = model.FloatProperty('d')
@@ -613,6 +624,7 @@ class ModelTests(unittest.TestCase):
     ent = MyModel()
     k = model.Key(flat=['MyModel', 42])
     ent.key = k
+    MyModel.bb.SetValue(ent, True)
     MyModel.pp.SetValue(ent, 42)
     MyModel.qq.SetValue(ent, 'hello')
     MyModel.dd.SetValue(ent, 2.5)
@@ -1023,6 +1035,7 @@ class ModelTests(unittest.TestCase):
     p.p = 42
     p.q = 'hello'
     p.d = 2.5
+    p.b = True
     pb = p.ToPb()
     self.assertEqual(str(pb), GOLDEN_PB)
 

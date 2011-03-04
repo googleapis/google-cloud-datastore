@@ -40,16 +40,16 @@ they must be indexed, their default value, and more.
 
 Many different Property types exist, including StringProperty (short
 strings), IntegerProperty (64-bit signed integers), FloatProperty
-(double precision floating point numbers), and DateTimeProperty (a
-datetime object -- note that App Engine always uses UTC for a
-timezone).  Some more specialized properties also exist: TextProperty
-represents a longer string that is not indexed (StringProperty is
-limited to 500 bytes); BlobProperty represents an uninterpreted,
-unindexed byte string; KeyProperty represents a datastore Key;
-DateProperty and TimeProperty represent dates and times separately
-(although usually DateTimeProperty is more convenient).  Finally,
-StructuredProperty represents a field that is itself structured like
-an entity -- more about these later.
+(double precision floating point numbers), BooleanProperty (bool
+values), and DateTimeProperty (a datetime object -- note that App
+Engine always uses UTC for a timezone).  Some more specialized
+properties also exist: TextProperty represents a longer string that is
+not indexed (StringProperty is limited to 500 bytes); BlobProperty
+represents an uninterpreted, unindexed byte string; KeyProperty
+represents a datastore Key; DateProperty and TimeProperty represent
+dates and times separately (although usually DateTimeProperty is more
+convenient).  Finally, StructuredProperty represents a field that is
+itself structured like an entity -- more about these later.
 
 Most Property classes have similar constructor signatures.  They
 accept several optional keyword arguments: name=<string> to change the
@@ -104,12 +104,14 @@ TODO: Document Query support.
 
 __author__ = 'guido@google.com (Guido van Rossum)'
 
-# TODO: docstrings, style.
+# TODO: docstrings.
 # TODO: Change asserts to better exceptions.
+# TODO: rename CapWords methods of Model to _underscore_names.
+# TODO: add _underscore aliases to lowercase_names Model methods.
 # TODO: reject unknown property names in assignment (for Model) (?)
 # TODO: default, validator, choices arguments to Property.__init__().
-# TODO: BooleanProperty, GeoPointProperty, UserProperty,
-#   BlobKeyProperty, and possibly the (rarely used) tagged values:
+# TODO: GeoPointProperty, UserProperty, BlobKeyProperty.
+# TODO: Possibly the (rarely used) tagged values:
 #   Category, Link, Email, IM, PhoneNumber, PostalAddress, Rating.
 
 import copy
@@ -123,6 +125,9 @@ from google.appengine.datastore import datastore_rpc
 from google.appengine.datastore import entity_pb
 
 import ndb.key
+# NOTE: Don't import ndb.query here; it would cause circular import
+# problems.  It is imported dynamically as needed.
+
 Key = ndb.key.Key  # For export.
 
 # Property and Error classes are added later.
@@ -655,6 +660,26 @@ class Property(object):
       pass
 
 
+class BooleanProperty(Property):
+
+  def Validate(self, value):
+    if not isinstance(value, bool):
+      raise datastore_errors.BadValueError('Expected bool, got %r' %
+                                           (value,))
+    return value
+
+  def DbSetValue(self, v, p, value):
+    assert isinstance(value, bool), (self._name)
+    v.set_booleanvalue(value)
+
+  def DbGetValue(self, v, p):
+    if not v.has_booleanvalue():
+      return None
+    # The booleanvalue field is an int32, so booleanvalue() returns an
+    # int, hence the conversion.
+    return bool(v.booleanvalue())
+
+
 class IntegerProperty(Property):
 
   def Validate(self, value):
@@ -1151,7 +1176,9 @@ class GenericProperty(Property):
         return _EPOCH + datetime.timedelta(microseconds=ival)
       return ival
     elif v.has_booleanvalue():
-      return v.booleanvalue()
+      # The booleanvalue field is an int32, so booleanvalue() returns
+      # an int, hence the conversion.
+      return bool(v.booleanvalue())
     elif v.has_doublevalue():
       return v.doublevalue()
     elif v.has_referencevalue():
