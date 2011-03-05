@@ -394,7 +394,8 @@ class ContextTests(unittest.TestCase):
     ctx.set_cache_policy(lambda key: False)
     @tasklets.tasklet
     def foo():
-      key1 = model.Key(flat=('Foo', 1))
+      # Foo class is declared in query_test, so let's get a unusual class name.
+      key1 = model.Key(flat=('ThisModelClassDoesntExist', 1))
       ent1 = model.Expando(key=key1, foo=42, bar='hello')
       key = yield ctx.put(ent1)
       a = yield ctx.get(key1)
