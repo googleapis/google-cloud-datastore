@@ -320,6 +320,19 @@ class ContextTests(unittest.TestCase):
       assert ent2 == ent
     foo().check_success()
 
+  def testContext_GetOrInsertWithParent(self):
+    # This also tests Context.transaction()
+    class Mod(model.Model):
+      data = model.StringProperty()
+    @tasklets.tasklet
+    def foo():
+      parent = model.Key(flat=('Foo', 1))
+      ent = yield self.ctx.get_or_insert(Mod, 'a', parent=parent, data='hello')
+      assert isinstance(ent, Mod)
+      ent2 = yield self.ctx.get_or_insert(Mod, 'a', parent=parent, data='hello')
+      assert ent2 == ent
+    foo().check_success()
+
   def testAddContextDecorator(self):
     class Demo(object):
       @context.toplevel
