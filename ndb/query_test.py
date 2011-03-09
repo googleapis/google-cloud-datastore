@@ -16,28 +16,22 @@ from ndb import context
 from ndb import model
 from ndb import query
 from ndb import tasklets
+from ndb import test_utils
 
 
-class Foo(model.Model):
-  name = model.StringProperty()
-  rate = model.IntegerProperty()
-  tags = model.StringProperty(repeated=True)
-
-
-class QueryTests(unittest.TestCase):
+class QueryTests(test_utils.DatastoreTest):
 
   def setUp(self):
-    os.environ['APPLICATION_ID'] = '_'
-    self.set_up_stubs()
+    super(QueryTests, self).setUp()
     tasklets.set_context(context.Context())
-    self.create_entities()
 
-  def set_up_stubs(self):
-    apiproxy_stub_map.apiproxy = apiproxy_stub_map.APIProxyStubMap()
-    ds_stub = datastore_file_stub.DatastoreFileStub('_', None)
-    apiproxy_stub_map.apiproxy.RegisterStub('datastore_v3', ds_stub)
-    mc_stub = memcache_stub.MemcacheServiceStub()
-    apiproxy_stub_map.apiproxy.RegisterStub('memcache', mc_stub)
+    # Create class inside tests because kinds are cleared every test.
+    global Foo
+    class Foo(model.Model):
+      name = model.StringProperty()
+      rate = model.IntegerProperty()
+      tags = model.StringProperty(repeated=True)
+    self.create_entities()
 
   def create_entities(self):
     self.joe = Foo(name='joe', tags=['joe', 'jill', 'hello'], rate=1)

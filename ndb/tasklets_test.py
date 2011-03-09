@@ -13,13 +13,15 @@ from google.appengine.api import datastore_file_stub
 from google.appengine.datastore import datastore_rpc
 
 from ndb import eventloop
-from ndb import tasklets
 from ndb import model
+from ndb import test_utils
+from ndb import tasklets
 from ndb.tasklets import Future, tasklet
 
-class TaskletTests(unittest.TestCase):
+class TaskletTests(test_utils.DatastoreTest):
 
   def setUp(self):
+    super(TaskletTests, self).setUp()
     if eventloop._EVENT_LOOP_KEY in os.environ:
       del os.environ[eventloop._EVENT_LOOP_KEY]
     if tasklets._CONTEXT_KEY in os.environ:
@@ -291,18 +293,11 @@ class TaskletTests(unittest.TestCase):
     y = x.get_result()
     self.assertEqual(y, 'hello')
 
-  def set_up_datastore(self):
-    apiproxy_stub_map.apiproxy = apiproxy_stub_map.APIProxyStubMap()
-    stub = datastore_file_stub.DatastoreFileStub('_', None)
-    apiproxy_stub_map.apiproxy.RegisterStub('datastore_v3', stub)
-    return model.make_connection()
-
   def testTasklets_YieldRpcs(self):
-    conn = self.set_up_datastore()
     @tasklets.tasklet
     def main_tasklet():
-      rpc1 = conn.async_get(None, [])
-      rpc2 = conn.async_put(None, [])
+      rpc1 = self.conn.async_get(None, [])
+      rpc2 = self.conn.async_put(None, [])
       res1 = yield rpc1
       res2 = yield rpc2
       raise tasklets.Return(res1, res2)

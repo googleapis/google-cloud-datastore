@@ -7,13 +7,10 @@ import pickle
 import re
 import unittest
 
-from google.appengine.api import apiproxy_stub_map
 from google.appengine.api import datastore_errors
-from google.appengine.api import datastore_file_stub
-from google.appengine.api.memcache import memcache_stub
 from google.appengine.datastore import entity_pb
 
-from ndb import model, query
+from ndb import model, query, test_utils
 
 GOLDEN_PB = """\
 key <
@@ -378,16 +375,12 @@ property <
 >
 """
 
-class ModelTests(unittest.TestCase):
-
-  def setUp(self):
-    model.Model.ResetKindMap()
-    self.conn = model.make_connection()
+class ModelTests(test_utils.DatastoreTest):
 
   def tearDown(self):
     self.assertTrue(model.Model._properties == {})
     self.assertTrue(model.Expando._properties == {})
-    model.Model.ResetKindMap()
+    super(ModelTests, self).tearDown()
 
   def testKey(self):
     m = model.Model()
@@ -1123,19 +1116,6 @@ class ModelTests(unittest.TestCase):
     self.assertEqual(m.name_lower, 'foobar')
     self.assertEqual(m.size, 6)
     self.assertEqual(m.hash, hash('Foobar'))
-
-
-class DatastoreTests(unittest.TestCase):
-  """Tests that actually interact with the (stub) Datastore."""
-  # TODO: Merge this into ModelTests so there's less code duplication.
-
-  def setUp(self):
-    apiproxy_stub_map.apiproxy = apiproxy_stub_map.APIProxyStubMap()
-    stub = datastore_file_stub.DatastoreFileStub('_', None)
-    apiproxy_stub_map.apiproxy.RegisterStub('datastore_v3', stub)
-    mc_stub = memcache_stub.MemcacheServiceStub()
-    apiproxy_stub_map.apiproxy.RegisterStub('memcache', mc_stub)
-    self.conn = model.make_connection()
 
   def testLargeValues(self):
     class Demo(model.Model):

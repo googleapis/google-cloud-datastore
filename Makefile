@@ -30,6 +30,15 @@ model_test:
 query_test:
 	PYTHONPATH=$(GAEPATH):. $(PYTHON) -m ndb.query_test $(FLAGS)
 
+rpc_test:
+	PYTHONPATH=$(GAEPATH):. $(PYTHON) -m ndb.rpc_test $(FLAGS)
+
+eventloop_test:
+	PYTHONPATH=$(GAEPATH):. $(PYTHON) -m ndb.eventloop_test $(FLAGS)
+
+tasklets_test:
+	PYTHONPATH=$(GAEPATH):. $(PYTHON) -m ndb.tasklets_test $(FLAGS)
+
 context_test:
 	PYTHONPATH=$(GAEPATH):. $(PYTHON) -m ndb.context_test $(FLAGS)
 

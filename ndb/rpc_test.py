@@ -7,16 +7,10 @@ from google.appengine.api import datastore_file_stub
 from google.appengine.datastore import entity_pb
 
 from google.appengine.datastore import datastore_rpc
-from ndb import key, model
+from ndb import key, model, test_utils
 
-class PendingTests(unittest.TestCase):
+class PendingTests(test_utils.DatastoreTest):
   """Tests for the 'pending RPC' management."""
-
-  def setUp(self):
-    apiproxy_stub_map.apiproxy = apiproxy_stub_map.APIProxyStubMap()
-    stub = datastore_file_stub.DatastoreFileStub('_', None)
-    apiproxy_stub_map.apiproxy.RegisterStub('datastore_v3', stub)
-    self.conn = model.make_connection()
 
   def testBasicSetup1(self):
     ent = model.Expando()

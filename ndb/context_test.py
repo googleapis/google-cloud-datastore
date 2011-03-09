@@ -7,10 +7,7 @@ import sys
 import time
 import unittest
 
-from google.appengine.api import apiproxy_stub_map
-from google.appengine.api import datastore_file_stub
 from google.appengine.api import memcache
-from google.appengine.api.memcache import memcache_stub
 from google.appengine.datastore import datastore_rpc
 
 from ndb import context
@@ -18,6 +15,7 @@ from ndb import eventloop
 from ndb import model
 from ndb import query
 from ndb import tasklets
+from ndb import test_utils
 
 
 class MyAutoBatcher(context.AutoBatcher):
@@ -35,11 +33,11 @@ class MyAutoBatcher(context.AutoBatcher):
     super(MyAutoBatcher, self).__init__(wrap)
 
 
-class ContextTests(unittest.TestCase):
+class ContextTests(test_utils.DatastoreTest):
 
   def setUp(self):
+    super(ContextTests, self).setUp()
     self.set_up_eventloop()
-    self.set_up_stubs()
     MyAutoBatcher.reset_log()
     self.ctx = context.Context(
         conn=model.make_connection(default_model=model.Expando),
@@ -50,14 +48,6 @@ class ContextTests(unittest.TestCase):
       del os.environ[eventloop._EVENT_LOOP_KEY]
     self.ev = eventloop.get_event_loop()
     self.log = []
-
-  def set_up_stubs(self):
-    apiproxy_stub_map.apiproxy = apiproxy_stub_map.APIProxyStubMap()
-    ds_stub = datastore_file_stub.DatastoreFileStub('_', None)
-    apiproxy_stub_map.apiproxy.RegisterStub('datastore_v3', ds_stub)
-    mc_stub = memcache_stub.MemcacheServiceStub()
-    apiproxy_stub_map.apiproxy.RegisterStub('memcache', mc_stub)
-    os.environ['APPLICATION_ID'] = '_'
 
   def testContext_AutoBatcher_Get(self):
     @tasklets.tasklet
