@@ -80,8 +80,8 @@ class Context(object):
     self._put_batcher = auto_batcher_class(self._put_tasklet)
     self._delete_batcher = auto_batcher_class(self._delete_tasklet)
     self._cache = {}
-    self._cache_policy = None
-    self._memcache_policy = None
+    self._cache_policy = lambda key: True
+    self._memcache_policy = lambda key: True
     # TODO: Also add a way to compute the memcache expiration time.
 
   @tasklets.tasklet
@@ -164,22 +164,64 @@ class Context(object):
       # The value returned by delete_multi() is pretty much useless, it
       # could be the keys were never cached in the first place.
 
+  def get_cache_policy(self):
+    """Returns the current context cache policy.
+
+    Returns:
+      A function that accepts a Key instance as argument and returns
+      a boolean indicating if it should be cached.
+    """
+    return self._cache_policy
+
   def set_cache_policy(self, func):
+    """Sets the context cache policy.
+
+    Args:
+      func: A function that accepts a Key instance as argument and returns
+        a boolean indicating if it should be cached.
+    """
     self._cache_policy = func
 
   def should_cache(self, key):
-    # TODO: Don't need this, set_cache_policy() could substitute a lambda.
-    if self._cache_policy is None:
-      return True
+    """Returns True if the entity associated with the given key should be
+    stored in the context cache.
+
+    Args:
+      key: Key instance.
+
+    Returns:
+      True if the key should be cached, False otherwise.
+    """
     return self._cache_policy(key)
 
+  def get_memcache_policy(self):
+    """Returns the current memcache policy.
+
+    Returns:
+      A function that accepts a Key instance as argument and returns
+      a boolean indicating if it should be cached.
+    """
+    return self._memcache_policy
+
   def set_memcache_policy(self, func):
+    """Sets the memcache policy.
+
+    Args:
+      func: A function that accepts a Key instance as argument and returns
+        a boolean indicating if it should be cached.
+    """
     self._memcache_policy = func
 
   def should_memcache(self, key):
-    # TODO: Don't need this, set_memcache_policy() could substitute a lambda.
-    if self._memcache_policy is None:
-      return True
+    """Returns True if the entity associated with the given key should be
+    stored in memcache.
+
+    Args:
+      key: Key instance.
+
+    Returns:
+      True if the key should be cached, False otherwise.
+    """
     return self._memcache_policy(key)
 
   # TODO: What about conflicting requests to different autobatchers,
@@ -191,11 +233,21 @@ class Context(object):
 
   @tasklets.tasklet
   def get(self, key):
-    if key in self._cache:
+    """Returns a Model instance given the entity key. It will use the context
+    cache if the cache policy for the given key is enabled.
+
+    Args:
+      key: Key instance.
+
+    Returns:
+      A Model instance it the key exists in the datastore; None otherwise.
+    """
+    should_cache = self.should_cache(key)
+    if should_cache and key in self._cache:
       entity = self._cache[key]  # May be None, meaning "doesn't exist".
     else:
       entity = yield self._get_batcher.add(key)
-      if self.should_cache(key):
+      if should_cache:
         self._cache[key] = entity
     raise tasklets.Return(entity)
 
@@ -315,6 +367,13 @@ class Context(object):
     # Out of retries
     raise datastore_errors.TransactionFailedError(
       'The transaction could not be committed. Please try again.')
+
+  def flush_cache(self):
+    """Clears the in-memory cache.
+
+    NOTE: This does not affect memcache.
+    """
+    self._cache.clear()
 
   def _flush_memcache(self, keys):
     keys = set(key for key in keys if self.should_memcache(key))

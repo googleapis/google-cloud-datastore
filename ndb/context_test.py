@@ -146,6 +146,27 @@ class ContextTests(unittest.TestCase):
     self.ctx.set_cache_policy(should_cache)
     foo().check_success()
 
+  def testContext_CachePolicyDisabledLater(self):
+    # If the cache is disabled after an entity is stored in the cache,
+    # further get() attempts *must not* return the result stored in cache.
+
+    self.ctx.set_cache_policy(lambda key: True)
+    key1 = model.Key(flat=('Foo', 1))
+    ent1 = model.Expando(key=key1)
+    self.ctx.put(ent1).get_result()
+
+    # get() uses cache
+    self.assertTrue(key1 in self.ctx._cache)  # Whitebox.
+    self.assertEqual(self.ctx.get(key1).get_result(), ent1)
+
+    # get() uses cache
+    self.ctx._cache[key1] = None  # Whitebox.
+    self.assertEqual(self.ctx.get(key1).get_result(), None)
+
+    # get() doesn't use cache
+    self.ctx.set_cache_policy(lambda key: False)
+    self.assertEqual(self.ctx.get(key1).get_result(), ent1)
+
   def testContext_Memcache(self):
     @tasklets.tasklet
     def foo():
