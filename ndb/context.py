@@ -382,19 +382,13 @@ class Context(object):
       memcache.delete_multi(memkeys)
 
   @tasklets.tasklet
-  def get_or_insert(self, model_class, name, parent=None, **kwds):
+  def get_or_insert(self, model_class, name,
+                    app=None, namespace=None, parent=None,
+                    **kwds):
     # TODO: Test the heck out of this, in all sorts of evil scenarios.
     assert isinstance(name, basestring) and name
-    if parent is None:
-      pairs = []
-    else:
-      # The parent shouldn't override the app or namespace,
-      # since we don't allow overriding those otherwise either.
-      assert parent.app() == ndb.key._DefaultAppId()
-      assert parent.namespace() == ndb.key._DefaultNamespace()
-      pairs = list(parent.pairs())
-    pairs.append((model_class.GetKind(), name))
-    key = model.Key(pairs=pairs)
+    key = model.Key(model_class, name,
+                    app=app, namespace=namespace, parent=parent)
     # TODO: Can (and should) the cache be trusted here?
     ent = yield self.get(key)
     if ent is None:
