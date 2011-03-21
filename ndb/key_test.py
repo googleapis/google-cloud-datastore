@@ -74,6 +74,48 @@ class KeyTests(unittest.TestCase):
     self.assertEqual(k.urlsafe(), urlsafe)
     self.assertEqual(k.reference(), r)
 
+  def testId(self):
+    k1 = key.Key('Kind', 'foo', app='app1', namespace='ns1')
+    self.assertEqual(k1.id(), 'foo')
+
+    k2 = key.Key('Subkind', 42, parent=k1)
+    self.assertEqual(k2.id(), 42)
+
+    k3 = key.Key('Subkind', 'bar', parent=k2)
+    self.assertEqual(k3.id(), 'bar')
+
+    # incomplete key
+    k4 = key.Key('Subkind', None, parent=k3)
+    self.assertEqual(k4.id(), None)
+
+  def testStringId(self):
+    k1 = key.Key('Kind', 'foo', app='app1', namespace='ns1')
+    self.assertEqual(k1.string_id(), 'foo')
+
+    k2 = key.Key('Subkind', 'bar', parent=k1)
+    self.assertEqual(k2.string_id(), 'bar')
+
+    k3 = key.Key('Subkind', 42, parent=k2)
+    self.assertEqual(k3.string_id(), None)
+
+    # incomplete key
+    k4 = key.Key('Subkind', None, parent=k3)
+    self.assertEqual(k4.string_id(), None)
+
+  def testIntegerId(self):
+    k1 = key.Key('Kind', 42, app='app1', namespace='ns1')
+    self.assertEqual(k1.integer_id(), 42)
+
+    k2 = key.Key('Subkind', 43, parent=k1)
+    self.assertEqual(k2.integer_id(), 43)
+
+    k3 = key.Key('Subkind', 'foobar', parent=k2)
+    self.assertEqual(k3.integer_id(), None)
+
+    # incomplete key
+    k4 = key.Key('Subkind', None, parent=k3)
+    self.assertEqual(k4.integer_id(), None)
+
   def testParent(self):
     p = key.Key('Kind', 1, app='app1', namespace='ns1')
     self.assertEqual(p.parent(), None)

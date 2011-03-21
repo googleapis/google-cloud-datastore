@@ -142,6 +142,15 @@ class Key(object):
 
   - key.app() -- the application id.
 
+  - key.id() -- the string or integer id in the last (kind, id) pair,
+    or None if the key is incomplete.
+
+  - key.string_id() -- the string id in the last (kind, id) pair,
+    or None if the key has an integer id or is incomplete.
+
+  - key.integer_id() -- the integer id in the last (kind, id) pair,
+    or None if the key has a string id or is incomplete.
+
   - key.namespace() -- the namespace.
 
   - key.kind() -- a shortcut for key.pairs()[-1][0].
@@ -288,6 +297,33 @@ class Key(object):
     """Return the application id."""
     return self.__reference.app()
 
+  def id(self):
+    """Return the string or integer id in the last (kind, id) pair, if any.
+
+    Returns:
+      A string or integer id, or None if the key is incomplete.
+    """
+    elem = self.__reference.path().element(-1)
+    return elem.name() or elem.id() or None
+
+  def string_id(self):
+    """Return the string id in the last (kind, id) pair, if any.
+
+    Returns:
+      A string id, or None if the key has an integer id or is incomplete.
+    """
+    elem = self.__reference.path().element(-1)
+    return elem.name() or None
+
+  def integer_id(self):
+    """Return the integer id in the last (kind, id) pair, if any.
+
+    Returns:
+      An integer id, or None if the key has a string id or is incomplete.
+    """
+    elem = self.__reference.path().element(-1)
+    return elem.id() or None
+
   def pairs(self):
     """Return a list of (kind, id) pairs."""
     return list(self._pairs())
@@ -319,10 +355,7 @@ class Key(object):
 
     This is the kind from the last (kind, id) pair.
     """
-    kind = None
-    for elem in self.__reference.path().element_list():
-      kind = elem.type()
-    return kind
+    return self.__reference.path().element(-1).type()
 
   def reference(self):
     """Return a copy of the Reference object for this Key.
