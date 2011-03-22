@@ -186,8 +186,7 @@ class Context(object):
     self._cache_policy = func
 
   def should_cache(self, key):
-    """Returns True if the entity associated with the given key should be
-    stored in the context cache.
+    """Return whether to use the context cache for this key.
 
     Args:
       key: Key instance.
@@ -216,8 +215,7 @@ class Context(object):
     self._memcache_policy = func
 
   def should_memcache(self, key):
-    """Returns True if the entity associated with the given key should be
-    stored in memcache.
+    """Return whether to use memcache for this key.
 
     Args:
       key: Key instance.
@@ -236,8 +234,10 @@ class Context(object):
 
   @tasklets.tasklet
   def get(self, key):
-    """Returns a Model instance given the entity key. It will use the context
-    cache if the cache policy for the given key is enabled.
+    """Returns a Model instance given the entity key.
+
+    It will use the context cache if the cache policy for the given
+    key is enabled.
 
     Args:
       key: Key instance.
