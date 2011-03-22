@@ -316,9 +316,8 @@ class Model(object):
     return cls._kind_map
 
   def has_complete_key(self):
-    """Returns True if this model has a complete key; False otherwise."""
-    # TODO: use key.id() when available.
-    return self._key is not None and list(self._key.flat())[-1] is not None
+    """Return whether this model has a complete key."""
+    return self._key is not None and self._key.id() is not None
 
   def _getkey(self):
     return self._key
