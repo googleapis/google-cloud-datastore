@@ -475,28 +475,82 @@ class Model(object):
 
   @classmethod
   def get_or_insert(cls, name, parent=None, **kwds):
-    return cls.get_or_insert_async(cls, name=name, parent=parent, **kwds)
+    """Transactionally retrieves an existing entity or creates a new one.
+
+    Args:
+      name: Key name to retrieve or create.
+      parent: Parent entity key, if any.
+      **kwds: Keyword arguments to pass to the constructor of the model class
+        if an instance for the specified key name does not already exist. If
+        an instance with the supplied key_name and parent already exists,
+        these arguments will be discarded.
+
+    Returns:
+      Existing instance of Model class with the specified key name and parent
+      or a new one that has just been created.
+    """
+    return cls.get_or_insert_async(name=name, parent=parent,
+                                   **kwds).get_result()
 
   @classmethod
   def get_or_insert_async(cls, name, parent=None, **kwds):
+    """Transactionally retrieves an existing entity or creates a new one.
+
+    This is the asynchronous version of Model.get_or_insert().
+    """
     from ndb import tasklets
     ctx = tasklets.get_context()
     return ctx.get_or_insert(cls, name=name, parent=parent, **kwds)
 
   @classmethod
   def allocate_ids(cls, size=None, max=None, parent=None):
-    return cls.allocate_ids(cls, size=size, max=max, parent=parent)
+    """Allocates a range of key IDs for this model class.
+
+    Args:
+      size: Number of IDs to allocate. Either size or max can be specified,
+        not both.
+      max: Maximum ID to allocate. Either size or max can be specified,
+        not both.
+      parent: Parent key for which the IDs will be allocated.
+
+    Returns:
+      A tuple with (start, end) for the allocated range, inclusive.
+    """
+    return cls.allocate_ids_async(size=size, max=max,
+                                  parent=parent).get_result()
 
   @classmethod
   def allocate_ids_async(cls, size=None, max=None, parent=None):
+    """Allocates a range of key IDs for this model class.
+
+    This is the asynchronous version of Model.allocate_ids().
+    """
     from ndb import tasklets
-    if parent is None:
-      pairs = []
-    else:
-      pairs = parent.pairs()
-    pairs.append((cls.GetKind(), None))
-    key = Key(pairs=pairs)
+    key = Key(cls.GetKind(), None, parent=parent)
     return tasklets.get_context().allocate_ids(key, size=size, max=max)
+
+  @classmethod
+  def get_by_id(cls, id, parent=None):
+    """Returns a instance of Model class by ID.
+
+    Args:
+      id: A string or integer key ID.
+      parent: Parent key of the model to get.
+
+    Returns:
+      A model instance or None if not found.
+    """
+    return cls.get_by_id_async(id, parent=parent).get_result()
+
+  @classmethod
+  def get_by_id_async(cls, id, parent=None):
+    """Returns a instance of Model class by ID.
+
+    This is the asynchronous version of Model.get_by_id().
+    """
+    from ndb import tasklets
+    key = Key(cls.GetKind(), id, parent=parent)
+    return tasklets.get_context().get(key)
 
 # TODO: More Property types
 

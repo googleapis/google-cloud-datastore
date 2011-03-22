@@ -1224,6 +1224,69 @@ class ModelTests(test_utils.DatastoreTest):
     m = model.Model(id='bar', parent=p)
     self.assertEqual(m.put(), model.Key('ParentModel', 'foo', 'Model', 'bar'))
 
+  def testAllocateIds(self):
+    class MyModel(model.Model):
+      pass
+
+    res = MyModel.allocate_ids(size=100)
+    self.assertEqual(res, (1, 100))
+
+    # with parent
+    key = model.Key(flat=(MyModel.GetKind(), 1))
+    res = MyModel.allocate_ids(size=200, parent=key)
+    self.assertEqual(res, (101, 300))
+
+  def testGetOrInsert(self):
+    class MyModel(model.Model):
+      text = model.StringProperty()
+
+    key = model.Key(flat=(MyModel.GetKind(), 'baz'))
+    self.assertEqual(key.get(), None)
+
+    MyModel.get_or_insert('baz', text='baz')
+    self.assertNotEqual(key.get(), None)
+    self.assertEqual(key.get().text, 'baz')
+
+  def testGetById(self):
+    class MyModel(model.Model):
+      pass
+
+    kind = MyModel.GetKind()
+
+    # key id
+    ent1 = MyModel(key=model.Key(pairs=[(kind, 1)]))
+    key = ent1.put()
+    res = MyModel.get_by_id(1)
+    self.assertEqual(res, ent1)
+
+    # key name
+    ent2 = MyModel(key=model.Key(pairs=[(kind, 'foo')]))
+    key = ent2.put()
+    res = MyModel.get_by_id('foo')
+    self.assertEqual(res, ent2)
+
+    # key id + parent
+    ent3 = MyModel(key=model.Key(pairs=[(kind, 1), (kind, 2)]))
+    key = ent3.put()
+    res = MyModel.get_by_id(2, parent=model.Key(pairs=[(kind, 1)]))
+    self.assertEqual(res, ent3)
+
+    # key name + parent
+    ent4 = MyModel(key=model.Key(pairs=[(kind, 1), (kind, 'bar')]))
+    key = ent4.put()
+    res = MyModel.get_by_id('bar', parent=ent1.key)
+    self.assertEqual(res, ent4)
+
+    # None
+    res = MyModel.get_by_id('idontexist')
+    self.assertEqual(res, None)
+
+    # Invalid parent
+    # Commented out until Key raises the proper exception.
+    #self.assertRaises(datastore_errors.BadValueError, MyModel.get_by_id,
+    #                  'bar', parent=1)
+
+
 def main():
   unittest.main()
 
