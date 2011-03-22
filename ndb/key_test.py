@@ -4,6 +4,7 @@ import base64
 import pickle
 import unittest
 
+from google.appengine.api import datastore_errors
 from google.appengine.datastore import entity_pb
 
 from ndb import key
@@ -215,7 +216,7 @@ class KeyTests(unittest.TestCase):
 
   def testIncomplete(self):
     k = key.Key(flat=['Kind', None])
-    self.assertRaises(AssertionError,
+    self.assertRaises(datastore_errors.BadArgumentError,
                       key.Key, flat=['Kind', None, 'Subkind', 1])
     self.assertRaises(AssertionError, key.Key, flat=['Kind', ()])
 

@@ -128,7 +128,10 @@ class Context(object):
     results = yield self._conn.async_put(None, ents)
     for key, (fut, ent) in zip(results, todo):
       if key != ent.key:
-        assert ent.key is None or not list(ent.key.flat())[-1]
+        if ent.has_complete_key():
+          raise datastore_errors.BadKeyError(
+              'Entity key differs from the one returned by the datastore. '
+              'Expected %r, got %r' % (key, ent.key))
         ent.key = key
       fut.set_result(key)
     # Now update memcache.

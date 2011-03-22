@@ -390,6 +390,10 @@ class ModelTests(test_utils.DatastoreTest):
     self.assertEqual(m.key, k)
     del m.key
     self.assertEqual(m.key, None)
+    # incomplete key
+    k2 = model.Key(flat=['ParentModel', 42, 'Model', None])
+    m.key = k2
+    self.assertEqual(m.key, k2)
 
   def testIncompleteKey(self):
     m = model.Model()
@@ -399,6 +403,67 @@ class ModelTests(test_utils.DatastoreTest):
     m2 = model.Model()
     m2.FromPb(pb)
     self.assertEqual(m2, m)
+
+  def testIdAndParent(self):
+    p = model.Key('ParentModel', 'foo')
+
+    # key name
+    m = model.Model(id='bar')
+    m2 = model.Model()
+    m2.FromPb(m.ToPb())
+    self.assertEqual(m2.key, model.Key('Model', 'bar'))
+
+    # key name + parent
+    m = model.Model(id='bar', parent=p)
+    m2 = model.Model()
+    m2.FromPb(m.ToPb())
+    self.assertEqual(m2.key, model.Key('ParentModel', 'foo', 'Model', 'bar'))
+
+    # key id
+    m = model.Model(id=42)
+    m2 = model.Model()
+    m2.FromPb(m.ToPb())
+    self.assertEqual(m2.key, model.Key('Model', 42))
+
+    # key id + parent
+    m = model.Model(id=42, parent=p)
+    m2 = model.Model()
+    m2.FromPb(m.ToPb())
+    self.assertEqual(m2.key, model.Key('ParentModel', 'foo', 'Model', 42))
+
+    # parent
+    m = model.Model(parent=p)
+    m2 = model.Model()
+    m2.FromPb(m.ToPb())
+    self.assertEqual(m2.key, model.Key('ParentModel', 'foo', 'Model', None))
+
+    # not key -- invalid
+    self.assertRaises(datastore_errors.BadValueError, model.Model, key='foo')
+
+    # wrong key kind -- invalid
+    k = model.Key('OtherModel', 'bar')
+    self.assertRaises(model.KindError, model.Model, key=k)
+
+    # incomplete parent -- invalid
+    p2 = model.Key('ParentModel', None)
+    self.assertRaises(datastore_errors.BadArgumentError, model.Model,
+                      parent=p2)
+    self.assertRaises(datastore_errors.BadArgumentError, model.Model,
+                      id='bar', parent=p2)
+
+    # key + id -- invalid
+    k = model.Key('Model', 'bar')
+    self.assertRaises(datastore_errors.BadArgumentError, model.Model, key=k,
+                      id='bar')
+
+    # key + parent -- invalid
+    k = model.Key('Model', 'bar', parent=p)
+    self.assertRaises(datastore_errors.BadArgumentError, model.Model, key=k,
+                      parent=p)
+
+    # key + id + parent -- invalid
+    self.assertRaises(datastore_errors.BadArgumentError, model.Model, key=k,
+                      id='bar', parent=p)
 
   def testQuery(self):
     class MyModel(model.Model):
@@ -1148,6 +1213,16 @@ class ModelTests(test_utils.DatastoreTest):
     m.key = k  # Connection.put() doesn't do this!
     [m2] = self.conn.get([k])
     self.assertEqual(m2, m)
+
+  def testIdAndParent(self):
+    # id
+    m = model.Model(id='bar')
+    self.assertEqual(m.put(), model.Key('Model', 'bar'))
+
+    # id + parent
+    p = model.Key('ParentModel', 'foo')
+    m = model.Model(id='bar', parent=p)
+    self.assertEqual(m.put(), model.Key('ParentModel', 'foo', 'Model', 'bar'))
 
 def main():
   unittest.main()

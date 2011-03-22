@@ -253,15 +253,36 @@ class Model(object):
   # simple aliases. That way the _ version is still accessible even if
   # the non-_ version has been obscured by a property.
 
-  # TODO: Support things like Person(id=X) as a shortcut for
-  # Person(key=Key(pairs=[(Person.GetKind(), X)]).
-  # TODO: Add parent keyword so that Person(id=X, parent=Y) is the same as
-  # Person(key=Key(pairs=Y.pairs() + [(Person.GetKind(), X)])).
-
   # TODO: Distinguish between purposes: to call FromPb() or setvalue() etc.
   @datastore_rpc._positional(1)
-  def __init__(self, key=None, **kwds):
-    self._key = key
+  def __init__(self, key=None, id=None, parent=None, **kwds):
+    """Creates a new instance of this model.
+
+    Args:
+      key: Key instance for this model. If key is used, id and parent must
+        be None.
+      id: Key id for this model. If id is used, key must be None.
+      parent: Key instance for the parent model or None for a top-level one.
+        If parent is used, key must be None.
+      **kwds: Keyword arguments mapping to properties of this model.
+    """
+    if key is not None:
+      if id is not None:
+        raise datastore_errors.BadArgumentError(
+            'Model constructor accepts key or id, not both.')
+      if parent is not None:
+        raise datastore_errors.BadArgumentError(
+            'Model constructor accepts key or parent, not both.')
+      # Using _setkey() here to trigger the basic Key checks.
+      # self.key = key doesn't work because of Expando's __setattr__().
+      self._setkey(key)
+    elif id is not None or parent is not None:
+      # When parent is set but id is not, we have an incomplete key.
+      # Key construction will fail with invalid ids or parents, so no check
+      # is needed.
+      # TODO: should this be restricted to string ids?
+      self._key = Key(self.GetKind(), id, parent=parent)
+
     self._values = {}
     self.SetAttributes(kwds)
 
@@ -294,14 +315,23 @@ class Model(object):
   def GetKindMap(cls):
     return cls._kind_map
 
+  def has_complete_key(self):
+    """Returns True if this model has a complete key; False otherwise."""
+    # TODO: use key.id() when available.
+    return self._key is not None and list(self._key.flat())[-1] is not None
+
   def _getkey(self):
     return self._key
 
   def _setkey(self, key):
     if key is not None:
-      assert isinstance(key, Key), repr(key)
-      if self.__class__ is not Model:
-        assert list(key.pairs())[-1][0] == self.GetKind()
+      if not isinstance(key, Key):
+        raise datastore_errors.BadValueError(
+            'Expected Key instance, got %r' % key)
+      if self.__class__ not in (Model, Expando):
+        if key.kind() != self.GetKind():
+          raise KindError('Expected Key kind to be %s; received %s' %
+                          (self.GetKind(), key.kind()))
     self._key = key
 
   def _delkey(self):
@@ -334,7 +364,7 @@ class Model(object):
 
   def __ne__(self, other):
     eq = self.__eq__(other)
-    if eq is  NotImplemented:
+    if eq is NotImplemented:
       return NotImplemented
     return not eq
 
@@ -345,8 +375,8 @@ class Model(object):
     # TODO: Move the key stuff into ModelAdapter.entity_to_pb()?
     key = self._key
     if key is None:
-      ref = ndb.key._ReferenceFromPairs([(self.GetKind(), None)],
-                                        reference=pb.mutable_key())
+      pairs = [(self.GetKind(), None)]
+      ref = ndb.key._ReferenceFromPairs(pairs, reference=pb.mutable_key())
     else:
       ref = key._reference()  # Don't copy
       pb.mutable_key().CopyFrom(ref)

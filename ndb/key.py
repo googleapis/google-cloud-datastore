@@ -74,6 +74,7 @@ __author__ = 'guido@google.com (Guido van Rossum)'
 import base64
 import os
 
+from google.appengine.api import datastore_errors
 from google.appengine.api import namespace_manager
 from google.appengine.datastore import datastore_rpc
 from google.appengine.datastore import entity_pb
@@ -443,6 +444,9 @@ def _ConstructReference(cls, pairs=None, flat=None,
       pairs = [(flat[i], flat[i+1]) for i in xrange(0, len(flat), 2)]
     assert pairs
     if parent is not None:
+      if not isinstance(parent, Key):
+        raise datastore_errors.BadValueError(
+            'Expected Key instance, got %r' % parent)
       pairs[:0] = parent.pairs()
       if app:
         assert app == parent.app(), (app, parent.app())
@@ -488,7 +492,9 @@ def _ReferenceFromPairs(pairs, reference=None, app=None, namespace=None):
   path = reference.mutable_path()
   last = False
   for kind, idorname in pairs:
-    assert not last, 'incomplete entry must be last'
+    if last:
+      raise datastore_errors.BadArgumentError(
+          'Incomplete Key entry must be last')
     if not isinstance(kind, basestring):
       if isinstance(kind, type):
         # Late import to avoid cycles.
