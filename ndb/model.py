@@ -48,8 +48,11 @@ not indexed (StringProperty is limited to 500 bytes); BlobProperty
 represents an uninterpreted, unindexed byte string; KeyProperty
 represents a datastore Key; DateProperty and TimeProperty represent
 dates and times separately (although usually DateTimeProperty is more
-convenient); GeoPtProperty represents a geographical point (i.e.,
-a (latitude, longitude) pair).
+convenient); GeoPtProperty represents a geographical point (i.e., a
+(latitude, longitude) pair); and UserProperty represents a User object
+(for backwards compatibility with existing datastore schemas only: we
+do not recommend storing User objects directly in the datastore, but
+recommend instead storing the user.user_id() value).
 
 Finally, StructuredProperty represents a field that is itself
 structured like an entity -- more about these later.  And
@@ -115,7 +118,7 @@ __author__ = 'guido@google.com (Guido van Rossum)'
 # TODO: add _underscore aliases to lowercase_names Model methods.
 # TODO: reject unknown property names in assignment (for Model) (?)
 # TODO: default, validator, choices arguments to Property.__init__().
-# TODO: UserProperty, BlobKeyProperty.
+# TODO: BlobKeyProperty.
 # TODO: Possibly the (rarely used) tagged values:
 #   Category, Link, Email, IM, PhoneNumber, PostalAddress, Rating.
 
@@ -125,6 +128,8 @@ import logging
 import zlib
 
 from google.appengine.api import datastore_errors
+from google.appengine.api import datastore_types
+from google.appengine.api import users
 from google.appengine.datastore import datastore_query
 from google.appengine.datastore import datastore_rpc
 from google.appengine.datastore import entity_pb
@@ -557,8 +562,6 @@ class Model(object):
     key = Key(cls.GetKind(), id, parent=parent)
     return tasklets.get_context().get(key)
 
-# TODO: More Property types
-
 
 class Property(object):
   # TODO: Separate 'simple' properties from base Property class
@@ -923,6 +926,40 @@ class GeoPtProperty(Property):
     return GeoPt(pv.x(), pv.y())
 
 
+def _unpack_user(v):
+  uv = v.uservalue()
+  email = unicode(uv.email().decode('utf-8'))
+  auth_domain = unicode(uv.auth_domain().decode('utf-8'))
+  obfuscated_gaiaid = uv.obfuscated_gaiaid().decode('utf-8')
+  obfuscated_gaiaid = unicode(obfuscated_gaiaid)
+
+  federated_identity = None
+  if uv.has_federated_identity():
+    federated_identity = unicode(
+        uv.federated_identity().decode('utf-8'))
+
+  value = users.User(email=email,
+                     _auth_domain=auth_domain,
+                     _user_id=obfuscated_gaiaid,
+                     federated_identity=federated_identity)
+  return value
+
+
+class UserProperty(Property):
+
+  def Validate(self, value):
+    if not isinstance(value, users.User):
+      raise datastore_errors.BadValueError('Expected User, got %r' %
+                                           (value,))
+    return value
+
+  def DbSetValue(self, v, p, value):
+    datastore_types.PackUser(p.name(), value, v)
+
+  def DbGetValue(self, v, p):
+    return _unpack_user(v)
+
+
 class KeyProperty(Property):
 
   # TODO: namespaces
@@ -932,8 +969,7 @@ class KeyProperty(Property):
     if not isinstance(value, Key):
       raise datastore_errors.BadValueError('Expected Key, got %r' % (value,))
     # Reject incomplete keys.
-    last = value.pairs()[-1]
-    if not last[-1]:
+    if not value.id():
       raise datastore_errors.BadValueError('Expected complete Key, got %r' %
                                            (value,))
     return value
@@ -1326,9 +1362,9 @@ class GenericProperty(Property):
       pv = v.pointvalue()
       return GeoPt(pv.x(), pv.y())
     elif v.has_uservalue():
-      assert False, 'Users are not yet supported'
+      return _unpack_user(v)
     else:
-      # A missing value imples null.
+      # A missing value implies null.
       return None
 
   def DbSetValue(self, v, p, value):
@@ -1367,8 +1403,10 @@ class GenericProperty(Property):
       pv = v.mutable_pointvalue()
       pv.set_x(value.lat)
       pv.set_y(value.lon)
+    elif isinstance(value, users.User):
+      datastore_types.PackUser(p.name(), value, v)
     else:
-      # TODO: user, blobkey, date, time, atom and gdata types
+      # TODO: blobkey, atom and gdata types
       assert False, type(value)
 
 

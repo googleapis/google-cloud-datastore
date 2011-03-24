@@ -8,10 +8,12 @@ import re
 import unittest
 
 from google.appengine.api import datastore_errors
+from google.appengine.api import users
 from google.appengine.datastore import entity_pb
 
 from ndb import model, query, test_utils
 
+TESTUSER = users.User('test@example.com', 'example.com', '123')
 AMSTERDAM = model.GeoPt(52.35, 4.9166667)
 
 GOLDEN_PB = """\
@@ -68,6 +70,18 @@ property <
   name: "q"
   value <
     stringValue: "hello"
+  >
+  multiple: false
+>
+property <
+  name: "u"
+  value <
+    UserValue {
+      email: "test@example.com"
+      auth_domain: "example.com"
+      gaiaid: 0
+      obfuscated_gaiaid: "123"
+    }
   >
   multiple: false
 >
@@ -514,6 +528,7 @@ class ModelTests(test_utils.DatastoreTest):
       q = model.StringProperty()
       d = model.FloatProperty()
       k = model.KeyProperty()
+      u = model.UserProperty()
       xy = model.GeoPtProperty()
 
     ent = MyModel()
@@ -524,12 +539,14 @@ class ModelTests(test_utils.DatastoreTest):
     MyModel.q.SetValue(ent, 'hello')
     MyModel.d.SetValue(ent, 2.5)
     MyModel.k.SetValue(ent, k)
+    MyModel.u.SetValue(ent, TESTUSER)
     MyModel.xy.SetValue(ent, AMSTERDAM)
     self.assertEqual(MyModel.b.GetValue(ent), True)
     self.assertEqual(MyModel.p.GetValue(ent), 42)
     self.assertEqual(MyModel.q.GetValue(ent), 'hello')
     self.assertEqual(MyModel.d.GetValue(ent), 2.5)
     self.assertEqual(MyModel.k.GetValue(ent), k)
+    self.assertEqual(MyModel.u.GetValue(ent), TESTUSER)
     self.assertEqual(MyModel.xy.GetValue(ent), AMSTERDAM)
     pb = self.conn.adapter.entity_to_pb(ent)
     self.assertEqual(str(pb), INDEXED_PB)
@@ -700,6 +717,7 @@ class ModelTests(test_utils.DatastoreTest):
       qq = model.StringProperty('q')
       dd = model.FloatProperty('d')
       kk = model.KeyProperty('k')
+      uu = model.UserProperty('u')
       xxyy = model.GeoPtProperty('xy')
 
     ent = MyModel()
@@ -710,11 +728,13 @@ class ModelTests(test_utils.DatastoreTest):
     MyModel.qq.SetValue(ent, 'hello')
     MyModel.dd.SetValue(ent, 2.5)
     MyModel.kk.SetValue(ent, k)
+    MyModel.uu.SetValue(ent, TESTUSER)
     MyModel.xxyy.SetValue(ent, AMSTERDAM)
     self.assertEqual(MyModel.pp.GetValue(ent), 42)
     self.assertEqual(MyModel.qq.GetValue(ent), 'hello')
     self.assertEqual(MyModel.dd.GetValue(ent), 2.5)
     self.assertEqual(MyModel.kk.GetValue(ent), k)
+    self.assertEqual(MyModel.uu.GetValue(ent), TESTUSER)
     self.assertEqual(MyModel.xxyy.GetValue(ent), AMSTERDAM)
     pb = self.conn.adapter.entity_to_pb(ent)
     self.assertEqual(str(pb), INDEXED_PB)
@@ -1117,6 +1137,7 @@ class ModelTests(test_utils.DatastoreTest):
     p.k = k
     p.p = 42
     p.q = 'hello'
+    p.u = TESTUSER
     p.d = 2.5
     p.b = True
     p.xy = AMSTERDAM
