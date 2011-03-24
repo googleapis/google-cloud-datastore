@@ -12,6 +12,8 @@ from google.appengine.datastore import entity_pb
 
 from ndb import model, query, test_utils
 
+AMSTERDAM = model.GeoPt(52.35, 4.9166667)
+
 GOLDEN_PB = """\
 key <
   app: "_"
@@ -66,6 +68,16 @@ property <
   name: "q"
   value <
     stringValue: "hello"
+  >
+  multiple: false
+>
+property <
+  name: "xy"
+  value <
+    PointValue {
+      x: 52.35
+      y: 4.9166667
+    }
   >
   multiple: false
 >
@@ -502,6 +514,7 @@ class ModelTests(test_utils.DatastoreTest):
       q = model.StringProperty()
       d = model.FloatProperty()
       k = model.KeyProperty()
+      xy = model.GeoPtProperty()
 
     ent = MyModel()
     k = model.Key(flat=['MyModel', 42])
@@ -511,11 +524,13 @@ class ModelTests(test_utils.DatastoreTest):
     MyModel.q.SetValue(ent, 'hello')
     MyModel.d.SetValue(ent, 2.5)
     MyModel.k.SetValue(ent, k)
+    MyModel.xy.SetValue(ent, AMSTERDAM)
     self.assertEqual(MyModel.b.GetValue(ent), True)
     self.assertEqual(MyModel.p.GetValue(ent), 42)
     self.assertEqual(MyModel.q.GetValue(ent), 'hello')
     self.assertEqual(MyModel.d.GetValue(ent), 2.5)
     self.assertEqual(MyModel.k.GetValue(ent), k)
+    self.assertEqual(MyModel.xy.GetValue(ent), AMSTERDAM)
     pb = self.conn.adapter.entity_to_pb(ent)
     self.assertEqual(str(pb), INDEXED_PB)
 
@@ -549,6 +564,13 @@ class ModelTests(test_utils.DatastoreTest):
     self.assertEqual(ent.key, k)
     self.assertEqual(MyModel.t.GetValue(ent), u'Hello world\u1234')
     self.assertEqual(MyModel.b.GetValue(ent), '\x00\xff')
+
+  def testGeoPt(self):
+    # Test for the GeoPt type itself.
+    p = model.GeoPt(3.14, 42)
+    self.assertEqual(p.lat, 3.14)
+    self.assertEqual(p.lon, 42.0)
+    self.assertEqual(repr(p), 'GeoPt(3.14, 42)')
 
   def DateAndOrTimePropertyTest(self, propclass, t1, t2):
     class Person(model.Model):
@@ -678,6 +700,7 @@ class ModelTests(test_utils.DatastoreTest):
       qq = model.StringProperty('q')
       dd = model.FloatProperty('d')
       kk = model.KeyProperty('k')
+      xxyy = model.GeoPtProperty('xy')
 
     ent = MyModel()
     k = model.Key(flat=['MyModel', 42])
@@ -687,10 +710,12 @@ class ModelTests(test_utils.DatastoreTest):
     MyModel.qq.SetValue(ent, 'hello')
     MyModel.dd.SetValue(ent, 2.5)
     MyModel.kk.SetValue(ent, k)
+    MyModel.xxyy.SetValue(ent, AMSTERDAM)
     self.assertEqual(MyModel.pp.GetValue(ent), 42)
     self.assertEqual(MyModel.qq.GetValue(ent), 'hello')
     self.assertEqual(MyModel.dd.GetValue(ent), 2.5)
     self.assertEqual(MyModel.kk.GetValue(ent), k)
+    self.assertEqual(MyModel.xxyy.GetValue(ent), AMSTERDAM)
     pb = self.conn.adapter.entity_to_pb(ent)
     self.assertEqual(str(pb), INDEXED_PB)
 
@@ -1094,6 +1119,7 @@ class ModelTests(test_utils.DatastoreTest):
     p.q = 'hello'
     p.d = 2.5
     p.b = True
+    p.xy = AMSTERDAM
     pb = p.ToPb()
     self.assertEqual(str(pb), GOLDEN_PB)
 

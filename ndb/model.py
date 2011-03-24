@@ -48,8 +48,13 @@ not indexed (StringProperty is limited to 500 bytes); BlobProperty
 represents an uninterpreted, unindexed byte string; KeyProperty
 represents a datastore Key; DateProperty and TimeProperty represent
 dates and times separately (although usually DateTimeProperty is more
-convenient).  Finally, StructuredProperty represents a field that is
-itself structured like an entity -- more about these later.
+convenient); GeoPtProperty represents a geographical point (i.e.,
+a (latitude, longitude) pair).
+
+Finally, StructuredProperty represents a field that is itself
+structured like an entity -- more about these later.  And
+LocalStructuredProperty is similar at the Python level, but unindexed,
+and its on-disk representation is an unencoded blob.
 
 Most Property classes have similar constructor signatures.  They
 accept several optional keyword arguments: name=<string> to change the
@@ -110,7 +115,7 @@ __author__ = 'guido@google.com (Guido van Rossum)'
 # TODO: add _underscore aliases to lowercase_names Model methods.
 # TODO: reject unknown property names in assignment (for Model) (?)
 # TODO: default, validator, choices arguments to Property.__init__().
-# TODO: GeoPointProperty, UserProperty, BlobKeyProperty.
+# TODO: UserProperty, BlobKeyProperty.
 # TODO: Possibly the (rarely used) tagged values:
 #   Category, Link, Email, IM, PhoneNumber, PostalAddress, Rating.
 
@@ -870,6 +875,54 @@ class BlobProperty(Property):
     return v.stringvalue()
 
 
+class GeoPt(tuple):
+
+  """A geographical point.  This is a tuple subclass and immutable.
+
+  Fields:
+    lat: latitude, a float in degrees with abs() <= 90.
+    lon: longitude, a float in degrees with abs() <= 180.
+  """
+
+  __slots__ = []
+
+  def __new__(cls, lat=0.0, lon=0.0):
+    # TODO: assert abs(lat) <= 90 and abs(lon) <= 180 ???
+    return tuple.__new__(cls, (float(lat), float(lon)))
+
+  @property
+  def lat(self):
+    return self[0]
+
+  @property
+  def lon(self):
+    return self[1]
+
+  def __repr__(self):
+    return '%s(%.16g, %.16g)' % (self.__class__.__name__, self.lat, self.lon)
+
+
+class GeoPtProperty(Property):
+
+  def Validate(self, value):
+    if not isinstance(value, GeoPt):
+      raise datastore_errors.BadValueError('Expected GeoPt, got %r' %
+                                           (value,))
+    return value
+
+  def DbSetValue(self, v, p, value):
+    assert isinstance(value, GeoPt), (self._name)
+    pv = v.mutable_pointvalue()
+    pv.set_x(value.lat)
+    pv.set_y(value.lon)
+
+  def DbGetValue(self, v, p):
+    if not v.has_pointvalue():
+      return None
+    pv = v.pointvalue()
+    return GeoPt(pv.x(), pv.y())
+
+
 class KeyProperty(Property):
 
   # TODO: namespaces
@@ -1270,7 +1323,8 @@ class GenericProperty(Property):
                for elem in rv.pathelement_list()]
       return Key(pairs=pairs)  # TODO: app, namespace
     elif v.has_pointvalue():
-      assert False, 'Points are not yet supported'
+      pv = v.pointvalue()
+      return GeoPt(pv.x(), pv.y())
     elif v.has_uservalue():
       assert False, 'Users are not yet supported'
     else:
@@ -1309,8 +1363,12 @@ class GenericProperty(Property):
       ival = dt.microseconds + 1000000 * (dt.seconds + 24*3600 * dt.days)
       v.set_int64value(ival)
       p.set_meaning(entity_pb.Property.GD_WHEN)
+    elif isinstance(value, GeoPt):
+      pv = v.mutable_pointvalue()
+      pv.set_x(value.lat)
+      pv.set_y(value.lon)
     else:
-      # TODO: point, user, blobkey, date, time, atom and gdata types
+      # TODO: user, blobkey, date, time, atom and gdata types
       assert False, type(value)
 
 
