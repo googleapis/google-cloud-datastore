@@ -1329,9 +1329,8 @@ class ModelTests(test_utils.DatastoreTest):
     self.assertEqual(res, None)
 
     # Invalid parent
-    # Commented out until Key raises the proper exception.
-    #self.assertRaises(datastore_errors.BadValueError, MyModel.get_by_id,
-    #                  'bar', parent=1)
+    self.assertRaises(datastore_errors.BadValueError, MyModel.get_by_id,
+                      'bar', parent=1)
 
 
 def main():
