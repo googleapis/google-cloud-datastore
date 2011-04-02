@@ -561,6 +561,137 @@ class ModelTests(test_utils.DatastoreTest):
     self.assertEqual(MyModel.d.GetValue(ent), 2.5)
     self.assertEqual(MyModel.k.GetValue(ent), k)
 
+  def testDeletingPropertyValue(self):
+    class MyModel(model.Model):
+      a = model.StringProperty()
+    m = MyModel()
+
+    # Initially it isn't there (but the value defaults to None).
+    self.assertEqual(m.a, None)
+    self.assertFalse(MyModel.a.HasValue(m))
+
+    # Explicit None assignment makes it present.
+    m.a = None
+    self.assertEqual(m.a, None)
+    self.assertTrue(MyModel.a.HasValue(m))
+
+    # Deletion restores the initial state.
+    del m.a
+    self.assertEqual(m.a, None)
+    self.assertFalse(MyModel.a.HasValue(m))
+
+    # Redundant deletions are okay.
+    del m.a
+    self.assertEqual(m.a, None)
+    self.assertFalse(MyModel.a.HasValue(m))
+
+    # Deleted/missing values are serialized and considered present
+    # when deserialized.
+    pb = m.ToPb()
+    m = MyModel()
+    m.FromPb(pb)
+    self.assertEqual(m.a, None)
+    self.assertTrue(MyModel.a.HasValue(m))
+
+  def testDefaultPropertyValue(self):
+    class MyModel(model.Model):
+      a = model.StringProperty(default='a')
+      b = model.StringProperty(default='')
+    m = MyModel()
+
+    # Initial values equal the defaults.
+    self.assertEqual(m.a, 'a')
+    self.assertEqual(m.b, '')
+    self.assertFalse(MyModel.a.HasValue(m))
+    self.assertFalse(MyModel.b.HasValue(m))
+
+    # Setting values erases the defaults.
+    m.a = ''
+    m.b = 'b'
+    self.assertEqual(m.a, '')
+    self.assertEqual(m.b, 'b')
+    self.assertTrue(MyModel.a.HasValue(m))
+    self.assertTrue(MyModel.b.HasValue(m))
+
+    # Deleting values restores the defaults.
+    del m.a
+    del m.b
+    self.assertEqual(m.a, 'a')
+    self.assertEqual(m.b, '')
+    self.assertFalse(MyModel.a.HasValue(m))
+    self.assertFalse(MyModel.b.HasValue(m))
+
+    # Serialization makes the default values explicit.
+    pb = m.ToPb()
+    m = MyModel()
+    m.FromPb(pb)
+    self.assertEqual(m.a, 'a')
+    self.assertEqual(m.b, '')
+    self.assertTrue(MyModel.a.HasValue(m))
+    self.assertTrue(MyModel.b.HasValue(m))
+
+  def testComparingExplicitAndImplicitValue(self):
+    class MyModel(model.Model):
+      a = model.StringProperty(default='a')
+      b = model.StringProperty()
+    m1 = MyModel(b=None)
+    m2 = MyModel()
+    self.assertEqual(m1, m2)
+    m1.a = 'a'
+    self.assertEqual(m1, m2)
+
+  def testRequiredProperty(self):
+    class MyModel(model.Model):
+      a = model.StringProperty(required=True)
+      b = model.StringProperty()  # Never counts as uninitialized
+    self.assertEqual(repr(MyModel.a), "StringProperty('a', required=True)")
+    m = MyModel()
+
+    # Never-assigned values are considered uninitialized.
+    self.assertEqual(m.FindUninitialized(), set(['a']))
+    self.assertRaises(datastore_errors.BadValueError, m.CheckInitialized)
+    self.assertRaises(datastore_errors.BadValueError, m.ToPb)
+
+    # Empty string is fine.
+    m.a = ''
+    self.assertFalse(m.FindUninitialized())
+    m.CheckInitialized()
+    m.ToPb()
+
+    # Non-empty string is fine (of course).
+    m.a = 'foo'
+    self.assertFalse(m.FindUninitialized())
+    m.CheckInitialized()
+    m.ToPb()
+
+    # Deleted value is not fine.
+    del m.a
+    self.assertEqual(m.FindUninitialized(), set(['a']))
+    self.assertRaises(datastore_errors.BadValueError, m.CheckInitialized)
+    self.assertRaises(datastore_errors.BadValueError, m.ToPb)
+
+    # Explicitly assigned None is *not* fine.
+    m.a = None
+    self.assertEqual(m.FindUninitialized(), set(['a']))
+    self.assertRaises(datastore_errors.BadValueError, m.CheckInitialized)
+    self.assertRaises(datastore_errors.BadValueError, m.ToPb)
+
+    # Check that b is still unset.
+    self.assertFalse(MyModel.b.HasValue(m))
+
+  def testRepeatedRequiredDefaultConflict(self):
+    # Allow at most one of repeated=True, required=True, default=<non-None>.
+    class MyModel(model.Model):
+      self.assertRaises(Exception,
+                        model.StringProperty, repeated=True, default='')
+      self.assertRaises(Exception,
+                        model.StringProperty, repeated=True, required=True)
+      self.assertRaises(Exception,
+                        model.StringProperty, required=True, default='')
+      self.assertRaises(Exception,
+                        model.StringProperty,
+                        repeated=True, required=True, default='')
+
   def testUnindexedProperty(self):
     class MyModel(model.Model):
       t = model.TextProperty()

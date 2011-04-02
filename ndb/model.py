@@ -303,6 +303,17 @@ class Model(object):
       assert isinstance(prop, Property)
       prop.SetValue(self, value)
 
+  def FindUninitialized(self):
+    return set(name
+               for name, prop in self._properties.iteritems()
+               if not prop.IsInitialized(self))
+
+  def CheckInitialized(self):
+    baddies = self.FindUninitialized()
+    if baddies:
+      raise datastore_errors.BadValueError(
+        'Entity has uninitialized properties: %s' % ', '.join(baddies))
+
   def __repr__(self):
     args = []
     done = set()
@@ -359,17 +370,23 @@ class Model(object):
       # TODO: If one key is None and the other is an explicit
       # incomplete key of the simplest form, this should be OK.
       return False
-    # TODO: Turn the rest of this into an Equivalent() method.
-    # Ignore differences in values that are None.
-    self_values = [(name, value)
-                   for name, value in self._values.iteritems()
-                   if value is not None]
-    self_values.sort()
-    other_values = [(name, value)
-                    for name, value in other._values.iteritems()
-                    if value is not None]
-    other_values.sort()
-    return self_values == other_values
+    return self.Equivalent(other)
+
+  def Equivalent(self, other):
+    assert other.__class__ is self.__class__  # TODO: What about subclasses?
+    # It's all about determining inequality early.
+    if len(self._properties) != len(other._properties):
+      return False  # Can only happen for Expandos.
+    my_prop_names = set(self._properties.iterkeys())
+    their_prop_names = set(other._properties.iterkeys())
+    if my_prop_names != their_prop_names:
+      return False  # Again, only possible for Expandos.
+    for name in my_prop_names:
+      my_value = self._properties[name].GetValue(self)
+      their_value = other._properties[name].GetValue(other)
+      if my_value != their_value:
+        return False
+    return True
 
   def __ne__(self, other):
     eq = self.__eq__(other)
@@ -379,6 +396,7 @@ class Model(object):
 
   # TODO: Refactor ToPb() so pb is an argument?
   def ToPb(self):
+    self.CheckInitialized()
     pb = entity_pb.EntityProto()
 
     # TODO: Move the key stuff into ModelAdapter.entity_to_pb()?
@@ -570,12 +588,15 @@ class Property(object):
   _name = None
   _indexed = True
   _repeated = False
+  _required = False
+  _default = None
 
-  _attributes = ['_name', '_indexed', '_repeated']
+  _attributes = ['_name', '_indexed', '_repeated', '_required', '_default']
   _positional = 1
 
   @datastore_rpc._positional(1 + _positional)
-  def __init__(self, name=None, indexed=None, repeated=None):
+  def __init__(self, name=None, indexed=None, repeated=None,
+               required=None, default=None):
     if name is not None:
       assert '.' not in name  # The '.' is used elsewhere.
       self._name = name
@@ -583,6 +604,13 @@ class Property(object):
       self._indexed = indexed
     if repeated is not None:
       self._repeated = repeated
+    if required is not None:
+      self._required = required
+    if default is not None:
+      self._default = default
+    assert (bool(self._repeated) +
+            bool(self._required) +
+            (self._default is not None)) <= 1  # Allow at most one of these
 
   def __repr__(self):
     args = []
@@ -680,7 +708,7 @@ class Property(object):
     return self._name in entity._values
 
   def RetrieveValue(self, entity):
-    return entity._values.get(self._name)
+    return entity._values.get(self._name, self._default)
 
   def GetValue(self, entity):
      value = self.RetrieveValue(entity)
@@ -688,6 +716,14 @@ class Property(object):
        value = []
        self.StoreValue(entity, value)
      return value
+
+  def DeleteValue(self, entity):
+    if self._name in entity._values:
+      del entity._values[self._name]
+
+  def IsInitialized(self, entity):
+    return not self._required or (self.HasValue(entity) and
+                                  self.GetValue(entity) is not None)
 
   def __get__(self, obj, cls=None):
     if obj is None:
@@ -697,7 +733,8 @@ class Property(object):
   def __set__(self, obj, value):
     self.SetValue(obj, value)
 
-  # TODO: __delete__
+  def __delete__(self, obj):
+    self.DeleteValue(obj)
 
   def Serialize(self, entity, pb, prefix='', parent_repeated=False):
     # entity -> pb; pb is an EntityProto message
@@ -1455,6 +1492,9 @@ class ComputedProperty(GenericProperty):
 
   def StoreValue(self, entity, value):
     raise ComputedPropertyError("Cannot assign to a ComputedProperty")
+
+  def DeleteValue(self, entity):
+    raise ComputedPropertyError("Cannot delete a ComputedProperty")
 
   def RetrieveValue(self, entity):
     return self.__derive_func(entity)
