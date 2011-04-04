@@ -590,13 +590,16 @@ class Property(object):
   _repeated = False
   _required = False
   _default = None
+  _choices = None
+  _validator = None
 
-  _attributes = ['_name', '_indexed', '_repeated', '_required', '_default']
+  _attributes = ['_name', '_indexed', '_repeated', '_required', '_default',
+                 '_choices', '_validator']
   _positional = 1
 
   @datastore_rpc._positional(1 + _positional)
   def __init__(self, name=None, indexed=None, repeated=None,
-               required=None, default=None):
+               required=None, default=None, choices=None, validator=None):
     if name is not None:
       assert '.' not in name  # The '.' is used elsewhere.
       self._name = name
@@ -611,6 +614,19 @@ class Property(object):
     assert (bool(self._repeated) +
             bool(self._required) +
             (self._default is not None)) <= 1  # Allow at most one of these
+    if choices is not None:
+      assert isinstance(choices, (tuple, list))
+      self._choices = tuple(choices)
+    if validator is not None:
+      # The validator is called as follows:
+      #   value = validator(prop, value)
+      # It should return the value to be used, or raise an exception.
+      # It should be idempotent, i.e. calling it a second time should
+      # not further modify the value.  So a validator that returns e.g.
+      # value.lower() or value.strip() is fine, but one that returns
+      # value + '$' is not.
+      assert callable(validator)
+      self._validator = validator
 
   def __repr__(self):
     args = []
@@ -678,7 +694,18 @@ class Property(object):
   # TODO: Rename these methods to start with _.
 
   def Validate(self, value):
-    # Return value, or default if it is None, or raise BadValueError.
+    # Return the value, possibly modified.
+    return value
+
+  def DoValidate(self, value):
+    value = self.Validate(value)
+    if self._choices is not None:
+      if value not in self._choices:
+        raise datastore_errors.BadValueError(
+          'Value %r for property %s is not an allowed choice' %
+          (value, self._name))
+    if self._validator is not None:
+      value = self._validator(self, value)
     return value
 
   def FixUp(self, code_name):
@@ -696,12 +723,11 @@ class Property(object):
                                              (value,))
       values = []
       for val in value:
-        if val is not None:
-          self.Validate(val)
+        val = self.DoValidate(val)
         values.append(val)
     else:
       if value is not None:
-        value = self.Validate(value)
+        value = self.DoValidate(value)
     self.StoreValue(entity, value)
 
   def HasValue(self, entity):
@@ -744,6 +770,10 @@ class Property(object):
     elif not isinstance(value, list):
       value = [value]
     for val in value:
+      if self._repeated:
+        # Re-validate repeated values, since the user could have
+        # appended values to the list, bypassing validation.
+        val = self.DoValidate(val)
       if self._indexed:
         p = pb.add_property()
       else:

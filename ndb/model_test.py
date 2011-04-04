@@ -692,6 +692,35 @@ class ModelTests(test_utils.DatastoreTest):
                         model.StringProperty,
                         repeated=True, required=True, default='')
 
+  def testChoicesProperty(self):
+    class MyModel(model.Model):
+      a = model.StringProperty(choices=['a', 'b', 'c'])
+      b = model.IntegerProperty(choices=[1, 2, 3], repeated=True)
+    m = MyModel(a='a', b=[1, 2])
+    m.a = 'b'
+    m.a = None
+    m.b = [1, 1, 3]
+    m.b = []
+    self.assertRaises(datastore_errors.BadValueError,
+                      setattr, m, 'a', 'A')
+    self.assertRaises(datastore_errors.BadValueError,
+                      setattr, m, 'b', [42])
+
+  def testValidatorProperty(self):
+    def my_validator(prop, value):
+      value = value.lower()
+      if not value.startswith('a'):
+        raise datastore_errors.BadValueError('%s does not start with "a"' %
+                                             prop._name)
+      return value
+    class MyModel(model.Model):
+      a = model.StringProperty(validator=my_validator)
+    m = MyModel()
+    m.a = 'ABC'
+    self.assertEqual(m.a, 'abc')
+    self.assertRaises(datastore_errors.BadValueError,
+                      setattr, m, 'a', 'def')
+
   def testUnindexedProperty(self):
     class MyModel(model.Model):
       t = model.TextProperty()
