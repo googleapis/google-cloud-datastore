@@ -426,12 +426,3 @@ def toplevel(func):
     finally:
       eventloop.run()  # Ensure writes are flushed, etc.
   return add_context_wrapper
-
-
-# Transaction API using the default context.
-
-def transaction(callback):
-  return transaction_async(callback).get_result()
-
-def transaction_async(callback):
-  return tasklets.get_context().transaction(callback)
