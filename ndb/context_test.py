@@ -349,11 +349,21 @@ class ContextTests(test_utils.DatastoreTest):
       @context.toplevel
       def method(self, arg):
         return (tasklets.get_context(), arg)
+
+      @context.toplevel
+      def method2(self, **kwds):
+        return (tasklets.get_context(), kwds)
     a = Demo()
     old_ctx = tasklets.get_context()
     ctx, arg = a.method(42)
     self.assertTrue(isinstance(ctx, context.Context))
     self.assertEqual(arg, 42)
+    self.assertTrue(ctx is not old_ctx)
+
+    old_ctx = tasklets.get_context()
+    ctx, kwds = a.method2(foo='bar', baz='ding')
+    self.assertTrue(isinstance(ctx, context.Context))
+    self.assertEqual(kwds, dict(foo='bar', baz='ding'))
     self.assertTrue(ctx is not old_ctx)
 
   def testDefaultContextTransaction(self):
