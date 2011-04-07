@@ -11,7 +11,7 @@ from google.appengine.api import datastore_errors
 from google.appengine.api import users
 from google.appengine.datastore import entity_pb
 
-from ndb import model, query, test_utils
+from ndb import model, query, tasklets, test_utils
 
 TESTUSER = users.User('test@example.com', 'example.com', '123')
 AMSTERDAM = model.GeoPt(52.35, 4.9166667)
@@ -1518,6 +1518,94 @@ class ModelTests(test_utils.DatastoreTest):
     self.assertNotEqual(c, None)
     self.assertEqual(c.text, 'baz')
     self.assertEqual(key.get(), c)
+
+  def testGetMultiAsync(self):
+    ent1 = model.Model(key=model.Key('MyModel', 1))
+    ent2 = model.Model(key=model.Key('MyModel', 2))
+    ent3 = model.Model(key=model.Key('MyModel', 3))
+    key1 = ent1.put()
+    key2 = ent2.put()
+    key3 = ent3.put()
+
+    @tasklets.tasklet
+    def foo():
+        ents = yield model.get_multi_async([key1, key2, key3])
+        raise tasklets.Return(ents)
+
+    res = foo().get_result()
+    self.assertEqual(res, [ent1, ent2, ent3])
+
+  def testGetMulti(self):
+    ent1 = model.Model(key=model.Key('MyModel', 1))
+    ent2 = model.Model(key=model.Key('MyModel', 2))
+    ent3 = model.Model(key=model.Key('MyModel', 3))
+    key1 = ent1.put()
+    key2 = ent2.put()
+    key3 = ent3.put()
+
+    res = model.get_multi((key1, key2, key3))
+    self.assertEqual(res, [ent1, ent2, ent3])
+
+  def testPutMultiAsync(self):
+    ent1 = model.Model(key=model.Key('MyModel', 1))
+    ent2 = model.Model(key=model.Key('MyModel', 2))
+    ent3 = model.Model(key=model.Key('MyModel', 3))
+
+    @tasklets.tasklet
+    def foo():
+        ents = yield model.put_multi_async([ent1, ent2, ent3])
+        raise tasklets.Return(ents)
+
+    res = foo().get_result()
+    self.assertEqual(res, [ent1.key, ent2.key, ent3.key])
+
+  def testPutMulti(self):
+    ent1 = model.Model(key=model.Key('MyModel', 1))
+    ent2 = model.Model(key=model.Key('MyModel', 2))
+    ent3 = model.Model(key=model.Key('MyModel', 3))
+
+    res = model.put_multi((ent1, ent2, ent3))
+    self.assertEqual(res, [ent1.key, ent2.key, ent3.key])
+
+  def testDeleteMultiAsync(self):
+    ent1 = model.Model(key=model.Key('MyModel', 1))
+    ent2 = model.Model(key=model.Key('MyModel', 2))
+    ent3 = model.Model(key=model.Key('MyModel', 3))
+    key1 = ent1.put()
+    key2 = ent2.put()
+    key3 = ent3.put()
+
+    self.assertEqual(key1.get(), ent1)
+    self.assertEqual(key2.get(), ent2)
+    self.assertEqual(key3.get(), ent3)
+
+    @tasklets.tasklet
+    def foo():
+        ents = yield model.delete_multi_async([key1, key2, key3])
+        raise tasklets.Return(ents)
+
+    res = foo().get_result()
+    self.assertEqual(key1.get(), None)
+    self.assertEqual(key2.get(), None)
+    self.assertEqual(key3.get(), None)
+
+  def testDeleteMulti(self):
+    ent1 = model.Model(key=model.Key('MyModel', 1))
+    ent2 = model.Model(key=model.Key('MyModel', 2))
+    ent3 = model.Model(key=model.Key('MyModel', 3))
+    key1 = ent1.put()
+    key2 = ent2.put()
+    key3 = ent3.put()
+
+    self.assertEqual(key1.get(), ent1)
+    self.assertEqual(key2.get(), ent2)
+    self.assertEqual(key3.get(), ent3)
+
+    res = model.delete_multi((key1, key2, key3))
+
+    self.assertEqual(key1.get(), None)
+    self.assertEqual(key2.get(), None)
+    self.assertEqual(key3.get(), None)
 
 
 def main():

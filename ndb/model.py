@@ -1598,6 +1598,74 @@ def transaction_async(callback, retry=None, entity_group=None):
   return tasklets.get_context().transaction(callback, **kwds)
 
 
+def get_multi_async(keys):
+  """Fetches a sequence of keys.
+
+  Args:
+    keys: A sequence of keys.
+
+  Returns:
+    A list of futures.
+  """
+  return [key.get_async() for key in keys]
+
+
+def get_multi(keys):
+  """Fetches a sequence of keys.
+
+  Args:
+    keys: A sequence of keys.
+
+  Returns:
+    A list whose items are either a Model instance or None if the key wasn't
+    found.
+  """
+  return [future.get_result() for future in get_multi_async(keys)]
+
+
+def put_multi_async(models):
+  """Stores a sequence of Model instances.
+
+  Args:
+    models: A sequence of Model instances.
+
+  Returns:
+    A list of futures.
+  """
+  return [model.put_async() for model in models]
+
+
+def put_multi(models):
+  """Stores a sequence of Model instances.
+
+  Args:
+    models: A sequence of Model instances.
+
+  Returns:
+    A list with the stored keys.
+  """
+  return [future.get_result() for future in put_multi_async(models)]
+
+
+def delete_multi_async(keys):
+  """Deletes a sequence of keys.
+
+  Returns:
+    A list of futures.
+  """
+  return [key.delete_async() for key in keys]
+
+
+def delete_multi(keys):
+  """Deletes a sequence of keys.
+
+  Args:
+    keys: A sequence of keys.
+  """
+  # A list full of Nones!!!
+  return [future.get_result() for future in delete_multi_async(keys)]
+
+
 # Update __all__ to contain all Property and Exception subclasses.
 for _name, _object in globals().items():
   if ((_name.endswith('Property') and issubclass(_object, Property)) or
