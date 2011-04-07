@@ -1083,14 +1083,11 @@ class DateTimeProperty(Property):
   _attributes = Property._attributes + ['_auto_now', '_auto_now_add']
 
   @datastore_rpc._positional(1 + Property._positional)
-  def __init__(self, name=None, indexed=None, repeated=None,
-               auto_now=False, auto_now_add=False):
-    if repeated:
+  def __init__(self, name=None, auto_now=False, auto_now_add=False, **kwds):
+    super(DateTimeProperty, self).__init__(name=name, **kwds)
+    if self._repeated:
       assert not auto_now
       assert not auto_now_add
-    super(DateTimeProperty, self).__init__(name=name,
-                                           indexed=indexed,
-                                           repeated=repeated)
     self._auto_now = auto_now
     self._auto_now_add = auto_now_add
 
@@ -1202,10 +1199,8 @@ class StructuredProperty(Property):
   _positional = 2
 
   @datastore_rpc._positional(1 + _positional)
-  def __init__(self, modelclass, name=None, indexed=None, repeated=None):
-    super(StructuredProperty, self).__init__(name=name,
-                                             indexed=indexed,
-                                             repeated=repeated)
+  def __init__(self, modelclass, name=None, **kwds):
+    super(StructuredProperty, self).__init__(name=name, **kwds)
     if self._repeated:
       assert not modelclass._has_repeated
     self._modelclass = modelclass
@@ -1349,10 +1344,9 @@ class LocalStructuredProperty(Property):
   _positional = 2
 
   @datastore_rpc._positional(1 + _positional)
-  def __init__(self, modelclass, name=None, indexed=None, repeated=None,
-               compressed=False):
-    assert not indexed
-    super(LocalStructuredProperty, self).__init__(name=name, repeated=repeated)
+  def __init__(self, modelclass, name=None, compressed=False, **kwds):
+    super(LocalStructuredProperty, self).__init__(name=name, **kwds)
+    assert not self._indexed
     if self._repeated:
       assert not modelclass._has_repeated
     self._modelclass = modelclass
