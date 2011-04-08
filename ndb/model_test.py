@@ -553,7 +553,7 @@ class ModelTests(test_utils.DatastoreTest):
 
     ent = MyModel()
     ent.FromPb(pb)
-    self.assertEqual(ent.GetKind(), 'MyModel')
+    self.assertEqual(ent._get_kind(), 'MyModel')
     k = model.Key(flat=['MyModel', 42])
     self.assertEqual(ent.key, k)
     self.assertEqual(MyModel.p.GetValue(ent), 42)
@@ -648,32 +648,32 @@ class ModelTests(test_utils.DatastoreTest):
     m = MyModel()
 
     # Never-assigned values are considered uninitialized.
-    self.assertEqual(m.FindUninitialized(), set(['a']))
-    self.assertRaises(datastore_errors.BadValueError, m.CheckInitialized)
+    self.assertEqual(m._find_uninitialized(), set(['a']))
+    self.assertRaises(datastore_errors.BadValueError, m._check_initialized)
     self.assertRaises(datastore_errors.BadValueError, m.ToPb)
 
     # Empty string is fine.
     m.a = ''
-    self.assertFalse(m.FindUninitialized())
-    m.CheckInitialized()
+    self.assertFalse(m._find_uninitialized())
+    m._check_initialized()
     m.ToPb()
 
     # Non-empty string is fine (of course).
     m.a = 'foo'
-    self.assertFalse(m.FindUninitialized())
-    m.CheckInitialized()
+    self.assertFalse(m._find_uninitialized())
+    m._check_initialized()
     m.ToPb()
 
     # Deleted value is not fine.
     del m.a
-    self.assertEqual(m.FindUninitialized(), set(['a']))
-    self.assertRaises(datastore_errors.BadValueError, m.CheckInitialized)
+    self.assertEqual(m._find_uninitialized(), set(['a']))
+    self.assertRaises(datastore_errors.BadValueError, m._check_initialized)
     self.assertRaises(datastore_errors.BadValueError, m.ToPb)
 
     # Explicitly assigned None is *not* fine.
     m.a = None
-    self.assertEqual(m.FindUninitialized(), set(['a']))
-    self.assertRaises(datastore_errors.BadValueError, m.CheckInitialized)
+    self.assertEqual(m._find_uninitialized(), set(['a']))
+    self.assertRaises(datastore_errors.BadValueError, m._check_initialized)
     self.assertRaises(datastore_errors.BadValueError, m.ToPb)
 
     # Check that b is still unset.
@@ -736,7 +736,7 @@ class ModelTests(test_utils.DatastoreTest):
 
     ent = MyModel()
     ent.FromPb(pb)
-    self.assertEqual(ent.GetKind(), 'MyModel')
+    self.assertEqual(ent._get_kind(), 'MyModel')
     k = model.Key(flat=['MyModel', None])
     self.assertEqual(ent.key, k)
     self.assertEqual(MyModel.t.GetValue(ent), u'Hello world\u1234')
@@ -850,7 +850,7 @@ class ModelTests(test_utils.DatastoreTest):
       name = model.StringProperty(indexed=False)
     Node.left = model.StructuredProperty(Node)
     Node.rite = model.StructuredProperty(Node)
-    Node.FixUpProperties()
+    Node._fix_up_properties()
     class Tree(model.Model):
       root = model.StructuredProperty(Node)
 
@@ -901,7 +901,7 @@ class ModelTests(test_utils.DatastoreTest):
 
     ent = MyModel()
     ent.FromPb(pb)
-    self.assertEqual(ent.GetKind(), 'MyModel')
+    self.assertEqual(ent._get_kind(), 'MyModel')
     k = model.Key(flat=['MyModel', 42])
     self.assertEqual(ent.key, k)
     self.assertEqual(MyModel.pp.GetValue(ent), 42)
@@ -939,13 +939,13 @@ class ModelTests(test_utils.DatastoreTest):
     self.assertEqual(p.ad.wo.ci, 'San Francisco')
 
   def testKindMap(self):
-    model.Model.ResetKindMap()
+    model.Model._reset_kind_map()
     class A1(model.Model):
       pass
-    self.assertEqual(model.Model.GetKindMap(), {'A1': A1})
+    self.assertEqual(model.Model._get_kind_map(), {'A1': A1})
     class A2(model.Model):
       pass
-    self.assertEqual(model.Model.GetKindMap(), {'A1': A1, 'A2': A2})
+    self.assertEqual(model.Model._get_kind_map(), {'A1': A1, 'A2': A2})
 
   def testMultipleProperty(self):
     class Person(model.Model):
@@ -1439,7 +1439,7 @@ class ModelTests(test_utils.DatastoreTest):
     self.assertEqual(res, (1, 100))
 
     # with parent
-    key = model.Key(flat=(MyModel.GetKind(), 1))
+    key = model.Key(flat=(MyModel._get_kind(), 1))
     res = MyModel.allocate_ids(size=200, parent=key)
     self.assertEqual(res, (101, 300))
 
@@ -1447,7 +1447,7 @@ class ModelTests(test_utils.DatastoreTest):
     class MyModel(model.Model):
       text = model.StringProperty()
 
-    key = model.Key(flat=(MyModel.GetKind(), 'baz'))
+    key = model.Key(flat=(MyModel._get_kind(), 'baz'))
     self.assertEqual(key.get(), None)
 
     MyModel.get_or_insert('baz', text='baz')
@@ -1458,7 +1458,7 @@ class ModelTests(test_utils.DatastoreTest):
     class MyModel(model.Model):
       pass
 
-    kind = MyModel.GetKind()
+    kind = MyModel._get_kind()
 
     # key id
     ent1 = MyModel(key=model.Key(pairs=[(kind, 1)]))

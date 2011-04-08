@@ -501,7 +501,7 @@ def _ReferenceFromPairs(pairs, reference=None, app=None, namespace=None):
         from ndb.model import Model
         modelclass = kind
         assert issubclass(modelclass, Model), repr(modelclass)
-        kind = modelclass.GetKind()
+        kind = modelclass._get_kind()
       assert isinstance(kind, basestring), (repr(modelclass), repr(kind))
     if isinstance(kind, unicode):
       kind = kind.encode('utf8')

@@ -83,4 +83,4 @@ class DatastoreTest(unittest.TestCase):
       setattr(self, name + '_stub', value)
 
   def ResetKindMap(self):
-    model.Model.ResetKindMap()
+    model.Model._reset_kind_map()

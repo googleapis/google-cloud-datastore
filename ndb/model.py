@@ -346,7 +346,7 @@ class MetaModel(type):
 
   def __init__(cls, name, bases, classdict):
     super(MetaModel, cls).__init__(name, bases, classdict)
-    cls.FixUpProperties()
+    cls._fix_up_properties()
 
 
 class Model(object):
@@ -368,11 +368,11 @@ class Model(object):
 
   The kind is normally equal to the class name (exclusive of the
   module name or any other parent scope).  To override the kind,
-  define a class method named GetKind(), as follows:
+  define a class method named _get_kind(), as follows:
 
     class MyModel(Model):
       @classmethod
-      def GetKind(cls):
+      def _get_kind(cls):
         return 'AnotherKind'
   """
 
@@ -380,7 +380,7 @@ class Model(object):
 
   # TODO: Prevent accidental attribute assignments
 
-  # Class variables updated by FixUpProperties()
+  # Class variables updated by _fix_up_properties()
   _properties = None
   _has_repeated = False
   _kind_map = {}  # Dict mapping {kind: Model subclass}
@@ -396,7 +396,10 @@ class Model(object):
   # TODO: Distinguish between purposes: to call FromPb() or setvalue() etc.
   @datastore_rpc._positional(1)
   def __init__(self, key=None, id=None, parent=None, **kwds):
-    """Creates a new instance of this model.
+    """Creates a new instance of this model (a.k.a. as an entity).
+
+    The new entity must be written to the datastore using an explicit
+    call to .put().
 
     Args:
       key: Key instance for this model. If key is used, id and parent must
@@ -405,6 +408,12 @@ class Model(object):
       parent: Key instance for the parent model or None for a top-level one.
         If parent is used, key must be None.
       **kwds: Keyword arguments mapping to properties of this model.
+
+    Note: you cannot define a property named key; the .key attribute
+    always refers to the entity's key.  But you can define properties
+    named id or parent.  Values for the latter cannot be passed
+    through the constructor, but can be assigned to entity attributes
+    after the entity has been created.
     """
     if key is not None:
       if id is not None:
@@ -421,30 +430,42 @@ class Model(object):
       # Key construction will fail with invalid ids or parents, so no check
       # is needed.
       # TODO: should this be restricted to string ids?
-      self._key = Key(self.GetKind(), id, parent=parent)
+      self._key = Key(self._get_kind(), id, parent=parent)
 
     self._values = {}
-    self.SetAttributes(kwds)
+    self._set_attributes(kwds)
 
-  def SetAttributes(self, kwds):
+  def _set_attributes(self, kwds):
+    """Internal helper to set attributes from keyword arguments."""
     cls = self.__class__
     for name, value in kwds.iteritems():
       prop = getattr(cls, name)  # Raises AttributeError for unknown properties.
       assert isinstance(prop, Property)
       prop.SetValue(self, value)
 
-  def FindUninitialized(self):
+  def _find_uninitialized(self):
+    """Internal helper to find uninitialized properties.
+
+    Returns:
+      A set of property names.
+    """
     return set(name
                for name, prop in self._properties.iteritems()
                if not prop.IsInitialized(self))
 
-  def CheckInitialized(self):
-    baddies = self.FindUninitialized()
+  def _check_initialized(self):
+    """Internal helper to check for uninitialized properties.
+
+    Raises:
+      BadValueError if it finds any.
+    """
+    baddies = self._find_uninitialized()
     if baddies:
       raise datastore_errors.BadValueError(
         'Entity has uninitialized properties: %s' % ', '.join(baddies))
 
   def __repr__(self):
+    """Return an unambiguous string representation of an entity."""
     args = []
     done = set()
     for prop in self._properties.itervalues():
@@ -457,42 +478,62 @@ class Model(object):
     s = '%s(%s)' % (self.__class__.__name__, ', '.join(args))
     return s
 
-  # TODO: Make kind a property also?
   @classmethod
-  def GetKind(cls):
+  def _get_kind(cls):
+    """Return the kind name for this class.
+
+    This defaults to cls.__name__; users may overrid this to give a
+    class a different on-disk name than its class name.
+    """
     return cls.__name__
 
   @classmethod
-  def GetKindMap(cls):
+  def _get_kind_map(cls):
+    """Internal helper to return the kind map."""
     return cls._kind_map
 
-  def has_complete_key(self):
-    """Return whether this model has a complete key."""
+  @classmethod
+  def _reset_kind_map(cls):
+    """Clear the kind map.  Useful for testing."""
+    cls._kind_map.clear()
+
+  def _has_complete_key(self):
+    """Return whether this entity has a complete key."""
     return self._key is not None and self._key.id() is not None
 
   def _getkey(self):
+    """Getter for key attribute."""
     return self._key
 
   def _setkey(self, key):
+    """Setter for key attribute."""
     if key is not None:
       if not isinstance(key, Key):
         raise datastore_errors.BadValueError(
             'Expected Key instance, got %r' % key)
       if self.__class__ not in (Model, Expando):
-        if key.kind() != self.GetKind():
+        if key.kind() != self._get_kind():
           raise KindError('Expected Key kind to be %s; received %s' %
-                          (self.GetKind(), key.kind()))
+                          (self._get_kind(), key.kind()))
     self._key = key
 
   def _delkey(self):
+    """Deleter for key attribute."""
     self._key = None
 
-  key = property(_getkey, _setkey, _delkey)
+  key = property(_getkey, _setkey, _delkey,
+                 """The Key of an entity, or None if not set yet.""")
 
   def __hash__(self):
+    """Dummy hash function.
+
+    Raises:
+      Always TypeError to emphasize that entities are mutable.
+    """
     raise TypeError('Model is not immutable')
 
   def __eq__(self, other):
+    """Compare two entities of the same class for equality."""
     if other.__class__ is not self.__class__:
       return NotImplemented
     # It's okay to use private names -- we're the same class
@@ -500,9 +541,10 @@ class Model(object):
       # TODO: If one key is None and the other is an explicit
       # incomplete key of the simplest form, this should be OK.
       return False
-    return self.Equivalent(other)
+    return self._equivalent(other)
 
-  def Equivalent(self, other):
+  def _equivalent(self, other):
+    """Compare two entities of the same class, excluding keys."""
     assert other.__class__ is self.__class__  # TODO: What about subclasses?
     # It's all about determining inequality early.
     if len(self._properties) != len(other._properties):
@@ -519,20 +561,23 @@ class Model(object):
     return True
 
   def __ne__(self, other):
+    """Implement self != other as not(self == other)."""
     eq = self.__eq__(other)
     if eq is NotImplemented:
       return NotImplemented
     return not eq
 
+  # TODO: Rename ToPb, FromPb to _to_pb, _from_pb.
+
   # TODO: Refactor ToPb() so pb is an argument?
   def ToPb(self):
-    self.CheckInitialized()
+    self._check_initialized()
     pb = entity_pb.EntityProto()
 
     # TODO: Move the key stuff into ModelAdapter.entity_to_pb()?
     key = self._key
     if key is None:
-      pairs = [(self.GetKind(), None)]
+      pairs = [(self._get_kind(), None)]
       ref = ndb.key._ReferenceFromPairs(pairs, reference=pb.mutable_key())
     else:
       ref = key._reference()  # Don't copy
@@ -561,26 +606,29 @@ class Model(object):
     unindexed_properties = pb.raw_property_list()
     for plist in [indexed_properties, unindexed_properties]:
       for p in plist:
-        prop = self.GetPropertyFor(p, plist is indexed_properties)
+        prop = self._get_property_for(p, plist is indexed_properties)
         prop.Deserialize(self, p)
 
-  def GetPropertyFor(self, p, indexed=True, depth=0):
+  def _get_property_for(self, p, indexed=True, depth=0):
+    """Internal helper to get the Property for a protobuf-level property."""
     name = p.name()
     parts = name.split('.')
     assert len(parts) > depth, (p.name(), parts, depth)
     next = parts[depth]
     prop = self._properties.get(next)
     if prop is None:
-      prop = self.FakeProperty(p, next, indexed)
+      prop = self._fake_property(p, next, indexed)
     return prop
 
-  def CloneProperties(self):
+  def _clone_properties(self):
+    """Internal helper to clone self._properties if necessary."""
     cls = self.__class__
     if self._properties is cls._properties:
       self._properties = dict(cls._properties)
 
-  def FakeProperty(self, p, next, indexed=True):
-    self.CloneProperties()
+  def _fake_property(self, p, next, indexed=True):
+    """Internal helper to create a fake Property."""
+    self._clone_properties()
     if p.name() != next and not p.name().endswith('.' + next):
       prop = StructuredProperty(Expando, next)
       self._values[prop._name] = Expando()
@@ -592,9 +640,12 @@ class Model(object):
     return prop
 
   @classmethod
-  def FixUpProperties(cls):
-    # NOTE: This is called by MetaModel, but may also be called manually
-    # after dynamically updating a model class.
+  def _fix_up_properties(cls):
+    """Fix up the properties by calling their FixUp() method.
+
+    Note: This is called by MetaModel, but may also be called manually
+    after dynamically updating a model class.
+    """
     cls._properties = {}  # Map of {name: Property}
     if cls.__module__ == __name__:  # Skip the classes in *this* file.
       return
@@ -607,16 +658,16 @@ class Model(object):
         if prop._repeated:
           cls._has_repeated = True
         cls._properties[prop._name] = prop
-    cls._kind_map[cls.GetKind()] = cls
+    cls._kind_map[cls._get_kind()] = cls
 
-  @classmethod
-  def ResetKindMap(cls):
-    cls._kind_map.clear()
+  # TODO: Rename following methods to start with an underscore, and
+  # then define convenience aliases without an underscore.  (Also some
+  # of the methods above need such aliases.)
 
   @classmethod
   def query(cls, *args, **kwds):
     from ndb.query import Query  # Import late to avoid circular imports.
-    qry = Query(kind=cls.GetKind(), **kwds)
+    qry = Query(kind=cls._get_kind(), **kwds)
     if args:
       qry = qry.filter(*args)
     return qry
@@ -684,7 +735,7 @@ class Model(object):
     This is the asynchronous version of Model.allocate_ids().
     """
     from ndb import tasklets
-    key = Key(cls.GetKind(), None, parent=parent)
+    key = Key(cls._get_kind(), None, parent=parent)
     return tasklets.get_context().allocate_ids(key, size=size, max=max)
 
   @classmethod
@@ -707,7 +758,7 @@ class Model(object):
     This is the asynchronous version of Model.get_by_id().
     """
     from ndb import tasklets
-    key = Key(cls.GetKind(), id, parent=parent)
+    key = Key(cls._get_kind(), id, parent=parent)
     return tasklets.get_context().get(key)
 
 
@@ -800,6 +851,8 @@ class Property(object):
 
   def __ge__(self, value):
     return self._comparison('>=', value)
+
+  # TODO: Rename IN to _IN and add IN back as an alias.
 
   def IN(self, value):
     from ndb.query import FilterNode  # Import late to avoid circular imports.
@@ -1425,7 +1478,7 @@ class StructuredProperty(Property):
         subentity = self._modelclass()
         self.StoreValue(entity, subentity)
       assert isinstance(subentity, self._modelclass)
-      prop = subentity.GetPropertyFor(p, depth=depth)
+      prop = subentity._get_property_for(p, depth=depth)
       prop.Deserialize(subentity, p, depth + 1)
       return
 
@@ -1658,7 +1711,7 @@ class ComputedProperty(GenericProperty):
 
 class Expando(Model):
 
-  def SetAttributes(self, kwds):
+  def _set_attributes(self, kwds):
     for name, value in kwds.iteritems():
       setattr(self, name, value)
 
@@ -1675,7 +1728,7 @@ class Expando(Model):
     if (name.startswith('_') or
         isinstance(getattr(self.__class__, name, None), Property)):
       return super(Expando, self).__setattr__(name, value)
-    self.CloneProperties()
+    self._clone_properties()
     if isinstance(value, Model):
       prop = StructuredProperty(Model, name)
     else:

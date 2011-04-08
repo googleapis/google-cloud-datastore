@@ -226,7 +226,7 @@ class KeyTests(unittest.TestCase):
       pass
     class N(model.Model):
       @classmethod
-      def GetKind(cls):
+      def _get_kind(cls):
         return 'NN'
     k = key.Key(M, 1)
     self.assertEqual(k, key.Key('M', 1))
