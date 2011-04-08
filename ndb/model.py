@@ -126,9 +126,6 @@ validation is called when the value is set to None.  However for
 required properties, writing the entity to the datastore requires
 the value to be something other than None (and valid).
 
-TODO: There's a bug here where the default is not written to the
-datastore and it read back as a hard None.
-
 The StructuredProperty is different from most other properties; it
 lets you define a sub-structure for your entities.  The substructure
 itself is defined using a model class, and the attribute value is an
