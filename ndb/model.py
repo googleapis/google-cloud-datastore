@@ -75,6 +75,14 @@ exceptions indicated in the list below:
 - LocalStructuredProperty: like StructuredProperty but the on-disk
   representation is an opaque blob; unindexed
 
+- ComputedProperty: a property whose value is computed from other
+  properties by a user-defined function.  The property value is
+  written to the datastore so that it can be used in queries, but the
+  value from the datastore is not used when the entity is read back
+
+- GenericProperty: a property whose type is not constrained; mostly
+  used by the Expando class (see below) but also usable explicitly
+
 Most Property classes have similar constructor signatures.  They
 accept several optional keyword arguments:
 
@@ -98,9 +106,9 @@ accept several optional keyword arguments:
   will be called with two arguments (prop, value) and should either
   return the validated value or raise an exception.  It is also
   allowed for the function to modify the value, but calling it again
-  on the modified value should not modify the value further.
-  (Example: a validator that returns value.strip() or value.lower()
-  is fine, but one that returns value + '$' is not.)
+  on the modified value should not modify the value further.  (For
+  example: a validator that returns value.strip() or value.lower() is
+  fine, but one that returns value + '$' is not.)
 
 The repeated, required and default options are mutually exclusive: a
 repeated property cannot be required nor can it specify a default
@@ -141,7 +149,7 @@ subattribute).  For example:
 
   class Person(Model):
     name = StringProperty()
-    addr = StructuredProperty(Address)
+    address = StructuredProperty(Address)
 
   p = Person(name='Harry Potter',
              address=Address(street='4 Privet Drive',
@@ -173,7 +181,7 @@ Python side.  For example:
 
   class Person(Model):
     name = StringProperty()
-    addr = LocalStructuredProperty(Address)
+    address = LocalStructuredProperty(Address)
 
   p = Person(name='Harry Potter',
              address=Address(street='4 Privet Drive',
@@ -188,7 +196,7 @@ value (using the standard"protocol buffer" encoding).
 Sometimes the set of properties is not known ahead of time.  In such
 cases you can use the Expando class.  This is a Model subclass that
 creates properties on the fly, both upon assignment and when loading
-an entity from the datastore.  Example:
+an entity from the datastore.  For example:
 
   class SuperPerson(Expando):
     name = StringProperty()
@@ -215,20 +223,33 @@ _properties attribute:
 Note: this property exists for plain Model instances too; it is just
 not as interesting for those.
 
-TODO: Document Query support.
+The Model class offers basic query support.  You can create a Query
+object by calling the query() class method.  Iterating over a Query
+object returns the entities matching the query one at a time.
+
+Query objects are fully described in the docstring for query.py, but
+there is one handy shortcut that is only available through
+Model.query(): positional arguments are interpreted as filter
+expressions which are combined through an AND operator.  For example:
+
+  Person.query(Person.name == 'Harry Potter', Person.age >= 11)
+
+is equivalent to:
+
+  Person.query().filter(Person.name == 'Harry Potter', Person.age >= 11)
+
+Keyword arguments passed to .query() are passed along to the Query()
+constructor.
 """
 
 __author__ = 'guido@google.com (Guido van Rossum)'
 
-# TODO: docstrings.
-# TODO: Change asserts to better exceptions.
+# TODO: docstrings on all Property classes, Expando, and all methods.
+# TODO: change asserts to better exceptions.
 # TODO: rename CapWords methods of Model to _underscore_names.
 # TODO: add _underscore aliases to lowercase_names Model methods.
 # TODO: reject unknown property names in assignment (for Model) (?)
-# TODO: default, validator, choices arguments to Property.__init__().
 # TODO: BlobKeyProperty.
-# TODO: Possibly the (rarely used) tagged values:
-#   Category, Link, Email, IM, PhoneNumber, PostalAddress, Rating.
 
 import copy
 import datetime
