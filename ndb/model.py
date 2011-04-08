@@ -185,7 +185,35 @@ However the data written to the datastore is different; it writes a
 'address' attribute whose value is a blob which encodes the Address
 value (using the standard"protocol buffer" encoding).
 
-TODO: Document Expando.
+Sometimes the set of properties is not known ahead of time.  In such
+cases you can use the Expando class.  This is a Model subclass that
+creates properties on the fly, both upon assignment and when loading
+an entity from the datastore.  Example:
+
+  class SuperPerson(Expando):
+    name = StringProperty()
+    superpower = StringProperty()
+
+  razorgirl = SuperPerson(name='Molly Millions',
+                          superpower='bionic eyes, razorblade hands',
+                          rasta_name='Steppin\' Razor',
+                          alt_name='Sally Shears')
+  elastigirl = SuperPerson(name='Helen Parr',
+                           superpower='stretchable body')
+  elastigirl.max_stretch = 30  # Meters
+
+You can inspect the properties of an expando instance using the
+_properties attribute:
+
+  >>> print razorgirl._properties.keys()
+  ['rasta_name', 'name', 'superpower', 'alt_name']
+  >>> print elastigirl._properties
+  {'max_stretch': GenericProperty('max_stretch'),
+   'name': StringProperty('name'),
+   'superpower': StringProperty('superpower')}
+
+Note: this property exists for plain Model instances too; it is just
+not as interesting for those.
 
 TODO: Document Query support.
 """
