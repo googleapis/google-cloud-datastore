@@ -38,44 +38,105 @@ The property definitions in the class body tell the system the names
 and the types of the fields to be stored in the datastore, whether
 they must be indexed, their default value, and more.
 
-Many different Property types exist, including StringProperty (short
-strings), IntegerProperty (64-bit signed integers), FloatProperty
-(double precision floating point numbers), BooleanProperty (bool
-values), and DateTimeProperty (a datetime object -- note that App
-Engine always uses UTC for a timezone).  Some more specialized
-properties also exist: TextProperty represents a longer string that is
-not indexed (StringProperty is limited to 500 bytes); BlobProperty
-represents an uninterpreted, unindexed byte string; KeyProperty
-represents a datastore Key; DateProperty and TimeProperty represent
-dates and times separately (although usually DateTimeProperty is more
-convenient); GeoPtProperty represents a geographical point (i.e., a
-(latitude, longitude) pair); and UserProperty represents a User object
-(for backwards compatibility with existing datastore schemas only: we
-do not recommend storing User objects directly in the datastore, but
-recommend instead storing the user.user_id() value).
+Many different Property types exist.  Most are indexed by default, the
+exceptions indicated in the list below:
 
-Finally, StructuredProperty represents a field that is itself
-structured like an entity -- more about these later.  And
-LocalStructuredProperty is similar at the Python level, but unindexed,
-and its on-disk representation is an unencoded blob.
+- StringProperty: a short text string, limited to 500 bytes
+
+- TextProperty: an unlimited text string; unindexed
+
+- BlobProperty: an unlimited byte string; unindexed
+
+- IntegerProperty: a 64-bit signed integer
+
+- FloatProperty: a double precision floating point number
+
+- BooleanProperty: a bool value
+
+- DateTimeProperty: a datetime object.  Note: App Engine always uses
+  UTC as the timezone
+
+- DateProperty: a date object
+
+- TimeProperty: a time object
+
+- GeoPtProperty: a geographical location, i.e. (latitude, longitude)
+
+- KeyProperty: a datastore Key value
+
+- UserProperty: a User object.  Note: this exists for backwards
+  compatibility with existing datastore schemas only; we do not
+  recommend storing User objects directly in the datastore, but
+  instead recommend storing the user.user_id() value
+
+- StructuredProperty: a field that is itself structured like an
+  entity; see below for more details
+
+- LocalStructuredProperty: like StructuredProperty but the on-disk
+  representation is an opaque blob; unindexed
 
 Most Property classes have similar constructor signatures.  They
-accept several optional keyword arguments: name=<string> to change the
-name used to store the property value in the datastore,
-indexed=<boolean> to indicate whether the property should be indexed
-(allowing queries on this property's value), and repeated=<boolean> to
-indicate that this property can have multiple values in the same
-entity.  Repeated properties are always represented using Python
-lists; if there is only one value, the list has only one element.
+accept several optional keyword arguments:
 
-The StructuredProperty is different; it lets you define a
-sub-structure for your entities.  The substructure itself is defined
-using a model class, and the attribute value is an instance of that
-model class.  However it is not stored in the datastore as a separate
-entity; instead, its attribute values are included in the parent
-entity using a naming convention (the name of the structured attribute
-followed by a dot followed by the name of the subattribute).  For
-example:
+- name=<string>: the name used to store the property value in the
+  datastore.  Unlike the following options, this may also be given as
+  a positional argument
+
+- indexed=<bool>: indicates whether the property should be indexed
+  (allowing queries on this property's value)
+
+- repeated=<bool>: indicates that this property can have multiple
+  values in the same entity.
+
+- required=<bool>: indicates that this property must be given a value
+
+- default=<value>: a default value if no explicit value is given
+
+- choices=<list of values>: a list or tuple of allowable values
+
+- validator=<function>: a general-purpose validation function.  It
+  will be called with two arguments (prop, value) and should either
+  return the validated value or raise an exception.  It is also
+  allowed for the function to modify the value, but calling it again
+  on the modified value should not modify the value further.
+  (Example: a validator that returns value.strip() or value.lower()
+  is fine, but one that returns value + '$' is not.)
+
+The repeated, required and default options are mutually exclusive: a
+repeated property cannot be required nor can it specify a default
+value (the default is always an empty list and an empty list is always
+an allowed value), and a required property cannot have a default.
+
+Some property types have additional arguments.  Some property types
+do not support all options.
+
+Repeated properties are always represented as Python lists; if there
+is only one value, the list has only one element.  When a new list is
+assigned to a repeated property, all elements of the list are
+validated.  Since it is also possible to mutate lists in place,
+repeated properties are re-validated before they are written to the
+datastore.
+
+No validation happens when an entity is read from the datastore;
+however property values read that have the wrong type (e.g. a string
+value for an IntegerProperty) are ignored.
+
+For non-repeated properties, None is always a possible value, and no
+validation is called when the value is set to None.  However for
+required properties, writing the entity to the datastore requires
+the value to be something other than None (and valid).
+
+TODO: There's a bug here where the default is not written to the
+datastore and it read back as a hard None.
+
+The StructuredProperty is different from most other properties; it
+lets you define a sub-structure for your entities.  The substructure
+itself is defined using a model class, and the attribute value is an
+instance of that model class.  However it is not stored in the
+datastore as a separate entity; instead, its attribute values are
+included in the parent entity using a naming convention (the name of
+the structured attribute followed by a dot followed by the name of the
+subattribute).  For example:
 
   class Address(Model):
     street = StringProperty()
@@ -86,7 +147,8 @@ example:
     addr = StructuredProperty(Address)
 
   p = Person(name='Harry Potter',
-             address=Address(street='4 Privet Drive', city='Little Whinging'))
+             address=Address(street='4 Privet Drive',
+                             city='Little Whinging'))
   k.put()
 
 This would write a single 'Person' entity with three attributes (as
@@ -104,6 +166,27 @@ properties referencing the same model class.
 It is also fine to use the same model class both as a top-level entity
 class and as for a structured property; however queries for the model
 class will only return the top-level entities.
+
+The LocalStructuredProperty works similar to StructuredProperty on the
+Python side.  For example:
+
+  class Address(Model):
+    street = StringProperty()
+    city = StringProperty()
+
+  class Person(Model):
+    name = StringProperty()
+    addr = LocalStructuredProperty(Address)
+
+  p = Person(name='Harry Potter',
+             address=Address(street='4 Privet Drive',
+                             city='Little Whinging'))
+  k.put()
+
+However the data written to the datastore is different; it writes a
+'Person' entity with a 'name' attribute as before and a single
+'address' attribute whose value is a blob which encodes the Address
+value (using the standard"protocol buffer" encoding).
 
 TODO: Document Expando.
 
@@ -954,6 +1037,8 @@ class GeoPt(tuple):
     lat: latitude, a float in degrees with abs() <= 90.
     lon: longitude, a float in degrees with abs() <= 180.
   """
+
+  # TODO: Use collections.namedtuple once we can drop Python 2.5 support.
 
   __slots__ = []
 
