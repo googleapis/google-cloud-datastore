@@ -318,9 +318,7 @@ class ModelAdapter(datastore_rpc.AbstractAdapter):
     modelclass = Model._kind_map.get(kind, self.default_model)
     if modelclass is None:
       raise KindError("No implementation found for kind '%s'" % kind)
-    ent = modelclass()
-    ent._from_pb(pb)
-    return ent
+    return modelclass._from_pb(pb)
 
   def entity_to_pb(self, ent):
     pb = ent._to_pb()
@@ -568,6 +566,7 @@ class Model(object):
     return not eq
 
   def _to_pb(self, pb=None):
+    """Internal helper to turn an entity into an EntityProto protobuf."""
     self._check_initialized()
     if pb is None:
       pb = entity_pb.EntityProto()
@@ -590,22 +589,24 @@ class Model(object):
 
     return pb
 
-  # TODO: Make this a class method?
-  def _from_pb(self, pb):
-    assert not self._key
-    assert not self._values
+  @classmethod
+  def _from_pb(cls, pb, set_key=True):
+    """Internal helper to create an entity from an EntityProto protobuf."""
     assert isinstance(pb, entity_pb.EntityProto)
+    ent = cls()
 
     # TODO: Move the key stuff into ModelAdapter.pb_to_entity()?
-    if pb.has_key():
-      self._key = Key(reference=pb.key())
+    if set_key and pb.has_key():
+      ent._key = Key(reference=pb.key())
 
     indexed_properties = pb.property_list()
     unindexed_properties = pb.raw_property_list()
     for plist in [indexed_properties, unindexed_properties]:
       for p in plist:
-        prop = self._get_property_for(p, plist is indexed_properties)
-        prop.Deserialize(self, p)
+        prop = ent._get_property_for(p, plist is indexed_properties)
+        prop.Deserialize(ent, p)
+
+    return ent
 
   def _get_property_for(self, p, indexed=True, depth=0):
     """Internal helper to get the Property for a protobuf-level property."""
@@ -1558,10 +1559,7 @@ class LocalStructuredProperty(Property):
     if p.has_meaning() and p.meaning() == _MEANING_COMPRESSED:
       serialized = zlib.decompress(serialized)
     pb = entity_pb.EntityProto(serialized)
-    entity = self._modelclass()
-    entity._from_pb(pb)
-    entity.key = None
-    return entity
+    return self._modelclass._from_pb(pb, set_key=False)
 
 
 class GenericProperty(Property):
