@@ -312,14 +312,14 @@ class ModelAdapter(datastore_rpc.AbstractAdapter):
     if pb.has_key():
       # TODO: Fix the inefficiency here: we extract the key just so we
       # can get the kind just so we can find the intended model class,
-      # but the key is extracted again and stored in the entity by FromPb().
+      # but the key is extracted again and stored in the entity by _from_pb().
       key = Key(reference=pb.key())
       kind = key.kind()
     modelclass = Model._kind_map.get(kind, self.default_model)
     if modelclass is None:
       raise KindError("No implementation found for kind '%s'" % kind)
     ent = modelclass()
-    ent.FromPb(pb)
+    ent._from_pb(pb)
     return ent
 
   def entity_to_pb(self, ent):
@@ -393,7 +393,7 @@ class Model(object):
   # simple aliases. That way the _ version is still accessible even if
   # the non-_ version has been obscured by a property.
 
-  # TODO: Distinguish between purposes: to call FromPb() or setvalue() etc.
+  # TODO: Distinguish between purposes: to call _from_pb() or setvalue() etc.
   @datastore_rpc._positional(1)
   def __init__(self, key=None, id=None, parent=None, **kwds):
     """Creates a new instance of this model (a.k.a. as an entity).
@@ -590,10 +590,8 @@ class Model(object):
 
     return pb
 
-  # TODO: Rename FromPb to _from_pb.
-
   # TODO: Make this a class method?
-  def FromPb(self, pb):
+  def _from_pb(self, pb):
     assert not self._key
     assert not self._values
     assert isinstance(pb, entity_pb.EntityProto)
@@ -1561,7 +1559,7 @@ class LocalStructuredProperty(Property):
       serialized = zlib.decompress(serialized)
     pb = entity_pb.EntityProto(serialized)
     entity = self._modelclass()
-    entity.FromPb(pb)
+    entity._from_pb(pb)
     entity.key = None
     return entity
 
