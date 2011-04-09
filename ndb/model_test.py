@@ -425,7 +425,7 @@ class ModelTests(test_utils.DatastoreTest):
     m = model.Model()
     k = model.Key(flat=['Model', None])
     m.key = k
-    pb = m.ToPb()
+    pb = m._to_pb()
     m2 = model.Model()
     m2.FromPb(pb)
     self.assertEqual(m2, m)
@@ -436,31 +436,31 @@ class ModelTests(test_utils.DatastoreTest):
     # key name
     m = model.Model(id='bar')
     m2 = model.Model()
-    m2.FromPb(m.ToPb())
+    m2.FromPb(m._to_pb())
     self.assertEqual(m2.key, model.Key('Model', 'bar'))
 
     # key name + parent
     m = model.Model(id='bar', parent=p)
     m2 = model.Model()
-    m2.FromPb(m.ToPb())
+    m2.FromPb(m._to_pb())
     self.assertEqual(m2.key, model.Key('ParentModel', 'foo', 'Model', 'bar'))
 
     # key id
     m = model.Model(id=42)
     m2 = model.Model()
-    m2.FromPb(m.ToPb())
+    m2.FromPb(m._to_pb())
     self.assertEqual(m2.key, model.Key('Model', 42))
 
     # key id + parent
     m = model.Model(id=42, parent=p)
     m2 = model.Model()
-    m2.FromPb(m.ToPb())
+    m2.FromPb(m._to_pb())
     self.assertEqual(m2.key, model.Key('ParentModel', 'foo', 'Model', 42))
 
     # parent
     m = model.Model(parent=p)
     m2 = model.Model()
-    m2.FromPb(m.ToPb())
+    m2.FromPb(m._to_pb())
     self.assertEqual(m2.key, model.Key('ParentModel', 'foo', 'Model', None))
 
     # not key -- invalid
@@ -587,7 +587,7 @@ class ModelTests(test_utils.DatastoreTest):
 
     # Deleted/missing values are serialized and considered present
     # when deserialized.
-    pb = m.ToPb()
+    pb = m._to_pb()
     m = MyModel()
     m.FromPb(pb)
     self.assertEqual(m.a, None)
@@ -622,7 +622,7 @@ class ModelTests(test_utils.DatastoreTest):
     self.assertFalse(MyModel.b.HasValue(m))
 
     # Serialization makes the default values explicit.
-    pb = m.ToPb()
+    pb = m._to_pb()
     m = MyModel()
     m.FromPb(pb)
     self.assertEqual(m.a, 'a')
@@ -650,31 +650,31 @@ class ModelTests(test_utils.DatastoreTest):
     # Never-assigned values are considered uninitialized.
     self.assertEqual(m._find_uninitialized(), set(['a']))
     self.assertRaises(datastore_errors.BadValueError, m._check_initialized)
-    self.assertRaises(datastore_errors.BadValueError, m.ToPb)
+    self.assertRaises(datastore_errors.BadValueError, m._to_pb)
 
     # Empty string is fine.
     m.a = ''
     self.assertFalse(m._find_uninitialized())
     m._check_initialized()
-    m.ToPb()
+    m._to_pb()
 
     # Non-empty string is fine (of course).
     m.a = 'foo'
     self.assertFalse(m._find_uninitialized())
     m._check_initialized()
-    m.ToPb()
+    m._to_pb()
 
     # Deleted value is not fine.
     del m.a
     self.assertEqual(m._find_uninitialized(), set(['a']))
     self.assertRaises(datastore_errors.BadValueError, m._check_initialized)
-    self.assertRaises(datastore_errors.BadValueError, m.ToPb)
+    self.assertRaises(datastore_errors.BadValueError, m._to_pb)
 
     # Explicitly assigned None is *not* fine.
     m.a = None
     self.assertEqual(m._find_uninitialized(), set(['a']))
     self.assertRaises(datastore_errors.BadValueError, m._check_initialized)
-    self.assertRaises(datastore_errors.BadValueError, m.ToPb)
+    self.assertRaises(datastore_errors.BadValueError, m._to_pb)
 
     # Check that b is still unset.
     self.assertFalse(MyModel.b.HasValue(m))
@@ -731,7 +731,7 @@ class ModelTests(test_utils.DatastoreTest):
     MyModel.b.SetValue(ent, '\x00\xff')
     self.assertEqual(MyModel.t.GetValue(ent), u'Hello world\u1234')
     self.assertEqual(MyModel.b.GetValue(ent), '\x00\xff')
-    pb = ent.ToPb()
+    pb = ent._to_pb()
     self.assertEqual(str(pb), UNINDEXED_PB)
 
     ent = MyModel()
@@ -762,7 +762,7 @@ class ModelTests(test_utils.DatastoreTest):
     p.times = [t1, t2]
     self.assertEqual(p.ctime, None)
     self.assertEqual(p.mtime, None)
-    pb = p.ToPb()
+    pb = p._to_pb()
     self.assertNotEqual(p.ctime, None)
     self.assertNotEqual(p.mtime, None)
     q = Person()
@@ -806,7 +806,7 @@ class ModelTests(test_utils.DatastoreTest):
     self.assertEqual(Address.street.GetValue(a), '1600 Amphitheatre')
     self.assertEqual(Address.city.GetValue(a), 'Mountain View')
 
-    pb = p.ToPb()
+    pb = p._to_pb()
     self.assertEqual(str(pb), PERSON_PB)
 
     p = Person()
@@ -834,7 +834,7 @@ class ModelTests(test_utils.DatastoreTest):
     p.address.home.street = '1600 Amphitheatre'
     p.address.work.city = 'San Francisco'
     p.address.work.street = '345 Spear'
-    pb = p.ToPb()
+    pb = p._to_pb()
     self.assertEqual(str(pb), NESTED_PB)
 
     p = Person()
@@ -863,7 +863,7 @@ class ModelTests(test_utils.DatastoreTest):
                                rite=Node(name='a1b')),
                      rite=Node(name='a2',
                                rite=Node(name='a2b')))
-    pb = tree.ToPb()
+    pb = tree._to_pb()
     self.assertEqual(str(pb), RECURSIVE_PB)
 
     tree2 = Tree()
@@ -927,7 +927,7 @@ class ModelTests(test_utils.DatastoreTest):
     p.ad.ho.st = '1600 Amphitheatre'
     p.ad.wo.ci = 'San Francisco'
     p.ad.wo.st = '345 Spear'
-    pb = p.ToPb()
+    pb = p._to_pb()
     self.assertEqual(str(pb), NESTED_PB)
 
     p = Person()
@@ -955,7 +955,7 @@ class ModelTests(test_utils.DatastoreTest):
     m = Person(name='Google', address=['345 Spear', 'San Francisco'])
     m.key = model.Key(flat=['Person', None])
     self.assertEqual(m.address, ['345 Spear', 'San Francisco'])
-    pb = m.ToPb()
+    pb = m._to_pb()
     self.assertEqual(str(pb), MULTI_PB)
 
     m2 = Person()
@@ -975,7 +975,7 @@ class ModelTests(test_utils.DatastoreTest):
                                line=['345 Spear', 'San Francisco']))
     m.key = model.Key(flat=['Person', None])
     self.assertEqual(m.address.line, ['345 Spear', 'San Francisco'])
-    pb = m.ToPb()
+    pb = m._to_pb()
     self.assertEqual(str(pb), MULTIINSTRUCT_PB)
 
     m2 = Person()
@@ -998,7 +998,7 @@ class ModelTests(test_utils.DatastoreTest):
     self.assertEqual(m.address[0].text, 'San Francisco')
     self.assertEqual(m.address[1].label, 'home')
     self.assertEqual(m.address[1].text, 'Mountain View')
-    pb = m.ToPb()
+    pb = m._to_pb()
     self.assertEqual(str(pb), MULTISTRUCT_PB)
 
     m2 = Person()
@@ -1028,7 +1028,7 @@ class ModelTests(test_utils.DatastoreTest):
     self.assertEqual(p.age, None)
     self.assertEqual(p.name, None)
     self.assertEqual(p.k, None)
-    pb = p.ToPb()
+    pb = p._to_pb()
     q = Person()
     q.FromPb(pb)
     self.assertEqual(q.address, None)
@@ -1057,10 +1057,10 @@ class ModelTests(test_utils.DatastoreTest):
                                tags=Tag(names=['a', 'b'], ratings=[1, 2]),
                                zip=20500))
     p.key = k
-    pb = p.ToPb()
+    pb = p._to_pb()
     q = model.Model()
     q.FromPb(pb)
-    qb = q.ToPb()
+    qb = q._to_pb()
     linesp = str(pb).splitlines(True)
     linesq = str(qb).splitlines(True)
     lines = difflib.unified_diff(linesp, linesq, 'Expected', 'Actual')
@@ -1221,7 +1221,7 @@ class ModelTests(test_utils.DatastoreTest):
     self.assertEqual(Address.street.GetValue(a), '1600 Amphitheatre')
     self.assertEqual(Address.city.GetValue(a), 'Mountain View')
 
-    pb = p.ToPb()
+    pb = p._to_pb()
     # TODO: Validate pb
 
     # Check we can enable and disable compression and have old data still
@@ -1236,7 +1236,7 @@ class ModelTests(test_utils.DatastoreTest):
     self.assertEqual(repr(Person.address),
                      "LocalStructuredProperty(Address, 'address', "
                      "compressed=True)")
-    pb = p.ToPb()
+    pb = p._to_pb()
 
     Person.address._compressed = False
     p = Person()
@@ -1246,7 +1246,7 @@ class ModelTests(test_utils.DatastoreTest):
     p = Person()
     p.name = 'Google'
     self.assertTrue(p.address is None)
-    pb = p.ToPb()
+    pb = p._to_pb()
     p = Person()
     p.FromPb(pb)
     self.assertTrue(p.address is None)
@@ -1257,7 +1257,7 @@ class ModelTests(test_utils.DatastoreTest):
       name = model.StringProperty(repeated=True)
     p = Person()
     self.assertEqual(p.name, [])
-    pb = p.ToPb()
+    pb = p._to_pb()
     q = Person()
     q.FromPb(pb)
     self.assertEqual(q.name, [], str(pb))
@@ -1266,7 +1266,7 @@ class ModelTests(test_utils.DatastoreTest):
     class Person(model.Model):
       name = model.StringProperty(repeated=True)
     p = Person()
-    pb = p.ToPb()
+    pb = p._to_pb()
     q = Person()
     q.FromPb(pb)
     self.assertEqual(q.name, [], str(pb))
@@ -1275,7 +1275,7 @@ class ModelTests(test_utils.DatastoreTest):
     class Person(model.Model):
       t = model.GenericProperty()
     p = Person(t=datetime.datetime.utcnow())
-    pb = p.ToPb()
+    pb = p._to_pb()
     q = Person()
     q.FromPb(pb)
     self.assertEqual(p.t, q.t)
@@ -1285,7 +1285,7 @@ class ModelTests(test_utils.DatastoreTest):
       name = model.StringProperty()
       city = model.StringProperty()
     p = Person(name='Guido', city='SF')
-    pb = p.ToPb()
+    pb = p._to_pb()
     q = model.Expando()
     q.FromPb(pb)
     self.assertEqual(q.name, 'Guido')
@@ -1301,7 +1301,7 @@ class ModelTests(test_utils.DatastoreTest):
     p.d = 2.5
     p.b = True
     p.xy = AMSTERDAM
-    pb = p.ToPb()
+    pb = p._to_pb()
     self.assertEqual(str(pb), GOLDEN_PB)
 
   def testExpandoRepr(self):
@@ -1324,7 +1324,7 @@ class ModelTests(test_utils.DatastoreTest):
     p.nest = nest
     self.assertEqual(p.nest.foo, 42)
     self.assertEqual(p.nest.bar, 'hello')
-    pb = p.ToPb()
+    pb = p._to_pb()
     q = model.Expando()
     q.FromPb(pb)
     self.assertEqual(q.nest.foo, 42)
@@ -1343,7 +1343,7 @@ class ModelTests(test_utils.DatastoreTest):
     p = model.Expando(foo=42, bar='hello')
     self.assertEqual(p.foo, 42)
     self.assertEqual(p.bar, 'hello')
-    pb = p.ToPb()
+    pb = p._to_pb()
     q = model.Expando()
     q.FromPb(pb)
     self.assertEqual(q.foo, 42)
@@ -1353,7 +1353,7 @@ class ModelTests(test_utils.DatastoreTest):
     p = model.Expando(foo=42, bar=model.Expando(hello='hello'))
     self.assertEqual(p.foo, 42)
     self.assertEqual(p.bar.hello, 'hello')
-    pb = p.ToPb()
+    pb = p._to_pb()
     q = model.Expando()
     q.FromPb(pb)
     self.assertEqual(q.foo, 42)
@@ -1373,7 +1373,7 @@ class ModelTests(test_utils.DatastoreTest):
       hash = model.ComputedProperty(_compute_hash, name='hashcode')
 
     m = ComputedTest(name='Foobar')
-    pb = m.ToPb()
+    pb = m._to_pb()
 
     for p in pb.property_list():
       if p.name() == 'name_lower':

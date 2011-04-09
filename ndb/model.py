@@ -323,7 +323,7 @@ class ModelAdapter(datastore_rpc.AbstractAdapter):
     return ent
 
   def entity_to_pb(self, ent):
-    pb = ent.ToPb()
+    pb = ent._to_pb()
     return pb
 
 
@@ -567,12 +567,10 @@ class Model(object):
       return NotImplemented
     return not eq
 
-  # TODO: Rename ToPb, FromPb to _to_pb, _from_pb.
-
-  # TODO: Refactor ToPb() so pb is an argument?
-  def ToPb(self):
+  def _to_pb(self, pb=None):
     self._check_initialized()
-    pb = entity_pb.EntityProto()
+    if pb is None:
+      pb = entity_pb.EntityProto()
 
     # TODO: Move the key stuff into ModelAdapter.entity_to_pb()?
     key = self._key
@@ -591,6 +589,8 @@ class Model(object):
       prop.Serialize(self, pb)
 
     return pb
+
+  # TODO: Rename FromPb to _from_pb.
 
   # TODO: Make this a class method?
   def FromPb(self, pb):
@@ -1544,7 +1544,7 @@ class LocalStructuredProperty(Property):
     return value
 
   def DbSetValue(self, v, p, value):
-    pb = value.ToPb()
+    pb = value._to_pb()
     serialized = pb.Encode()
     if self._compressed:
       p.set_meaning(_MEANING_COMPRESSED)
