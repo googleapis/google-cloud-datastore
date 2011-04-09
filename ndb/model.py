@@ -163,9 +163,9 @@ you could verify using the Datastore Viewer in the Admin Console):
   address.street = '4 Privet Drive'
   address.city = 'Little Whinging'
 
-Structured property types can be nested and have the repeated flag
-set, but in a hierarchy of nested structured property types, only one
-level can be repeated.  It is fine to have multiple structured
+Structured property types can be nested arbitrarily deep, but in a
+hierarchy of nested structured property types, only one level can have
+the repeated flag set.  It is fine to have multiple structured
 properties referencing the same model class.
 
 It is also fine to use the same model class both as a top-level entity
