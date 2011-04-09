@@ -659,30 +659,37 @@ class Model(object):
         cls._properties[prop._name] = prop
     cls._kind_map[cls._get_kind()] = cls
 
-  # TODO: Rename following methods to start with an underscore, and
-  # then define convenience aliases without an underscore.  (Also some
-  # of the methods above need such aliases.)
+  # Datastore API using the default context.
+  # These use local import since otherwise they'd be recursive imports.
 
   @classmethod
-  def query(cls, *args, **kwds):
+  def _query(cls, *args, **kwds):
+    """Create a Query object for this class.
+
+    Keyword arguments are passed to the Query() constructor.  If
+    positional arguments are given they are used to apply an initial
+    filter.
+    """
     from ndb.query import Query  # Import late to avoid circular imports.
     qry = Query(kind=cls._get_kind(), **kwds)
     if args:
       qry = qry.filter(*args)
     return qry
+  query = _query
 
-  # Datastore API using the default context.
-  # These use local import since otherwise they'd be recursive imports.
+  # TODO: docstrings.
 
-  def put(self):
-    return self.put_async().get_result()
+  def _put(self):
+    return self._put_async().get_result()
+  put = _put
 
   def put_async(self):
     from ndb import tasklets
     return tasklets.get_context().put(self)
+  _put_async = put_async
 
   @classmethod
-  def get_or_insert(cls, name, parent=None, **kwds):
+  def _get_or_insert(cls, name, parent=None, **kwds):
     """Transactionally retrieves an existing entity or creates a new one.
 
     Args:
@@ -697,11 +704,12 @@ class Model(object):
       Existing instance of Model class with the specified key name and parent
       or a new one that has just been created.
     """
-    return cls.get_or_insert_async(name=name, parent=parent,
-                                   **kwds).get_result()
+    return cls._get_or_insert_async(name=name, parent=parent,
+                                    **kwds).get_result()
+  get_or_insert = _get_or_insert
 
   @classmethod
-  def get_or_insert_async(cls, name, parent=None, **kwds):
+  def _get_or_insert_async(cls, name, parent=None, **kwds):
     """Transactionally retrieves an existing entity or creates a new one.
 
     This is the asynchronous version of Model.get_or_insert().
@@ -709,9 +717,10 @@ class Model(object):
     from ndb import tasklets
     ctx = tasklets.get_context()
     return ctx.get_or_insert(cls, name=name, parent=parent, **kwds)
+  get_or_insert_async = _get_or_insert_async
 
   @classmethod
-  def allocate_ids(cls, size=None, max=None, parent=None):
+  def _allocate_ids(cls, size=None, max=None, parent=None):
     """Allocates a range of key IDs for this model class.
 
     Args:
@@ -724,11 +733,12 @@ class Model(object):
     Returns:
       A tuple with (start, end) for the allocated range, inclusive.
     """
-    return cls.allocate_ids_async(size=size, max=max,
-                                  parent=parent).get_result()
+    return cls._allocate_ids_async(size=size, max=max,
+                                   parent=parent).get_result()
+  allocate_ids = _allocate_ids
 
   @classmethod
-  def allocate_ids_async(cls, size=None, max=None, parent=None):
+  def _allocate_ids_async(cls, size=None, max=None, parent=None):
     """Allocates a range of key IDs for this model class.
 
     This is the asynchronous version of Model.allocate_ids().
@@ -736,9 +746,10 @@ class Model(object):
     from ndb import tasklets
     key = Key(cls._get_kind(), None, parent=parent)
     return tasklets.get_context().allocate_ids(key, size=size, max=max)
+  allocate_ids_async = _allocate_ids_async
 
   @classmethod
-  def get_by_id(cls, id, parent=None):
+  def _get_by_id(cls, id, parent=None):
     """Returns a instance of Model class by ID.
 
     Args:
@@ -748,10 +759,11 @@ class Model(object):
     Returns:
       A model instance or None if not found.
     """
-    return cls.get_by_id_async(id, parent=parent).get_result()
+    return cls._get_by_id_async(id, parent=parent).get_result()
+  get_by_id = _get_by_id
 
   @classmethod
-  def get_by_id_async(cls, id, parent=None):
+  def _get_by_id_async(cls, id, parent=None):
     """Returns a instance of Model class by ID.
 
     This is the asynchronous version of Model.get_by_id().
@@ -759,6 +771,7 @@ class Model(object):
     from ndb import tasklets
     key = Key(cls._get_kind(), id, parent=parent)
     return tasklets.get_context().get(key)
+  get_by_id_async = _get_by_id_async
 
 
 class Property(object):
