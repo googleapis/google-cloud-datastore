@@ -669,6 +669,9 @@ class Model(object):
     Keyword arguments are passed to the Query() constructor.  If
     positional arguments are given they are used to apply an initial
     filter.
+
+    Returns:
+      A Query object.
     """
     from ndb.query import Query  # Import late to avoid circular imports.
     qry = Query(kind=cls._get_kind(), **kwds)
@@ -677,16 +680,26 @@ class Model(object):
     return qry
   query = _query
 
-  # TODO: docstrings.
-
   def _put(self):
+    """Write this entity to the datastore.
+
+    If the operation creates or completes a key, the entity's key
+    attribute is set to the new, complete key.
+
+    Returns:
+      The key for the entity.  This is always a complete key.
+    """
     return self._put_async().get_result()
   put = _put
 
-  def put_async(self):
+  def _put_async(self):
+    """Write this entity to the datastore.
+
+    This is the asynchronous version of Model._put().
+    """
     from ndb import tasklets
     return tasklets.get_context().put(self)
-  _put_async = put_async
+  put_async = _put_async
 
   @classmethod
   def _get_or_insert(cls, name, parent=None, **kwds):
@@ -712,7 +725,7 @@ class Model(object):
   def _get_or_insert_async(cls, name, parent=None, **kwds):
     """Transactionally retrieves an existing entity or creates a new one.
 
-    This is the asynchronous version of Model.get_or_insert().
+    This is the asynchronous version of Model._get_or_insert().
     """
     from ndb import tasklets
     ctx = tasklets.get_context()
@@ -741,7 +754,7 @@ class Model(object):
   def _allocate_ids_async(cls, size=None, max=None, parent=None):
     """Allocates a range of key IDs for this model class.
 
-    This is the asynchronous version of Model.allocate_ids().
+    This is the asynchronous version of Model._allocate_ids().
     """
     from ndb import tasklets
     key = Key(cls._get_kind(), None, parent=parent)
@@ -766,7 +779,7 @@ class Model(object):
   def _get_by_id_async(cls, id, parent=None):
     """Returns a instance of Model class by ID.
 
-    This is the asynchronous version of Model.get_by_id().
+    This is the asynchronous version of Model._get_by_id().
     """
     from ndb import tasklets
     key = Key(cls._get_kind(), id, parent=parent)
