@@ -256,7 +256,8 @@ The *_multi_async() functions return a list of Futures.
 
 __author__ = 'guido@google.com (Guido van Rossum)'
 
-# TODO: change asserts to better exceptions.
+# TODO: Change asserts to better exceptions.
+# TODO: Add PolyModel.
 
 import copy
 import datetime
