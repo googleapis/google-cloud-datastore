@@ -249,7 +249,7 @@ example:
 
 __author__ = 'guido@google.com (Guido van Rossum)'
 
-# TODO: docstrings on all Property classes, Expando, and all methods.
+# TODO: docstrings on all Property subclasses, Expando, and all methods.
 # TODO: change asserts to better exceptions.
 
 import copy
@@ -340,7 +340,7 @@ class MetaModel(type):
   """Metaclass for Model.
 
   This exists to fix up the properties -- they need to know their name.
-  This is accomplished by calling the class's FixProperties() method.
+  This is accomplished by calling the class's _fix_properties() method.
   """
 
   def __init__(cls, name, bases, classdict):
@@ -782,18 +782,18 @@ class Model(object):
 
 
 class Property(object):
-  """A class describing one property of a datastore entity.
+  """A class describing a typed, persisted attribute of a datastore entity.
 
   Not to be confused with Python's 'property' built-in.
 
   This is just a base class; there are specific subclasses that
-  describe properties of various types (and GenericProperty which
-  describes a dynamically typed property).
+  describe Properties of various types (and GenericProperty which
+  describes a dynamically typed Property).
 
   All special Property attributes, even those considered 'public',
   have names starting with an underscore, because StructuredProperty
   uses the non-underscore attribute namespace to refer to nested
-  property names; this is essential for specifying queries on
+  Property names; this is essential for specifying queries on
   subproperties (see the module docstring).
   """
 
@@ -815,6 +815,7 @@ class Property(object):
   @datastore_rpc._positional(1 + _positional)
   def __init__(self, name=None, indexed=None, repeated=None,
                required=None, default=None, choices=None, validator=None):
+    """Constructor.  For arguments see the module docstring."""
     if name is not None:
       assert '.' not in name  # The '.' is used elsewhere.
       self._name = name
@@ -844,6 +845,7 @@ class Property(object):
       self._validator = validator
 
   def __repr__(self):
+    """Return a compact unambiguous string representation."""
     args = []
     cls = self.__class__
     for i, attr in enumerate(self._attributes):
@@ -862,31 +864,61 @@ class Property(object):
     return s
 
   def _comparison(self, op, value):
+    """Internal helper for comparison operators.
+
+    Args:
+      op: The operator ('=', '<' etc.).
+
+    Returns:
+      A FilterNode instance representing the requested comparison.
+    """
     from ndb.query import FilterNode  # Import late to avoid circular imports.
     if value is not None:
       # TODO: Allow query.Binding instances?
       value = self._validate(value)
     return FilterNode(self._name, op, value)
 
+  # Comparison operators on Property instances don't compare the
+  # properties; instead they return FilterNode instances that can be
+  # used in queries.  See the module docstrings above and in query.py
+  # for details on how these can be used.
+
   def __eq__(self, value):
+    """Return a FilterNode instance representing the '=' comparison."""
     return self._comparison('=', value)
 
   def __ne__(self, value):
+    """Return a FilterNode instance representing the '!=' comparison."""
     return self._comparison('!=', value)
 
   def __lt__(self, value):
+    """Return a FilterNode instance representing the '<' comparison."""
     return self._comparison('<', value)
 
   def __le__(self, value):
+    """Return a FilterNode instance representing the '<=' comparison."""
     return self._comparison('<=', value)
 
   def __gt__(self, value):
+    """Return a FilterNode instance representing the '>' comparison."""
     return self._comparison('>', value)
 
   def __ge__(self, value):
+    """Return a FilterNode instance representing the '>=' comparison."""
     return self._comparison('>=', value)
 
   def _IN(self, value):
+    """Comparison operator for the 'in' comparison operator.
+
+    The Python 'in' operator cannot be overloaded in the way we want
+    to, so we define a method.  For example:
+
+      Employee.query(Employee.rank.IN([4, 5, 6]))
+
+    Note that the method is called .IN_() but may normally be invoked
+    as .IN(); .IN_() is provided for the case you have a
+    StructuredProperty with a model that has a Property named IN.
+    """
     from ndb.query import FilterNode  # Import late to avoid circular imports.
     if not isinstance(value, (list, tuple)):
       raise datastore_errors.BadValueError('Expected list or tuple, got %r' %
@@ -900,37 +932,90 @@ class Property(object):
   IN = _IN
 
   def __neg__(self):
+    """Return a descending sort order on this Property.
+
+    For example:
+
+      Employee.query().order(-Employee.rank)
+    """
     return datastore_query.PropertyOrder(
       self._name, datastore_query.PropertyOrder.DESCENDING)
 
   def __pos__(self):
-    # So you can write q.order(-cls.age, +cls.name).
+    """Return an ascending sort order on this Property.
+
+    Note that this is redundant but provided for consistency with
+    __neg__.  For example, the following two are equivalent:
+
+      Employee.query().order(+Employee.rank)
+      Employee.query().order(Employee.rank)
+    """
     return datastore_query.PropertyOrder(self._name)
 
   def _validate(self, value):
-    # Return the value, possibly modified.
+    """Template method to validate and possibly modify the value.
+
+    This is intended to be overridden by Property subclasses.  It
+    should return the value either unchanged or modified in an
+    idempotent way, or raise an exception to indicate that the value
+    is invalid.  By convention the exception raised is BadValueError.
+
+    Note that for a repeated Property this function should be called
+    for each item in the list, not for the list as a whole.
+    """
     return value
 
   def _do_validate(self, value):
+    """Call all validations on the value.
+
+    This first calls self._validate(), then the custom validator
+    function, and finally checks the choices.  It returns the value,
+    possibly modified in an idempotent way, or raises an exception.
+
+    Note that for a repeated Property this function should be called
+    for each item in the list, not for the list as a whole.
+    """
     value = self._validate(value)
+    if self._validator is not None:
+      value = self._validator(self, value)
     if self._choices is not None:
       if value not in self._choices:
         raise datastore_errors.BadValueError(
           'Value %r for property %s is not an allowed choice' %
           (value, self._name))
-    if self._validator is not None:
-      value = self._validator(self, value)
     return value
 
   def _fix_up(self, code_name):
+    """Internal helper called to tell the property its name.
+
+    This is called by _fix_up_properties() which is called by
+    MetaModel when finishing the construction of a Model subclass.
+    The name passed in is the name of the class attribute to which the
+    Property is assigned (a.k.a. the code name).  Note that this means
+    that each Property instance must be assigned to (at most) one
+    class attribute.  E.g. to declare three strings, you must call
+    StringProperty() three times, you cannot write
+
+      foo = bar = baz = StringProperty()
+    """
     self._code_name = code_name
     if self._name is None:
       self._name = code_name
 
   def _store_value(self, entity, value):
+    """Internal helper to store a value in an entity for a Property.
+
+    This assumes validation has already taken place.  For a repeated
+    Property the value should be a list.
+    """
     entity._values[self._name] = value
 
   def _set_value(self, entity, value):
+    """Internal helper to set a value in an entity for a Property.
+
+    This performs validation first.  For a repeated Property the value
+    should be a list.
+    """
     if self._repeated:
       if not isinstance(value, (list, tuple)):
         raise datastore_errors.BadValueError('Expected list or tuple, got %r' %
@@ -945,39 +1030,74 @@ class Property(object):
     self._store_value(entity, value)
 
   def _has_value(self, entity):
+    """Internal helper to ask if the entity has a value for this Property."""
     return self._name in entity._values
 
   def _retrieve_value(self, entity):
+    """Internal helper to retrieve the value for this Property from an entity.
+
+    This returns None if no value is set.  For a repeated Property
+    this returns a list if a value is set, otherwise None.
+    """
     return entity._values.get(self._name, self._default)
 
   def _get_value(self, entity):
-     value = self._retrieve_value(entity)
-     if value is None and self._repeated:
-       value = []
-       self._store_value(entity, value)
-     return value
+    """Internal helper to get the value for this Property from an entity.
+
+    For a repeated Property this initializes the value to an empty
+    list if it is not set.
+    """
+    value = self._retrieve_value(entity)
+    if value is None and self._repeated:
+      value = []
+      self._store_value(entity, value)
+    return value
 
   def _delete_value(self, entity):
+    """Internal helper to delete the value for this Property from an entity.
+
+    Note that if no value exists this is a no-op; deleted values will
+    not be serialized but requesting their value will return None (or
+    an empty list in the case of a repeated Property).
+    """
     if self._name in entity._values:
       del entity._values[self._name]
 
   def _is_initialized(self, entity):
+    """Internal helper to ask if the entity has a value for this Property.
+
+    This returns False if a value is stored but it is None.
+    """
     return not self._required or (self._has_value(entity) and
                                   self._get_value(entity) is not None)
 
-  def __get__(self, obj, cls=None):
-    if obj is None:
+  def __get__(self, entity, cls=None):
+    """Descriptor protocol: get the value from the entity."""
+    if entity is None:
       return self  # __get__ called on class
-    return self._get_value(obj)
+    return self._get_value(entity)
 
-  def __set__(self, obj, value):
-    self._set_value(obj, value)
+  def __set__(self, entity, value):
+    """Descriptor protocol: set the value on the entity."""
+    self._set_value(entity, value)
 
-  def __delete__(self, obj):
-    self._delete_value(obj)
+  def __delete__(self, entity):
+    """Descriptor protocol: delete the value from the entity."""
+    self._delete_value(entity)
 
   def _serialize(self, entity, pb, prefix='', parent_repeated=False):
-    # entity -> pb; pb is an EntityProto message
+    """Internal helper to serialize this property to a protocol buffer.
+
+    Subclasses may override this method.
+
+    Args:
+      entity: The entity, a Model (subclass) instance.
+      pb: The protocol buffer, an EntityProto instance.
+      prefix: Optional name prefix used for StructuredProperty
+        (if present, must end in '.').
+      parent_repeated: True if the parent (or an earlier ancestor)
+        is a repeated Property.
+    """
     value = self._retrieve_value(entity)
     if value is None and self._repeated:
       value = []
@@ -999,8 +1119,16 @@ class Property(object):
         self._db_set_value(v, p, val)
 
   def _deserialize(self, entity, p, depth=1):
-    # entity <- p; p is a Property message
-    # In this class, depth is unused.
+    """Internal helper to deserialize this property from a protocol buffer.
+
+    Subclasses may override this method.
+
+    Args:
+      entity: The entity, a Model (subclass) instance.
+      p: A Property Message object (a protocol buffer).
+      depth: Optional nesting depth, default 1 (unused here, but used
+        by some subclasses that override this method).
+    """
     v = p.value()
     val = self._db_get_value(v, p)
     if self._repeated:
