@@ -240,16 +240,17 @@ is equivalent to:
 
 Keyword arguments passed to .query() are passed along to the Query()
 constructor.
+
+It is possible to query for field values of stuctured properties.  For
+example:
+
+  qry = Person.query(Person.address.city == 'London')
 """
 
 __author__ = 'guido@google.com (Guido van Rossum)'
 
 # TODO: docstrings on all Property classes, Expando, and all methods.
 # TODO: change asserts to better exceptions.
-# TODO: rename CapWords methods of Model to _underscore_names.
-# TODO: add _underscore aliases to lowercase_names Model methods.
-# TODO: reject unknown property names in assignment (for Model) (?)
-# TODO: BlobKeyProperty.
 
 import copy
 import datetime
@@ -376,8 +377,6 @@ class Model(object):
 
   __metaclass__ = MetaModel
 
-  # TODO: Prevent accidental attribute assignments
-
   # Class variables updated by _fix_up_properties()
   _properties = None
   _has_repeated = False
@@ -387,11 +386,6 @@ class Model(object):
   _key = None
   _values = None
 
-  # TODO: Make _ versions of all methods, and make non-_ versions
-  # simple aliases. That way the _ version is still accessible even if
-  # the non-_ version has been obscured by a property.
-
-  # TODO: Distinguish between purposes: to call _from_pb() or setvalue() etc.
   @datastore_rpc._positional(1)
   def __init__(self, key=None, id=None, parent=None, **kwds):
     """Creates a new instance of this model (a.k.a. as an entity).
@@ -439,7 +433,7 @@ class Model(object):
     for name, value in kwds.iteritems():
       prop = getattr(cls, name)  # Raises AttributeError for unknown properties.
       assert isinstance(prop, Property)
-      prop.SetValue(self, value)
+      prop._set_value(self, value)
 
   def _find_uninitialized(self):
     """Internal helper to find uninitialized properties.
@@ -449,7 +443,7 @@ class Model(object):
     """
     return set(name
                for name, prop in self._properties.iteritems()
-               if not prop.IsInitialized(self))
+               if not prop._is_initialized(self))
 
   def _check_initialized(self):
     """Internal helper to check for uninitialized properties.
@@ -467,8 +461,8 @@ class Model(object):
     args = []
     done = set()
     for prop in self._properties.itervalues():
-      if prop.HasValue(self):
-        args.append('%s=%r' % (prop._code_name, prop.RetrieveValue(self)))
+      if prop._has_value(self):
+        args.append('%s=%r' % (prop._code_name, prop._retrieve_value(self)))
         done.add(prop._name)
     args.sort()
     if self._key is not None:
@@ -552,8 +546,8 @@ class Model(object):
     if my_prop_names != their_prop_names:
       return False  # Again, only possible for Expandos.
     for name in my_prop_names:
-      my_value = self._properties[name].GetValue(self)
-      their_value = other._properties[name].GetValue(other)
+      my_value = self._properties[name]._get_value(self)
+      their_value = other._properties[name]._get_value(other)
       if my_value != their_value:
         return False
     return True
@@ -585,7 +579,7 @@ class Model(object):
       group.add_element().CopyFrom(elem)
 
     for name, prop in sorted(self._properties.iteritems()):
-      prop.Serialize(self, pb)
+      prop._serialize(self, pb)
 
     return pb
 
@@ -604,7 +598,7 @@ class Model(object):
     for plist in [indexed_properties, unindexed_properties]:
       for p in plist:
         prop = ent._get_property_for(p, plist is indexed_properties)
-        prop.Deserialize(ent, p)
+        prop._deserialize(ent, p)
 
     return ent
 
@@ -640,7 +634,7 @@ class Model(object):
 
   @classmethod
   def _fix_up_properties(cls):
-    """Fix up the properties by calling their FixUp() method.
+    """Fix up the properties by calling their _fix_up() method.
 
     Note: This is called by MetaModel, but may also be called manually
     after dynamically updating a model class.
@@ -653,7 +647,7 @@ class Model(object):
       if isinstance(prop, Property):
         assert not name.startswith('_')
         # TODO: Tell prop the class, for error message.
-        prop.FixUp(name)
+        prop._fix_up(name)
         if prop._repeated:
           cls._has_repeated = True
         cls._properties[prop._name] = prop
@@ -788,6 +782,21 @@ class Model(object):
 
 
 class Property(object):
+  """A class describing one property of a datastore entity.
+
+  Not to be confused with Python's 'property' built-in.
+
+  This is just a base class; there are specific subclasses that
+  describe properties of various types (and GenericProperty which
+  describes a dynamically typed property).
+
+  All special Property attributes, even those considered 'public',
+  have names starting with an underscore, because StructuredProperty
+  uses the non-underscore attribute namespace to refer to nested
+  property names; this is essential for specifying queries on
+  subproperties (see the module docstring).
+  """
+
   # TODO: Separate 'simple' properties from base Property class
 
   _code_name = None
@@ -856,7 +865,7 @@ class Property(object):
     from ndb.query import FilterNode  # Import late to avoid circular imports.
     if value is not None:
       # TODO: Allow query.Binding instances?
-      value = self.Validate(value)
+      value = self._validate(value)
     return FilterNode(self._name, op, value)
 
   def __eq__(self, value):
@@ -877,9 +886,7 @@ class Property(object):
   def __ge__(self, value):
     return self._comparison('>=', value)
 
-  # TODO: Rename IN to _IN and add IN back as an alias.
-
-  def IN(self, value):
+  def _IN(self, value):
     from ndb.query import FilterNode  # Import late to avoid circular imports.
     if not isinstance(value, (list, tuple)):
       raise datastore_errors.BadValueError('Expected list or tuple, got %r' %
@@ -887,9 +894,10 @@ class Property(object):
     values = []
     for val in value:
       if val is not None:
-        val is self.Validate(val)
+        val is self._validate(val)
         values.append(val)
     return FilterNode(self._name, 'in', values)
+  IN = _IN
 
   def __neg__(self):
     return datastore_query.PropertyOrder(
@@ -899,14 +907,12 @@ class Property(object):
     # So you can write q.order(-cls.age, +cls.name).
     return datastore_query.PropertyOrder(self._name)
 
-  # TODO: Rename these methods to start with _.
-
-  def Validate(self, value):
+  def _validate(self, value):
     # Return the value, possibly modified.
     return value
 
-  def DoValidate(self, value):
-    value = self.Validate(value)
+  def _do_validate(self, value):
+    value = self._validate(value)
     if self._choices is not None:
       if value not in self._choices:
         raise datastore_errors.BadValueError(
@@ -916,63 +922,63 @@ class Property(object):
       value = self._validator(self, value)
     return value
 
-  def FixUp(self, code_name):
+  def _fix_up(self, code_name):
     self._code_name = code_name
     if self._name is None:
       self._name = code_name
 
-  def StoreValue(self, entity, value):
+  def _store_value(self, entity, value):
     entity._values[self._name] = value
 
-  def SetValue(self, entity, value):
+  def _set_value(self, entity, value):
     if self._repeated:
       if not isinstance(value, (list, tuple)):
         raise datastore_errors.BadValueError('Expected list or tuple, got %r' %
                                              (value,))
       values = []
       for val in value:
-        val = self.DoValidate(val)
+        val = self._do_validate(val)
         values.append(val)
     else:
       if value is not None:
-        value = self.DoValidate(value)
-    self.StoreValue(entity, value)
+        value = self._do_validate(value)
+    self._store_value(entity, value)
 
-  def HasValue(self, entity):
+  def _has_value(self, entity):
     return self._name in entity._values
 
-  def RetrieveValue(self, entity):
+  def _retrieve_value(self, entity):
     return entity._values.get(self._name, self._default)
 
-  def GetValue(self, entity):
-     value = self.RetrieveValue(entity)
+  def _get_value(self, entity):
+     value = self._retrieve_value(entity)
      if value is None and self._repeated:
        value = []
-       self.StoreValue(entity, value)
+       self._store_value(entity, value)
      return value
 
-  def DeleteValue(self, entity):
+  def _delete_value(self, entity):
     if self._name in entity._values:
       del entity._values[self._name]
 
-  def IsInitialized(self, entity):
-    return not self._required or (self.HasValue(entity) and
-                                  self.GetValue(entity) is not None)
+  def _is_initialized(self, entity):
+    return not self._required or (self._has_value(entity) and
+                                  self._get_value(entity) is not None)
 
   def __get__(self, obj, cls=None):
     if obj is None:
       return self  # __get__ called on class
-    return self.GetValue(obj)
+    return self._get_value(obj)
 
   def __set__(self, obj, value):
-    self.SetValue(obj, value)
+    self._set_value(obj, value)
 
   def __delete__(self, obj):
-    self.DeleteValue(obj)
+    self._delete_value(obj)
 
-  def Serialize(self, entity, pb, prefix='', parent_repeated=False):
+  def _serialize(self, entity, pb, prefix='', parent_repeated=False):
     # entity -> pb; pb is an EntityProto message
-    value = self.RetrieveValue(entity)
+    value = self._retrieve_value(entity)
     if value is None and self._repeated:
       value = []
     elif not isinstance(value, list):
@@ -981,7 +987,7 @@ class Property(object):
       if self._repeated:
         # Re-validate repeated values, since the user could have
         # appended values to the list, bypassing validation.
-        val = self.DoValidate(val)
+        val = self._do_validate(val)
       if self._indexed:
         p = pb.add_property()
       else:
@@ -990,26 +996,26 @@ class Property(object):
       p.set_multiple(self._repeated or parent_repeated)
       v = p.mutable_value()
       if val is not None:
-        self.DbSetValue(v, p, val)
+        self._db_set_value(v, p, val)
 
-  def Deserialize(self, entity, p, depth=1):
+  def _deserialize(self, entity, p, depth=1):
     # entity <- p; p is a Property message
     # In this class, depth is unused.
     v = p.value()
-    val = self.DbGetValue(v, p)
+    val = self._db_get_value(v, p)
     if self._repeated:
-      if self.HasValue(entity):
-        value = self.RetrieveValue(entity)
+      if self._has_value(entity):
+        value = self._retrieve_value(entity)
         if not isinstance(value, list):
           value = [value]
         value.append(val)
       else:
         value = [val]
     else:
-      if not self.HasValue(entity):
+      if not self._has_value(entity):
         value = val
       else:
-        oldval = self.RetrieveValue(entity)
+        oldval = self._retrieve_value(entity)
         # Maybe upgrade to a list property.  Or ignore null.
         if val is None:
           value = oldval
@@ -1021,24 +1027,24 @@ class Property(object):
         else:
           value = [oldval, val]
     try:
-      self.StoreValue(entity, value)
+      self._store_value(entity, value)
     except ComputedPropertyError, e:
       pass
 
 
 class BooleanProperty(Property):
 
-  def Validate(self, value):
+  def _validate(self, value):
     if not isinstance(value, bool):
       raise datastore_errors.BadValueError('Expected bool, got %r' %
                                            (value,))
     return value
 
-  def DbSetValue(self, v, p, value):
+  def _db_set_value(self, v, p, value):
     assert isinstance(value, bool), (self._name)
     v.set_booleanvalue(value)
 
-  def DbGetValue(self, v, p):
+  def _db_get_value(self, v, p):
     if not v.has_booleanvalue():
       return None
     # The booleanvalue field is an int32, so booleanvalue() returns an
@@ -1048,17 +1054,17 @@ class BooleanProperty(Property):
 
 class IntegerProperty(Property):
 
-  def Validate(self, value):
+  def _validate(self, value):
     if not isinstance(value, (int, long)):
       raise datastore_errors.BadValueError('Expected integer, got %r' %
                                            (value,))
     return int(value)
 
-  def DbSetValue(self, v, p, value):
+  def _db_set_value(self, v, p, value):
     assert isinstance(value, (bool, int, long)), (self._name)
     v.set_int64value(value)
 
-  def DbGetValue(self, v, p):
+  def _db_get_value(self, v, p):
     if not v.has_int64value():
       return None
     return int(v.int64value())
@@ -1066,17 +1072,17 @@ class IntegerProperty(Property):
 
 class FloatProperty(Property):
 
-  def Validate(self, value):
+  def _validate(self, value):
     if not isinstance(value, (int, long, float)):
       raise datastore_errors.BadValueError('Expected float, got %r' %
                                            (value,))
     return float(value)
 
-  def DbSetValue(self, v, p, value):
+  def _db_set_value(self, v, p, value):
     assert isinstance(value, (bool, int, long, float)), (self._name)
     v.set_doublevalue(float(value))
 
-  def DbGetValue(self, v, p):
+  def _db_get_value(self, v, p):
     if not v.has_doublevalue():
       return None
     return v.doublevalue()
@@ -1086,14 +1092,14 @@ class StringProperty(Property):
 
   # TODO: Enforce size limit when indexed.
 
-  def Validate(self, value):
+  def _validate(self, value):
     if not isinstance(value, basestring):
       raise datastore_errors.BadValueError('Expected string, got %r' %
                                            (value,))
     # TODO: Always convert to Unicode?  But what if it's unconvertible?
     return value
 
-  def DbSetValue(self, v, p, value):
+  def _db_set_value(self, v, p, value):
     assert isinstance(value, basestring)
     if isinstance(value, unicode):
       value = value.encode('utf-8')
@@ -1101,7 +1107,7 @@ class StringProperty(Property):
     if not self._indexed:
       p.set_meaning(entity_pb.Property.TEXT)
 
-  def DbGetValue(self, v, p):
+  def _db_get_value(self, v, p):
     if not v.has_stringvalue():
       return None
     raw = v.stringvalue()
@@ -1123,8 +1129,8 @@ class TextProperty(StringProperty):
   _indexed = False
 
   def __init__(self, *args, **kwds):
-    assert not kwds.get('indexed', False)
     super(TextProperty, self).__init__(*args, **kwds)
+    assert not self._indexed
 
 
 class BlobProperty(Property):
@@ -1133,13 +1139,13 @@ class BlobProperty(Property):
 
   _indexed = False
 
-  def Validate(self, value):
+  def _validate(self, value):
     if not isinstance(value, str):
       raise datastore_errors.BadValueError('Expected 8-bit string, got %r' %
                                            (value,))
     return value
 
-  def DbSetValue(self, v, p, value):
+  def _db_set_value(self, v, p, value):
     assert isinstance(value, str)
     v.set_stringvalue(value)
     if self._indexed:
@@ -1147,7 +1153,7 @@ class BlobProperty(Property):
     else:
       p.set_meaning(entity_pb.Property.BLOB)
 
-  def DbGetValue(self, v, p):
+  def _db_get_value(self, v, p):
     if not v.has_stringvalue():
       return None
     return v.stringvalue()
@@ -1167,7 +1173,8 @@ class GeoPt(tuple):
   __slots__ = []
 
   def __new__(cls, lat=0.0, lon=0.0):
-    # TODO: assert abs(lat) <= 90 and abs(lon) <= 180 ???
+    # TODO: assert abs(lat) <= 90 and abs(lon) <= 180 ?
+    # TODO: allow construction from a string of the form <float>, <float>?
     return tuple.__new__(cls, (float(lat), float(lon)))
 
   @property
@@ -1184,19 +1191,19 @@ class GeoPt(tuple):
 
 class GeoPtProperty(Property):
 
-  def Validate(self, value):
+  def _validate(self, value):
     if not isinstance(value, GeoPt):
       raise datastore_errors.BadValueError('Expected GeoPt, got %r' %
                                            (value,))
     return value
 
-  def DbSetValue(self, v, p, value):
+  def _db_set_value(self, v, p, value):
     assert isinstance(value, GeoPt), (self._name)
     pv = v.mutable_pointvalue()
     pv.set_x(value.lat)
     pv.set_y(value.lon)
 
-  def DbGetValue(self, v, p):
+  def _db_get_value(self, v, p):
     if not v.has_pointvalue():
       return None
     pv = v.pointvalue()
@@ -1224,25 +1231,24 @@ def _unpack_user(v):
 
 class UserProperty(Property):
 
-  def Validate(self, value):
+  def _validate(self, value):
     if not isinstance(value, users.User):
       raise datastore_errors.BadValueError('Expected User, got %r' %
                                            (value,))
     return value
 
-  def DbSetValue(self, v, p, value):
+  def _db_set_value(self, v, p, value):
     datastore_types.PackUser(p.name(), value, v)
 
-  def DbGetValue(self, v, p):
+  def _db_get_value(self, v, p):
     return _unpack_user(v)
 
 
 class KeyProperty(Property):
 
-  # TODO: namespaces
-  # TODO: optionally check the kind (validation)
+  # TODO: optionally check the kind (or maybe require this?)
 
-  def Validate(self, value):
+  def _validate(self, value):
     if not isinstance(value, Key):
       raise datastore_errors.BadValueError('Expected Key, got %r' % (value,))
     # Reject incomplete keys.
@@ -1251,7 +1257,7 @@ class KeyProperty(Property):
                                            (value,))
     return value
 
-  def DbSetValue(self, v, p, value):
+  def _db_set_value(self, v, p, value):
     assert isinstance(value, Key)
     # See datastore_types.PackKey
     ref = value._reference()  # Don't copy
@@ -1262,7 +1268,7 @@ class KeyProperty(Property):
     for elem in ref.path().element_list():
       rv.add_pathelement().CopyFrom(elem)
 
-  def DbGetValue(self, v, p):
+  def _db_get_value(self, v, p):
     if not v.has_referencevalue():
       return None
     ref = entity_pb.Reference()
@@ -1275,6 +1281,9 @@ class KeyProperty(Property):
     for elem in rv.pathelement_list():
       path.add_element().CopyFrom(elem)
     return Key(reference=ref)
+
+
+# Todo: BlobKeyProperty.
 
 
 _EPOCH = datetime.datetime.utcfromtimestamp(0)
@@ -1301,7 +1310,7 @@ class DateTimeProperty(Property):
     self._auto_now = auto_now
     self._auto_now_add = auto_now_add
 
-  def Validate(self, value):
+  def _validate(self, value):
     if not isinstance(value, datetime.datetime):
       raise datastore_errors.BadValueError('Expected datetime, got %r' %
                                            (value,))
@@ -1310,14 +1319,14 @@ class DateTimeProperty(Property):
   def Now(self):
     return datetime.datetime.now()
 
-  def Serialize(self, entity, *rest):
+  def _serialize(self, entity, *rest):
     if (self._auto_now or
-        (self._auto_now_add and self.RetrieveValue(entity) is None)):
+        (self._auto_now_add and self._retrieve_value(entity) is None)):
       value = self.Now()
-      self.StoreValue(entity, value)
-    super(DateTimeProperty, self).Serialize(entity, *rest)
+      self._store_value(entity, value)
+    super(DateTimeProperty, self)._serialize(entity, *rest)
 
-  def DbSetValue(self, v, p, value):
+  def _db_set_value(self, v, p, value):
     assert isinstance(value, datetime.datetime)
     assert value.tzinfo is None
     dt = value - _EPOCH
@@ -1325,7 +1334,7 @@ class DateTimeProperty(Property):
     v.set_int64value(ival)
     p.set_meaning(entity_pb.Property.GD_WHEN)
 
-  def DbGetValue(self, v, p):
+  def _db_get_value(self, v, p):
     if not v.has_int64value():
       return None
     ival = v.int64value()
@@ -1362,7 +1371,7 @@ def _time_to_datetime(value):
 
 class DateProperty(DateTimeProperty):
 
-  def Validate(self, value):
+  def _validate(self, value):
     if (not isinstance(value, datetime.date) or
         isinstance(value, datetime.datetime)):
       raise datastore_errors.BadValueError('Expected date, got %r' %
@@ -1372,18 +1381,18 @@ class DateProperty(DateTimeProperty):
   def Now(self):
     return datetime.date.today()
 
-  def DbSetValue(self, v, p, value):
+  def _db_set_value(self, v, p, value):
     value = _date_to_datetime(value)
-    super(DateProperty, self).DbSetValue(v, p, value)
+    super(DateProperty, self)._db_set_value(v, p, value)
 
-  def DbGetValue(self, v, p):
-    value = super(DateProperty, self).DbGetValue(v, p)
+  def _db_get_value(self, v, p):
+    value = super(DateProperty, self)._db_get_value(v, p)
     return value.date()
 
 
 class TimeProperty(DateTimeProperty):
 
-  def Validate(self, value):
+  def _validate(self, value):
     if not isinstance(value, datetime.time):
       raise datastore_errors.BadValueError('Expected time, got %r' %
                                            (value,))
@@ -1392,12 +1401,12 @@ class TimeProperty(DateTimeProperty):
   def Now(self):
     return datetime.datetime.now().time()
 
-  def DbSetValue(self, v, p, value):
+  def _db_set_value(self, v, p, value):
     value = _time_to_datetime(value)
-    super(TimeProperty, self).DbSetValue(v, p, value)
+    super(TimeProperty, self)._db_set_value(v, p, value)
 
-  def DbGetValue(self, v, p):
-    value = super(TimeProperty, self).DbGetValue(v, p)
+  def _db_get_value(self, v, p):
+    value = super(TimeProperty, self)._db_get_value(v, p)
     return value.time()
 
 
@@ -1415,11 +1424,11 @@ class StructuredProperty(Property):
       assert not modelclass._has_repeated
     self._modelclass = modelclass
 
-  def FixUp(self, code_name):
-    super(StructuredProperty, self).FixUp(code_name)
-    self.FixUpNestedProperties()
+  def _fix_up(self, code_name):
+    super(StructuredProperty, self)._fix_up(code_name)
+    self._fix_up_nested_properties()
 
-  def FixUpNestedProperties(self):
+  def _fix_up_nested_properties(self):
     for name, prop in self._modelclass._properties.iteritems():
       prop_copy = copy.copy(prop)
       prop_copy._name = self._name + '.' + prop._name
@@ -1428,7 +1437,7 @@ class StructuredProperty(Property):
         # See model_test: testRecursiveStructuredProperty().
         # TODO: Guard against indirect recursion.
         if prop_copy._modelclass is not self._modelclass:
-          prop_copy.FixUpNestedProperties()
+          prop_copy._fix_up_nested_properties()
       setattr(self, prop._code_name, prop_copy)
 
   def _comparison(self, op, value):
@@ -1437,10 +1446,10 @@ class StructuredProperty(Property):
         'StructuredProperty filter can only use ==')
     # Import late to avoid circular imports.
     from ndb.query import FilterNode, ConjunctionNode, PostFilterNode
-    value = self.Validate(value)  # None is not allowed!
+    value = self._validate(value)  # None is not allowed!
     filters = []
     for name, prop in value._properties.iteritems():
-      val = prop.RetrieveValue(value)
+      val = prop._retrieve_value(value)
       if val is not None:
         filters.append(FilterNode(self._name + '.' + name, op, val))
     if not filters:
@@ -1462,23 +1471,23 @@ class StructuredProperty(Property):
       subentities = [subentities]
     for subentity in subentities:
       for name, prop in value._properties.iteritems():
-        val = prop.RetrieveValue(value)
+        val = prop._retrieve_value(value)
         if val is not None:
-          if prop.RetrieveValue(subentity) != val:
+          if prop._retrieve_value(subentity) != val:
             break
       else:
         return True
     return False
 
-  def Validate(self, value):
+  def _validate(self, value):
     if not isinstance(value, self._modelclass):
       raise datastore_errors.BadValueError('Expected %s instance, got %r' %
                                            (self._modelclass.__name__, value))
     return value
 
-  def Serialize(self, entity, pb, prefix='', parent_repeated=False):
+  def _serialize(self, entity, pb, prefix='', parent_repeated=False):
     # entity -> pb; pb is an EntityProto message
-    value = self.RetrieveValue(entity)
+    value = self._retrieve_value(entity)
     if value is None:
       # TODO: Is this the right thing for queries?
       # Skip structured values that are None.
@@ -1493,18 +1502,18 @@ class StructuredProperty(Property):
     for value in values:
       # TODO: Avoid re-sorting for repeated values.
       for name, prop in sorted(value._properties.iteritems()):
-        prop.Serialize(value, pb, prefix + self._name + '.',
+        prop._serialize(value, pb, prefix + self._name + '.',
                        self._repeated or parent_repeated)
 
-  def Deserialize(self, entity, p, depth=1):
+  def _deserialize(self, entity, p, depth=1):
     if not self._repeated:
-      subentity = self.RetrieveValue(entity)
+      subentity = self._retrieve_value(entity)
       if subentity is None:
         subentity = self._modelclass()
-        self.StoreValue(entity, subentity)
+        self._store_value(entity, subentity)
       assert isinstance(subentity, self._modelclass)
       prop = subentity._get_property_for(p, depth=depth)
-      prop.Deserialize(subentity, p, depth + 1)
+      prop._deserialize(subentity, p, depth + 1)
       return
 
     # The repeated case is more complicated.
@@ -1516,23 +1525,23 @@ class StructuredProperty(Property):
     prop = self._modelclass._properties.get(next)
     assert prop is not None  # QED
 
-    values = self.RetrieveValue(entity)
+    values = self._retrieve_value(entity)
     if values is None:
       values = []
     elif not isinstance(values, list):
       values = [values]
-    self.StoreValue(entity, values)
+    self._store_value(entity, values)
     # Find the first subentity that doesn't have a value for this
     # property yet.
     for sub in values:
       assert isinstance(sub, self._modelclass)
-      if not prop.HasValue(sub):
+      if not prop._has_value(sub):
         subentity = sub
         break
     else:
       subentity = self._modelclass()
       values.append(subentity)
-    prop.Deserialize(subentity, p, depth + 1)
+    prop._deserialize(subentity, p, depth + 1)
 
 
 _MEANING_COMPRESSED = 18
@@ -1562,13 +1571,13 @@ class LocalStructuredProperty(Property):
     self._modelclass = modelclass
     self._compressed = compressed
 
-  def Validate(self, value):
+  def _validate(self, value):
     if not isinstance(value, self._modelclass):
       raise datastore_errors.BadValueError('Expected %s instance, got %r' %
                                            (self._modelclass.__name__, value))
     return value
 
-  def DbSetValue(self, v, p, value):
+  def _db_set_value(self, v, p, value):
     pb = value._to_pb()
     serialized = pb.Encode()
     if self._compressed:
@@ -1578,7 +1587,7 @@ class LocalStructuredProperty(Property):
       p.set_meaning(entity_pb.Property.BLOB)
       v.set_stringvalue(serialized)
 
-  def DbGetValue(self, v, p):
+  def _db_get_value(self, v, p):
     if not v.has_stringvalue():
       return None
     serialized = v.stringvalue()
@@ -1592,7 +1601,7 @@ class GenericProperty(Property):
   # This is mainly used for orphans but can also be used explicitly
   # for properties with dynamically-typed values, and in Expandos.
 
-  def DbGetValue(self, v, p):
+  def _db_get_value(self, v, p):
     # This is awkward but there seems to be no faster way to inspect
     # what union member is present.  datastore_types.FromPropertyPb(),
     # the undisputed authority, has the same series of if-elif blocks.
@@ -1635,7 +1644,7 @@ class GenericProperty(Property):
       # A missing value implies null.
       return None
 
-  def DbSetValue(self, v, p, value):
+  def _db_set_value(self, v, p, value):
     # TODO: use a dict mapping types to functions
     if isinstance(value, str):
       v.set_stringvalue(value)
@@ -1674,7 +1683,7 @@ class GenericProperty(Property):
     elif isinstance(value, users.User):
       datastore_types.PackUser(p.name(), value, v)
     else:
-      # TODO: blobkey, atom and gdata types
+      # TODO: BlobKey.
       assert False, type(value)
 
 
@@ -1718,16 +1727,16 @@ class ComputedProperty(GenericProperty):
     super(ComputedProperty, self).__init__(*args, **kwargs)
     self.__derive_func = derive_func
 
-  def HasValue(self, entity):
+  def _has_value(self, entity):
     return True
 
-  def StoreValue(self, entity, value):
+  def _store_value(self, entity, value):
     raise ComputedPropertyError("Cannot assign to a ComputedProperty")
 
-  def DeleteValue(self, entity):
+  def _delete_value(self, entity):
     raise ComputedPropertyError("Cannot delete a ComputedProperty")
 
-  def RetrieveValue(self, entity):
+  def _retrieve_value(self, entity):
     return self.__derive_func(entity)
 
 
@@ -1744,9 +1753,10 @@ class Expando(Model):
     prop = self._properties.get(name)
     if prop is None:
       return super(Expando, self).__getattribute__(name)
-    return prop.GetValue(self)
+    return prop._get_value(self)
 
   def __setattr__(self, name, value):
+    # TODO: There's a bug here when assigning to 'key'.
     if (name.startswith('_') or
         isinstance(getattr(self.__class__, name, None), Property)):
       return super(Expando, self).__setattr__(name, value)
@@ -1757,7 +1767,9 @@ class Expando(Model):
       prop = GenericProperty(name)
     prop._code_name = name
     self._properties[name] = prop
-    prop.SetValue(self, value)
+    prop._set_value(self, value)
+
+  # TODO: __delattr__().
 
 
 @datastore_rpc._positional(1)
