@@ -64,10 +64,7 @@ exceptions indicated in the list below:
 
 - KeyProperty: a datastore Key value
 
-- UserProperty: a User object.  Note: this exists for backwards
-  compatibility with existing datastore schemas only; we do not
-  recommend storing User objects directly in the datastore, but
-  instead recommend storing the user.user_id() value
+- UserProperty: a User object (for backwards compatibility only)
 
 - StructuredProperty: a field that is itself structured like an
   entity; see below for more details
@@ -249,7 +246,6 @@ example:
 
 __author__ = 'guido@google.com (Guido van Rossum)'
 
-# TODO: docstrings on all Property subclasses, Expando, and all methods.
 # TODO: change asserts to better exceptions.
 
 import copy
@@ -428,7 +424,10 @@ class Model(object):
     self._set_attributes(kwds)
 
   def _set_attributes(self, kwds):
-    """Internal helper to set attributes from keyword arguments."""
+    """Internal helper to set attributes from keyword arguments.
+
+    Expando overrides this.
+    """
     cls = self.__class__
     for name, value in kwds.iteritems():
       prop = getattr(cls, name)  # Raises AttributeError for unknown properties.
@@ -501,7 +500,7 @@ class Model(object):
     """Setter for key attribute."""
     if key is not None:
       if not isinstance(key, Key):
-        raise datastore_errors.BadValueError(
+        raise datastore_errors.BadArgumentError(
             'Expected Key instance, got %r' % key)
       if self.__class__ not in (Model, Expando):
         if key.kind() != self._get_kind():
@@ -921,8 +920,8 @@ class Property(object):
     """
     from ndb.query import FilterNode  # Import late to avoid circular imports.
     if not isinstance(value, (list, tuple)):
-      raise datastore_errors.BadValueError('Expected list or tuple, got %r' %
-                                           (value,))
+      raise datastore_errors.BadArgumentError('Expected list or tuple, got %r' %
+                                              (value,))
     values = []
     for val in value:
       if val is not None:
@@ -951,6 +950,11 @@ class Property(object):
       Employee.query().order(Employee.rank)
     """
     return datastore_query.PropertyOrder(self._name)
+
+  # TODO: Explain somewhere that None is never validated.
+  # TODO: What if a custom validator returns None?
+  # TODO: What if a custom validator wants to coerce a type that the
+  # built-in validator for a given class does not allow?
 
   def _validate(self, value):
     """Template method to validate and possibly modify the value.
@@ -1161,6 +1165,8 @@ class Property(object):
 
 
 class BooleanProperty(Property):
+  """A Property whose value is a Python bool."""
+  # TODO: Allow int/long values equal to 0 or 1?
 
   def _validate(self, value):
     if not isinstance(value, bool):
@@ -1181,6 +1187,7 @@ class BooleanProperty(Property):
 
 
 class IntegerProperty(Property):
+  """A Property whose value is a Python int or long (or bool)."""
 
   def _validate(self, value):
     if not isinstance(value, (int, long)):
@@ -1199,6 +1206,10 @@ class IntegerProperty(Property):
 
 
 class FloatProperty(Property):
+  """A Property whose value is a Python float.
+
+  Note: int, long and bool are also allowed.
+  """
 
   def _validate(self, value):
     if not isinstance(value, (int, long, float)):
@@ -1217,7 +1228,7 @@ class FloatProperty(Property):
 
 
 class StringProperty(Property):
-
+  """A Property whose value is a text string."""
   # TODO: Enforce size limit when indexed.
 
   def _validate(self, value):
@@ -1251,7 +1262,7 @@ class StringProperty(Property):
 
 
 class TextProperty(StringProperty):
-
+  """An unindexed Property whose value is a text string of unlimited length."""
   # TODO: Maybe just use StringProperty(indexed=False)?
 
   _indexed = False
@@ -1262,7 +1273,7 @@ class TextProperty(StringProperty):
 
 
 class BlobProperty(Property):
-
+  """A Property whose value is a byte string."""
   # TODO: Enforce size limit when indexed.
 
   _indexed = False
@@ -1288,7 +1299,6 @@ class BlobProperty(Property):
 
 
 class GeoPt(tuple):
-
   """A geographical point.  This is a tuple subclass and immutable.
 
   Fields:
@@ -1307,10 +1317,12 @@ class GeoPt(tuple):
 
   @property
   def lat(self):
+    """The latitude (in degrees north of the equator, abs() <= 90)."""
     return self[0]
 
   @property
   def lon(self):
+    """The longitude (in degrees west of Greenwich, abs() <= 180)."""
     return self[1]
 
   def __repr__(self):
@@ -1318,6 +1330,7 @@ class GeoPt(tuple):
 
 
 class GeoPtProperty(Property):
+  """A Property whose value is a GeoPt."""
 
   def _validate(self, value):
     if not isinstance(value, GeoPt):
@@ -1339,6 +1352,7 @@ class GeoPtProperty(Property):
 
 
 def _unpack_user(v):
+  """Internal helper to unpack a User value from a protocol buffer."""
   uv = v.uservalue()
   email = unicode(uv.email().decode('utf-8'))
   auth_domain = unicode(uv.auth_domain().decode('utf-8'))
@@ -1358,6 +1372,13 @@ def _unpack_user(v):
 
 
 class UserProperty(Property):
+  """A Property whose value is a User object.
+
+  Note: this exists for backwards compatibility with existing
+  datastore schemas only; we do not recommend storing User objects
+  directly in the datastore, but instead recommend storing the
+  user.user_id() value.
+  """
 
   def _validate(self, value):
     if not isinstance(value, users.User):
@@ -1373,7 +1394,7 @@ class UserProperty(Property):
 
 
 class KeyProperty(Property):
-
+  """A Property whose value is a Key object."""
   # TODO: optionally check the kind (or maybe require this?)
 
   def _validate(self, value):
@@ -1414,18 +1435,21 @@ class KeyProperty(Property):
 # Todo: BlobKeyProperty.
 
 
+# The Epoch (a zero POSIX timestamp).
 _EPOCH = datetime.datetime.utcfromtimestamp(0)
 
 class DateTimeProperty(Property):
+  """A Property whose value is a datetime object.
 
-  # NOTE: Unlike Django, auto_now_add can be overridden by setting the
-  # value before writing the entity.  And unlike classic db, auto_now
-  # does not supply a default value.  Also unlike classic db, when the
-  # entity is written, the property values are updated to match what
-  # was written.  Finally, beware that this also updates the value in
-  # the in-process cache, *and* that auto_now_add may interact weirdly
-  # with transaction retries (a retry of a property with auto_now_add
-  # set will reuse the value that was set on the first try).
+  NOTE: Unlike Django, auto_now_add can be overridden by setting the
+  value before writing the entity.  And unlike classic db, auto_now
+  does not supply a default value.  Also unlike classic db, when the
+  entity is written, the property values are updated to match what
+  was written.  Finally, beware that this also updates the value in
+  the in-process cache, *and* that auto_now_add may interact weirdly
+  with transaction retries (a retry of a property with auto_now_add
+  set will reuse the value that was set on the first try).
+  """
 
   _attributes = Property._attributes + ['_auto_now', '_auto_now_add']
 
@@ -1444,13 +1468,13 @@ class DateTimeProperty(Property):
                                            (value,))
     return value
 
-  def Now(self):
+  def _now(self):
     return datetime.datetime.now()
 
   def _serialize(self, entity, *rest):
     if (self._auto_now or
         (self._auto_now_add and self._retrieve_value(entity) is None)):
-      value = self.Now()
+      value = self._now()
       self._store_value(entity, value)
     super(DateTimeProperty, self)._serialize(entity, *rest)
 
@@ -1498,6 +1522,7 @@ def _time_to_datetime(value):
 
 
 class DateProperty(DateTimeProperty):
+  """A Property whose value is a date object."""
 
   def _validate(self, value):
     if (not isinstance(value, datetime.date) or
@@ -1506,7 +1531,7 @@ class DateProperty(DateTimeProperty):
                                            (value,))
     return value
 
-  def Now(self):
+  def _now(self):
     return datetime.date.today()
 
   def _db_set_value(self, v, p, value):
@@ -1519,6 +1544,7 @@ class DateProperty(DateTimeProperty):
 
 
 class TimeProperty(DateTimeProperty):
+  """A Property whose value is a time object."""
 
   def _validate(self, value):
     if not isinstance(value, datetime.time):
@@ -1526,7 +1552,7 @@ class TimeProperty(DateTimeProperty):
                                            (value,))
     return value
 
-  def Now(self):
+  def _now(self):
     return datetime.datetime.now().time()
 
   def _db_set_value(self, v, p, value):
@@ -1539,6 +1565,12 @@ class TimeProperty(DateTimeProperty):
 
 
 class StructuredProperty(Property):
+  """A Property whose value is itself an entity.
+
+  The values of the sub-entity are indexed and can be queried.
+
+  See the module docstring for details.
+  """
 
   _modelclass = None
 
@@ -1672,6 +1704,7 @@ class StructuredProperty(Property):
     prop._deserialize(subentity, p, depth + 1)
 
 
+# A custom 'meaning' for compressed blobs.
 _MEANING_COMPRESSED = 18
 
 
@@ -1726,8 +1759,13 @@ class LocalStructuredProperty(Property):
 
 
 class GenericProperty(Property):
-  # This is mainly used for orphans but can also be used explicitly
-  # for properties with dynamically-typed values, and in Expandos.
+  """A Property whose value can be (almost) any basic type.
+
+  This is mainly used for Expando and for orphans (values present in
+  the datastore but not represented in the Model subclass) but can
+  also be used explicitly for properties with dynamically-typed
+  values.
+  """
 
   def _db_get_value(self, v, p):
     # This is awkward but there seems to be no faster way to inspect
@@ -1816,7 +1854,7 @@ class GenericProperty(Property):
 
 
 class ComputedProperty(GenericProperty):
-  """A property that has its value determined by a user-supplied function.
+  """A Property whose value is determined by a user-supplied function.
 
   Computed properties cannot be set directly, but are instead generated by a
   function when required. They are useful to provide fields in the datastore
@@ -1845,7 +1883,7 @@ class ComputedProperty(GenericProperty):
   ...   hash = ComputedProperty(_compute_hash, name='sha1')
   """
 
-  def __init__(self, derive_func, *args, **kwargs):
+  def __init__(self, func, *args, **kwargs):
     """Constructor.
 
     Args:
@@ -1853,7 +1891,7 @@ class ComputedProperty(GenericProperty):
             a calculated value.
     """
     super(ComputedProperty, self).__init__(*args, **kwargs)
-    self.__derive_func = derive_func
+    self._func = func
 
   def _has_value(self, entity):
     return True
@@ -1865,10 +1903,14 @@ class ComputedProperty(GenericProperty):
     raise ComputedPropertyError("Cannot delete a ComputedProperty")
 
   def _retrieve_value(self, entity):
-    return self.__derive_func(entity)
+    return self._func(entity)
 
 
 class Expando(Model):
+  """Model subclass to support dynamic Property names and types.
+
+  See the module docstring for details.
+  """
 
   def _set_attributes(self, kwds):
     for name, value in kwds.iteritems():
