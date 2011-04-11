@@ -1713,7 +1713,10 @@ class LocalStructuredProperty(Property):
 
   This looks like StructuredProperty on the Python side, but is
   written to the datastore as a single opaque blob.  It is not indexed
-  and you cannot query for subproperties.
+  and you cannot query for subproperties.  On the other hand, the
+  on-disk representation is more efficient and can be made even more
+  efficient by passing compressed=True, which compresses the blob
+  data using gzip.
   """
 
   _indexed = False
