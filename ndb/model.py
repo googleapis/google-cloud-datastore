@@ -243,7 +243,15 @@ example:
 
   qry = Person.query(Person.address.city == 'London')
 
-TODO: Mention transaction*() and the *multi*() functions here.
+A number of top-level functions also live in this module:
+
+- transaction() runs a function inside a transaction
+- get_multi() reads multiple entities at once
+- put_multi() writes multiple entities at once
+- delete_multi() deletes multiple entities at once
+
+All these have a corresponding *_async() variant as well.
+The *_multi_async() functions return a list of Futures.
 """
 
 __author__ = 'guido@google.com (Guido van Rossum)'
@@ -262,15 +270,17 @@ from google.appengine.datastore import datastore_query
 from google.appengine.datastore import datastore_rpc
 from google.appengine.datastore import entity_pb
 
+# NOTE: Don't use "from ndb import key"; key is a common local variable name.
 import ndb.key
-# NOTE: Don't import ndb.query here; it would cause circular import
-# problems.  It is imported dynamically as needed.
-
 Key = ndb.key.Key  # For export.
 
 # NOTE: Property and Error classes are added later.
 __all__ = ['Key', 'ModelAdapter', 'MetaModel', 'Model', 'Expando',
-           'transaction', 'transaction_async']
+           'transaction', 'transaction_async',
+           'get_multi', 'get_multi_async',
+           'put_multi', 'put_multi_async',
+           'delete_multi', 'delete_multi_async',
+           ]
 
 
 class KindError(datastore_errors.BadValueError):
