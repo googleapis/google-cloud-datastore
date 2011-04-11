@@ -242,6 +242,8 @@ It is possible to query for field values of stuctured properties.  For
 example:
 
   qry = Person.query(Person.address.city == 'London')
+
+TODO: Mention transaction*() and the *multi*() functions here.
 """
 
 __author__ = 'guido@google.com (Guido van Rossum)'
@@ -1920,8 +1922,7 @@ class Expando(Model):
       setattr(self, name, value)
 
   def __getattr__(self, name):
-    if (name.startswith('_') or
-        isinstance(getattr(self.__class__, name, None), Property)):
+    if name.startswith('_'):
       return super(Expando, self).__getattr__(name)
     prop = self._properties.get(name)
     if prop is None:
@@ -1929,9 +1930,8 @@ class Expando(Model):
     return prop._get_value(self)
 
   def __setattr__(self, name, value):
-    # TODO: There's a bug here when assigning to 'key'.
     if (name.startswith('_') or
-        isinstance(getattr(self.__class__, name, None), Property)):
+        isinstance(getattr(self.__class__, name, None), (Property, property))):
       return super(Expando, self).__setattr__(name, value)
     self._clone_properties()
     if isinstance(value, Model):
@@ -1942,7 +1942,15 @@ class Expando(Model):
     self._properties[name] = prop
     prop._set_value(self, value)
 
-  # TODO: __delattr__().
+  def __delattr__(self, name):
+    if (name.startswith('_') or
+        isinstance(getattr(self.__class__, name, None), (Property, property))):
+      return super(Expando, self).__delattr__(name)
+    prop = self._properties.get(name)
+    assert prop is not None
+    prop._delete_value(self)
+    assert prop not in self.__class__._properties
+    del self._properties[name]
 
 
 @datastore_rpc._positional(1)

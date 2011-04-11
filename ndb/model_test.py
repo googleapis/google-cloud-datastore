@@ -1253,6 +1253,23 @@ class ModelTests(test_utils.DatastoreTest):
     q = Person._from_pb(pb)
     self.assertEqual(p.t, q.t)
 
+  def testExpandoKey(self):
+    class Ex(model.Expando):
+      pass
+    e = Ex()
+    self.assertEqual(e.key, None)
+    k = model.Key('Ex', 'abc')
+    e.key = k
+    self.assertEqual(e.key, k)
+    k2 = model.Key('Ex', 'def')
+    e2 = Ex(key=k2)
+    self.assertEqual(e2.key, k2)
+    e2.key = k
+    self.assertEqual(e2.key, k)
+    self.assertEqual(e, e2)
+    del e.key
+    self.assertEqual(e.key, None)
+
   def testExpandoRead(self):
     class Person(model.Model):
       name = model.StringProperty()
@@ -1275,6 +1292,29 @@ class ModelTests(test_utils.DatastoreTest):
     p.xy = AMSTERDAM
     pb = p._to_pb()
     self.assertEqual(str(pb), GOLDEN_PB)
+
+  def testExpandoDelAttr(self):
+    class Ex(model.Expando):
+      static = model.StringProperty()
+
+    e = Ex()
+    self.assertEqual(e.static, None)
+    self.assertRaises(AttributeError, getattr, e, 'dynamic')
+    self.assertRaises(AttributeError, getattr, e, '_absent')
+
+    e.static = 'a'
+    e.dynamic = 'b'
+    self.assertEqual(e.static, 'a')
+    self.assertEqual(e.dynamic, 'b')
+
+    e = Ex(static='a', dynamic='b')
+    self.assertEqual(e.static, 'a')
+    self.assertEqual(e.dynamic, 'b')
+
+    del e.static
+    del e.dynamic
+    self.assertEqual(e.static, None)
+    self.assertRaises(AttributeError, getattr, e, 'dynamic')
 
   def testExpandoRepr(self):
     class Person(model.Expando):
