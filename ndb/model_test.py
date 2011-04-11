@@ -1500,6 +1500,25 @@ class ModelTests(test_utils.DatastoreTest):
     self.assertRaises(datastore_errors.BadValueError, MyModel.get_by_id,
                       'bar', parent=1)
 
+  def testPopulate(self):
+    class MyModel(model.Model):
+      name = model.StringProperty()
+    m = MyModel()
+    m.populate(name='abc')
+    self.assertEqual(m.name, 'abc')
+    m.populate(name='def')
+    self.assertEqual(m.name, 'def')
+    self.assertRaises(AttributeError, m.populate, foo=42)
+
+  def testPopulate_Expando(self):
+    class Ex(model.Expando):
+      name = model.StringProperty()
+    m = Ex()
+    m.populate(name='abc')
+    self.assertEqual(m.name, 'abc')
+    m.populate(foo=42)
+    self.assertEqual(m.foo, 42)
+
   def testTransaction(self):
     class MyModel(model.Model):
       text = model.StringProperty()

@@ -436,6 +436,17 @@ class Model(object):
     self._values = {}
     self._set_attributes(kwds)
 
+  def _populate(self, **kwds):
+    """Populate an instance from keyword arguments.
+
+    Each keyword argument will be used to set a corresponding
+    property.  Keywords must refer to valid property name.  This is
+    similar to passing keyword arguments to the Model constructor,
+    except that no provisions for key, id or parent are made.
+    """
+    self._set_attributes(kwds)
+  populate = _populate
+
   def _set_attributes(self, kwds):
     """Internal helper to set attributes from keyword arguments.
 
