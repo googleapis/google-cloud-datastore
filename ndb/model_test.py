@@ -8,6 +8,7 @@ import re
 import unittest
 
 from google.appengine.api import datastore_errors
+from google.appengine.api import namespace_manager
 from google.appengine.api import users
 from google.appengine.datastore import entity_pb
 
@@ -1633,6 +1634,46 @@ class ModelTests(test_utils.DatastoreTest):
     self.assertEqual(key1.get(), None)
     self.assertEqual(key2.get(), None)
     self.assertEqual(key3.get(), None)
+
+  def testNamespaces(self):
+    save_namespace = namespace_manager.get_namespace()
+    try:
+      namespace_manager.set_namespace('ns1')
+      k1 = model.Key('A', 1)
+      self.assertEqual(k1.namespace(), 'ns1')
+      k2 = model.Key('B', 2, namespace='ns2')
+      self.assertEqual(k2.namespace(), 'ns2')
+      namespace_manager.set_namespace('ns3')
+      self.assertEqual(k1.namespace(), 'ns1')
+      k3 = model.Key('C', 3, parent=k1)
+      self.assertEqual(k3.namespace(), 'ns1')
+
+      # Test that namespaces survive serialization
+      namespace_manager.set_namespace('ns2')
+      km = model.Key('M', 1, namespace='ns4')
+      class M(model.Model):
+        keys = model.KeyProperty(repeated=True)
+      m1 = M(keys=[k1, k2, k3], key=km)
+      pb = m1._to_pb()
+      namespace_manager.set_namespace('ns3')
+      m2 = M._from_pb(pb)
+      self.assertEqual(m1, m2)
+      self.assertEqual(m2.keys[0].namespace(), 'ns1')
+      self.assertEqual(m2.keys[1].namespace(), 'ns2')
+      self.assertEqual(m2.keys[2].namespace(), 'ns1')
+
+      # Now test the same thing for Expando
+      namespace_manager.set_namespace('ns2')
+      ke = model.Key('E', 1)
+      class E(model.Expando):
+        pass
+      e1 = E(keys=[k1, k2, k3], key=ke)
+      pb = e1._to_pb()
+      namespace_manager.set_namespace('ns3')
+      e2 = E._from_pb(pb)
+      self.assertEqual(e1, e2)
+    finally:
+      namespace_manager.set_namespace(save_namespace)
 
 
 def main():

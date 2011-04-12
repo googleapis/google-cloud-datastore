@@ -1825,9 +1825,13 @@ class GenericProperty(Property):
       return v.doublevalue()
     elif v.has_referencevalue():
       rv = v.referencevalue()
+      app = rv.app()
+      namespace = None
+      if rv.has_name_space():
+        namespace = rv.name_space()
       pairs = [(elem.type(), elem.id() or elem.name())
                for elem in rv.pathelement_list()]
-      return Key(pairs=pairs)  # TODO: app, namespace
+      return Key(pairs=pairs, app=app, namespace=namespace)
     elif v.has_pointvalue():
       pv = v.pointvalue()
       return GeoPt(pv.x(), pv.y())
@@ -1860,7 +1864,7 @@ class GenericProperty(Property):
       rv = v.mutable_referencevalue()  # A Reference
       rv.set_app(ref.app())
       if ref.has_name_space():
-        rv.set_name_space()
+        rv.set_name_space(ref.name_space())
       for elem in ref.path().element_list():
         rv.add_pathelement().CopyFrom(elem)
     elif isinstance(value, datetime.datetime):
