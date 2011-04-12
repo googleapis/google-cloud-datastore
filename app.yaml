@@ -12,6 +12,9 @@ handlers:
 - url: /_ah/stats.*
   script: $PYTHON_LIB/google/appengine/ext/appstats/ui.py
 
+- url: /hello.*
+  script: demo/hello.py
+
 - url: /test.*
   script: demo/test.py
 
