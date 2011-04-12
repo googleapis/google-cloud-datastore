@@ -1684,6 +1684,17 @@ class ModelTests(test_utils.DatastoreTest):
       namespace_manager.set_namespace('ns3')
       e2 = E._from_pb(pb)
       self.assertEqual(e1, e2)
+
+      # Test that an absent namespace always means the empty namespace
+      namespace_manager.set_namespace('')
+      k3 = model.Key('E', 2)
+      e3 = E(key=k3, k=k3)
+      pb = e3._to_pb()
+      namespace_manager.set_namespace('ns4')
+      e4 = E._from_pb(pb)
+      self.assertEqual(e4.key.namespace(), '')
+      self.assertEqual(e4.k.namespace(), '')
+
     finally:
       namespace_manager.set_namespace(save_namespace)
 

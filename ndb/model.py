@@ -1826,9 +1826,7 @@ class GenericProperty(Property):
     elif v.has_referencevalue():
       rv = v.referencevalue()
       app = rv.app()
-      namespace = None
-      if rv.has_name_space():
-        namespace = rv.name_space()
+      namespace = rv.name_space()
       pairs = [(elem.type(), elem.id() or elem.name())
                for elem in rv.pathelement_list()]
       return Key(pairs=pairs, app=app, namespace=namespace)
