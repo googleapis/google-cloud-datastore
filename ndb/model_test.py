@@ -1501,6 +1501,18 @@ class ModelTests(test_utils.DatastoreTest):
     self.assertRaises(datastore_errors.BadValueError, MyModel.get_by_id,
                       'bar', parent=1)
 
+  def testDelete(self):
+    class MyModel(model.Model):
+      pass
+
+    ent1 = MyModel()
+    key1 = ent1.put()
+    ent2 = key1.get()
+    self.assertEqual(ent1, ent2)
+    key1.delete()
+    ent3 = key1.get()
+    self.assertEqual(ent3, None)
+
   def testPopulate(self):
     class MyModel(model.Model):
       name = model.StringProperty()

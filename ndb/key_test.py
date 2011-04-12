@@ -75,6 +75,11 @@ class KeyTests(unittest.TestCase):
     self.assertEqual(k.urlsafe(), urlsafe)
     self.assertEqual(k.reference(), r)
 
+    k1 = key.Key('A', 1)
+    self.assertEqual(k1.urlsafe(), 'agFfcgcLEgFBGAEM')
+    k2 = key.Key(urlsafe=k1.urlsafe())
+    self.assertEqual(k1, k2)
+
   def testId(self):
     k1 = key.Key('Kind', 'foo', app='app1', namespace='ns1')
     self.assertEqual(k1.id(), 'foo')
@@ -232,6 +237,10 @@ class KeyTests(unittest.TestCase):
     self.assertEqual(k, key.Key('M', 1))
     k = key.Key('X', 1, N, 2, 'Y', 3)
     self.assertEqual(k, key.Key('X', 1, 'NN', 2, 'Y', 3))
+
+  def testKindFromBadValue(self):
+    # TODO: BadArgumentError
+    self.assertRaises(Exception, key.Key, 42, 42)
 
 
 def main():
