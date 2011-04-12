@@ -15,13 +15,15 @@ def main():
   print
   qry = Message.query().order(-Message.when)
   for msg in qry:
-    print msg.userid, time.ctime(msg.when), repr(msg.body)
-    if msg.userid is not None:
+    print time.ctime(msg.when), repr(msg.body)
+    if msg.userid is None:
+      print '  * Anonymous'
+    else:
       act = account_key(msg.userid).get()
       if act is None:
-        print '  * Bad account'
+        print '  * Bad account', msg.userid
       else:
-        print '  * Account', act.nickname, act.email
+        print '  * Account', act.nickname, act.email, msg.userid
   log = LogRecord(timestamp=time.time())
   log.put_async()
 
