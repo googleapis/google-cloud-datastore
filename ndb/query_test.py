@@ -98,6 +98,32 @@ class QueryTests(test_utils.DatastoreTest):
     self.assertEqual(query.orders_to_orderings(q.orders),
                      [('name', query.ASC), ('Age', query.DESC)])
 
+  def testAndQuery(self):
+    class Employee(model.Model):
+      name = model.StringProperty()
+      age = model.IntegerProperty('Age')
+      rank = model.IntegerProperty()
+    q = Employee.query().filter(query.AND(Employee.age >= 42))
+    self.assertEqual(q.filters, query.FilterNode('Age', '>=', 42))
+    q = Employee.query(query.AND(Employee.age >= 42, Employee.rank <= 5))
+    self.assertEqual(q.filters,
+                     query.ConjunctionNode(
+                       [query.FilterNode('Age', '>=', 42),
+                        query.FilterNode('rank', '<=', 5)]))
+
+  def testOrQuery(self):
+    class Employee(model.Model):
+      name = model.StringProperty()
+      age = model.IntegerProperty('Age')
+      rank = model.IntegerProperty()
+    q = Employee.query().filter(query.OR(Employee.age >= 42))
+    self.assertEqual(q.filters, query.FilterNode('Age', '>=', 42))
+    q = Employee.query(query.OR(Employee.age < 42, Employee.rank > 5))
+    self.assertEqual(q.filters,
+                     query.DisjunctionNode(
+                       [query.FilterNode('Age', '<', 42),
+                        query.FilterNode('rank', '>', 5)]))
+
   def testQueryForStructuredProperty(self):
     class Bar(model.Model):
       name = model.StringProperty()

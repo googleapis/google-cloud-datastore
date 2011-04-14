@@ -407,7 +407,7 @@ def AND(*args):
 
 def OR(*args):
   assert args
-  assert all(isinstance(Node, arg) for arg in args)
+  assert all(isinstance(arg, Node) for arg in args)
   if len(args) == 1:
     return args[0]
   return DisjunctionNode(args)
