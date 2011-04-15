@@ -7,7 +7,7 @@
 
 FLAGS=
 GAE=	/usr/local/google_appengine
-GAEPATH=$(GAE):$(GAE)/lib/yaml/lib
+GAEPATH=$(GAE):$(GAE)/lib/yaml/lib:$(GAE)/lib/webob
 TESTS=	`find ndb -name [a-z]\*_test.py`
 NONTESTS=`find ndb -name [a-z]\*.py ! -name \*_test.py`
 PORT=	8080
