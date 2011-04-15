@@ -1,5 +1,8 @@
 # Startup file for interactive prompt, used by "make python".
 
+import logging
+logging.basicConfig(level=logging.INFO)
+
 import os
 
 from google.appengine.api import apiproxy_stub_map
