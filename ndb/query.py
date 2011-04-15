@@ -548,8 +548,7 @@ class Query(object):
     orig_options = options
     if (post_filters and options is not None and
         (options.offset or options.limit is not None)):
-      options = datastore_query.QueryOptions(offset=None, limit=None,
-                                             config=orig_options)
+      options = QueryOptions(offset=None, limit=None, config=orig_options)
       assert options.limit is None and options.limit is None
     rpc = dsqry.run_async(conn, options)
     skipped = 0
