@@ -1440,6 +1440,12 @@ class ModelTests(test_utils.DatastoreTest):
     m = model.Model(id='bar', parent=p)
     self.assertEqual(m.put(), model.Key('ParentModel', 'foo', 'Model', 'bar'))
 
+    # parent without id
+    p = model.Key('ParentModel', 'foo')
+    m = model.Model(parent=p)
+    m.put()
+    self.assertTrue(m.key.id())
+
   def testAllocateIds(self):
     class MyModel(model.Model):
       pass

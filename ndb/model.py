@@ -596,10 +596,13 @@ class Model(object):
     else:
       ref = key._reference()  # Don't copy
       pb.mutable_key().CopyFrom(ref)
-    group = pb.mutable_entity_group()
-    elem = ref.path().element(0)
-    if elem.id() or elem.name():
-      group.add_element().CopyFrom(elem)
+    group = pb.mutable_entity_group()  # Must initialize this.
+    # To work around an SDK issue, only set the entity group if the
+    # full key is complete.  TODO: Remove the top test once fixed.
+    if key is not None and key.id():
+      elem = ref.path().element(0)
+      if elem.id() or elem.name():
+        group.add_element().CopyFrom(elem)
 
     for name, prop in sorted(self._properties.iteritems()):
       prop._serialize(self, pb)
