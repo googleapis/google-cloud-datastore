@@ -459,11 +459,13 @@ class ModelTests(test_utils.DatastoreTest):
     self.assertEqual(m2.key, model.Key('ParentModel', 'foo', 'Model', None))
 
     # not key -- invalid
-    self.assertRaises(datastore_errors.BadValueError, model.Model, key='foo')
+    self.assertRaises(datastore_errors.BadArgumentError, model.Model, key='foo')
 
     # wrong key kind -- invalid
     k = model.Key('OtherModel', 'bar')
-    self.assertRaises(model.KindError, model.Model, key=k)
+    class MyModel(model.Model):
+      pass
+    self.assertRaises(model.KindError, MyModel, key=k)
 
     # incomplete parent -- invalid
     p2 = model.Key('ParentModel', None)
@@ -1430,7 +1432,7 @@ class ModelTests(test_utils.DatastoreTest):
     [m2] = self.conn.get([k])
     self.assertEqual(m2, m)
 
-  def testIdAndParent(self):
+  def testIdAndParentPut(self):
     # id
     m = model.Model(id='bar')
     self.assertEqual(m.put(), model.Key('Model', 'bar'))
