@@ -371,6 +371,10 @@ class Context(object):
     raise datastore_errors.TransactionFailedError(
       'The transaction could not be committed. Please try again.')
 
+  def in_transaction(self):
+    """Return whether a transaction is currently active."""
+    return isinstance(self._conn, datastore_rpc.TransactionalConnection)
+
   def flush_cache(self):
     """Clears the in-memory cache.
 

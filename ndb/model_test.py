@@ -1753,6 +1753,31 @@ class ModelTests(test_utils.DatastoreTest):
     self.assertEqual(res.key, 'bar')
     self.assertEqual(res.real_key, k)
 
+  def testTransactionalDecorator(self):
+    # This tests @model.transactional and model.in_transaction(), and
+    # indirectly context.Context.in_transaction().
+    logs = []
+    @model.transactional
+    def foo(a, b):
+      self.assertTrue(model.in_transaction())
+      logs.append(tasklets.get_context()._conn)  # White box
+      return a + b
+    @model.transactional
+    def bar(a):
+      self.assertTrue(model.in_transaction())
+      logs.append(tasklets.get_context()._conn)  # White box
+      return foo(a, 42)
+    before = tasklets.get_context()._conn
+    self.assertFalse(model.in_transaction())
+    x = bar(100)
+    self.assertFalse(model.in_transaction())
+    after = tasklets.get_context()._conn
+    self.assertEqual(before, after)
+    self.assertEqual(x, 142)
+    self.assertEqual(len(logs), 2)
+    self.assertEqual(logs[0], logs[1])
+    self.assertNotEqual(before, logs[0])
+
 
 def main():
   unittest.main()

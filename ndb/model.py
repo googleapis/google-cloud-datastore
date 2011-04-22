@@ -252,6 +252,11 @@ A number of top-level functions also live in this module:
 
 All these have a corresponding *_async() variant as well.
 The *_multi_async() functions return a list of Futures.
+
+And finally these (without async variants):
+
+- in_transaction() tests whether you are currently running in a transaction
+- @transactional decorates functions that should be run in a transaction
 """
 
 __author__ = 'guido@google.com (Guido van Rossum)'
@@ -271,6 +276,8 @@ from google.appengine.datastore import datastore_query
 from google.appengine.datastore import datastore_rpc
 from google.appengine.datastore import entity_pb
 
+from ndb import utils
+
 # NOTE: Don't use "from ndb import key"; key is a common local variable name.
 import ndb.key
 Key = ndb.key.Key  # For export.
@@ -278,6 +285,7 @@ Key = ndb.key.Key  # For export.
 # NOTE: Property and Error classes are added later.
 __all__ = ['Key', 'ModelAdapter', 'ModelKey', 'MetaModel', 'Model', 'Expando',
            'transaction', 'transaction_async',
+           'in_transaction', 'transactional',
            'get_multi', 'get_multi_async',
            'put_multi', 'put_multi_async',
            'delete_multi', 'delete_multi_async',
@@ -2048,6 +2056,31 @@ def transaction_async(callback, retry=None, entity_group=None):
   if entity_group is not None:
     kwds['entity_group'] = entity_group
   return tasklets.get_context().transaction(callback, **kwds)
+
+
+def in_transaction():
+  """Return whether a transaction is currently active."""
+  from ndb import tasklets
+  return tasklets.get_context().in_transaction()
+
+
+@datastore_rpc._positional(1)
+def transactional(func):
+  """Decorator to make a function automatically run in a transaction.
+
+  If we're already in a transaction this is a no-op.
+
+  Note: If you need to override the retry count or the entity group,
+  or if you want some kind of async behavior, use the transaction()
+  function above.
+  """
+  @utils.wrapping(func)
+  def transactional_wrapper(*args, **kwds):
+    if in_transaction():
+      return func(*args, **kwds)
+    else:
+      return transaction(lambda: func(*args, **kwds))
+  return transactional_wrapper
 
 
 def get_multi_async(keys):
