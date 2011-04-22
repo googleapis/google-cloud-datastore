@@ -794,7 +794,7 @@ class _SubQueryIteratorState(object):
           return flag
     # All considered properties are equal; compare by key (ascending).
     # TODO: Comparison between ints and strings is arbitrary.
-    return cmp(our_entity.key.pairs(), their_entity.key.pairs())
+    return cmp(our_entity._key.pairs(), their_entity._key.pairs())
 
 
 class MultiQuery(object):
@@ -855,8 +855,8 @@ class MultiQuery(object):
     while state:
       item = heapq.heappop(state)
       ent = item.entity
-      if ent.key not in keys_seen:
-        keys_seen.add(ent.key)
+      if ent._key not in keys_seen:
+        keys_seen.add(ent._key)
         queue.putq(ent)
       subit = item.iterator
       try:

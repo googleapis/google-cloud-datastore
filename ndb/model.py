@@ -729,6 +729,47 @@ class Property(object):
       pass
 
 
+def _validate_key(value, entity=None):
+  if not isinstance(value, Key):
+    raise datastore_errors.BadValueError('Expected Key, got %r' % value)
+  if entity and entity.__class__ not in (Model, Expando):
+    if value.kind() != entity._get_kind():
+      raise KindError('Expected Key kind to be %s; received %s' %
+                      (entity._get_kind(), value.kind()))
+  return value
+
+
+class ModelKey(Property):
+  """Special property to store the Model key."""
+  def __init__(self):
+    self._name = '__key__'
+
+  def _comparison(self, op, value):
+    from ndb.query import FilterNode  # Import late to avoid circular imports.
+    if value is not None:
+      value = self._validate(value)
+      return FilterNode(self._name, op, datastore_types.Key(value.urlsafe()))
+    raise datastore_errors.BadValueError(
+        "__key__ filter query can't be compared to None")
+
+  def _validate(self, value):
+    return _validate_key(value)
+
+  def _set_value(self, entity, value):
+    """Setter for key attribute."""
+    if value is not None:
+      value = _validate_key(value, entity=entity)
+    entity._key = value
+
+  def _get_value(self, entity):
+    """Getter for key attribute."""
+    return entity._key
+
+  def _delete_value(self, entity):
+    """Deleter for key attribute."""
+    entity._key = None
+
+
 class BooleanProperty(Property):
   """A Property whose value is a Python bool."""
   # TODO: Allow int/long values equal to 0 or 1?
@@ -1523,6 +1564,7 @@ class Model(object):
   _kind_map = {}  # Dict mapping {kind: Model subclass}
 
   # Defaults for instance variables.
+  key = ModelKey() # Special key property
   _key = None
   _values = None
 
@@ -1554,9 +1596,9 @@ class Model(object):
       if parent is not None:
         raise datastore_errors.BadArgumentError(
             'Model constructor accepts key or parent, not both.')
-      # Using _setkey() here to trigger the basic Key checks.
+      # Using _validate_key() here to trigger the basic Key checks.
       # self.key = key doesn't work because of Expando's __setattr__().
-      self._setkey(key)
+      self._key = _validate_key(key, entity=self)
     elif id is not None or parent is not None:
       # When parent is set but id is not, we have an incomplete key.
       # Key construction will fail with invalid ids or parents, so no check
@@ -1646,29 +1688,6 @@ class Model(object):
   def _has_complete_key(self):
     """Return whether this entity has a complete key."""
     return self._key is not None and self._key.id() is not None
-
-  def _getkey(self):
-    """Getter for key attribute."""
-    return self._key
-
-  def _setkey(self, key):
-    """Setter for key attribute."""
-    if key is not None:
-      if not isinstance(key, Key):
-        raise datastore_errors.BadArgumentError(
-            'Expected Key instance, got %r' % key)
-      if self.__class__ not in (Model, Expando):
-        if key.kind() != self._get_kind():
-          raise KindError('Expected Key kind to be %s; received %s' %
-                          (self._get_kind(), key.kind()))
-    self._key = key
-
-  def _delkey(self):
-    """Deleter for key attribute."""
-    self._key = None
-
-  key = property(_getkey, _setkey, _delkey,
-                 """The Key of an entity, or None if not set yet.""")
 
   def __hash__(self):
     """Dummy hash function.
@@ -1799,8 +1818,13 @@ class Model(object):
     cls._properties = {}  # Map of {name: Property}
     if cls.__module__ == __name__:  # Skip the classes in *this* file.
       return
+    has_key = False
     for name in set(dir(cls)):
       prop = getattr(cls, name, None)
+      if isinstance(prop, ModelKey):
+        # TODO: raise exception if there is not one and only one ModelKey?
+        has_key = True
+        continue
       if isinstance(prop, Property):
         assert not name.startswith('_')
         # TODO: Tell prop the class, for error message.
@@ -1808,6 +1832,8 @@ class Model(object):
         if prop._repeated:
           cls._has_repeated = True
         cls._properties[prop._name] = prop
+    if not has_key:
+      raise datastore_errors.BadValueError("Model doesn't have a ModelKey.")
     cls._kind_map[cls._get_kind()] = cls
 
   # Datastore API using the default context.

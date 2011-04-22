@@ -439,6 +439,29 @@ class QueryTests(test_utils.DatastoreTest):
     bindings[1].value = 'jill'
     self.assertEqual(list(qry), [self.jill])
 
+  def testKeyFilter(self):
+    class MyModel(model.Model):
+      number = model.IntegerProperty()
+
+    k1 = model.Key('MyModel', 'foo-1')
+    m1 = MyModel(key=k1)
+    m1.put()
+
+    k2 = model.Key('MyModel', 'foo-2')
+    m2 = MyModel(key=k2)
+    m2.put()
+
+    q = MyModel.query(MyModel.key == k1)
+    res = q.get()
+    self.assertEqual(res, m1)
+
+    q = MyModel.query(MyModel.key > k1)
+    res = q.get()
+    self.assertEqual(res, m2)
+
+    q = MyModel.query(MyModel.key < k2)
+    res = q.get()
+    self.assertEqual(res, m1)
 
 def main():
   unittest.main()

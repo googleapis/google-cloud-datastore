@@ -459,7 +459,7 @@ class ModelTests(test_utils.DatastoreTest):
     self.assertEqual(m2.key, model.Key('ParentModel', 'foo', 'Model', None))
 
     # not key -- invalid
-    self.assertRaises(datastore_errors.BadArgumentError, model.Model, key='foo')
+    self.assertRaises(datastore_errors.BadValueError, model.Model, key='foo')
 
     # wrong key kind -- invalid
     k = model.Key('OtherModel', 'bar')
@@ -1705,6 +1705,53 @@ class ModelTests(test_utils.DatastoreTest):
 
     finally:
       namespace_manager.set_namespace(save_namespace)
+
+  def testOverrideModelKey(self):
+    class MyModel(model.Model):
+      # key, overriden
+      key = model.StringProperty()
+      # aha, here it is!
+      real_key = model.ModelKey()
+
+    class MyExpando(model.Expando):
+      # key, overriden
+      key = model.StringProperty()
+      # aha, here it is!
+      real_key = model.ModelKey()
+
+    m = MyModel()
+    k = model.Key('MyModel', 'foo')
+    m.key = 'bar'
+    m.real_key = k
+    m.put()
+
+    res = k.get()
+    self.assertEqual(res, m)
+    self.assertEqual(res.key, 'bar')
+    self.assertEqual(res.real_key, k)
+
+    q = MyModel.query(MyModel.real_key == k)
+    res = q.get()
+    self.assertEqual(res, m)
+    self.assertEqual(res.key, 'bar')
+    self.assertEqual(res.real_key, k)
+
+    m = MyExpando()
+    k = model.Key('MyExpando', 'foo')
+    m.key = 'bar'
+    m.real_key = k
+    m.put()
+
+    res = k.get()
+    self.assertEqual(res, m)
+    self.assertEqual(res.key, 'bar')
+    self.assertEqual(res.real_key, k)
+
+    q = MyExpando.query(MyModel.real_key == k)
+    res = q.get()
+    self.assertEqual(res, m)
+    self.assertEqual(res.key, 'bar')
+    self.assertEqual(res.real_key, k)
 
 
 def main():

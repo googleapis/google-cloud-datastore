@@ -127,21 +127,21 @@ class Context(object):
     ents = [ent for (_, ent) in todo]
     results = yield self._conn.async_put(None, ents)
     for key, (fut, ent) in zip(results, todo):
-      if key != ent.key:
+      if key != ent._key:
         if ent._has_complete_key():
           raise datastore_errors.BadKeyError(
               'Entity key differs from the one returned by the datastore. '
-              'Expected %r, got %r' % (key, ent.key))
-        ent.key = key
+              'Expected %r, got %r' % (key, ent._key))
+        ent._key = key
       fut.set_result(key)
     # Now update memcache.
     # TODO: Could we update memcache *before* calling async_put()?
     # (Hm, not for new entities but possibly for updated ones.)
     mapping = {}
     for _, ent in todo:
-      if self.should_memcache(ent.key):
+      if self.should_memcache(ent._key):
         pb = self._conn.adapter.entity_to_pb(ent)
-        mapping[ent.key.urlsafe()] = pb
+        mapping[ent._key.urlsafe()] = pb
     if mapping:
       # TODO: Optionally set the memcache expiration time;
       # maybe configurable based on key (or even entity).
@@ -257,9 +257,9 @@ class Context(object):
   @tasklets.tasklet
   def put(self, entity):
     key = yield self._put_batcher.add(entity)
-    if entity.key != key:
-      logging.info('replacing key %s with %s', entity.key, key)
-      entity.key = key
+    if entity._key != key:
+      logging.info('replacing key %s with %s', entity._key, key)
+      entity._key = key
     # TODO: For updated entities, could we update the cache first?
     if self.should_cache(key):
       # TODO: What if by now the entity is already in the cache?
@@ -296,7 +296,7 @@ class Context(object):
         if isinstance(ent, model.Key):
           pass  # It was a keys-only query and ent is really a Key.
         else:
-          key = ent.key
+          key = ent._key
           if key in self._cache:
             # Assume the cache is more up to date.
             if self._cache[key] is None:
@@ -400,7 +400,7 @@ class Context(object):
         ent = yield key.get_async()
         if ent is None:
           ent = model_class(**kwds)  # TODO: Check for forbidden keys
-          ent.key = key
+          ent._key = key
           yield ent.put_async()
         raise tasklets.Return(ent)
       ent = yield self.transaction(txn)
