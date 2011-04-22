@@ -1823,12 +1823,9 @@ class Model(object):
     cls._properties = {}  # Map of {name: Property}
     if cls.__module__ == __name__:  # Skip the classes in *this* file.
       return
-    has_key = False
     for name in set(dir(cls)):
       prop = getattr(cls, name, None)
       if isinstance(prop, ModelKey):
-        # TODO: raise exception if there is not one and only one ModelKey?
-        has_key = True
         continue
       if isinstance(prop, Property):
         assert not name.startswith('_')
@@ -1837,9 +1834,6 @@ class Model(object):
         if prop._repeated:
           cls._has_repeated = True
         cls._properties[prop._name] = prop
-    if not has_key:
-      # TODO: Do we care?
-      raise datastore_errors.BadValueError("Model doesn't have a ModelKey.")
     cls._kind_map[cls._get_kind()] = cls
 
   # Datastore API using the default context.
