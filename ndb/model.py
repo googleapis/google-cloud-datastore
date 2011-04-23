@@ -1320,7 +1320,7 @@ class StructuredProperty(Property):
 
 
 # A custom 'meaning' for compressed blobs.
-_MEANING_COMPRESSED = 18
+_MEANING_URI_COMPRESSED = 'ZLIB'
 
 
 class LocalStructuredProperty(Property):
@@ -1360,17 +1360,16 @@ class LocalStructuredProperty(Property):
     pb = value._to_pb()
     serialized = pb.Encode()
     if self._compressed:
-      p.set_meaning(_MEANING_COMPRESSED)
-      v.set_stringvalue(zlib.compress(serialized))
-    else:
-      p.set_meaning(entity_pb.Property.BLOB)
-      v.set_stringvalue(serialized)
+      p.set_meaning_uri(_MEANING_URI_COMPRESSED)
+      serialized = zlib.compress(serialized)
+    p.set_meaning(entity_pb.Property.BLOB)
+    v.set_stringvalue(serialized)
 
   def _db_get_value(self, v, p):
     if not v.has_stringvalue():
       return None
     serialized = v.stringvalue()
-    if p.has_meaning() and p.meaning() == _MEANING_COMPRESSED:
+    if p.meaning_uri() == _MEANING_URI_COMPRESSED:
       serialized = zlib.decompress(serialized)
     pb = entity_pb.EntityProto(serialized)
     return self._modelclass._from_pb(pb, set_key=False)

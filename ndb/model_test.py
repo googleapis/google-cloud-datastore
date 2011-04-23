@@ -1231,6 +1231,82 @@ class ModelTests(test_utils.DatastoreTest):
     self.assertTrue(p.address is None)
     self.assertEqual(p.name, 'Google')
 
+  def testLocalStructuredPropertyCompressed(self):
+    class Address(model.Model):
+      street = model.StringProperty()
+      city = model.StringProperty()
+    class Person(model.Model):
+      name = model.StringProperty()
+      address = model.LocalStructuredProperty(Address, compressed=True)
+
+    k = model.Key('Person', 'google')
+    p = Person(key=k)
+    p.name = 'Google'
+    p.address = Address(street='1600 Amphitheatre', city='Mountain View')
+    p.put()
+
+    # Putting and getting to test compression and deserialization.
+    p = k.get()
+    p.put()
+
+    p = k.get()
+    self.assertEqual(p.name, 'Google')
+    self.assertEqual(p.address.street, '1600 Amphitheatre')
+    self.assertEqual(p.address.city, 'Mountain View')
+
+  def testLocalStructuredPropertyRepeated(self):
+    class Address(model.Model):
+      street = model.StringProperty()
+      city = model.StringProperty()
+    class Person(model.Model):
+      name = model.StringProperty()
+      address = model.LocalStructuredProperty(Address, repeated=True)
+
+    k = model.Key('Person', 'google')
+    p = Person(key=k)
+    p.name = 'Google'
+    p.address.append(Address(street='1600 Amphitheatre', city='Mountain View'))
+    p.address.append(Address(street='Webb crater', city='Moon'))
+    p.put()
+
+    # Putting and getting to test compression and deserialization.
+    p = k.get()
+    p.put()
+
+    p = k.get()
+    self.assertEqual(p.name, 'Google')
+    self.assertEqual(p.address[0].street, '1600 Amphitheatre')
+    self.assertEqual(p.address[0].city, 'Mountain View')
+    self.assertEqual(p.address[1].street, 'Webb crater')
+    self.assertEqual(p.address[1].city, 'Moon')
+
+  def testLocalStructuredPropertyRepeatedCompressed(self):
+    class Address(model.Model):
+      street = model.StringProperty()
+      city = model.StringProperty()
+    class Person(model.Model):
+      name = model.StringProperty()
+      address = model.LocalStructuredProperty(Address, repeated=True,
+                                              compressed=True)
+
+    k = model.Key('Person', 'google')
+    p = Person(key=k)
+    p.name = 'Google'
+    p.address.append(Address(street='1600 Amphitheatre', city='Mountain View'))
+    p.address.append(Address(street='Webb crater', city='Moon'))
+    p.put()
+
+    # Putting and getting to test compression and deserialization.
+    p = k.get()
+    p.put()
+
+    p = k.get()
+    self.assertEqual(p.name, 'Google')
+    self.assertEqual(p.address[0].street, '1600 Amphitheatre')
+    self.assertEqual(p.address[0].city, 'Mountain View')
+    self.assertEqual(p.address[1].street, 'Webb crater')
+    self.assertEqual(p.address[1].city, 'Moon')
+
   def testEmptyList(self):
     class Person(model.Model):
       name = model.StringProperty(repeated=True)
