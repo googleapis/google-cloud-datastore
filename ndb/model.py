@@ -1351,28 +1351,73 @@ class LocalStructuredProperty(Property):
     self._compressed = compressed
 
   def _validate(self, value):
-    if not isinstance(value, self._modelclass):
+    # This is kind of a hack. Allow tuples because if the property comes from
+    # datastore *and* is unchanged *and* the property has repeated=True,
+    # _serialize() will call _do_validate() while the value is still a tuple.
+    if not isinstance(value, (self._modelclass, tuple)):
       raise datastore_errors.BadValueError('Expected %s instance, got %r' %
                                            (self._modelclass.__name__, value))
     return value
 
   def _db_set_value(self, v, p, value):
-    pb = value._to_pb()
-    serialized = pb.Encode()
-    if self._compressed:
+    """Serializes the value to an entity_pb.
+
+    The value stored in entity._values[self._name] can be either:
+
+    - A tuple (serialized: bytes, compressed: bool), when the value comes
+      from datastore. This is the serialized model and a flag indicating if it
+      is compressed, used to lazily decompress and deserialize the property
+      when it is first accessed.
+    - An instance of self._modelclass, when the property value is set, or
+      after it is lazily decompressed and deserialized on first access.
+    """
+    if isinstance(value, tuple):
+      # Value didn't change and is still serialized, so we store it as it is.
+      serialized, compressed = value
+      assert compressed == self._compressed
+    else:
+      pb = value._to_pb()
+      serialized = pb.Encode()
+      compressed = self._compressed
+      if compressed:
+        p.set_meaning_uri(_MEANING_URI_COMPRESSED)
+        serialized = zlib.compress(serialized)
+    if compressed:
+      # Use meaning_uri because setting meaning to something else that is not
+      # BLOB or BYTESTRING will cause the value to be decoded from utf-8
+      # in datastore_types.FromPropertyPb. This breaks the compressed string.
       p.set_meaning_uri(_MEANING_URI_COMPRESSED)
-      serialized = zlib.compress(serialized)
     p.set_meaning(entity_pb.Property.BLOB)
     v.set_stringvalue(serialized)
 
   def _db_get_value(self, v, p):
     if not v.has_stringvalue():
       return None
-    serialized = v.stringvalue()
-    if p.meaning_uri() == _MEANING_URI_COMPRESSED:
+    # Return a tuple (serialized, bool) to be lazily processed later.
+    return v.stringvalue(), p.meaning_uri() == _MEANING_URI_COMPRESSED
+
+  def _decompress_unserialize_value(self, value):
+    serialized, compressed = value
+    if compressed:
       serialized = zlib.decompress(serialized)
     pb = entity_pb.EntityProto(serialized)
     return self._modelclass._from_pb(pb, set_key=False)
+
+  def _get_value(self, entity):
+    value = super(LocalStructuredProperty, self)._get_value(entity)
+    if self._repeated:
+      if value and isinstance(value[0], tuple):
+        # Decompresses and deserializes each list item.
+        # Reuse the original list, cleaning it first.
+        values = list(value)
+        del value[:]
+        for v in values:
+          value.append(self._decompress_unserialize_value(v))
+    elif isinstance(value, tuple):
+      # Decompresses and deserializes a single item.
+      value = self._decompress_unserialize_value(value)
+      self._store_value(entity, value)
+    return value
 
 
 class GenericProperty(Property):
