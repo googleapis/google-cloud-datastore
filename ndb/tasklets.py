@@ -71,6 +71,8 @@ from google.appengine.api.apiproxy_rpc import RPC
 from google.appengine.datastore import datastore_rpc
 from ndb import eventloop, utils
 
+logging_debug = utils.logging_debug
+
 def is_generator(obj):
   """Helper to test for a generator object.
 
@@ -116,7 +118,7 @@ class Future(object):
     self._exception = None
     self._traceback = None
     self._callbacks = []
-    logging.debug('_all_pending: add %s', self)
+    logging_debug('_all_pending: add %s', self)
     self._all_pending.add(self)
     self._next = None  # Links suspended Futures together in a stack.
 
@@ -160,7 +162,7 @@ class Future(object):
     if cls._all_pending:
       logging.info('_all_pending: clear %s', cls._all_pending)
     else:
-      logging.debug('_all_pending: clear no-op')
+      logging_debug('_all_pending: clear no-op')
     cls._all_pending.clear()
 
   @classmethod
@@ -184,7 +186,7 @@ class Future(object):
     assert not self._done
     self._result = result
     self._done = True
-    logging.debug('_all_pending: remove successful %s', self)
+    logging_debug('_all_pending: remove successful %s', self)
     self._all_pending.remove(self)
     for callback, args, kwds  in self._callbacks:
       eventloop.queue_call(None, callback, *args, **kwds)
@@ -196,10 +198,10 @@ class Future(object):
     self._traceback = tb
     self._done = True
     if self in self._all_pending:
-      logging.debug('_all_pending: remove failing %s', self)
+      logging_debug('_all_pending: remove failing %s', self)
       self._all_pending.remove(self)
     else:
-      logging.debug('_all_pending: not found %s', self)
+      logging_debug('_all_pending: not found %s', self)
     for callback, args, kwds in self._callbacks:
       eventloop.queue_call(None, callback, *args, **kwds)
 
@@ -223,9 +225,8 @@ class Future(object):
       if not ev.run1():
         logging.info('Deadlock in %s', self)
         logging.info('All pending Futures:\n%s', self.dump_all_pending())
-        if logging.getLogger().level <= logging.DEBUG:
-          logging.debug('All pending Futures (verbose):\n%s',
-                        self.dump_all_pending(verbose=True))
+        logging_debug('All pending Futures (verbose):\n%s',
+                      self.dump_all_pending(verbose=True))
         self.set_exception(RuntimeError('Deadlock waiting for %s' % self))
 
   def get_exception(self):
@@ -275,11 +276,11 @@ class Future(object):
       try:
         set_context(self._context)
         if exc is not None:
-          logging.debug('Throwing %s(%s) into %s',
+          logging_debug('Throwing %s(%s) into %s',
                         exc.__class__.__name__, exc, info)
           value = gen.throw(exc.__class__, exc, tb)
         else:
-          logging.debug('Sending %r to %s', val, info)
+          logging_debug('Sending %r to %s', val, info)
           value = gen.send(val)
           self._context = get_context()
       finally:
@@ -287,7 +288,7 @@ class Future(object):
 
     except StopIteration, err:
       result = get_return_value(err)
-      logging.debug('%s returned %r', info, result)
+      logging_debug('%s returned %r', info, result)
       self.set_result(result)
       return
 
@@ -300,7 +301,7 @@ class Future(object):
       return
 
     else:
-      logging.debug('%s yielded %r', info, value)
+      logging_debug('%s yielded %r', info, value)
       if isinstance(value, datastore_rpc.MultiRpc):
         # TODO: Tail recursion if the RPC is already complete.
         if len(value.rpcs) == 1:
@@ -317,7 +318,7 @@ class Future(object):
         assert not self._next, self._next
         self._next = value
         self._geninfo = utils.gen_info(gen)
-        logging.debug('%s is now blocked waiting for %s', self, value)
+        logging_debug('%s is now blocked waiting for %s', self, value)
         value.add_callback(self._on_future_completion, value, gen)
         return
       if isinstance(value, (tuple, list)):
@@ -346,7 +347,7 @@ class Future(object):
     if self._next is future:
       self._next = None
       self._geninfo = None
-      logging.debug('%s is no longer blocked waiting for %s', self, future)
+      logging_debug('%s is no longer blocked waiting for %s', self, future)
     exc = future.get_exception()
     if exc is not None:
       self._help_tasklet_along(gen, exc=exc, tb=future.get_traceback())
