@@ -65,6 +65,7 @@ class DatastoreTest(unittest.TestCase):
     self.conn = model.make_connection()
 
     self.ResetKindMap()
+    self.SetupContextCache()
 
   def tearDown(self):
     """Tear down test framework."""
@@ -84,3 +85,15 @@ class DatastoreTest(unittest.TestCase):
 
   def ResetKindMap(self):
     model.Model._reset_kind_map()
+
+  def SetupContextCache(self):
+    """Set up the context cache.
+
+    We only need cache active when testing the cache, so the default behavior
+    is to disable it to avoid misleading test results. Override this when
+    needed.
+    """
+    from ndb import tasklets
+    ctx = tasklets.get_context()
+    ctx.set_cache_policy(lambda key: False)
+    ctx.set_memcache_policy(lambda key: False)

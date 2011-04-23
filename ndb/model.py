@@ -870,14 +870,10 @@ class StringProperty(Property):
       return None
     raw = v.stringvalue()
     try:
-      raw.decode('ascii')
-      return raw  # Don't bother with Unicode in this case
+      value = raw.decode('utf-8')
+      return value
     except UnicodeDecodeError:
-      try:
-        value = raw.decode('utf-8')
-        return value
-      except UnicodeDecodeError:
-        return raw
+      return raw
 
 
 class TextProperty(StringProperty):

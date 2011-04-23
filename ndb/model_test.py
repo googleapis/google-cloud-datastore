@@ -1568,9 +1568,10 @@ class ModelTests(test_utils.DatastoreTest):
     self.assertEqual(key.get(), c)
 
   def testGetMultiAsync(self):
-    ent1 = model.Model(key=model.Key('MyModel', 1))
-    ent2 = model.Model(key=model.Key('MyModel', 2))
-    ent3 = model.Model(key=model.Key('MyModel', 3))
+    model.Model._kind_map['Model'] = model.Model
+    ent1 = model.Model(key=model.Key('Model', 1))
+    ent2 = model.Model(key=model.Key('Model', 2))
+    ent3 = model.Model(key=model.Key('Model', 3))
     key1 = ent1.put()
     key2 = ent2.put()
     key3 = ent3.put()
@@ -1584,9 +1585,10 @@ class ModelTests(test_utils.DatastoreTest):
     self.assertEqual(res, [ent1, ent2, ent3])
 
   def testGetMulti(self):
-    ent1 = model.Model(key=model.Key('MyModel', 1))
-    ent2 = model.Model(key=model.Key('MyModel', 2))
-    ent3 = model.Model(key=model.Key('MyModel', 3))
+    model.Model._kind_map['Model'] = model.Model
+    ent1 = model.Model(key=model.Key('Model', 1))
+    ent2 = model.Model(key=model.Key('Model', 2))
+    ent3 = model.Model(key=model.Key('Model', 3))
     key1 = ent1.put()
     key2 = ent2.put()
     key3 = ent3.put()
@@ -1595,9 +1597,9 @@ class ModelTests(test_utils.DatastoreTest):
     self.assertEqual(res, [ent1, ent2, ent3])
 
   def testPutMultiAsync(self):
-    ent1 = model.Model(key=model.Key('MyModel', 1))
-    ent2 = model.Model(key=model.Key('MyModel', 2))
-    ent3 = model.Model(key=model.Key('MyModel', 3))
+    ent1 = model.Model(key=model.Key('Model', 1))
+    ent2 = model.Model(key=model.Key('Model', 2))
+    ent3 = model.Model(key=model.Key('Model', 3))
 
     @tasklets.tasklet
     def foo():
@@ -1608,17 +1610,18 @@ class ModelTests(test_utils.DatastoreTest):
     self.assertEqual(res, [ent1.key, ent2.key, ent3.key])
 
   def testPutMulti(self):
-    ent1 = model.Model(key=model.Key('MyModel', 1))
-    ent2 = model.Model(key=model.Key('MyModel', 2))
-    ent3 = model.Model(key=model.Key('MyModel', 3))
+    ent1 = model.Model(key=model.Key('Model', 1))
+    ent2 = model.Model(key=model.Key('Model', 2))
+    ent3 = model.Model(key=model.Key('Model', 3))
 
     res = model.put_multi((ent1, ent2, ent3))
     self.assertEqual(res, [ent1.key, ent2.key, ent3.key])
 
   def testDeleteMultiAsync(self):
-    ent1 = model.Model(key=model.Key('MyModel', 1))
-    ent2 = model.Model(key=model.Key('MyModel', 2))
-    ent3 = model.Model(key=model.Key('MyModel', 3))
+    model.Model._kind_map['Model'] = model.Model
+    ent1 = model.Model(key=model.Key('Model', 1))
+    ent2 = model.Model(key=model.Key('Model', 2))
+    ent3 = model.Model(key=model.Key('Model', 3))
     key1 = ent1.put()
     key2 = ent2.put()
     key3 = ent3.put()
@@ -1638,9 +1641,10 @@ class ModelTests(test_utils.DatastoreTest):
     self.assertEqual(key3.get(), None)
 
   def testDeleteMulti(self):
-    ent1 = model.Model(key=model.Key('MyModel', 1))
-    ent2 = model.Model(key=model.Key('MyModel', 2))
-    ent3 = model.Model(key=model.Key('MyModel', 3))
+    model.Model._kind_map['Model'] = model.Model
+    ent1 = model.Model(key=model.Key('Model', 1))
+    ent2 = model.Model(key=model.Key('Model', 2))
+    ent3 = model.Model(key=model.Key('Model', 3))
     key1 = ent1.put()
     key2 = ent2.put()
     key3 = ent3.put()
