@@ -59,6 +59,9 @@ class DatastoreTest(unittest.TestCase):
     connection.
     """
     os.environ['APPLICATION_ID'] = self.APP_ID
+    # Set the defeault AUTH_DOMAIN, otherwise datastore_file_stub.py
+    # can't compare User objects.
+    os.environ['AUTH_DOMAIN'] = 'example.com'
 
     self.set_up_stubs()
 
