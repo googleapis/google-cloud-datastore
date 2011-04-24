@@ -435,6 +435,9 @@ class Property(object):
     s = '%s(%s)' % (self.__class__.__name__, ', '.join(args))
     return s
 
+  def _datastore_type(self, value):
+    return value
+
   def _comparison(self, op, value):
     """Internal helper for comparison operators.
 
@@ -448,7 +451,7 @@ class Property(object):
     if value is not None:
       # TODO: Allow query.Binding instances?
       value = self._validate(value)
-    return FilterNode(self._name, op, value)
+    return FilterNode(self._name, op, self._datastore_type(value))
 
   # Comparison operators on Property instances don't compare the
   # properties; instead they return FilterNode instances that can be
@@ -754,12 +757,12 @@ class ModelKey(Property):
   def __init__(self):
     self._name = '__key__'
 
+  def _datastore_type(self, value):
+    return datastore_types.Key(value.urlsafe())
+
   def _comparison(self, op, value):
-    from ndb.query import FilterNode  # Import late to avoid circular imports.
     if value is not None:
-      value = self._validate(value)
-      # TODO: Move this magic into FilterNode.
-      return FilterNode(self._name, op, datastore_types.Key(value.urlsafe()))
+      return super(ModelKey, self)._comparison(op, value)
     raise datastore_errors.BadValueError(
         "__key__ filter query can't be compared to None")
 
@@ -947,6 +950,9 @@ class GeoPt(tuple):
 class GeoPtProperty(Property):
   """A Property whose value is a GeoPt."""
 
+  def _datastore_type(self, value):
+    return datastore_types.GeoPt(value.lat, value.lon)
+
   def _validate(self, value):
     if not isinstance(value, GeoPt):
       raise datastore_errors.BadValueError('Expected GeoPt, got %r' %
@@ -1011,6 +1017,9 @@ class UserProperty(Property):
 class KeyProperty(Property):
   """A Property whose value is a Key object."""
   # TODO: optionally check the kind (or maybe require this?)
+
+  def _datastore_type(self, value):
+    return datastore_types.Key(value.urlsafe())
 
   def _validate(self, value):
     if not isinstance(value, Key):
@@ -1139,6 +1148,9 @@ def _time_to_datetime(value):
 class DateProperty(DateTimeProperty):
   """A Property whose value is a date object."""
 
+  def _datastore_type(self, value):
+    return _date_to_datetime(value)
+
   def _validate(self, value):
     if (not isinstance(value, datetime.date) or
         isinstance(value, datetime.datetime)):
@@ -1160,6 +1172,9 @@ class DateProperty(DateTimeProperty):
 
 class TimeProperty(DateTimeProperty):
   """A Property whose value is a time object."""
+
+  def _datastore_type(self, value):
+    return _time_to_datetime(value)
 
   def _validate(self, value):
     if not isinstance(value, datetime.time):

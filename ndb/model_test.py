@@ -1858,6 +1858,73 @@ class ModelTests(test_utils.DatastoreTest):
     self.assertEqual(logs[0], logs[1])
     self.assertNotEqual(before, logs[0])
 
+  def testPropertyFilters(self):
+    class M(model.Model):
+      dt = model.DateTimeProperty()
+      d = model.DateProperty()
+      t = model.TimeProperty()
+      f = model.FloatProperty()
+      s = model.StringProperty()
+      k = model.KeyProperty()
+      b = model.BooleanProperty()
+      i = model.IntegerProperty()
+      g = model.GeoPtProperty()
+      @model.ComputedProperty
+      def c(self):
+        if self.i is None:
+          return None
+        return self.i + 1
+      u = model.UserProperty()
+
+    values = {
+      'dt': datetime.datetime.now(),
+      'd': datetime.date.today(),
+      't': datetime.datetime.now().time(),
+      'f': 4.2,
+      's': 'foo',
+      'k': model.Key('Foo', 'bar'),
+      'b': False,
+      'i': 42,
+      'g': AMSTERDAM,
+      'u': TESTUSER,
+    }
+
+    m = M(**values)
+    m.put()
+
+    q = M.query(M.dt == values['dt'])
+    self.assertEqual(q.get(), m)
+
+    q = M.query(M.d == values['d'])
+    self.assertEqual(q.get(), m)
+
+    q = M.query(M.t == values['t'])
+    self.assertEqual(q.get(), m)
+
+    q = M.query(M.f == values['f'])
+    self.assertEqual(q.get(), m)
+
+    q = M.query(M.s == values['s'])
+    self.assertEqual(q.get(), m)
+
+    q = M.query(M.k == values['k'])
+    self.assertEqual(q.get(), m)
+
+    q = M.query(M.b == values['b'])
+    self.assertEqual(q.get(), m)
+
+    q = M.query(M.i == values['i'])
+    self.assertEqual(q.get(), m)
+
+    q = M.query(M.g == values['g'])
+    self.assertEqual(q.get(), m)
+
+    q = M.query(M.c == values['i'] + 1)
+    self.assertEqual(q.get(), m)
+
+    q = M.query(M.u == values['u'])
+    self.assertEqual(q.get(), m)
+
 
 def main():
   unittest.main()
