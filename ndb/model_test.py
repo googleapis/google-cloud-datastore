@@ -749,13 +749,6 @@ class ModelTests(test_utils.DatastoreTest):
     self.assertEqual(MyModel.t._get_value(ent), u'Hello world\u1234')
     self.assertEqual(MyModel.b._get_value(ent), '\x00\xff')
 
-  def testGeoPt(self):
-    # Test for the GeoPt type itself.
-    p = model.GeoPt(3.14, 42)
-    self.assertEqual(p.lat, 3.14)
-    self.assertEqual(p.lon, 42.0)
-    self.assertEqual(repr(p), 'GeoPt(3.14, 42)')
-
   def DateAndOrTimePropertyTest(self, propclass, t1, t2):
     class Person(model.Model):
       name = model.StringProperty()

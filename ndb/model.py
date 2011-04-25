@@ -294,6 +294,7 @@ __all__ = ['Key', 'ModelAdapter', 'ModelKey', 'MetaModel', 'Model', 'Expando',
 
 
 BlobKey = datastore_types.BlobKey
+GeoPt = datastore_types.GeoPt
 
 
 class KindError(datastore_errors.BadValueError):
@@ -915,37 +916,6 @@ class BlobProperty(Property):
     if not v.has_stringvalue():
       return None
     return v.stringvalue()
-
-
-class GeoPt(tuple):
-  """A geographical point.  This is a tuple subclass and immutable.
-
-  Fields:
-    lat: latitude, a float in degrees with abs() <= 90.
-    lon: longitude, a float in degrees with abs() <= 180.
-  """
-
-  # TODO: Use collections.namedtuple once we can drop Python 2.5 support.
-
-  __slots__ = []
-
-  def __new__(cls, lat=0.0, lon=0.0):
-    # TODO: assert abs(lat) <= 90 and abs(lon) <= 180 ?
-    # TODO: allow construction from a string of the form <float>, <float>?
-    return tuple.__new__(cls, (float(lat), float(lon)))
-
-  @property
-  def lat(self):
-    """The latitude (in degrees north of the equator, abs() <= 90)."""
-    return self[0]
-
-  @property
-  def lon(self):
-    """The longitude (in degrees west of Greenwich, abs() <= 180)."""
-    return self[1]
-
-  def __repr__(self):
-    return '%s(%.16g, %.16g)' % (self.__class__.__name__, self.lat, self.lon)
 
 
 class GeoPtProperty(Property):
