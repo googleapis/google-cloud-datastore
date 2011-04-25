@@ -921,9 +921,6 @@ class BlobProperty(Property):
 class GeoPtProperty(Property):
   """A Property whose value is a GeoPt."""
 
-  def _datastore_type(self, value):
-    return datastore_types.GeoPt(value.lat, value.lon)
-
   def _validate(self, value):
     if not isinstance(value, GeoPt):
       raise datastore_errors.BadValueError('Expected GeoPt, got %r' %
