@@ -1453,7 +1453,7 @@ class ModelTests(test_utils.DatastoreTest):
       name_lower = model.ComputedProperty(lambda self: self.name.lower())
 
       @model.ComputedProperty
-      def size(self):
+      def length(self):
         return len(self.name)
 
       def _compute_hash(self):
@@ -1473,7 +1473,7 @@ class ModelTests(test_utils.DatastoreTest):
     m = ComputedTest._from_pb(pb)
     self.assertEqual(m.name, 'Foobar')
     self.assertEqual(m.name_lower, 'foobar')
-    self.assertEqual(m.size, 6)
+    self.assertEqual(m.length, 6)
     self.assertEqual(m.hash, hash('Foobar'))
 
   def testLargeValues(self):

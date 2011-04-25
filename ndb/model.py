@@ -734,10 +734,7 @@ class Property(object):
           value = oldval
         else:
           value = [oldval, val]
-    try:
-      self._store_value(entity, value)
-    except ComputedPropertyError, e:
-      pass
+    self._store_value(entity, value)
 
 
 def _validate_key(value, entity=None):
@@ -1065,7 +1062,7 @@ _EPOCH = datetime.datetime.utcfromtimestamp(0)
 class DateTimeProperty(Property):
   """A Property whose value is a datetime object.
 
-  NOTE: Unlike Django, auto_now_add can be overridden by setting the
+  Note: Unlike Django, auto_now_add can be overridden by setting the
   value before writing the entity.  And unlike classic db, auto_now
   does not supply a default value.  Also unlike classic db, when the
   entity is written, the property values are updated to match what
@@ -1570,6 +1567,9 @@ class ComputedProperty(GenericProperty):
             a calculated value.
     """
     super(ComputedProperty, self).__init__(*args, **kwargs)
+    assert not self._required, 'ComputedProperty cannot be required'
+    assert not self._repeated, 'ComputedProperty cannot be repeated'
+    assert self._default is None, 'ComputedProperty cannot have a default'
     self._func = func
 
   def _has_value(self, entity):
@@ -1583,6 +1583,9 @@ class ComputedProperty(GenericProperty):
 
   def _retrieve_value(self, entity):
     return self._func(entity)
+
+  def _deserialize(self, entity, p, depth=1):
+    pass
 
 
 class MetaModel(type):
