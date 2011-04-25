@@ -1,7 +1,7 @@
 # Startup file for interactive prompt, used by "make python".
 
-import logging
-logging.basicConfig(level=logging.INFO)
+from ndb import utils
+utils.tweak_logging()
 
 import os
 

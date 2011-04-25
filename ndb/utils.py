@@ -69,11 +69,11 @@ def logging_debug(*args):
   if logging.getLogger().level < logging.DEBUG:
     logging.debug(*args)
 
-# Hack for running tests with verbose logging.  If there are two or
-# more -v flags, turn on INFO logging; if there are 3 or more, DEBUG.
-# (A single -v just tells unittest.main() to print the name of each
-# test; we don't want to interfere with that.)
-if sys.argv[0].endswith('_test.py'):
+def tweak_logging():
+  # Hack for running tests with verbose logging.  If there are two or
+  # more -v flags, turn on INFO logging; if there are 3 or more, DEBUG.
+  # (A single -v just tells unittest.main() to print the name of each
+  # test; we don't want to interfere with that.)
   v = 0
   for arg in sys.argv[1:]:
     if arg.startswith('-v'):
@@ -83,3 +83,6 @@ if sys.argv[0].endswith('_test.py'):
     if v >= 3:
       level = logging.DEBUG - 1
     logging.basicConfig(level=level)
+
+if sys.argv[0].endswith('_test.py'):
+  tweak_logging()
