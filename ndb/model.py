@@ -284,7 +284,7 @@ Key = ndb.key.Key  # For export.
 
 # NOTE: Property and Error classes are added later.
 __all__ = ['Key', 'ModelAdapter', 'ModelKey', 'MetaModel', 'Model', 'Expando',
-           'BlobKey',
+           'BlobKey', 'GeoPt',
            'transaction', 'transaction_async',
            'in_transaction', 'transactional',
            'get_multi', 'get_multi_async',
