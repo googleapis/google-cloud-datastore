@@ -284,12 +284,16 @@ Key = ndb.key.Key  # For export.
 
 # NOTE: Property and Error classes are added later.
 __all__ = ['Key', 'ModelAdapter', 'ModelKey', 'MetaModel', 'Model', 'Expando',
+           'BlobKey',
            'transaction', 'transaction_async',
            'in_transaction', 'transactional',
            'get_multi', 'get_multi_async',
            'put_multi', 'put_multi_async',
            'delete_multi', 'delete_multi_async',
            ]
+
+
+BlobKey = datastore_types.BlobKey
 
 
 class KindError(datastore_errors.BadValueError):
@@ -1053,7 +1057,24 @@ class KeyProperty(Property):
     return Key(reference=ref)
 
 
-# Todo: BlobKeyProperty.
+class BlobKeyProperty(Property):
+  """A Property whose value is a BlobKey object."""
+
+  def _validate(self, value):
+    if not isinstance(value, datastore_types.BlobKey):
+      raise datastore_errors.BadValueError('Expected BlobKey, got %r' %
+                                           (value,))
+    return value
+
+  def _db_set_value(self, v, p, value):
+    assert isinstance(value, datastore_types.BlobKey)
+    p.set_meaning(entity_pb.Property.BLOBKEY)
+    v.set_stringvalue(str(value))
+
+  def _db_get_value(self, v, p):
+    if not v.has_stringvalue():
+      return None
+    return datastore_types.BlobKey(v.stringvalue())
 
 
 # The Epoch (a zero POSIX timestamp).

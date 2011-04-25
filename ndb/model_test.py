@@ -8,6 +8,7 @@ import re
 import unittest
 
 from google.appengine.api import datastore_errors
+from google.appengine.api import datastore_types
 from google.appengine.api import namespace_manager
 from google.appengine.api import users
 from google.appengine.datastore import entity_pb
@@ -685,6 +686,19 @@ class ModelTests(test_utils.DatastoreTest):
       self.assertRaises(Exception,
                         model.StringProperty,
                         repeated=True, required=True, default='')
+
+  def testBlobKeyProperty(self):
+    class MyModel(model.Model):
+      image = model.BlobKeyProperty()
+    test_blobkey = datastore_types.BlobKey('testkey123')
+    m = MyModel()
+    m.image = test_blobkey
+    m.put()
+
+    m = m.key.get()
+
+    self.assertTrue(isinstance(m.image, datastore_types.BlobKey))
+    self.assertEqual(str(m.image), str(test_blobkey))
 
   def testChoicesProperty(self):
     class MyModel(model.Model):
