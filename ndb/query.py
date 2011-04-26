@@ -515,7 +515,17 @@ class Query(object):
     self.__filters = filters  # None or Node subclass
     self.__orders = orders  # None or datastore_query.Order instance
 
-  # TODO: __repr__().
+  def __repr__(self):
+    args = []
+    if self.__kind is not None:
+      args.append('kind=%r' % self.__kind)
+    if self.__ancestor is not None:
+      args.append('ancestor=%r' % self.__ancestor)
+    if self.__filters is not None:
+      args.append('filters=%r' % self.__filters)
+    if self.__orders is not None:
+      args.append('orders=...')  # PropertyOrder doesn't have a good repr().
+    return '%s(%s)' % (self.__class__.__name__, ', '.join(args))
 
   def _get_query(self, connection):
     kind = self.__kind

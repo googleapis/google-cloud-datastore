@@ -80,6 +80,16 @@ class QueryTests(test_utils.DatastoreTest):
     expected_order = [('name', query.DESC)]
     self.assertEqual(query.orders_to_orderings(q.orders), expected_order)
 
+  def testQueryRepr(self):
+    q = Foo.query()
+    self.assertEqual(repr(q), "Query(kind='Foo')")
+    q = Foo.query(ancestor=model.Key('Bar', 1))
+    self.assertEqual(repr(q), "Query(kind='Foo', ancestor=Key('Bar', 1))")
+    # Let's not specify what it should show for filters and orders,
+    # just test that it doesn't blow up.
+    q1 = q.filter(Foo.rate == 1, Foo.name == 'x')
+    q2 = q1.order(-Foo.rate)
+
   def testModernQuerySyntax(self):
     class Employee(model.Model):
       name = model.StringProperty()
