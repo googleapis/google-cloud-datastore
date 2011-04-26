@@ -281,6 +281,20 @@ class ContextTests(test_utils.DatastoreTest):
     res = foo().get_result()
     self.assertEqual(set(res), set([('Foo', 1), ('Foo', 2), ('Foo', 3)]))
 
+  def testContext_MapQuery_Cursors(self):
+    qo = query.QueryOptions(produce_cursors=True)
+    @tasklets.tasklet
+    def callback(batch, i, ent):
+      return ent.key.pairs()[-1]
+    @tasklets.tasklet
+    def foo():
+      yield self.create_entities()
+      qry = query.Query(kind='Foo')
+      res = yield self.ctx.map_query(qry, callback, options=qo)
+      raise tasklets.Return(res)
+    res = foo().get_result()
+    self.assertEqual(set(res), set([('Foo', 1), ('Foo', 2), ('Foo', 3)]))
+
   def testContext_IterQuery(self):
     @tasklets.tasklet
     def foo():

@@ -556,7 +556,7 @@ class Query(object):
     while rpc is not None:
       batch = yield rpc
       rpc = batch.next_batch_async(options)
-      for ent in batch.results:
+      for i, ent in enumerate(batch.results):
         if post_filters:
           if not post_filters.apply(ent):
             continue
@@ -568,7 +568,7 @@ class Query(object):
               rpc = None  # Quietly throw away the next batch.
               break
             count += 1
-        queue.putq(ent)
+        queue.putq((batch, i, ent))
     queue.complete()
 
   def _maybe_multi_query(self):
@@ -722,11 +722,89 @@ class QueryIterator(object):
     while (yield it.has_next_async()):
       entity = it.next()
       <use entity>
+
+  You can also use q.iter([options]) instead of iter(q); this allows
+  passing query options such as keys_only or produce_cursors.
+
+  When keys_only is set, it.next() returns a key instead of an entity.
+
+  When produce_cursors is set, the methods it.cursor_before() and
+  it.cursor_after() return Cursor objects corresponding to the query
+  position just before and after the item returned by it.next().
+  Before it.next() is called for the first time, both raise an
+  exception.  Once the loop is exhausted, both return the cursor after
+  the last item returned.  Calling it.has_next() does not affect the
+  cursors; you must call it.next() before the cursors move.  Note that
+  sometimes requesting a cursor requires a datastore roundtrip (but
+  not if you happen to request a cursor corresponding to a batch
+  boundary).  If produce_cursors is not set, both methods always raise
+  an exception.
+
+  Note that queries requiring in-memory merging of multiple queries
+  (i.e. queries using the IN, != or OR operators) do not support query
+  options.
   """
+
+  # When produce_cursors is set, _lookahead collects (batch, index)
+  # pairs passed to _extended_callback(), and (_batch, _index)
+  # contain the info pertaining to the current item.
+  _lookahead = None
+  _batch = None
+  _index = None
+
+  # Indicate the loop is exhausted.
+  _exhausted = False
+
+  def _extended_callback(self, batch, index, ent):
+    # TODO: Make _lookup a deque.
+    if self._lookahead is None:
+      self._lookahead = []
+    self._lookahead.append((batch, index))
+    return ent
+
+  def _consume_item(self):
+    if self._lookahead:
+      self._batch, self._index = self._lookahead.pop(0)
+    else:
+      self._batch = self._index = None
+
+  def cursor_before(self):
+    """Return the cursor before the current item.
+
+    You must pass a QueryOptions object with produce_cursors=True
+    for this to work.
+
+    If there is no cursor or no current item, raise BadArgumentError.
+    Before next() has returned there is no cursor.  Once the loop is
+    exhausted, this returns the cursor after the last item.
+    """
+    if self._batch is None:
+      raise datastore_errors.BadArgumentError('There is no cursor currently')
+    # TODO: if cursor_after() was called for the previous item
+    # reuse that result instead of computing it from scratch.
+    # (Some cursor() calls make a datastore roundtrip.)
+    return self._batch.cursor(self._index + self._exhausted)
+
+  def cursor_after(self):
+    """Return the cursor after the current item.
+
+    You must pass a QueryOptions object with produce_cursors=True
+    for this to work.
+
+    If there is no cursor or no current item, raise BadArgumentError.
+    Before next() has returned there is no cursor.    Once the loop is
+    exhausted, this returns the cursor after the last item.
+    """
+    if self._batch is None:
+      raise datastore_errors.BadArgumentError('There is no cursor currently')
+    return self._batch.cursor(self._index + 1)
 
   def __init__(self, query, options=None):
     ctx = tasklets.get_context()
-    self._iter = ctx.iter_query(query, options=options)
+    callback = None
+    if options is not None and options.produce_cursors:
+      callback = self._extended_callback
+    self._iter = ctx.iter_query(query, callback=callback, options=options)
     self._fut = None
 
   def __iter__(self):
@@ -751,8 +829,11 @@ class QueryIterator(object):
       self._fut = self._iter.getq()
     try:
       try:
-        return self._fut.get_result()
+        ent = self._fut.get_result()
+        self._consume_item()
+        return ent
       except EOFError:
+        self._exhausted = True
         raise StopIteration
     finally:
       self._fut = None
@@ -761,7 +842,8 @@ class QueryIterator(object):
 class _SubQueryIteratorState(object):
   # Helper class for MultiQuery.
 
-  def __init__(self, entity, iterator, orderings):
+  def __init__(self, batch_i_entity, iterator, orderings):
+    batch, i, entity = batch_i_entity
     self.entity = entity
     self.iterator = iterator
     self.orderings = orderings
@@ -857,10 +939,10 @@ class MultiQuery(object):
       ent = item.entity
       if ent._key not in keys_seen:
         keys_seen.add(ent._key)
-        queue.putq(ent)
+        queue.putq((None, None, ent))
       subit = item.iterator
       try:
-        ent = yield subit.getq()
+        batch, i, ent = yield subit.getq()
       except EOFError:
         pass
       else:

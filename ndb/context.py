@@ -290,7 +290,7 @@ class Context(object):
       is_ancestor_query = query.ancestor is not None
       while True:
         try:
-          ent = yield inq.getq()
+          batch, i, ent = yield inq.getq()
         except EOFError:
           break
         if isinstance(ent, model.Key):
@@ -316,7 +316,11 @@ class Context(object):
         if callback is None:
           val = ent
         else:
-          val = callback(ent)  # TODO: If this raises, log and ignore
+          # TODO: If the callback raises, log and ignore.
+          if options is not None and options.produce_cursors:
+            val = callback(batch, i, ent)
+          else:
+            val = callback(ent)
         mfut.putq(val)
       mfut.complete()
 
@@ -324,8 +328,8 @@ class Context(object):
     return mfut
 
   @datastore_rpc._positional(2)
-  def iter_query(self, query, options=None):
-    return self.map_query(query, callback=None, options=options,
+  def iter_query(self, query, callback=None, options=None):
+    return self.map_query(query, callback=callback, options=options,
                           merge_future=tasklets.SerialQueueFuture())
 
   @tasklets.tasklet
