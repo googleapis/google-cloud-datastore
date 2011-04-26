@@ -41,6 +41,9 @@ class EventLoopTests(test_utils.DatastoreTest):
     self.assertEqual(k1, {'a': 1, 'b': 2})
     self.assertEqual(k2, {})
     self.assertEqual(k3, {'c': 3, 'd': 4})
+    ev = eventloop.get_event_loop()
+    ev.queue = []
+    ev.rpcs = {}
 
   def testRun(self):
     record = []

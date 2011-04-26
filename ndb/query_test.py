@@ -326,6 +326,28 @@ class QueryTests(test_utils.DatastoreTest):
     self.assertEqual(before[3], after[2])
     self.assertEqual(before[3], after[3])  # !!!
 
+  def testCursorsEfficientPaging(self):
+    # We want to read a 'page' of data, get the cursor just past the
+    # page, and know whether there is another page, all with a single
+    # RPC.  To do this, set limit=pagesize+1, batch_size=pagesize.
+    q = query.Query(kind='Foo')
+    cursors = {}
+    mores = {}
+    for pagesize in [1, 2, 3, 4]:
+      qo = query.QueryOptions(produce_cursors=True, limit=pagesize+1,
+                              batch_size=pagesize)
+      it = q.iter(options=qo)
+      todo = pagesize
+      for ent in it:
+        todo -= 1
+        if todo <= 0:
+          break
+      cursors[pagesize] = it.cursor_after()
+      mores[pagesize] = it.probably_has_next()
+    self.assertEqual(mores, {1: True, 2: True, 3: False, 4: False})
+    self.assertEqual(cursors[3], cursors[4])
+    # TODO: Assert that only one RPC call was made.
+
   def testCount(self):
     q = query.Query(kind='Foo').filter(Foo.tags == 'jill').order(Foo.name)
     self.assertEqual(q.count(10), 2)

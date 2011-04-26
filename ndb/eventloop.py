@@ -89,7 +89,7 @@ class EventLoop(object):
     if self.rpcs:
       rpc = datastore_rpc.MultiRpc.wait_any(self.rpcs)
       if rpc is not None:
-        logging_debug('rpc: %s', rpc.method)
+        logging.info('rpc: %s', rpc.method)  # XXX
         # Yes, wait_any() may return None even for a non-empty argument.
         # But no, it won't ever return an RPC not in its argument.
         assert rpc in self.rpcs, (rpc, self.rpcs)

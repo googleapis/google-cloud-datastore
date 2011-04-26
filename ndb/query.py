@@ -667,6 +667,8 @@ class Query(object):
 
   @tasklets.tasklet
   def fetch_async(self, limit, offset=0, options=None):
+    # TODO: If options has explicit batch_size or prefetch_size, let
+    # those override?
     options = QueryOptions(limit=limit,
                            prefetch_size=limit,
                            batch_size=limit,
@@ -755,7 +757,20 @@ class QueryIterator(object):
   # Indicate the loop is exhausted.
   _exhausted = False
 
+  def __init__(self, query, options=None):
+    """Constructor.  Takes a Query and optionally a QueryOptions.
+
+    This is normally called by Query.iter() or Query.__iter__().
+    """
+    ctx = tasklets.get_context()
+    callback = None
+    if options is not None and options.produce_cursors:
+      callback = self._extended_callback
+    self._iter = ctx.iter_query(query, callback=callback, options=options)
+    self._fut = None
+
   def _extended_callback(self, batch, index, ent):
+    assert not self._exhausted
     # TODO: Make _lookup a deque.
     if self._lookahead is None:
       self._lookahead = []
@@ -799,22 +814,38 @@ class QueryIterator(object):
       raise datastore_errors.BadArgumentError('There is no cursor currently')
     return self._batch.cursor(self._index + 1)
 
-  def __init__(self, query, options=None):
-    ctx = tasklets.get_context()
-    callback = None
-    if options is not None and options.produce_cursors:
-      callback = self._extended_callback
-    self._iter = ctx.iter_query(query, callback=callback, options=options)
-    self._fut = None
-
   def __iter__(self):
+    """Iterator protocol: get the iterator for this iterator, i.e. self."""
     return self
 
+  def probably_has_next(self):
+    """Return whether a next item is (probably) available.
+
+    This is not quite the same as has_next(), because when
+    produce_cursors is set, some shortcuts are possible.  However, in
+    some cases (e.g. when the query has a post_filter) we can get a
+    false positive (returns True but next() will raise StopIteration).
+    There are no false negatives, if Batch.more_results doesn't lie.
+    """
+    if self._lookahead:
+      return True
+    if self._batch is not None:
+      return self._batch.more_results
+    return self.has_next()
+
   def has_next(self):
+    """Return whether a next item is available.
+
+    See the module docstring for the usage pattern.
+    """
     return self.has_next_async().get_result()
 
   @tasklets.tasklet
   def has_next_async(self):
+    """Return a Future whose result will say whether a next item is available.
+
+    See the module docstring for the usage pattern.
+    """
     if self._fut is None:
       self._fut = self._iter.getq()
     flag = True
@@ -825,6 +856,7 @@ class QueryIterator(object):
     raise tasklets.Return(flag)
 
   def next(self):
+    """Iterator protocol: get next item or raise StopIteration."""
     if self._fut is None:
       self._fut = self._iter.getq()
     try:
