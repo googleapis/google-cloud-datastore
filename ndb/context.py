@@ -49,6 +49,7 @@ class AutoBatcher(object):
     # We cannot postpone the inevitable any longer.
     todo = self._todo
     self._todo = []  # Get ready for the next batch
+    # TODO: Use logging_debug(), at least if len(todo) == 1.
     logging.info('AutoBatcher(%s): %d items',
                  self._todo_tasklet.__name__, len(todo))
     self._running = self._todo_tasklet(todo)
