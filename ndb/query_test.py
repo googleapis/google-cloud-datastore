@@ -344,6 +344,9 @@ class QueryTests(test_utils.DatastoreTest):
           break
       cursors[pagesize] = it.cursor_after()
       mores[pagesize] = it.probably_has_next()
+      # Clean up the iterator.  This shouldn't be necessary but somehow it is.
+      for ent in it:
+        pass
     self.assertEqual(mores, {1: True, 2: True, 3: False, 4: False})
     self.assertEqual(cursors[3], cursors[4])
     # TODO: Assert that only one RPC call was made.
