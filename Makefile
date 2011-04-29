@@ -70,7 +70,7 @@ python_raw:
 	PYTHONPATH=$(GAEPATH):. $(PYTHON)
 
 zip:
-	D=`pwd`; D=`basename $$D`; cd ..; rm $$D.zip; zip $$D.zip `hg st -c -m -a -n -X $$D/.idea $$D`
+	D=`pwd`; D=`basename $$D`; cd ..; rm -f $$D.zip; zip $$D.zip `hg st -c -m -a -n -X $$D/.idea $$D`
 
 clean:
 	rm -rf htmlcov
