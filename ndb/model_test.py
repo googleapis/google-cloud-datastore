@@ -1878,8 +1878,6 @@ class ModelTests(test_utils.DatastoreTest):
       g = model.GeoPtProperty()
       @model.ComputedProperty
       def c(self):
-        if self.i is None:
-          return None
         return self.i + 1
       u = model.UserProperty()
 
