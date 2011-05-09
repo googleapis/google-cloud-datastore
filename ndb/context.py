@@ -249,10 +249,12 @@ class Context(object):
     should_cache = self.should_cache(key)
     if should_cache and key in self._cache:
       entity = self._cache[key]  # May be None, meaning "doesn't exist".
-    else:
-      entity = yield self._get_batcher.add(key)
-      if should_cache:
-        self._cache[key] = entity
+      if entity is None or entity._key == key:
+        # If entity's key didn't change later, it is ok. See issue #13.
+        raise tasklets.Return(entity)
+    entity = yield self._get_batcher.add(key)
+    if should_cache:
+      self._cache[key] = entity
     raise tasklets.Return(entity)
 
   @tasklets.tasklet
