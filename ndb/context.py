@@ -301,6 +301,12 @@ class Context(object):
         else:
           key = ent._key
           if key in self._cache:
+            hit = self._cache[key]
+            if hit is not None and hit.key != key:
+              # The cached entry has been mutated to have a different key.
+              # That's a false hit.  Get rid of it.  See issue #13.
+              del self._cache[key]
+          if key in self._cache:
             # Assume the cache is more up to date.
             if self._cache[key] is None:
               # This is a weird case.  Apparently this entity was
