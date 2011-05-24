@@ -377,6 +377,51 @@ class QueryTests(test_utils.DatastoreTest):
     q = query.Query(kind='Foo').filter(Foo.tags == 'jillian')
     self.assertEqual(q.count(1), 0)
 
+  def testFetchPage(self):
+    # This test implicitly also tests fetch_page_async().
+    q = query.Query(kind='Foo')
+
+    page_size = 1
+    res, curs, more = q.fetch_page(page_size)
+    self.assertEqual(res, [self.joe])
+    self.assertTrue(more)
+    res, curs, more = q.fetch_page(page_size, start_cursor=curs)
+    self.assertEqual(res, [self.jill])
+    self.assertTrue(more)
+    res, curs, more = q.fetch_page(page_size, start_cursor=curs)
+    self.assertEqual(res, [self.moe])
+    self.assertFalse(more)
+    res, curs, more = q.fetch_page(page_size, start_cursor=curs)
+    self.assertEqual(res, [])
+    self.assertFalse(more)
+
+    page_size = 2
+    res, curs, more = q.fetch_page(page_size)
+    self.assertEqual(res, [self.joe, self.jill])
+    self.assertTrue(more)
+    res, curs, more = q.fetch_page(page_size, start_cursor=curs)
+    self.assertEqual(res, [self.moe])
+    self.assertFalse(more)
+    res, curs, more = q.fetch_page(page_size, start_cursor=curs)
+    self.assertEqual(res, [])
+    self.assertFalse(more)
+
+    page_size = 3
+    res, curs, more = q.fetch_page(page_size)
+    self.assertEqual(res, [self.joe, self.jill, self.moe])
+    self.assertFalse(more)
+    res, curs, more = q.fetch_page(page_size, start_cursor=curs)
+    self.assertEqual(res, [])
+    self.assertFalse(more)
+
+    page_size = 4
+    res, curs, more = q.fetch_page(page_size)
+    self.assertEqual(res, [self.joe, self.jill, self.moe])
+    self.assertFalse(more)
+    res, curs, more = q.fetch_page(page_size, start_cursor=curs)
+    self.assertEqual(res, [])
+    self.assertFalse(more)
+
   def testMultiQueryIterator(self):
     q = query.Query(kind='Foo').filter(Foo.tags.IN(['joe', 'jill']))
     q = q.order(Foo.name)

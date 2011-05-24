@@ -111,9 +111,12 @@ from ndb import context
 from ndb import model
 from ndb import tasklets
 
-__all__ = ['Binding', 'AND', 'OR', 'parse_gql', 'Query', 'QueryOptions']
+__all__ = ['Binding', 'AND', 'OR', 'parse_gql', 'Query',
+           'QueryOptions', 'Cursor']
 
-QueryOptions = datastore_query.QueryOptions  # For export.
+# Re-export some useful classes from the lower-level module.
+QueryOptions = datastore_query.QueryOptions
+Cursor = datastore_query.Cursor
 
 # TODO: Make these protected.
 ASC = datastore_query.PropertyOrder.ASCENDING
@@ -718,6 +721,51 @@ class Query(object):
       rpc = batch.next_batch_async(options)
       total += batch.skipped_results
     raise tasklets.Return(total)
+
+  def fetch_page(self, page_size, **q_options):
+    """Fetch a page of results.
+
+    This is meant to be used by paging user interfaces.
+
+    Args:
+      page_size: The requested page size.  At most this many results
+        will be returned.
+
+    In addition, any keyword argument supported by the QueryOptions
+    class is supported.  In particular, to fetch the next page, you
+    pass the cursor returned by one call to the next call using
+    start_cursor=<cursor>.  A common idiom is to pass the cursor to
+    the client using <cursor>.to_websafe_string() and to reconstruct
+    that cursor on a subsequent request using
+    Cursor.from_websafe_string(<string>).
+
+    Returns:
+      A tuple (results, cursor, more) where results is a list of query
+      results, cursor is a cursor pointing just after the last result
+      returned, and more is a bool indicating whether there are
+      (likely) more results after that.
+    """
+    return self.fetch_page_async(page_size, **q_options).get_result()
+
+  @tasklets.tasklet
+  def fetch_page_async(self, page_size, **q_options):
+    """Fetch a page of results.
+
+    This is the asynchronous version of QueryIterator.fetch_page().
+    """
+    options = QueryOptions(produce_cursors=True, limit=page_size+1,
+                           batch_size=page_size, **q_options)
+    it = self.iter(options=options)
+    results = []
+    while (yield it.has_next_async()):
+      results.append(it.next())
+      if len(results) >= page_size:
+        break
+    try:
+      cursor = it.cursor_after()
+    except datastore_errors.BadArgumentError:
+      cursor = None
+    raise tasklets.Return(results, cursor, it.probably_has_next())
 
 
 class QueryIterator(object):
