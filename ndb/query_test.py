@@ -207,9 +207,9 @@ class QueryTests(test_utils.DatastoreTest):
     q = Manager.query(Manager.report == Employee(rank=2, name='2'))
     res = list(q)
     self.assertEqual(res, [mgr_a, mgr_c])
-    res = list(q.iter(options=query.QueryOptions(offset=1)))
+    res = list(q.iter(offset=1))
     self.assertEqual(res, [mgr_c])
-    res = list(q.iter(options=query.QueryOptions(limit=1)))
+    res = list(q.iter(limit=1))
     self.assertEqual(res, [mgr_a])
 
   def testMultiQuery(self):
@@ -279,9 +279,9 @@ class QueryTests(test_utils.DatastoreTest):
     self.assertEqual(q.fetch(1), [])
 
   def testFetchKeysOnly(self):
-    qo = query.QueryOptions(keys_only=True)
     q = query.Query(kind='Foo').filter(Foo.tags == 'jill').order(Foo.name)
-    self.assertEqual(q.fetch(10, options=qo), [self.jill.key, self.joe.key])
+    self.assertEqual(q.fetch(10, keys_only=True),
+                     [self.jill.key, self.joe.key])
 
   def testGet(self):
     q = query.Query(kind='Foo').filter(Foo.tags == 'jill').order(Foo.name)
@@ -292,14 +292,12 @@ class QueryTests(test_utils.DatastoreTest):
     self.assertEqual(q.get(), None)
 
   def testGetKeysOnly(self):
-    qo = query.QueryOptions(keys_only=True)
     q = query.Query(kind='Foo').filter(Foo.tags == 'jill').order(Foo.name)
-    self.assertEqual(q.get(options=qo), self.jill.key)
+    self.assertEqual(q.get(keys_only=True), self.jill.key)
 
   def testCursors(self):
-    qo = query.QueryOptions(produce_cursors=True)
     q = query.Query(kind='Foo')
-    it = q.iter(options=qo)
+    it = q.iter(produce_cursors=True)
     expected = [self.joe, self.jill, self.moe]
     self.assertRaises(datastore_errors.BadArgumentError, it.cursor_before)
     self.assertRaises(datastore_errors.BadArgumentError, it.cursor_after)
@@ -317,9 +315,8 @@ class QueryTests(test_utils.DatastoreTest):
     self.assertEqual(before[3], after[3])  # !!!
 
   def testCursorsKeysOnly(self):
-    qo = query.QueryOptions(produce_cursors=True, keys_only=True)
     q = query.Query(kind='Foo')
-    it = q.iter(options=qo)
+    it = q.iter(produce_cursors=True, keys_only=True)
     expected = [self.joe.key, self.jill.key, self.moe.key]
     self.assertRaises(datastore_errors.BadArgumentError, it.cursor_before)
     self.assertRaises(datastore_errors.BadArgumentError, it.cursor_after)
@@ -344,9 +341,7 @@ class QueryTests(test_utils.DatastoreTest):
     cursors = {}
     mores = {}
     for pagesize in [1, 2, 3, 4]:
-      qo = query.QueryOptions(produce_cursors=True, limit=pagesize+1,
-                              batch_size=pagesize)
-      it = q.iter(options=qo)
+      it = q.iter(produce_cursors=True, limit=pagesize+1, batch_size=pagesize)
       todo = pagesize
       for ent in it:
         todo -= 1

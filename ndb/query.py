@@ -659,57 +659,63 @@ class Query(object):
 
   # Datastore API using the default context.
 
-  def iter(self, options=None):
-    return QueryIterator(self, options=options)
+  def iter(self, **q_options):
+    return QueryIterator(self, **q_options)
 
   __iter__ = iter
 
   # TODO: support the rest for MultiQuery.
 
-  def map(self, callback, options=None, merge_future=None):
-    return self.map_async(callback, options=options,
-                          merge_future=merge_future).get_result()
+  @datastore_rpc._positional(2)
+  def map(self, callback, merge_future=None, **q_options):
+    return self.map_async(callback, merge_future=merge_future,
+                          **q_options).get_result()
 
-  def map_async(self, callback, options=None, merge_future=None):
+  @datastore_rpc._positional(2)
+  def map_async(self, callback, merge_future=None, **q_options):
     return tasklets.get_context().map_query(self, callback,
-                                            options=options,
+                                            options=make_options(q_options),
                                             merge_future=merge_future)
 
-  def fetch(self, limit, offset=0, options=None):
-    return self.fetch_async(limit, offset, options=options).get_result()
+  @datastore_rpc._positional(2)
+  def fetch(self, limit, **q_options):
+    # NOTE: limit can't be passed as a keyword.
+    return self.fetch_async(limit, **q_options).get_result()
 
   @tasklets.tasklet
-  def fetch_async(self, limit, offset=0, options=None):
-    # TODO: If options has explicit batch_size or prefetch_size, let
-    # those override?
-    options = QueryOptions(limit=limit,
-                           prefetch_size=limit,
-                           batch_size=limit,
-                           offset=offset,
-                           config=options)
+  @datastore_rpc._positional(2)
+  def fetch_async(self, limit, **q_options):
+    q_options.setdefault('prefetch_size', limit)
+    q_options.setdefault('batch_size', limit)
     res = []
-    it = self.iter(options)
+    it = self.iter(limit=limit, **q_options)
     while (yield it.has_next_async()):
       res.append(it.next())
     raise tasklets.Return(res)
 
-  def get(self, options=None):
-    return self.get_async(options=options).get_result()
+  def get(self, **q_options):
+    return self.get_async(**q_options).get_result()
 
   @tasklets.tasklet
-  def get_async(self, options=None):
-    res = yield self.fetch_async(1, options=options)
+  def get_async(self, **q_options):
+    res = yield self.fetch_async(1, **q_options)
     if not res:
       raise tasklets.Return(None)
     raise tasklets.Return(res[0])
 
-  def count(self, limit, options=None):
-    return self.count_async(limit, options=options).get_result()
+  @datastore_rpc._positional(2)
+  def count(self, limit, **q_options):
+    return self.count_async(limit, **q_options).get_result()
 
   @tasklets.tasklet
-  def count_async(self, limit, options=None):
+  @datastore_rpc._positional(2)
+  def count_async(self, limit, **q_options):
+    assert 'offset' not in q_options
+    assert 'limit' not in q_options
+    q_options['offset'] = limit
+    q_options['limit'] = 0
     conn = tasklets.get_context()._conn
-    options = QueryOptions(offset=limit, limit=0, config=options)
+    options = make_options(q_options)
     dsqry, post_filters = self._get_query(conn)
     if post_filters:
       raise datastore_errors.BadQueryError(
@@ -722,6 +728,7 @@ class Query(object):
       total += batch.skipped_results
     raise tasklets.Return(total)
 
+  @datastore_rpc._positional(2)
   def fetch_page(self, page_size, **q_options):
     """Fetch a page of results.
 
@@ -745,17 +752,19 @@ class Query(object):
       returned, and more is a bool indicating whether there are
       (likely) more results after that.
     """
+    # NOTE: page_size can't be passed as a keyword.
     return self.fetch_page_async(page_size, **q_options).get_result()
 
   @tasklets.tasklet
+  @datastore_rpc._positional(2)
   def fetch_page_async(self, page_size, **q_options):
     """Fetch a page of results.
 
     This is the asynchronous version of QueryIterator.fetch_page().
     """
-    options = QueryOptions(produce_cursors=True, limit=page_size+1,
-                           batch_size=page_size, **q_options)
-    it = self.iter(options=options)
+    q_options.setdefault('batch_size', page_size)
+    q_options.setdefault('produce_cursors', True)
+    it = self.iter(limit=page_size+1, **q_options)
     results = []
     while (yield it.has_next_async()):
       results.append(it.next())
@@ -766,6 +775,17 @@ class Query(object):
     except datastore_errors.BadArgumentError:
       cursor = None
     raise tasklets.Return(results, cursor, it.probably_has_next())
+
+
+def make_options(q_options):
+  config = q_options.pop('options', None)
+  if config is not None:
+    # Move 'options' to 'config' since that is what QueryOptions() uses.
+    assert 'config' not in q_options
+    q_options['config'] = config
+  if not q_options:
+    return None
+  return QueryOptions(**q_options)
 
 
 class QueryIterator(object):
@@ -815,13 +835,15 @@ class QueryIterator(object):
   # Indicate the loop is exhausted.
   _exhausted = False
 
-  def __init__(self, query, options=None):
-    """Constructor.  Takes a Query and optionally a QueryOptions.
+  @datastore_rpc._positional(2)
+  def __init__(self, query, **q_options):
+    """Constructor.  Takes a Query and query options.
 
     This is normally called by Query.iter() or Query.__iter__().
     """
     ctx = tasklets.get_context()
     callback = None
+    options = make_options(q_options)
     if options is not None and options.produce_cursors:
       callback = self._extended_callback
     self._iter = ctx.iter_query(query, callback=callback, options=options)
@@ -1042,8 +1064,8 @@ class MultiQuery(object):
 
   # Datastore API using the default context.
 
-  def iter(self, options=None):
-    return QueryIterator(self, options=options)
+  def iter(self, **q_options):
+    return QueryIterator(self, **q_options)
 
   __iter__ = iter
 
