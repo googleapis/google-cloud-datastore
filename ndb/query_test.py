@@ -242,6 +242,9 @@ class QueryTests(test_utils.DatastoreTest):
     self.assertEqual(q.map(callback), ['jill', 'joe'])
     self.assertEqual(q.map(callback_async), ['jill', 'joe'])
 
+  # TODO: Test map() with esoteric argument combinations
+  # e.g. keys_only, produce_cursors, and merge_future.
+
   def testMapAsync(self):
     q = query.Query(kind='Foo').filter(Foo.tags == 'jill').order(Foo.name)
     callback = lambda e: e.name

@@ -747,26 +747,66 @@ class Query(object):
     """Map a callback function or tasklet over the query results.
 
     Args:
-      TODO
+      callback: A function or tasklet to be applied to each result; see below.
+      merge_future: Optional Future subclass; see below.
+      **q_options: All query options keyword arguments are supported.
 
+    Callback signature: The callback is normally called with an entity
+    as argument.  However if keys_only=True is given, it is called
+    with a Key.  Also, when produce_cursors=True is given, it is
+    called with three arguments: the current batch, the index within
+    the batch, and the entity or Key at that index.  The callback can
+    return whatever it wants.
+
+    Optional merge future: The merge_future is an advanced argument
+    that can be used to override how the callback results are combined
+    into the overall map() return value.  By default a list of
+    callback return values is produced.  By substituting one of a
+    small number of specialized alternatives you can arrange
+    otherwise.  See tasklets.MultiFuture for the default
+    implementation and a description of the protocol the merge_future
+    object must implement the default.  Alternatives from the same
+    module include QueueFuture, SerialQueueFuture and ReducingFuture.
+
+    Returns:
+      When the query has run to completion and all callbacks have
+      returned, map() returns a list of the results of all callbacks.
+      (But see 'optional merge future' above.)
     """
     return self.map_async(callback, merge_future=merge_future,
                           **q_options).get_result()
 
   @datastore_rpc._positional(2)
   def map_async(self, callback, merge_future=None, **q_options):
+    """Map a callback function or tasklet over the query results.
+
+    This is the asynchronous version of Query.map().
+    """
     return tasklets.get_context().map_query(self, callback,
                                             options=make_options(q_options),
                                             merge_future=merge_future)
 
   @datastore_rpc._positional(2)
   def fetch(self, limit, **q_options):
+    """Fetch a list of query results, up to a limit.
+
+    Args:
+      limit: How many results to retrieve at most.
+      **q_options: All query options keyword arguments are supported.
+
+    Returns:
+      A list of results.
+    """
     # NOTE: limit can't be passed as a keyword.
     return self.fetch_async(limit, **q_options).get_result()
 
   @tasklets.tasklet
   @datastore_rpc._positional(2)
   def fetch_async(self, limit, **q_options):
+    """Fetch a list of query results, up to a limit.
+
+    This is the asynchronous version of Query.fetch().
+    """
     q_options.setdefault('prefetch_size', limit)
     q_options.setdefault('batch_size', limit)
     res = []
@@ -776,10 +816,25 @@ class Query(object):
     raise tasklets.Return(res)
 
   def get(self, **q_options):
+    """Get the first query result, if any.
+
+    This is similar to calling q.fetch(1) and returning the first item
+    of the list of results, if any, otherwise None.
+
+    Args:
+      **q_options: All query options keyword arguments are supported.
+
+    Returns:
+      A single result, or None if there are no results.
+    """
     return self.get_async(**q_options).get_result()
 
   @tasklets.tasklet
   def get_async(self, **q_options):
+    """Get the first query result, if any.
+
+    This is the asynchronous version of Query.get().
+    """
     res = yield self.fetch_async(1, **q_options)
     if not res:
       raise tasklets.Return(None)
@@ -787,11 +842,29 @@ class Query(object):
 
   @datastore_rpc._positional(2)
   def count(self, limit, **q_options):
+    """Count the number of query results, up to a limit.
+
+    This returns the same result as len(q.fetch(limit)) but more
+    efficiently.
+
+    Note that you must pass a maximum value to limit the amount of
+    work done by the query.
+
+    Args:
+      limit: How many results to count at most.
+      **q_options: All query options keyword arguments are supported.
+
+    Returns:
+    """
     return self.count_async(limit, **q_options).get_result()
 
   @tasklets.tasklet
   @datastore_rpc._positional(2)
   def count_async(self, limit, **q_options):
+    """Count the number of query results, up to a limit.
+
+    This is the asynchronous version of Query.count().
+    """
     assert 'offset' not in q_options
     assert 'limit' not in q_options
     q_options['offset'] = limit
@@ -814,7 +887,7 @@ class Query(object):
   def fetch_page(self, page_size, **q_options):
     """Fetch a page of results.
 
-    This is meant to be used by paging user interfaces.
+    This is a specialized method for use by paging user interfaces.
 
     Args:
       page_size: The requested page size.  At most this many results
@@ -842,7 +915,7 @@ class Query(object):
   def fetch_page_async(self, page_size, **q_options):
     """Fetch a page of results.
 
-    This is the asynchronous version of QueryIterator.fetch_page().
+    This is the asynchronous version of Query.fetch_page().
     """
     q_options.setdefault('batch_size', page_size)
     q_options.setdefault('produce_cursors', True)
@@ -860,13 +933,24 @@ class Query(object):
 
 
 def make_options(q_options):
-  config = q_options.pop('options', None)
-  if config is not None:
-    # Move 'options' to 'config' since that is what QueryOptions() uses.
-    assert 'config' not in q_options
-    q_options['config'] = config
+  """Construct a QueryOptions object from keyword arguents.
+
+  Args:
+    q_options: a dict of keyword arguments.
+
+  Note that either 'options' or 'config' can be used to pass another
+  QueryOptions object, but not both.  If another QueryOptions object is
+  given it provides default values.
+
+  Returns:
+    A QueryOptions object, or None if q_options is empty.
+  """
   if not q_options:
     return None
+  if 'options' in q_options:
+    # Move 'options' to 'config' since that is what QueryOptions() uses.
+    assert 'config' not in q_options
+    q_options['config'] = q_options.pop('options')
   return QueryOptions(**q_options)
 
 
@@ -1075,12 +1159,12 @@ class _SubQueryIteratorState(object):
 
 class MultiQuery(object):
 
-  # This is not created by the user directly, but implicitly by using
-  # a where() call with an __in or __ne operator.  In the future
-  # or_where() can also use this.  Note that some options must be
-  # interpreted by MultiQuery instead of passed to the underlying
-  # Queries' methods, e.g. offset (though not necessarily limit, and
-  # I'm not sure about cursors).
+  # This is not created by the user directly, but implicitly when
+  # iterating over a query with at least one filter using an IN, OR or
+  # != operator.  Note that some options must be interpreted by
+  # MultiQuery instead of passed to the underlying Queries' methods,
+  # e.g. offset (though not necessarily limit, and I'm not sure about
+  # cursors).
 
   def __init__(self, subqueries, orders=None):
     assert isinstance(subqueries, list), subqueries
