@@ -56,7 +56,9 @@ to the .query() method:
                       Employee.age < 40)  # Only those in their 30s
 
 Query objects are immutable, so these methods always return a new
-Query object; the above calls to filter() do not affect q1.
+Query object; the above calls to filter() do not affect q1.  (On the
+other hand, operations that are effectively no-ops may return the
+original Query object.)
 
 Sort orders can also be combined this way, and .filter() and .order()
 calls may be intermixed:
@@ -74,7 +76,7 @@ The simplest way to retrieve Query results is a for-loop:
   for emp in q3:
     print emp.name, emp.age
 
-Some other operations to run a query and access its results:
+Some other methods to run a query and access its results:
 
   q.iter() # Return an iterator; same as iter(q) but more flexible
   q.map(callback) # Call the callback function for each query result
@@ -100,9 +102,10 @@ options=QueryOptions(...).  The most important query options are:
 For additional (obscure) query options and more details on them,
 including an explanation of Cursors, see datastore_query.py.
 
-These have asynchronous variants as well, which return a Future; to
-get the operation's ultimate result, yield the Future (when inside a
-tasklet) or call the Future's get_result() method (outside a tasklet):
+All of the above methods except for iter() have asynchronous variants
+as well, which return a Future; to get the operation's ultimate
+result, yield the Future (when inside a tasklet) or call the Future's
+get_result() method (outside a tasklet):
 
   q.map_async(callback)  # Callback may be a task or a plain function
   q.fetch_async(N)
@@ -146,15 +149,7 @@ _DESC = datastore_query.PropertyOrder.DESCENDING
 _AND = datastore_query.CompositeFilter.AND
 
 # Table of supported comparison operators.
-_OPS = {
-  '__eq': '=',
-  '__ne': '!=',
-  '__lt': '<',
-  '__le': '<=',
-  '__gt': '>',
-  '__ge': '>=',
-  '__in': 'in',
-  }
+_OPS = frozenset(['=', '!=', '<', '<=', '>', '>=', 'in'])
 
 
 class Binding(object):
@@ -209,11 +204,11 @@ class Node(object):
   __le__ = __lt__ = __ge__ = __gt__ = __unordered
 
   def _to_filter(self, bindings):
-    """Convert to datastore_query.Filter, or None."""
+    """Helper to convert to datastore_query.Filter, or None."""
     raise NotImplementedError
 
   def _post_filters(self):
-    """Extract post-filter Nodes, if any."""
+    """Helper to extract post-filter Nodes, if any."""
     return None
 
   def apply(self, entity):
@@ -520,7 +515,7 @@ def parse_gql(query_string):
       [(func, args)] = values
       ancestor = _args_to_val(func, args, bindings)
       continue
-    assert op in _OPS.values()
+    assert op in _OPS
     for (func, args) in values:
       val = _args_to_val(func, args, bindings)
       filters.append(FilterNode(name, op, val))
@@ -560,7 +555,7 @@ class Query(object):
 
   See module docstring for examples.
 
-  Note that not all operations on Queries are supported by MultiQuery
+  Note that not all operations on Queries are supported by _MultiQuery
   instances; the latter are generated as necessary when any of the
   operators !=, IN or OR is used.
   """
@@ -574,7 +569,6 @@ class Query(object):
       ancestor: Optional ancestor Key.
       filters: Optional Node representing a filter expression tree.
       orders: Optional datastore_query.Order object.
-
     """
     if ancestor is not None and not isinstance(ancestor, Binding):
       lastid = ancestor.pairs()[-1][1]
@@ -659,13 +653,13 @@ class Query(object):
     if filters is not None:
       filters = filters.resolve()
       if isinstance(filters, DisjunctionNode):
-        # Switch to a MultiQuery.
+        # Switch to a _MultiQuery.
         subqueries = []
         for subfilter in filters:
           subquery = Query(kind=self.__kind, ancestor=self.__ancestor,
                            filters=subfilter, orders=self.__orders)
           subqueries.append(subquery)
-        return MultiQuery(subqueries, orders=self.__orders)
+        return _MultiQuery(subqueries, orders=self.__orders)
     return None
 
   @property
@@ -736,11 +730,19 @@ class Query(object):
   # Datastore API using the default context.
 
   def iter(self, **q_options):
+    """Construct an iterator over the query.
+
+    Args:
+      **q_options: All query options keyword arguments are supported.
+
+    Returns:
+      A QueryIterator object.
+    """
     return QueryIterator(self, **q_options)
 
   __iter__ = iter
 
-  # TODO: support the rest for MultiQuery.
+  # TODO: support the rest for _MultiQuery.
 
   @datastore_rpc._positional(2)
   def map(self, callback, merge_future=None, **q_options):
@@ -783,7 +785,7 @@ class Query(object):
     This is the asynchronous version of Query.map().
     """
     return tasklets.get_context().map_query(self, callback,
-                                            options=make_options(q_options),
+                                            options=_make_options(q_options),
                                             merge_future=merge_future)
 
   @datastore_rpc._positional(2)
@@ -870,7 +872,7 @@ class Query(object):
     q_options['offset'] = limit
     q_options['limit'] = 0
     conn = tasklets.get_context()._conn
-    options = make_options(q_options)
+    options = _make_options(q_options)
     dsqry, post_filters = self._get_query(conn)
     if post_filters:
       raise datastore_errors.BadQueryError(
@@ -932,8 +934,8 @@ class Query(object):
     raise tasklets.Return(results, cursor, it.probably_has_next())
 
 
-def make_options(q_options):
-  """Construct a QueryOptions object from keyword arguents.
+def _make_options(q_options):
+  """Helper to construct a QueryOptions object from keyword arguents.
 
   Args:
     q_options: a dict of keyword arguments.
@@ -1009,7 +1011,7 @@ class QueryIterator(object):
     """
     ctx = tasklets.get_context()
     callback = None
-    options = make_options(q_options)
+    options = _make_options(q_options)
     if options is not None and options.produce_cursors:
       callback = self._extended_callback
     self._iter = ctx.iter_query(query, callback=callback, options=options)
@@ -1118,7 +1120,7 @@ class QueryIterator(object):
 
 
 class _SubQueryIteratorState(object):
-  # Helper class for MultiQuery.
+  """Helper class for _MultiQuery."""
 
   def __init__(self, batch_i_entity, iterator, orderings):
     batch, i, entity = batch_i_entity
@@ -1157,12 +1159,13 @@ class _SubQueryIteratorState(object):
     return cmp(our_entity._key.pairs(), their_entity._key.pairs())
 
 
-class MultiQuery(object):
+class _MultiQuery(object):
+  """Helper class to run queries involving !=, IN or OR operators."""
 
   # This is not created by the user directly, but implicitly when
   # iterating over a query with at least one filter using an IN, OR or
   # != operator.  Note that some options must be interpreted by
-  # MultiQuery instead of passed to the underlying Queries' methods,
+  # _MultiQuery instead of passed to the underlying Queries' methods,
   # e.g. offset (though not necessarily limit, and I'm not sure about
   # cursors).
 
@@ -1182,9 +1185,9 @@ class MultiQuery(object):
     # TODO: Use the specified sort order.
     assert options is None  # Don't know what to do with these yet.
     state = []
-    orderings = orders_to_orderings(self.__orders)
+    orderings = _orders_to_orderings(self.__orders)
     for subq in self.__subqueries:
-      subit = tasklets.SerialQueueFuture('MultiQuery.run_to_queue')
+      subit = tasklets.SerialQueueFuture('_MultiQuery.run_to_queue')
       subq.run_to_queue(subit, conn)
       try:
         ent = yield subit.getq()
@@ -1209,7 +1212,7 @@ class MultiQuery(object):
     # Too bad.  (I suppose you can do this in constant memory bounded
     # by the maximum number of entries in relevant repeated
     # properties, but I'm too lazy for now.  And yes, all this means
-    # MultiQuery is a bit of a toy.  But where it works, it beats
+    # _MultiQuery is a bit of a toy.  But where it works, it beats
     # expecting the user to do this themselves.)
     keys_seen = set()
     while state:
@@ -1236,29 +1239,33 @@ class MultiQuery(object):
   __iter__ = iter
 
 
-def order_to_ordering(order):
+# Helper functions to convert between orders and orderings.  An order
+# is a datastore_query.Order instance.  An ordering is a
+# (property_name, direction) tuple.
+
+def _order_to_ordering(order):
   pb = order._to_pb()
   return (pb.property(), pb.direction())  # TODO: What about UTF-8?
 
 
-def orders_to_orderings(orders):
+def _orders_to_orderings(orders):
   if orders is None:
     return []
   if isinstance(orders, datastore_query.PropertyOrder):
-    return [order_to_ordering(orders)]
+    return [_order_to_ordering(orders)]
   if isinstance(orders, datastore_query.CompositeOrder):
     # TODO: What about UTF-8?
     return [(pb.property(), pb.direction())for pb in orders._to_pbs()]
   assert False, orders
 
 
-def ordering_to_order(ordering):
+def _ordering_to_order(ordering):
   name, direction = ordering
   return datastore_query.PropertyOrder(name, direction)
 
 
-def orderings_to_orders(orderings):
-  orders = [ordering_to_order(o) for o in orderings]
+def _orderings_to_orders(orderings):
+  orders = [_ordering_to_order(o) for o in orderings]
   if not orders:
     return None
   if len(orders) == 1:

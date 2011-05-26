@@ -79,7 +79,7 @@ class QueryTests(test_utils.DatastoreTest):
     self.assertEqual(q.ancestor, key)
     self.assertEqual(q.filters, query.FilterNode('rate', '=', 1))
     expected_order = [('name', query._DESC)]
-    self.assertEqual(query.orders_to_orderings(q.orders), expected_order)
+    self.assertEqual(query._orders_to_orderings(q.orders), expected_order)
 
   def testQueryRepr(self):
     q = Foo.query()
@@ -106,7 +106,7 @@ class QueryTests(test_utils.DatastoreTest):
                      query.ConjunctionNode(
                        [query.FilterNode('Age', '>=', 42),
                         query.FilterNode('rank', '<=', 5)]))
-    self.assertEqual(query.orders_to_orderings(q.orders),
+    self.assertEqual(query._orders_to_orderings(q.orders),
                      [('name', query._ASC), ('Age', query._DESC)])
 
   def testAndQuery(self):
@@ -215,8 +215,8 @@ class QueryTests(test_utils.DatastoreTest):
   def testMultiQuery(self):
     q1 = query.Query(kind='Foo').filter(Foo.tags == 'jill').order(Foo.name)
     q2 = query.Query(kind='Foo').filter(Foo.tags == 'joe').order(Foo.name)
-    qq = query.MultiQuery([q1, q2],
-                          query.ordering_to_order(('name', query._ASC)))
+    qq = query._MultiQuery([q1, q2],
+                           query._ordering_to_order(('name', query._ASC)))
     res = list(qq)
     self.assertEqual(res, [self.jill, self.joe])
 
@@ -519,7 +519,7 @@ class QueryTests(test_utils.DatastoreTest):
   def testGqlOrder(self):
     qry, options, bindings = query.parse_gql(
       'SELECT * FROM Kind ORDER BY prop1')
-    self.assertEqual(query.orders_to_orderings(qry.orders),
+    self.assertEqual(query._orders_to_orderings(qry.orders),
                      [('prop1', query._ASC)])
 
   def testGqlOffset(self):
