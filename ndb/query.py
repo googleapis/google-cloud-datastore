@@ -140,12 +140,12 @@ __all__ = ['Binding', 'AND', 'OR', 'parse_gql', 'Query',
 QueryOptions = datastore_query.QueryOptions
 Cursor = datastore_query.Cursor
 
-# TODO: Make these protected.
-ASC = datastore_query.PropertyOrder.ASCENDING
-DESC = datastore_query.PropertyOrder.DESCENDING
-
+# Some local renamings.
+_ASC = datastore_query.PropertyOrder.ASCENDING
+_DESC = datastore_query.PropertyOrder.DESCENDING
 _AND = datastore_query.CompositeFilter.AND
 
+# Table of supported comparison operators.
 _OPS = {
   '__eq': '=',
   '__ne': '!=',
@@ -169,6 +169,8 @@ class Binding(object):
     return '%s(%r, %r)' % (self.__class__.__name__, self.value, self.key)
 
   def __eq__(self, other):
+    # TODO: When comparing tree nodes containing Bindings, Bindings
+    # should be compared by object identity?
     if not isinstance(other, Binding):
       return NotImplemented
     return self.value == other.value and self.key == other.key
@@ -183,7 +185,10 @@ class Binding(object):
 class Node(object):
   """Base class for filter expression tree nodes.
 
-  Implicitly used by AND and OR operators.
+  Tree nodes are considered immutable, even though they can contain
+  Binding instances, which are not.  In particular, two identical
+  trees may be represented by the same Node object in different
+  contexts.
   """
 
   def __new__(cls):
@@ -204,15 +209,19 @@ class Node(object):
   __le__ = __lt__ = __ge__ = __gt__ = __unordered
 
   def _to_filter(self, bindings):
+    """Convert to datastore_query.Filter, or None."""
     raise NotImplementedError
 
   def _post_filters(self):
+    """Extract post-filter Nodes, if any."""
     return None
 
   def apply(self, entity):
+    """Test whether an entity matches the filter."""
     return True
 
   def resolve(self):
+    """Extract the Binding's value if necessary."""
     raise NotImplementedError
 
 
@@ -223,7 +232,7 @@ class FalseNode(Node):
     return super(Node, cls).__new__(cls)
 
   def __eq__(self, other):
-    if not isinstane(other, FalseNode):
+    if not isinstance(other, FalseNode):
       return NotImplemented
     return True
 
@@ -267,6 +276,9 @@ class FilterNode(Node):
   def __eq__(self, other):
     if not isinstance(other, FilterNode):
       return NotImplemented
+    # TODO: Should nodes with values that compare equal but have
+    # different types really be considered equal?  IIUC the datastore
+    # doesn't consider 1 equal to 1.0 when it compares property values.
     return (self.__name == other.__name and
             self.__opsymbol == other.__opsymbol and
             self.__value == other.__value)
@@ -293,6 +305,11 @@ class FilterNode(Node):
 
 
 class PostFilterNode(Node):
+  """Tree node representing an in-memory filtering operation.
+
+  This is used to represent filters that cannot be executed by the
+  datastore, for example a query for a structured value.
+  """
 
   def __new__(cls, filter_func, filter_arg):
     self = super(PostFilterNode, cls).__new__(cls)
@@ -316,7 +333,7 @@ class PostFilterNode(Node):
 
 
 class ConjunctionNode(Node):
-  # AND
+  """Tree node representing a Boolean AND operator on two or more nodes."""
 
   def __new__(cls, nodes):
     assert nodes
@@ -393,7 +410,7 @@ class ConjunctionNode(Node):
 
 
 class DisjunctionNode(Node):
-  # OR
+  """Tree node representing a Boolean OR operator on two or more nodes."""
 
   def __new__(cls, nodes):
     assert nodes
@@ -432,6 +449,7 @@ class DisjunctionNode(Node):
 # AND and OR can just be aliases for them -- or possibly even rename.
 
 def AND(*args):
+  """Construct a ConjunctionNode from one or more tree nodes."""
   assert args
   assert all(isinstance(arg, Node) for arg in args)
   if len(args) == 1:
@@ -440,6 +458,7 @@ def AND(*args):
 
 
 def OR(*args):
+  """Construct a DisjunctionNode from one or more tree nodes."""
   assert args
   assert all(isinstance(arg, Node) for arg in args)
   if len(args) == 1:
@@ -448,6 +467,7 @@ def OR(*args):
 
 
 def _args_to_val(func, args, bindings):
+  """Helper for GQL parsing."""
   vals = []
   for arg in args:
     if isinstance(arg, (int, long, basestring)):
@@ -534,9 +554,28 @@ def parse_gql(query_string):
 
 
 class Query(object):
+  """Query object.
+
+  Usually constructed by calling Model.query().
+
+  See module docstring for examples.
+
+  Note that not all operations on Queries are supported by MultiQuery
+  instances; the latter are generated as necessary when any of the
+  operators !=, IN or OR is used.
+  """
 
   @datastore_rpc._positional(1)
   def __init__(self, kind=None, ancestor=None, filters=None, orders=None):
+    """Constructor.
+
+    Args:
+      kind: Optional kind string.
+      ancestor: Optional ancestor Key.
+      filters: Optional Node representing a filter expression tree.
+      orders: Optional datastore_query.Order object.
+
+    """
     if ancestor is not None and not isinstance(ancestor, Binding):
       lastid = ancestor.pairs()[-1][1]
       assert lastid, 'ancestor cannot be an incomplete key'
@@ -631,21 +670,26 @@ class Query(object):
 
   @property
   def kind(self):
+    """Accessor for the kind (a string or None)."""
     return self.__kind
 
   @property
   def ancestor(self):
+    """Accessor for the ancestor (a Key or None)."""
     return self.__ancestor
 
   @property
   def filters(self):
+    """Accessor for the filters (a Node or None)."""
     return self.__filters
 
   @property
   def orders(self):
+    """Accessor for the filters (a datastore_query.Order or None)."""
     return self.__orders
 
   def filter(self, *args):
+    """Return a new Query with additional filter(s) applied."""
     if not args:
       return self
     preds = []
@@ -665,6 +709,7 @@ class Query(object):
                           orders=self.orders, filters=pred)
 
   def order(self, *args):
+    """Return a new Query with additional sort order(s) applied."""
     # q.order(Eployee.name, -Employee.age)
     if not args:
       return self
@@ -674,7 +719,7 @@ class Query(object):
       orders.append(o)
     for arg in args:
       if isinstance(arg, model.Property):
-        orders.append(datastore_query.PropertyOrder(arg._name, ASC))
+        orders.append(datastore_query.PropertyOrder(arg._name, _ASC))
       elif isinstance(arg, datastore_query.Order):
         orders.append(arg)
       else:
@@ -699,6 +744,12 @@ class Query(object):
 
   @datastore_rpc._positional(2)
   def map(self, callback, merge_future=None, **q_options):
+    """Map a callback function or tasklet over the query results.
+
+    Args:
+      TODO
+
+    """
     return self.map_async(callback, merge_future=merge_future,
                           **q_options).get_result()
 
@@ -1004,7 +1055,7 @@ class _SubQueryIteratorState(object):
         # NOTE: Repeated properties sort by lowest value when in
         # ascending order and highest value when in descending order.
         # TODO: Use min_max_value_cache as datastore.py does?
-        if direction == ASC:
+        if direction == _ASC:
           func = min
         else:
           func = max
@@ -1013,7 +1064,7 @@ class _SubQueryIteratorState(object):
         if isinstance(their_value, list):
           their_value = func(their_value)
         flag = cmp(our_value, their_value)
-        if direction == DESC:
+        if direction == _DESC:
           flag = -flag
         if flag:
           return flag

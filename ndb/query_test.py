@@ -78,7 +78,7 @@ class QueryTests(test_utils.DatastoreTest):
     self.assertEqual(q.kind, 'Foo')
     self.assertEqual(q.ancestor, key)
     self.assertEqual(q.filters, query.FilterNode('rate', '=', 1))
-    expected_order = [('name', query.DESC)]
+    expected_order = [('name', query._DESC)]
     self.assertEqual(query.orders_to_orderings(q.orders), expected_order)
 
   def testQueryRepr(self):
@@ -107,7 +107,7 @@ class QueryTests(test_utils.DatastoreTest):
                        [query.FilterNode('Age', '>=', 42),
                         query.FilterNode('rank', '<=', 5)]))
     self.assertEqual(query.orders_to_orderings(q.orders),
-                     [('name', query.ASC), ('Age', query.DESC)])
+                     [('name', query._ASC), ('Age', query._DESC)])
 
   def testAndQuery(self):
     class Employee(model.Model):
@@ -216,7 +216,7 @@ class QueryTests(test_utils.DatastoreTest):
     q1 = query.Query(kind='Foo').filter(Foo.tags == 'jill').order(Foo.name)
     q2 = query.Query(kind='Foo').filter(Foo.tags == 'joe').order(Foo.name)
     qq = query.MultiQuery([q1, q2],
-                          query.ordering_to_order(('name', query.ASC)))
+                          query.ordering_to_order(('name', query._ASC)))
     res = list(qq)
     self.assertEqual(res, [self.jill, self.joe])
 
@@ -517,7 +517,7 @@ class QueryTests(test_utils.DatastoreTest):
     qry, options, bindings = query.parse_gql(
       'SELECT * FROM Kind ORDER BY prop1')
     self.assertEqual(query.orders_to_orderings(qry.orders),
-                     [('prop1', query.ASC)])
+                     [('prop1', query._ASC)])
 
   def testGqlOffset(self):
     qry, options, bindings = query.parse_gql(
