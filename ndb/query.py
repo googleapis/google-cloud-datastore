@@ -74,11 +74,31 @@ The simplest way to retrieve Query results is a for-loop:
   for emp in q3:
     print emp.name, emp.age
 
-Some other operations:
+Some other operations to run a query and access its results:
 
+  q.iter() # Return an iterator; same as iter(q) but more flexible
   q.map(callback) # Call the callback function for each query result
   q.fetch(N) # Return a list of the first N results
+  q.get() # Return the first result
   q.count(N) # Return the number of results, with a maximum of N
+  q.fetch_page(N, start_cursor=cursor) # Return (results, cursor, has_more)
+
+All of the above methods take a standard set of additional query
+options, either in the form of keyword arguments such as
+keys_only=True, or as QueryOptions object passed with
+options=QueryOptions(...).  The most important query options are:
+
+  keys_only: bool, if set the results are keys instead of entities
+  limit: int, limits the number of results returned
+  offset: int, skips this many results first
+  start_cursor: Cursor, start returning results after this position
+  end_cursor: Cursor, stop returning results after this position
+  batch_size: int, hint for the number of results returned per RPC
+  prefetch_size: int, hint for the number of results in the first RPC
+  produce_cursors: bool, return Cursor objects with the results
+
+For additional (obscure) query options and more details on them,
+including an explanation of Cursors, see datastore_query.py.
 
 These have asynchronous variants as well, which return a Future; to
 get the operation's ultimate result, yield the Future (when inside a
@@ -86,12 +106,14 @@ tasklet) or call the Future's get_result() method (outside a tasklet):
 
   q.map_async(callback)  # Callback may be a task or a plain function
   q.fetch_async(N)
+  q.get_async()
   q.count_async(N)
+  q.fetch_page_async(N, start_cursor=cursor)
 
 Finally, there's an idiom to efficiently loop over the Query results
 in a tasklet, properly yielding when appropriate:
 
-  it = iter(q)
+  it = q.iter()
   while (yield it.has_next_async()):
     emp = it.next()
     print emp.name, emp.age
@@ -136,8 +158,10 @@ _OPS = {
 
 
 class Binding(object):
+  """Used with GQL; for now unsupported."""
 
   def __init__(self, value=None, key=None):
+    """Constructor.  The value may be changed later."""
     self.value = value
     self.key = key
 
@@ -150,12 +174,17 @@ class Binding(object):
     return self.value == other.value and self.key == other.key
 
   def resolve(self):
+    """Return the value currently associated with this Binding."""
     value = self.value
     assert not isinstance(value, Binding)
     return value
 
 
 class Node(object):
+  """Base class for filter expression tree nodes.
+
+  Implicitly used by AND and OR operators.
+  """
 
   def __new__(cls):
     assert cls is not None
@@ -188,6 +217,7 @@ class Node(object):
 
 
 class FalseNode(Node):
+  """Tree node for an always-failing filter."""
 
   def __new__(cls):
     return super(Node, cls).__new__(cls)
@@ -206,6 +236,7 @@ class FalseNode(Node):
 
 
 class FilterNode(Node):
+  """Tree node for a single filter expression."""
 
   def __new__(cls, name, opsymbol, value):
     if opsymbol == '!=':
