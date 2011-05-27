@@ -140,7 +140,7 @@ class QueryTests(test_utils.DatastoreTest):
       name = model.StringProperty()
     q = Employee.query(Employee.name.IN([]))
     self.assertEqual(q.filters, query.FalseNode())
-    self.assertNotEqual(q.filters, query.Node())
+    self.assertNotEqual(q.filters, 42)
     # TODO: Test that running the query raises an exception.  This
     # currently doesn't work because the exception is raised in a
     # different tasklet.
@@ -150,7 +150,7 @@ class QueryTests(test_utils.DatastoreTest):
       name = model.StringProperty()
     q = Employee.query(Employee.name.IN(['xyzzy']))
     self.assertEqual(q.filters, query.FilterNode('name', '=', 'xyzzy'))
-    self.assertNotEqual(q.filters, query.Node())
+    self.assertNotEqual(q.filters, 42)
     e = Employee(name='xyzzy')
     e.put()
     self.assertEqual(q.get(), e)

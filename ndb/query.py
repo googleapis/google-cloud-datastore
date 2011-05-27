@@ -173,7 +173,7 @@ class Binding(object):
   def resolve(self):
     """Return the value currently associated with this Binding."""
     value = self.value
-    assert not isinstance(value, Binding)
+    assert not isinstance(value, Binding), 'Recursive Binding'
     return value
 
 
@@ -187,11 +187,11 @@ class Node(object):
   """
 
   def __new__(cls):
-    assert cls is not None
+    assert cls is not Node, 'Cannot instantiate Node, only a subclass'
     return super(Node, cls).__new__(cls)
 
   def __eq__(self, other):
-    return NotImplemented
+    raise NotImplementedError
 
   def __ne__(self, other):
     eq = self.__eq__(other)
@@ -250,7 +250,7 @@ class FilterNode(Node):
       n2 = FilterNode(name, '>', value)
       return DisjunctionNode([n1, n2])
     if opsymbol == 'in' and not isinstance(value, Binding):
-      assert isinstance(value, (list, tuple, set, frozenset)), value
+      assert isinstance(value, (list, tuple, set, frozenset)), repr(value)
       nodes = [FilterNode(name, '=', v) for v in value]
       if not nodes:
         return FalseNode()
@@ -281,7 +281,7 @@ class FilterNode(Node):
             self.__value == other.__value)
 
   def _to_filter(self, bindings):
-    assert self.__opsymbol not in ('!=', 'in'), self.__opsymbol
+    assert self.__opsymbol not in ('!=', 'in'), repr(self.__opsymbol)
     value = self.__value
     if isinstance(value, Binding):
       bindings[value.key] = value
@@ -290,7 +290,7 @@ class FilterNode(Node):
 
   def resolve(self):
     if self.__opsymbol == 'in':
-      assert isinstance(self.__value, Binding)
+      assert isinstance(self.__value, Binding), 'Unexpanded non-Binding IN'
       return FilterNode(self.__name, self.__opsymbol, self.__value.resolve())
     else:
       return self
@@ -328,13 +328,13 @@ class ConjunctionNode(Node):
   """Tree node representing a Boolean AND operator on two or more nodes."""
 
   def __new__(cls, nodes):
-    assert nodes
+    assert nodes, 'ConjunctionNode requires at least one node'
     if len(nodes) == 1:
       return nodes[0]
     clauses = [[]]  # Outer: Disjunction; inner: Conjunction.
     # TODO: Remove duplicates?
     for node in nodes:
-      assert isinstance(node, Node), node
+      assert isinstance(node, Node), repr(node)
       if isinstance(node, DisjunctionNode):
         # Apply the distributive law: (X or Y) and (A or B) becomes
         # (X and A) or (X and B) or (Y and A) or (Y and B).
@@ -405,14 +405,14 @@ class DisjunctionNode(Node):
   """Tree node representing a Boolean OR operator on two or more nodes."""
 
   def __new__(cls, nodes):
-    assert nodes
+    assert nodes, 'DisjunctionNode requires at least one node'
     if len(nodes) == 1:
       return nodes[0]
     self = super(DisjunctionNode, cls).__new__(cls)
     self.__nodes = []
     # TODO: Remove duplicates?
     for node in nodes:
-      assert isinstance(node, Node), node
+      assert isinstance(node, Node), repr(node)
       if isinstance(node, DisjunctionNode):
         self.__nodes.extend(node.__nodes)
       else:
@@ -442,8 +442,8 @@ class DisjunctionNode(Node):
 
 def AND(*args):
   """Construct a ConjunctionNode from one or more tree nodes."""
-  assert args
-  assert all(isinstance(arg, Node) for arg in args)
+  assert args, 'AND requires at least one argument'
+  assert all(isinstance(arg, Node) for arg in args), repr(args)
   if len(args) == 1:
     return args[0]
   return ConjunctionNode(args)
@@ -451,8 +451,8 @@ def AND(*args):
 
 def OR(*args):
   """Construct a DisjunctionNode from one or more tree nodes."""
-  assert args
-  assert all(isinstance(arg, Node) for arg in args)
+  assert args, 'OR requires at least one argument'
+  assert all(isinstance(arg, Node) for arg in args), repr(args)
   if len(args) == 1:
     return args[0]
   return DisjunctionNode(args)
@@ -474,7 +474,7 @@ def _args_to_val(func, args, bindings):
       assert False, 'Unexpected arg (%r)' % arg
     vals.append(val)
   if func == 'nop':
-    assert len(vals) == 1
+    assert len(vals) == 1, '"nop" requires exactly one value'
     return vals[0]
   if func == 'list':
     return vals
@@ -508,11 +508,11 @@ def parse_gql(query_string):
   for ((name, op), values) in flt.iteritems():
     op = op.lower()
     if op == 'is' and name == gql.GQL._GQL__ANCESTOR:
-      assert len(values) == 1
+      assert len(values) == 1, '"is" requires exactly one value'
       [(func, args)] = values
       ancestor = _args_to_val(func, args, bindings)
       continue
-    assert op in _OPS
+    assert op in _OPS, repr(op)
     for (func, args) in values:
       val = _args_to_val(func, args, bindings)
       filters.append(FilterNode(name, op, val))
@@ -571,9 +571,9 @@ class Query(object):
       lastid = ancestor.pairs()[-1][1]
       assert lastid, 'ancestor cannot be an incomplete key'
     if filters is not None:
-      assert isinstance(filters, Node)
+      assert isinstance(filters, Node), repr(filters)
     if orders is not None:
-      assert isinstance(orders, datastore_query.Order)
+      assert isinstance(orders, datastore_query.Order), repr(orders)
     self.__kind = kind  # String
     self.__ancestor = ancestor  # Key
     self.__filters = filters  # None or Node subclass
@@ -623,7 +623,8 @@ class Query(object):
     if (post_filters and options is not None and
         (options.offset or options.limit is not None)):
       options = QueryOptions(offset=None, limit=None, config=orig_options)
-      assert options.limit is None and options.limit is None
+      assert (options.limit is None and
+              options.offset is None), repr(options._values)
     rpc = dsqry.run_async(conn, options)
     skipped = 0
     count = 0
@@ -688,7 +689,7 @@ class Query(object):
     if f:
       preds.append(f)
     for arg in args:
-      assert isinstance(arg, Node)
+      assert isinstance(arg, Node), repr(arg)
       preds.append(arg)
     if not preds:
       pred = None
@@ -864,8 +865,8 @@ class Query(object):
 
     This is the asynchronous version of Query.count().
     """
-    assert 'offset' not in q_options
-    assert 'limit' not in q_options
+    assert 'offset' not in q_options, q_options
+    assert 'limit' not in q_options, q_options
     q_options['offset'] = limit
     q_options['limit'] = 0
     conn = tasklets.get_context()._conn
@@ -948,7 +949,7 @@ def _make_options(q_options):
     return None
   if 'options' in q_options:
     # Move 'options' to 'config' since that is what QueryOptions() uses.
-    assert 'config' not in q_options
+    assert 'config' not in q_options, q_options
     q_options['config'] = q_options.pop('options')
   return QueryOptions(**q_options)
 
@@ -1015,7 +1016,7 @@ class QueryIterator(object):
     self._fut = None
 
   def _extended_callback(self, batch, index, ent):
-    assert not self._exhausted
+    assert not self._exhausted, 'QueryIterator is already exhausted'
     # TODO: Make _lookup a deque.
     if self._lookahead is None:
       self._lookahead = []
@@ -1126,8 +1127,8 @@ class _SubQueryIteratorState(object):
     self.orderings = orderings
 
   def __cmp__(self, other):
-    assert isinstance(other, _SubQueryIteratorState)
-    assert self.orderings == other.orderings
+    assert isinstance(other, _SubQueryIteratorState), repr(other)
+    assert self.orderings == other.orderings, (self.orderings, other.orderings)
     our_entity = self.entity
     their_entity = other.entity
     # TODO: Renamed properties again.
@@ -1170,7 +1171,7 @@ class _MultiQuery(object):
     assert isinstance(subqueries, list), subqueries
     assert all(isinstance(subq, Query) for subq in subqueries), subqueries
     if orders is not None:
-      assert isinstance(orders, datastore_query.Order)
+      assert isinstance(orders, datastore_query.Order), repr(orders)
     self.__subqueries = subqueries
     self.__orders = orders
     self.ancestor = None  # Hack for map_query().
@@ -1180,7 +1181,7 @@ class _MultiQuery(object):
     """Run this query, putting entities into the given queue."""
     # Create a list of (first-entity, subquery-iterator) tuples.
     # TODO: Use the specified sort order.
-    assert options is None  # Don't know what to do with these yet.
+    assert options is None, '_MultiQuery does not take options yet'
     state = []
     orderings = _orders_to_orderings(self.__orders)
     for subq in self.__subqueries:
