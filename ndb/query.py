@@ -309,6 +309,11 @@ class PostFilterNode(Node):
     self.filter_arg = filter_arg
     return self
 
+  def __repr__(self):
+    return '%s(%s, %s)' % (self.__class__.__name__,
+                           self.filter_func,
+                           self.filter_arg)
+
   def apply(self, entity):
     return self.filter_func(self.filter_arg, entity)
 
