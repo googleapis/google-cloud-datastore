@@ -435,6 +435,17 @@ class QueryTests(test_utils.DatastoreTest):
     q = query.Query(kind='Foo').filter(Foo.tags == 'jillian')
     self.assertEqual(q.count(1), 0)
 
+  def testCountPostFilter(self):
+    class Bar(model.Model):
+      name = model.StringProperty()
+      foo = model.StructuredProperty(Foo)
+    b1 = Bar(name='b1', foo=Foo(name='a', rate=1))
+    b1.put()
+    b2 = Bar(name='b2', foo=Foo(name='a', rate=1))
+    b2.put()
+    q = Bar.query(Bar.foo == Foo(name='a', rate=1))
+    self.assertEqual(q.count(3), 2)
+
   def testFetchPage(self):
     # This test implicitly also tests fetch_page_async().
     q = query.Query(kind='Foo')

@@ -872,14 +872,13 @@ class Query(object):
     """
     assert 'offset' not in q_options, q_options
     assert 'limit' not in q_options, q_options
-    q_options['offset'] = limit
-    q_options['limit'] = 0
     conn = tasklets.get_context()._conn
-    options = _make_options(q_options)
     dsqry, post_filters = self._get_query(conn)
     if post_filters:
-      raise datastore_errors.BadQueryError(
-        'Post-filters are not supported for count().')
+      raise tasklets.Return(len(self.fetch(limit, **q_options)))
+    q_options['offset'] = limit
+    q_options['limit'] = 0
+    options = _make_options(q_options)
     rpc = dsqry.run_async(conn, options)
     total = 0
     while rpc is not None:
