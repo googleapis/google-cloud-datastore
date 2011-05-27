@@ -232,8 +232,10 @@ class FalseNode(Node):
     return True
 
   def _to_filter(self, bindings):
-    # TODO: Or use make_filter(name, '=', []) ?
-    raise ValueError('Cannot convert FalseNode to predicate')
+    # Because there's no point submitting a query that will never
+    # return anything.
+    raise datastore_errors.BadQueryError(
+      'Cannot convert FalseNode to predicate')
 
   def resolve(self):
     return self
