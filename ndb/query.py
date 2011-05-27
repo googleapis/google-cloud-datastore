@@ -195,7 +195,7 @@ class Node(object):
 
   def __ne__(self, other):
     eq = self.__eq__(other)
-    if eq is NotImplemented:
+    if eq is not NotImplemented:
       eq = not eq
     return eq
 
@@ -277,11 +277,6 @@ class FilterNode(Node):
     return (self.__name == other.__name and
             self.__opsymbol == other.__opsymbol and
             self.__value == other.__value)
-
-  def __lt__(self, other):
-    if not isinstance(other, FilterNode):
-      return NotImplemented
-    return self._sort_key() < other._sort_key()
 
   def _to_filter(self, bindings):
     assert self.__opsymbol not in ('!=', 'in'), self.__opsymbol
@@ -520,7 +515,7 @@ def parse_gql(query_string):
       val = _args_to_val(func, args, bindings)
       filters.append(FilterNode(name, op, val))
   if filters:
-    filters.sort()  # For predictable tests.
+    filters.sort(key=lambda x: x._sort_key())  # For predictable tests.
     filters = ConjunctionNode(filters)
   else:
     filters = None

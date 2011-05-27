@@ -135,6 +135,26 @@ class QueryTests(test_utils.DatastoreTest):
                        [query.FilterNode('Age', '<', 42),
                         query.FilterNode('rank', '>', 5)]))
 
+  def testNodeComparisons(self):
+    a = query.FilterNode('foo', '=', 1)
+    b = query.FilterNode('foo', '=', 1)
+    c = query.FilterNode('foo', '=', 2)
+    d = query.FilterNode('foo', '<', 1)
+    # Don't use assertEqual/assertNotEqual; we want to be sure that
+    # __eq__ or __ne__ is really called here!
+    self.assertTrue(a == b)
+    self.assertTrue(a != c)
+    self.assertTrue(b != d)
+    self.assertRaises(TypeError, lambda: a < b)
+    self.assertRaises(TypeError, lambda: a <= b)
+    self.assertRaises(TypeError, lambda: a > b)
+    self.assertRaises(TypeError, lambda: a >= b)
+    x = query.AND(a, b, c)
+    y = query.AND(a, b, c)
+    z = query.AND(a, d)
+    self.assertTrue(x == y)
+    self.assertTrue(x != z)
+
   def testQueryForStructuredProperty(self):
     class Bar(model.Model):
       name = model.StringProperty()
