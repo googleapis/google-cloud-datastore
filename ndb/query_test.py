@@ -135,6 +135,26 @@ class QueryTests(test_utils.DatastoreTest):
                        [query.FilterNode('Age', '<', 42),
                         query.FilterNode('rank', '>', 5)]))
 
+  def testEmptyInFilter(self):
+    class Employee(model.Model):
+      name = model.StringProperty()
+    q = Employee.query(Employee.name.IN([]))
+    self.assertEqual(q.filters, query.FalseNode())
+    self.assertNotEqual(q.filters, query.Node())
+
+  def testSingletonInFilter(self):
+    class Employee(model.Model):
+      name = model.StringProperty()
+    q = Employee.query(Employee.name.IN(['xyzzy']))
+    self.assertEqual(q.filters, query.FilterNode('name', '=', 'xyzzy'))
+    self.assertNotEqual(q.filters, query.Node())
+
+  def testFilterRepr(self):
+    class Employee(model.Model):
+      name = model.StringProperty()
+    f = (Employee.name == 'xyzzy')
+    self.assertEqual(repr(f), "FilterNode('name', '=', 'xyzzy')")
+
   def testNodeComparisons(self):
     a = query.FilterNode('foo', '=', 1)
     b = query.FilterNode('foo', '=', 1)
