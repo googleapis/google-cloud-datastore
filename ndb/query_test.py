@@ -141,6 +141,9 @@ class QueryTests(test_utils.DatastoreTest):
     q = Employee.query(Employee.name.IN([]))
     self.assertEqual(q.filters, query.FalseNode())
     self.assertNotEqual(q.filters, query.Node())
+    # TODO: Test that running the query raises an exception.  This
+    # currently doesn't work because the exception is raised in a
+    # different tasklet.
 
   def testSingletonInFilter(self):
     class Employee(model.Model):
@@ -148,6 +151,23 @@ class QueryTests(test_utils.DatastoreTest):
     q = Employee.query(Employee.name.IN(['xyzzy']))
     self.assertEqual(q.filters, query.FilterNode('name', '=', 'xyzzy'))
     self.assertNotEqual(q.filters, query.Node())
+    e = Employee(name='xyzzy')
+    e.put()
+    self.assertEqual(q.get(), e)
+
+  def testInFilter(self):
+    class Employee(model.Model):
+      name = model.StringProperty()
+    q = Employee.query(Employee.name.IN(['a', 'b']))
+    self.assertEqual(q.filters,
+                     query.DisjunctionNode(
+                       [query.FilterNode('name', '=', 'a'),
+                        query.FilterNode('name', '=', 'b')]))
+    a = Employee(name='a')
+    a.put()
+    b = Employee(name='b')
+    b.put()
+    self.assertEqual(list(q), [a, b])
 
   def testFilterRepr(self):
     class Employee(model.Model):
