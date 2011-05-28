@@ -69,7 +69,7 @@ class AutoBatcher(object):
       else:
         self._autobatcher_callback()
 
-# TODO: Rename?  To what?  Session???
+
 class Context(object):
 
   def __init__(self, conn=None, auto_batcher_class=AutoBatcher):
@@ -83,6 +83,7 @@ class Context(object):
     self._cache = {}
     self._cache_policy = lambda key: True
     self._memcache_policy = lambda key: True
+    self._memcache_prefix = 'NDB:'  # TODO: Use this.
     # TODO: Also add a way to compute the memcache expiration time.
 
   @tasklets.tasklet
@@ -99,7 +100,8 @@ class Context(object):
     memkeymap = dict((key, key.urlsafe())
                      for key in keys if self.should_memcache(key))
     if memkeymap:
-      results = memcache.get_multi(memkeymap.values())
+      results = memcache.get_multi(memkeymap.values(),
+                                   key_prefix=self._memcache_prefix)
       leftover = []
 ##      del todo[1:]  # Uncommenting this creates an interesting bug.
       for fut, key in todo:
@@ -146,7 +148,7 @@ class Context(object):
     if mapping:
       # TODO: Optionally set the memcache expiration time;
       # maybe configurable based on key (or even entity).
-      failures = memcache.set_multi(mapping)
+      failures = memcache.set_multi(mapping, key_prefix=self._memcache_prefix)
       if failures:
         badkeys = []
         for failure in failures:
@@ -164,7 +166,7 @@ class Context(object):
     # Now update memcache.
     memkeys = [key.urlsafe() for key in keys if self.should_memcache(key)]
     if memkeys:
-      memcache.delete_multi(memkeys)
+      memcache.delete_multi(memkeys, key_prefix=self._memcache_prefix)
       # The value returned by delete_multi() is pretty much useless, it
       # could be the keys were never cached in the first place.
 
@@ -399,7 +401,7 @@ class Context(object):
     keys = set(key for key in keys if self.should_memcache(key))
     if keys:
       memkeys = [key.urlsafe() for key in keys]
-      memcache.delete_multi(memkeys)
+      memcache.delete_multi(memkeys, key_prefix=self._memcache_prefix)
 
   @tasklets.tasklet
   def get_or_insert(self, model_class, name,
