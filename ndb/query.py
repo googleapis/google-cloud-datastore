@@ -745,8 +745,6 @@ class Query(object):
 
   __iter__ = iter
 
-  # TODO: support the rest for _MultiQuery.
-
   @datastore_rpc._positional(2)
   def map(self, callback, merge_future=None, **q_options):
     """Map a callback function or tasklet over the query results.
@@ -791,6 +789,8 @@ class Query(object):
                                             options=_make_options(q_options),
                                             merge_future=merge_future)
 
+  # TODO: support the rest for _MultiQuery.
+
   @datastore_rpc._positional(2)
   def fetch(self, limit, **q_options):
     """Fetch a list of query results, up to a limit.
@@ -812,12 +812,19 @@ class Query(object):
 
     This is the asynchronous version of Query.fetch().
     """
-    q_options.setdefault('prefetch_size', limit)
-    q_options.setdefault('batch_size', limit)
+    assert 'limit' not in q_options, q_options
+    if not isinstance(self.__filters, DisjunctionNode):
+      # TODO: Set these once _MultiQuery supports options.
+      q_options['limit'] = limit
+      q_options.setdefault('prefetch_size', limit)
+      q_options.setdefault('batch_size', limit)
+    # TODO: Maybe it's better to use map_async() here?
     res = []
-    it = self.iter(limit=limit, **q_options)
+    it = self.iter(**q_options)
     while (yield it.has_next_async()):
       res.append(it.next())
+      if len(res) >= limit:
+        break
     raise tasklets.Return(res)
 
   def get(self, **q_options):
@@ -872,13 +879,16 @@ class Query(object):
     """
     assert 'offset' not in q_options, q_options
     assert 'limit' not in q_options, q_options
-    conn = tasklets.get_context()._conn
-    dsqry, post_filters = self._get_query(conn)
-    if post_filters:
-      raise tasklets.Return(len(self.fetch(limit, **q_options)))
+    if (self.__filters is not None and
+        (isinstance(self.__filters, DisjunctionNode) or
+         self.__filters._post_filters() is not None)):
+      results = yield self.fetch_async(limit, **q_options)
+      raise tasklets.Return(len(results))
     q_options['offset'] = limit
     q_options['limit'] = 0
     options = _make_options(q_options)
+    conn = tasklets.get_context()._conn
+    dsqry, post_filters = self._get_query(conn)
     rpc = dsqry.run_async(conn, options)
     total = 0
     while rpc is not None:

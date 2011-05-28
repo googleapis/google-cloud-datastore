@@ -325,6 +325,7 @@ class QueryTests(test_utils.DatastoreTest):
   def testFetch(self):
     q = query.Query(kind='Foo').filter(Foo.tags == 'jill').order(Foo.name)
     self.assertEqual(q.fetch(10), [self.jill, self.joe])
+    self.assertEqual(q.fetch(2), [self.jill, self.joe])
     self.assertEqual(q.fetch(1), [self.jill])
 
   def testFetchAsync(self):
@@ -332,6 +333,8 @@ class QueryTests(test_utils.DatastoreTest):
     @tasklets.synctasklet
     def foo():
       res = yield q.fetch_async(10)
+      self.assertEqual(res, [self.jill, self.joe])
+      res = yield q.fetch_async(2)
       self.assertEqual(res, [self.jill, self.joe])
       res = yield q.fetch_async(1)
       self.assertEqual(res, [self.jill])
@@ -445,6 +448,14 @@ class QueryTests(test_utils.DatastoreTest):
     b2.put()
     q = Bar.query(Bar.foo == Foo(name='a', rate=1))
     self.assertEqual(q.count(3), 2)
+    self.assertEqual(q.count(2), 2)
+    self.assertEqual(q.count(1), 1)
+
+  def testCountDisjunction(self):
+    q = Foo.query(Foo.name.IN(['joe', 'jill']))
+    self.assertEqual(q.count(3), 2)
+    self.assertEqual(q.count(2), 2)
+    self.assertEqual(q.count(1), 1)
 
   def testFetchPage(self):
     # This test implicitly also tests fetch_page_async().
