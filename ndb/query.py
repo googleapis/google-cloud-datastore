@@ -526,16 +526,7 @@ def parse_gql(query_string):
     filters = ConjunctionNode(filters)
   else:
     filters = None
-  orderings = gql_qry.orderings()
-  orders = []
-  for (name, direction) in orderings:
-    orders.append(datastore_query.PropertyOrder(name, direction))
-  if not orders:
-    orders = None
-  elif len(orders) == 1:
-    orders = orders[0]
-  else:
-    orders = datastore_query.CompositeOrder(orders)
+  orders = _orderings_to_orders(gql_qry.orderings())
   qry = Query(kind=gql_qry._entity,
               ancestor=ancestor,
               filters=filters,
