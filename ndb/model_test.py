@@ -1878,8 +1878,6 @@ class ModelTests(test_utils.DatastoreTest):
       g = model.GeoPtProperty()
       @model.ComputedProperty
       def c(self):
-        if self.i is None:
-          return None
         return self.i + 1
       u = model.UserProperty()
 
@@ -1931,6 +1929,38 @@ class ModelTests(test_utils.DatastoreTest):
 
     q = M.query(M.u == values['u'])
     self.assertEqual(q.get(), m)
+
+
+class CacheTests(test_utils.DatastoreTest):
+  def SetupContextCache(self):
+    """Set up the context cache.
+
+    We only need cache active when testing the cache, so the default behavior
+    is to disable it to avoid misleading test results. Override this when
+    needed.
+    """
+    from ndb import tasklets
+    ctx = tasklets.get_context()
+    ctx.set_cache_policy(lambda key: True)
+    ctx.set_memcache_policy(lambda key: True)
+
+  def test_issue_13(self):
+    class Employee(model.Model):
+      pass
+
+    e = Employee(key=model.Key(Employee, 'joe'))
+    e.put()
+    e.key = model.Key(Employee, 'fred')
+
+    f = model.Key(Employee, 'joe').get()
+
+    # Now f is e;
+    # With bug this is True.
+    # self.assertEqual(f.key, model.Key(Employee, 'fred'))
+
+    # Removing key from context cache when it is set to a different one
+    # makes the test correct.
+    self.assertEqual(f.key, model.Key(Employee, 'joe'))
 
 
 def main():

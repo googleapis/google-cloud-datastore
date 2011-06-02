@@ -69,7 +69,7 @@ class AutoBatcher(object):
       else:
         self._autobatcher_callback()
 
-# TODO: Rename?  To what?  Session???
+
 class Context(object):
 
   def __init__(self, conn=None, auto_batcher_class=AutoBatcher):
@@ -83,6 +83,7 @@ class Context(object):
     self._cache = {}
     self._cache_policy = lambda key: True
     self._memcache_policy = lambda key: True
+    self._memcache_prefix = 'NDB:'  # TODO: Use this.
     # TODO: Also add a way to compute the memcache expiration time.
 
   @tasklets.tasklet
@@ -99,7 +100,8 @@ class Context(object):
     memkeymap = dict((key, key.urlsafe())
                      for key in keys if self.should_memcache(key))
     if memkeymap:
-      results = memcache.get_multi(memkeymap.values())
+      results = memcache.get_multi(memkeymap.values(),
+                                   key_prefix=self._memcache_prefix)
       leftover = []
 ##      del todo[1:]  # Uncommenting this creates an interesting bug.
       for fut, key in todo:
@@ -146,7 +148,7 @@ class Context(object):
     if mapping:
       # TODO: Optionally set the memcache expiration time;
       # maybe configurable based on key (or even entity).
-      failures = memcache.set_multi(mapping)
+      failures = memcache.set_multi(mapping, key_prefix=self._memcache_prefix)
       if failures:
         badkeys = []
         for failure in failures:
@@ -164,7 +166,7 @@ class Context(object):
     # Now update memcache.
     memkeys = [key.urlsafe() for key in keys if self.should_memcache(key)]
     if memkeys:
-      memcache.delete_multi(memkeys)
+      memcache.delete_multi(memkeys, key_prefix=self._memcache_prefix)
       # The value returned by delete_multi() is pretty much useless, it
       # could be the keys were never cached in the first place.
 
@@ -249,10 +251,12 @@ class Context(object):
     should_cache = self.should_cache(key)
     if should_cache and key in self._cache:
       entity = self._cache[key]  # May be None, meaning "doesn't exist".
-    else:
-      entity = yield self._get_batcher.add(key)
-      if should_cache:
-        self._cache[key] = entity
+      if entity is None or entity._key == key:
+        # If entity's key didn't change later, it is ok. See issue #13.
+        raise tasklets.Return(entity)
+    entity = yield self._get_batcher.add(key)
+    if should_cache:
+      self._cache[key] = entity
     raise tasklets.Return(entity)
 
   @tasklets.tasklet
@@ -298,6 +302,12 @@ class Context(object):
           pass  # It was a keys-only query and ent is really a Key.
         else:
           key = ent._key
+          if key in self._cache:
+            hit = self._cache[key]
+            if hit is not None and hit.key != key:
+              # The cached entry has been mutated to have a different key.
+              # That's a false hit.  Get rid of it.  See issue #13.
+              del self._cache[key]
           if key in self._cache:
             # Assume the cache is more up to date.
             if self._cache[key] is None:
@@ -391,7 +401,7 @@ class Context(object):
     keys = set(key for key in keys if self.should_memcache(key))
     if keys:
       memkeys = [key.urlsafe() for key in keys]
-      memcache.delete_multi(memkeys)
+      memcache.delete_multi(memkeys, key_prefix=self._memcache_prefix)
 
   @tasklets.tasklet
   def get_or_insert(self, model_class, name,

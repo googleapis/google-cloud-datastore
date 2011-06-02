@@ -78,8 +78,8 @@ class QueryTests(test_utils.DatastoreTest):
     self.assertEqual(q.kind, 'Foo')
     self.assertEqual(q.ancestor, key)
     self.assertEqual(q.filters, query.FilterNode('rate', '=', 1))
-    expected_order = [('name', query.DESC)]
-    self.assertEqual(query.orders_to_orderings(q.orders), expected_order)
+    expected_order = [('name', query._DESC)]
+    self.assertEqual(query._orders_to_orderings(q.orders), expected_order)
 
   def testQueryRepr(self):
     q = Foo.query()
@@ -106,8 +106,8 @@ class QueryTests(test_utils.DatastoreTest):
                      query.ConjunctionNode(
                        [query.FilterNode('Age', '>=', 42),
                         query.FilterNode('rank', '<=', 5)]))
-    self.assertEqual(query.orders_to_orderings(q.orders),
-                     [('name', query.ASC), ('Age', query.DESC)])
+    self.assertEqual(query._orders_to_orderings(q.orders),
+                     [('name', query._ASC), ('Age', query._DESC)])
 
   def testAndQuery(self):
     class Employee(model.Model):
@@ -134,6 +134,66 @@ class QueryTests(test_utils.DatastoreTest):
                      query.DisjunctionNode(
                        [query.FilterNode('Age', '<', 42),
                         query.FilterNode('rank', '>', 5)]))
+
+  def testEmptyInFilter(self):
+    class Employee(model.Model):
+      name = model.StringProperty()
+    q = Employee.query(Employee.name.IN([]))
+    self.assertEqual(q.filters, query.FalseNode())
+    self.assertNotEqual(q.filters, 42)
+    # TODO: Test that running the query raises an exception.  This
+    # currently doesn't work because the exception is raised in a
+    # different tasklet.
+
+  def testSingletonInFilter(self):
+    class Employee(model.Model):
+      name = model.StringProperty()
+    q = Employee.query(Employee.name.IN(['xyzzy']))
+    self.assertEqual(q.filters, query.FilterNode('name', '=', 'xyzzy'))
+    self.assertNotEqual(q.filters, 42)
+    e = Employee(name='xyzzy')
+    e.put()
+    self.assertEqual(q.get(), e)
+
+  def testInFilter(self):
+    class Employee(model.Model):
+      name = model.StringProperty()
+    q = Employee.query(Employee.name.IN(['a', 'b']))
+    self.assertEqual(q.filters,
+                     query.DisjunctionNode(
+                       [query.FilterNode('name', '=', 'a'),
+                        query.FilterNode('name', '=', 'b')]))
+    a = Employee(name='a')
+    a.put()
+    b = Employee(name='b')
+    b.put()
+    self.assertEqual(list(q), [a, b])
+
+  def testFilterRepr(self):
+    class Employee(model.Model):
+      name = model.StringProperty()
+    f = (Employee.name == 'xyzzy')
+    self.assertEqual(repr(f), "FilterNode('name', '=', 'xyzzy')")
+
+  def testNodeComparisons(self):
+    a = query.FilterNode('foo', '=', 1)
+    b = query.FilterNode('foo', '=', 1)
+    c = query.FilterNode('foo', '=', 2)
+    d = query.FilterNode('foo', '<', 1)
+    # Don't use assertEqual/assertNotEqual; we want to be sure that
+    # __eq__ or __ne__ is really called here!
+    self.assertTrue(a == b)
+    self.assertTrue(a != c)
+    self.assertTrue(b != d)
+    self.assertRaises(TypeError, lambda: a < b)
+    self.assertRaises(TypeError, lambda: a <= b)
+    self.assertRaises(TypeError, lambda: a > b)
+    self.assertRaises(TypeError, lambda: a >= b)
+    x = query.AND(a, b, c)
+    y = query.AND(a, b, c)
+    z = query.AND(a, d)
+    self.assertTrue(x == y)
+    self.assertTrue(x != z)
 
   def testQueryForStructuredProperty(self):
     class Bar(model.Model):
@@ -207,16 +267,16 @@ class QueryTests(test_utils.DatastoreTest):
     q = Manager.query(Manager.report == Employee(rank=2, name='2'))
     res = list(q)
     self.assertEqual(res, [mgr_a, mgr_c])
-    res = list(q.iter(options=query.QueryOptions(offset=1)))
+    res = list(q.iter(offset=1))
     self.assertEqual(res, [mgr_c])
-    res = list(q.iter(options=query.QueryOptions(limit=1)))
+    res = list(q.iter(limit=1))
     self.assertEqual(res, [mgr_a])
 
   def testMultiQuery(self):
     q1 = query.Query(kind='Foo').filter(Foo.tags == 'jill').order(Foo.name)
     q2 = query.Query(kind='Foo').filter(Foo.tags == 'joe').order(Foo.name)
-    qq = query.MultiQuery([q1, q2],
-                          query.ordering_to_order(('name', query.ASC)))
+    qq = query._MultiQuery([q1, q2],
+                           query._ordering_to_order(('name', query._ASC)))
     res = list(qq)
     self.assertEqual(res, [self.jill, self.joe])
 
@@ -242,6 +302,9 @@ class QueryTests(test_utils.DatastoreTest):
     self.assertEqual(q.map(callback), ['jill', 'joe'])
     self.assertEqual(q.map(callback_async), ['jill', 'joe'])
 
+  # TODO: Test map() with esoteric argument combinations
+  # e.g. keys_only, produce_cursors, and merge_future.
+
   def testMapAsync(self):
     q = query.Query(kind='Foo').filter(Foo.tags == 'jill').order(Foo.name)
     callback = lambda e: e.name
@@ -262,6 +325,7 @@ class QueryTests(test_utils.DatastoreTest):
   def testFetch(self):
     q = query.Query(kind='Foo').filter(Foo.tags == 'jill').order(Foo.name)
     self.assertEqual(q.fetch(10), [self.jill, self.joe])
+    self.assertEqual(q.fetch(2), [self.jill, self.joe])
     self.assertEqual(q.fetch(1), [self.jill])
 
   def testFetchAsync(self):
@@ -269,6 +333,8 @@ class QueryTests(test_utils.DatastoreTest):
     @tasklets.synctasklet
     def foo():
       res = yield q.fetch_async(10)
+      self.assertEqual(res, [self.jill, self.joe])
+      res = yield q.fetch_async(2)
       self.assertEqual(res, [self.jill, self.joe])
       res = yield q.fetch_async(1)
       self.assertEqual(res, [self.jill])
@@ -279,9 +345,9 @@ class QueryTests(test_utils.DatastoreTest):
     self.assertEqual(q.fetch(1), [])
 
   def testFetchKeysOnly(self):
-    qo = query.QueryOptions(keys_only=True)
     q = query.Query(kind='Foo').filter(Foo.tags == 'jill').order(Foo.name)
-    self.assertEqual(q.fetch(10, options=qo), [self.jill.key, self.joe.key])
+    self.assertEqual(q.fetch(10, keys_only=True),
+                     [self.jill.key, self.joe.key])
 
   def testGet(self):
     q = query.Query(kind='Foo').filter(Foo.tags == 'jill').order(Foo.name)
@@ -292,14 +358,12 @@ class QueryTests(test_utils.DatastoreTest):
     self.assertEqual(q.get(), None)
 
   def testGetKeysOnly(self):
-    qo = query.QueryOptions(keys_only=True)
     q = query.Query(kind='Foo').filter(Foo.tags == 'jill').order(Foo.name)
-    self.assertEqual(q.get(options=qo), self.jill.key)
+    self.assertEqual(q.get(keys_only=True), self.jill.key)
 
   def testCursors(self):
-    qo = query.QueryOptions(produce_cursors=True)
     q = query.Query(kind='Foo')
-    it = q.iter(options=qo)
+    it = q.iter(produce_cursors=True)
     expected = [self.joe, self.jill, self.moe]
     self.assertRaises(datastore_errors.BadArgumentError, it.cursor_before)
     self.assertRaises(datastore_errors.BadArgumentError, it.cursor_after)
@@ -317,9 +381,8 @@ class QueryTests(test_utils.DatastoreTest):
     self.assertEqual(before[3], after[3])  # !!!
 
   def testCursorsKeysOnly(self):
-    qo = query.QueryOptions(produce_cursors=True, keys_only=True)
     q = query.Query(kind='Foo')
-    it = q.iter(options=qo)
+    it = q.iter(produce_cursors=True, keys_only=True)
     expected = [self.joe.key, self.jill.key, self.moe.key]
     self.assertRaises(datastore_errors.BadArgumentError, it.cursor_before)
     self.assertRaises(datastore_errors.BadArgumentError, it.cursor_after)
@@ -344,9 +407,7 @@ class QueryTests(test_utils.DatastoreTest):
     cursors = {}
     mores = {}
     for pagesize in [1, 2, 3, 4]:
-      qo = query.QueryOptions(produce_cursors=True, limit=pagesize+1,
-                              batch_size=pagesize)
-      it = q.iter(options=qo)
+      it = q.iter(produce_cursors=True, limit=pagesize+1, batch_size=pagesize)
       todo = pagesize
       for ent in it:
         todo -= 1
@@ -376,6 +437,70 @@ class QueryTests(test_utils.DatastoreTest):
   def testCountEmpty(self):
     q = query.Query(kind='Foo').filter(Foo.tags == 'jillian')
     self.assertEqual(q.count(1), 0)
+
+  def testCountPostFilter(self):
+    class Bar(model.Model):
+      name = model.StringProperty()
+      foo = model.StructuredProperty(Foo)
+    b1 = Bar(name='b1', foo=Foo(name='a', rate=1))
+    b1.put()
+    b2 = Bar(name='b2', foo=Foo(name='a', rate=1))
+    b2.put()
+    q = Bar.query(Bar.foo == Foo(name='a', rate=1))
+    self.assertEqual(q.count(3), 2)
+    self.assertEqual(q.count(2), 2)
+    self.assertEqual(q.count(1), 1)
+
+  def testCountDisjunction(self):
+    q = Foo.query(Foo.name.IN(['joe', 'jill']))
+    self.assertEqual(q.count(3), 2)
+    self.assertEqual(q.count(2), 2)
+    self.assertEqual(q.count(1), 1)
+
+  def testFetchPage(self):
+    # This test implicitly also tests fetch_page_async().
+    q = query.Query(kind='Foo')
+
+    page_size = 1
+    res, curs, more = q.fetch_page(page_size)
+    self.assertEqual(res, [self.joe])
+    self.assertTrue(more)
+    res, curs, more = q.fetch_page(page_size, start_cursor=curs)
+    self.assertEqual(res, [self.jill])
+    self.assertTrue(more)
+    res, curs, more = q.fetch_page(page_size, start_cursor=curs)
+    self.assertEqual(res, [self.moe])
+    self.assertFalse(more)
+    res, curs, more = q.fetch_page(page_size, start_cursor=curs)
+    self.assertEqual(res, [])
+    self.assertFalse(more)
+
+    page_size = 2
+    res, curs, more = q.fetch_page(page_size)
+    self.assertEqual(res, [self.joe, self.jill])
+    self.assertTrue(more)
+    res, curs, more = q.fetch_page(page_size, start_cursor=curs)
+    self.assertEqual(res, [self.moe])
+    self.assertFalse(more)
+    res, curs, more = q.fetch_page(page_size, start_cursor=curs)
+    self.assertEqual(res, [])
+    self.assertFalse(more)
+
+    page_size = 3
+    res, curs, more = q.fetch_page(page_size)
+    self.assertEqual(res, [self.joe, self.jill, self.moe])
+    self.assertFalse(more)
+    res, curs, more = q.fetch_page(page_size, start_cursor=curs)
+    self.assertEqual(res, [])
+    self.assertFalse(more)
+
+    page_size = 4
+    res, curs, more = q.fetch_page(page_size)
+    self.assertEqual(res, [self.joe, self.jill, self.moe])
+    self.assertFalse(more)
+    res, curs, more = q.fetch_page(page_size, start_cursor=curs)
+    self.assertEqual(res, [])
+    self.assertFalse(more)
 
   def testMultiQueryIterator(self):
     q = query.Query(kind='Foo').filter(Foo.tags.IN(['joe', 'jill']))
@@ -476,8 +601,8 @@ class QueryTests(test_utils.DatastoreTest):
   def testGqlOrder(self):
     qry, options, bindings = query.parse_gql(
       'SELECT * FROM Kind ORDER BY prop1')
-    self.assertEqual(query.orders_to_orderings(qry.orders),
-                     [('prop1', query.ASC)])
+    self.assertEqual(query._orders_to_orderings(qry.orders),
+                     [('prop1', query._ASC)])
 
   def testGqlOffset(self):
     qry, options, bindings = query.parse_gql(

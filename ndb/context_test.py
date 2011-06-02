@@ -169,7 +169,7 @@ class ContextTests(test_utils.DatastoreTest):
       self.assertEqual(k2, key2)
       yield tasklets.sleep(0.01)  # Let other tasklet complete.
       keys = [k1.urlsafe(), k2.urlsafe()]
-      results = memcache.get_multi(keys)
+      results = memcache.get_multi(keys, key_prefix='NDB:')
       self.assertEqual(
         results,
         {key1.urlsafe(): self.ctx._conn.adapter.entity_to_pb(ent1),
