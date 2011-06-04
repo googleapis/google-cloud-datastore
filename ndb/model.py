@@ -1221,38 +1221,27 @@ class StructuredProperty(Property):
         'StructuredProperty filter can only use ==')
     # Import late to avoid circular imports.
     from ndb.query import FilterNode, ConjunctionNode, PostFilterNode
+    from ndb.query import RepeatedStructuredPropertyPredicate
     value = self._validate(value)  # None is not allowed!
     filters = []
+    match_keys = []
+    match_values = []
     for name, prop in value._properties.iteritems():
       val = prop._retrieve_value(value)
       if val is not None:
-        filters.append(FilterNode(self._name + '.' + name, op, val))
+        name = self._name + '.' + name
+        filters.append(FilterNode(name, op, val))
+        match_keys.append(name)
+        match_values.append(val)
     if not filters:
       raise datastore_errors.BadFilterError(
         'StructuredProperty filter without any values')
     if len(filters) == 1:
       return filters[0]
-    filters.append(PostFilterNode(self._filter_func, value))
+    if self._repeated:
+      pred = RepeatedStructuredPropertyPredicate(match_keys, match_values)
+      filters.append(PostFilterNode(pred))
     return ConjunctionNode(filters)
-
-  def _filter_func(self, value, entity):
-    if isinstance(entity, Key):
-      raise datastore_errors.BadQueryError(
-        'StructuredProperty filter cannot be used with keys_only query')
-    subentities = getattr(entity, self._code_name, None)
-    if subentities is None:
-      return False
-    if not isinstance(subentities, list):
-      subentities = [subentities]
-    for subentity in subentities:
-      for name, prop in value._properties.iteritems():
-        val = prop._retrieve_value(value)
-        if val is not None:
-          if prop._retrieve_value(subentity) != val:
-            break
-      else:
-        return True
-    return False
 
   def _validate(self, value):
     if not isinstance(value, self._modelclass):

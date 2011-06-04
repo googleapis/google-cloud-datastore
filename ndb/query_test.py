@@ -439,14 +439,18 @@ class QueryTests(test_utils.DatastoreTest):
     self.assertEqual(q.count(1), 0)
 
   def testCountPostFilter(self):
+    class Froo(model.Model):
+      name = model.StringProperty()
+      rate = model.IntegerProperty()
+      age = model.IntegerProperty()
     class Bar(model.Model):
       name = model.StringProperty()
-      foo = model.StructuredProperty(Foo)
-    b1 = Bar(name='b1', foo=Foo(name='a', rate=1))
+      froo = model.StructuredProperty(Froo, repeated=True)
+    b1 = Bar(name='b1', froo=[Froo(name='a', rate=1)])
     b1.put()
-    b2 = Bar(name='b2', foo=Foo(name='a', rate=1))
+    b2 = Bar(name='b2', froo=[Froo(name='a', rate=1)])
     b2.put()
-    q = Bar.query(Bar.foo == Foo(name='a', rate=1))
+    q = Bar.query(Bar.froo == Froo(name='a', rate=1))
     self.assertEqual(q.count(3), 2)
     self.assertEqual(q.count(2), 2)
     self.assertEqual(q.count(1), 1)
