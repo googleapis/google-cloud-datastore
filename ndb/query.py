@@ -200,6 +200,9 @@ class RepeatedStructuredPropertyPredicate(datastore_query.FilterPredicate):
       match_keys = ('name', 'age', 'rank')
       match_values = ('Joe', 24, 5)
 
+    (Except that in reality, the values are represented by tuples
+    produced by datastore_types.PropertyValueToKeyValue().)
+
     represents this table:
 
       |  name   |  age  |  rank  |  
