@@ -1217,6 +1217,8 @@ class StructuredProperty(Property):
 
   def _comparison(self, op, value):
     if op != '=':
+      # TODO: 'in' might actually work.  But maybe it's been expanded
+      # already before we get here?
       raise datastore_errors.BadFilterError(
         'StructuredProperty filter can only use ==')
     # Import late to avoid circular imports.
@@ -1225,21 +1227,22 @@ class StructuredProperty(Property):
     value = self._validate(value)  # None is not allowed!
     filters = []
     match_keys = []
-    match_values = []
+    # TODO: Why not just iterate over value._values?
     for name, prop in value._properties.iteritems():
       val = prop._retrieve_value(value)
       if val is not None:
         name = self._name + '.' + name
         filters.append(FilterNode(name, op, val))
         match_keys.append(name)
-        match_values.append(val)
     if not filters:
       raise datastore_errors.BadFilterError(
         'StructuredProperty filter without any values')
     if len(filters) == 1:
       return filters[0]
     if self._repeated:
-      pred = RepeatedStructuredPropertyPredicate(match_keys, match_values)
+      pb = value._to_pb(allow_partial=True)
+      pred = RepeatedStructuredPropertyPredicate(match_keys, pb,
+                                                 self._name + '.')
       filters.append(PostFilterNode(pred))
     return ConjunctionNode(filters)
 
@@ -1780,9 +1783,10 @@ class Model(object):
       return NotImplemented
     return not eq
 
-  def _to_pb(self, pb=None):
+  def _to_pb(self, pb=None, allow_partial=False):
     """Internal helper to turn an entity into an EntityProto protobuf."""
-    self._check_initialized()
+    if not allow_partial:
+      self._check_initialized()
     if pb is None:
       pb = entity_pb.EntityProto()
 

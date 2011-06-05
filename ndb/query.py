@@ -153,36 +153,37 @@ _AND = datastore_query.CompositeFilter.AND
 _OPS = frozenset(['=', '!=', '<', '<=', '>', '>=', 'in'])
 
 
+# TODO: Once CL/21689469 is submitted, get rid of this and its callers.
 def _make_unsorted_key_value_map(pb, property_names):
-  """Like _make_key_value_map() but doesn't sort the values.
-
-  Also the values are simple values, like we manipulate elsewhere,
-  not tuples created by datastore_types.PropertyValueToKeyValue().
-  """
+  """Like _make_key_value_map() but doesn't sort the values."""
   value_map = dict((name, []) for name in property_names)
 
-  # TODO: Factor db_get_value out of GenericProperty so we don't need
-  # to create an instance.
-  dummy = model.GenericProperty()
-
+  # Building comparable values from pb properties.
   for prop in pb.property_list():
     prop_name = prop.name()
     if prop_name in value_map:
-      value_map[prop_name].append(dummy._db_get_value(prop.value(), prop))
+      value_map[prop_name].append(
+        datastore_types.PropertyValueToKeyValue(prop.value()))
 
-  # Don't sort the values!
-  # There's no need to support __key__.
+  # Adding special key property (if requested).
+  if datastore_types._KEY_SPECIAL_PROPERTY in value_map:
+    value_map[datastore_types._KEY_SPECIAL_PROPERTY] = [
+      datastore_types.ReferenceToKeyValue(entity.key())]
 
   return value_map
 
 
 class RepeatedStructuredPropertyPredicate(datastore_query.FilterPredicate):
 
-  def __init__(self, match_keys, match_values):
+  def __init__(self, match_keys, pb, key_prefix):
     super(RepeatedStructuredPropertyPredicate, self).__init__()
-    self.match_keys = tuple(match_keys)
-    self.match_values = tuple(match_values)
-    assert len(self.match_keys) == len(self.match_values), 'No match'
+    self.match_keys = match_keys
+    stripped_keys = []
+    for key in match_keys:
+      assert key.startswith(key_prefix), key
+      stripped_keys.append(key[len(key_prefix):])
+    value_map = _make_unsorted_key_value_map(pb, stripped_keys)
+    self.match_values = tuple(value_map[key][0] for key in stripped_keys)
 
   def _get_prop_names(self):
     return frozenset(self.match_keys)
@@ -1252,11 +1253,18 @@ class _MultiQuery(object):
   # e.g. offset (though not necessarily limit, and I'm not sure about
   # cursors).
 
+  # TODO: Need a way to specify the unification of two queries that
+  # are identical except one has an ancestor and the other doesn't.
+  # The HR datastore makes that a useful special case.
+
   def __init__(self, subqueries, orders=None):
     assert isinstance(subqueries, list), subqueries
     assert all(isinstance(subq, Query) for subq in subqueries), subqueries
+    # TODO: Assert the kinds match (and app/namespace, when we support them).
     if orders is not None:
       assert isinstance(orders, datastore_query.Order), repr(orders)
+    # TODO: Unify orders, insert implied orders based on inequality
+    # filters, append __key__ order.
     self.__subqueries = subqueries
     self.__orders = orders
     self.ancestor = None  # Hack for map_query().
@@ -1267,6 +1275,14 @@ class _MultiQuery(object):
     # Create a list of (first-entity, subquery-iterator) tuples.
     # TODO: Use the specified sort order.
     assert options is None, '_MultiQuery does not take options yet'
+
+    # TODO: Emulate various options (offset, limit, keys_only) while
+    # rejecting others (cursors) and passing yet others along to the
+    # subqueries (batch_size etc.).
+
+    # Advanced TODO: sometimes cursors can work too, at least
+    # for IN queries.
+
     state = []
     orderings = _orders_to_orderings(self.__orders)
     for subq in self.__subqueries:
