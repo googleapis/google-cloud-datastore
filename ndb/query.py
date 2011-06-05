@@ -159,6 +159,7 @@ def _make_unsorted_key_value_map(pb, property_names):
   value_map = dict((name, []) for name in property_names)
 
   # Building comparable values from pb properties.
+  # NOTE: Unindexed properties are skipped.
   for prop in pb.property_list():
     prop_name = prop.name()
     if prop_name in value_map:
@@ -168,7 +169,7 @@ def _make_unsorted_key_value_map(pb, property_names):
   # Adding special key property (if requested).
   if datastore_types._KEY_SPECIAL_PROPERTY in value_map:
     value_map[datastore_types._KEY_SPECIAL_PROPERTY] = [
-      datastore_types.ReferenceToKeyValue(entity.key())]
+      datastore_types.ReferenceToKeyValue(pb.key())]
 
   return value_map
 
