@@ -125,6 +125,7 @@ in a tasklet, properly yielding when appropriate:
 __author__ = 'guido@google.com (Guido van Rossum)'
 
 import heapq
+import itertools
 
 from google.appengine.api import datastore_errors
 from google.appengine.api import datastore_types
@@ -150,6 +151,107 @@ _AND = datastore_query.CompositeFilter.AND
 
 # Table of supported comparison operators.
 _OPS = frozenset(['=', '!=', '<', '<=', '>', '>=', 'in'])
+
+
+# TODO: Once CL/21689469 is submitted, get rid of this and its callers.
+def _make_unsorted_key_value_map(pb, property_names):
+  """Like _make_key_value_map() but doesn't sort the values."""
+  value_map = dict((name, []) for name in property_names)
+
+  # Building comparable values from pb properties.
+  # NOTE: Unindexed properties are skipped.
+  for prop in pb.property_list():
+    prop_name = prop.name()
+    if prop_name in value_map:
+      value_map[prop_name].append(
+        datastore_types.PropertyValueToKeyValue(prop.value()))
+
+  # Adding special key property (if requested).
+  if datastore_types._KEY_SPECIAL_PROPERTY in value_map:
+    value_map[datastore_types._KEY_SPECIAL_PROPERTY] = [
+      datastore_types.ReferenceToKeyValue(pb.key())]
+
+  return value_map
+
+
+class RepeatedStructuredPropertyPredicate(datastore_query.FilterPredicate):
+
+  def __init__(self, match_keys, pb, key_prefix):
+    super(RepeatedStructuredPropertyPredicate, self).__init__()
+    self.match_keys = match_keys
+    stripped_keys = []
+    for key in match_keys:
+      assert key.startswith(key_prefix), key
+      stripped_keys.append(key[len(key_prefix):])
+    value_map = _make_unsorted_key_value_map(pb, stripped_keys)
+    self.match_values = tuple(value_map[key][0] for key in stripped_keys)
+
+  def _get_prop_names(self):
+    return frozenset(self.match_keys)
+
+  def __call__(self, pb):
+    return self._apply(_make_unsorted_key_value_map(pb, self.match_keys))
+
+  def _apply(self, key_value_map):
+    """Apply the filter to values extracted from an entity.
+
+    Think of self.match_keys and self.match_values as representing a
+    table with one row.  For example:
+
+      match_keys = ('name', 'age', 'rank')
+      match_values = ('Joe', 24, 5)
+
+    (Except that in reality, the values are represented by tuples
+    produced by datastore_types.PropertyValueToKeyValue().)
+
+    represents this table:
+
+      |  name   |  age  |  rank  |
+      +---------+-------+--------+
+      |  'Joe'  |   24  |     5  |
+
+    Think of key_value_map as a table with the same structure but
+    (potentially) many rows.  This represents a repeated structured
+    property of a single entity.  For example:
+
+      {'name': ['Joe', 'Jane', 'Dick'],
+       'age': [24, 21, 23],
+       'rank': [5, 1, 2]}
+
+    represents this table:
+
+      |  name   |  age  |  rank  |
+      +---------+-------+--------+
+      |  'Joe'  |   24  |     5  |
+      |  'Jane' |   21  |     1  |
+      |  'Dick' |   23  |     2  |
+
+    We must determine wheter at least one row of the second table
+    exactly matches the first table.  We need this class because the
+    datastore, when asked to find an entity with name 'Joe', age 24
+    and rank 5, will include entities that have 'Joe' somewhere in the
+    name column, 24 somewhere in the age column, and 5 somewhere in
+    the rank column, but not all aligned on a single row.  Such an
+    entity should not be considered a match.
+    """
+    columns = []
+    for key in self.match_keys:
+      column = key_value_map.get(key)
+      if not column:  # None, or an empty list.
+        return False  # If any column is empty there can be no match.
+      columns.append(column)
+    # Use izip to transpose the columns into rows.
+    return self.match_values in itertools.izip(*columns)
+
+  # Don't implement _prune()!  It would mess up the row correspondence
+  # within columns.
+
+
+class CompositePostFilter(datastore_query.CompositeFilter):
+
+  def __call__(self, pb):
+    key_value_map = _make_unsorted_key_value_map(pb, self._get_prop_names())
+    return self._apply(key_value_map)
 
 
 class Binding(object):
@@ -203,17 +305,13 @@ class Node(object):
     raise TypeError('Nodes cannot be ordered')
   __le__ = __lt__ = __ge__ = __gt__ = __unordered
 
-  def _to_filter(self, bindings):
+  def _to_filter(self, bindings, post=False):
     """Helper to convert to datastore_query.Filter, or None."""
     raise NotImplementedError
 
   def _post_filters(self):
     """Helper to extract post-filter Nodes, if any."""
     return None
-
-  def apply(self, entity):
-    """Test whether an entity matches the filter."""
-    return True
 
   def resolve(self):
     """Extract the Binding's value if necessary."""
@@ -231,7 +329,9 @@ class FalseNode(Node):
       return NotImplemented
     return True
 
-  def _to_filter(self, bindings):
+  def _to_filter(self, bindings, post=False):
+    if post:
+      return None
     # Because there's no point submitting a query that will never
     # return anything.
     raise datastore_errors.BadQueryError(
@@ -280,7 +380,9 @@ class FilterNode(Node):
             self.__opsymbol == other.__opsymbol and
             self.__value == other.__value)
 
-  def _to_filter(self, bindings):
+  def _to_filter(self, bindings, post=False):
+    if post:
+      return None
     assert self.__opsymbol not in ('!=', 'in'), repr(self.__opsymbol)
     value = self.__value
     if isinstance(value, Binding):
@@ -303,27 +405,24 @@ class PostFilterNode(Node):
   datastore, for example a query for a structured value.
   """
 
-  def __new__(cls, filter_func, filter_arg):
+  def __new__(cls, predicate):
     self = super(PostFilterNode, cls).__new__(cls)
-    self.filter_func = filter_func
-    self.filter_arg = filter_arg
+    self.predicate = predicate
     return self
 
   def __repr__(self):
-    return '%s(%s, %s)' % (self.__class__.__name__,
-                           self.filter_func,
-                           self.filter_arg)
-
-  def apply(self, entity):
-    return self.filter_func(self.filter_arg, entity)
+    return '%s(%s)' % (self.__class__.__name__, self.predicate)
 
   def __eq__(self, other):
     if not isinstance(other, PostFilterNode):
       return NotImplemented
     return self is other
 
-  def _to_filter(self, bindings):
-    return None
+  def _to_filter(self, bindings, post=False):
+    if post:
+      return self.predicate
+    else:
+      return None
 
   def resolve(self):
     return self
@@ -377,9 +476,17 @@ class ConjunctionNode(Node):
       return NotImplemented
     return self.__nodes == other.__nodes
 
-  def _to_filter(self, bindings):
+  def _to_filter(self, bindings, post=False):
     filters = filter(None,
-                     (node._to_filter(bindings) for node in self.__nodes))
+                     (node._to_filter(bindings, post=post)
+                      for node in self.__nodes
+                      if isinstance(node, PostFilterNode) == post))
+    if not filters:
+      return None
+    if len(filters) == 1:
+      return filters[0]
+    if post:
+      return CompositePostFilter(_AND, filters)
     return datastore_query.CompositeFilter(_AND, filters)
 
   def _post_filters(self):
@@ -392,12 +499,6 @@ class ConjunctionNode(Node):
     if post_filters == self.__nodes:
       return self
     return ConjunctionNode(post_filters)
-
-  def apply(self, entity):
-    for node in self.__nodes:
-      if not node.apply(entity):
-        return False
-    return True
 
   def resolve(self):
     nodes = [node.resolve() for node in self.__nodes]
@@ -605,7 +706,11 @@ class Query(object):
                                   ancestor=ancestor,
                                   filter_predicate=filters,
                                   order=self.__orders)
-    return dsqry, post_filters
+    if post_filters is not None:
+      dsqry = datastore_query._AugmentedQuery(
+        dsqry,
+        in_memory_filter=post_filters._to_filter(bindings, post=True))
+    return dsqry
 
   @tasklets.tasklet
   def run_to_queue(self, queue, conn, options=None):
@@ -614,13 +719,8 @@ class Query(object):
     if multiquery is not None:
       multiquery.run_to_queue(queue, conn, options=options)  # No return value.
       return
-    dsqry, post_filters = self._get_query(conn)
+    dsqry = self._get_query(conn)
     orig_options = options
-    if (post_filters and options is not None and
-        (options.offset or options.limit is not None)):
-      options = QueryOptions(offset=None, limit=None, config=orig_options)
-      assert (options.limit is None and
-              options.offset is None), repr(options._values)
     rpc = dsqry.run_async(conn, options)
     skipped = 0
     count = 0
@@ -628,17 +728,6 @@ class Query(object):
       batch = yield rpc
       rpc = batch.next_batch_async(options)
       for i, ent in enumerate(batch.results):
-        if post_filters:
-          if not post_filters.apply(ent):
-            continue
-          if orig_options is not options:
-            if orig_options.offset and skipped < orig_options.offset:
-              skipped += 1
-              continue
-            if orig_options.limit is not None and count >= orig_options.limit:
-              rpc = None  # Quietly throw away the next batch.
-              break
-            count += 1
         queue.putq((batch, i, ent))
     queue.complete()
 
@@ -871,15 +960,20 @@ class Query(object):
     assert 'offset' not in q_options, q_options
     assert 'limit' not in q_options, q_options
     if (self.__filters is not None and
-        (isinstance(self.__filters, DisjunctionNode) or
-         self.__filters._post_filters() is not None)):
+        isinstance(self.__filters, DisjunctionNode)):
+      # _MultiQuery isn't yet smart enough to support the trick below,
+      # so just fetch results and count them.
       results = yield self.fetch_async(limit, **q_options)
       raise tasklets.Return(len(results))
+
+    # Issue a special query requesting 0 results at a given offset.
+    # The skipped_results count will tell us how many hits there were
+    # before that offset without fetching the items.
     q_options['offset'] = limit
     q_options['limit'] = 0
     options = _make_options(q_options)
     conn = tasklets.get_context()._conn
-    dsqry, post_filters = self._get_query(conn)
+    dsqry = self._get_query(conn)
     rpc = dsqry.run_async(conn, options)
     total = 0
     while rpc is not None:
@@ -1172,11 +1266,18 @@ class _MultiQuery(object):
   # e.g. offset (though not necessarily limit, and I'm not sure about
   # cursors).
 
+  # TODO: Need a way to specify the unification of two queries that
+  # are identical except one has an ancestor and the other doesn't.
+  # The HR datastore makes that a useful special case.
+
   def __init__(self, subqueries, orders=None):
     assert isinstance(subqueries, list), subqueries
     assert all(isinstance(subq, Query) for subq in subqueries), subqueries
+    # TODO: Assert the kinds match (and app/namespace, when we support them).
     if orders is not None:
       assert isinstance(orders, datastore_query.Order), repr(orders)
+    # TODO: Unify orders, insert implied orders based on inequality
+    # filters, append __key__ order.
     self.__subqueries = subqueries
     self.__orders = orders
     self.ancestor = None  # Hack for map_query().
@@ -1187,6 +1288,14 @@ class _MultiQuery(object):
     # Create a list of (first-entity, subquery-iterator) tuples.
     # TODO: Use the specified sort order.
     assert options is None, '_MultiQuery does not take options yet'
+
+    # TODO: Emulate various options (offset, limit, keys_only) while
+    # rejecting others (cursors) and passing yet others along to the
+    # subqueries (batch_size etc.).
+
+    # Advanced TODO: sometimes cursors can work too, at least
+    # for IN queries.
+
     state = []
     orderings = _orders_to_orderings(self.__orders)
     for subq in self.__subqueries:
