@@ -206,9 +206,9 @@ class RepeatedStructuredPropertyPredicate(datastore_query.FilterPredicate):
 
     represents this table:
 
-      |  name   |  age  |  rank  |  
+      |  name   |  age  |  rank  |
       +---------+-------+--------+
-      |  'Joe'  |   24  |     5  |  
+      |  'Joe'  |   24  |     5  |
 
     Think of key_value_map as a table with the same structure but
     (potentially) many rows.  This represents a repeated structured
@@ -242,6 +242,9 @@ class RepeatedStructuredPropertyPredicate(datastore_query.FilterPredicate):
       columns.append(column)
     # Use izip to transpose the columns into rows.
     return self.match_values in itertools.izip(*columns)
+
+  # Don't implement _prune()!  It would mess up the row correspondence
+  # within columns.
 
 
 class CompositePostFilter(datastore_query.CompositeFilter):
@@ -958,8 +961,14 @@ class Query(object):
     assert 'limit' not in q_options, q_options
     if (self.__filters is not None and
         isinstance(self.__filters, DisjunctionNode)):
+      # _MultiQuery isn't yet smart enough to support the trick below,
+      # so just fetch results and count them.
       results = yield self.fetch_async(limit, **q_options)
       raise tasklets.Return(len(results))
+
+    # Issue a special query requesting 0 results at a given offset.
+    # The skipped_results count will tell us how many hits there were
+    # before that offset without fetching the items.
     q_options['offset'] = limit
     q_options['limit'] = 0
     options = _make_options(q_options)
