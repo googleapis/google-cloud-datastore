@@ -275,8 +275,7 @@ class QueryTests(test_utils.DatastoreTest):
   def testMultiQuery(self):
     q1 = query.Query(kind='Foo').filter(Foo.tags == 'jill').order(Foo.name)
     q2 = query.Query(kind='Foo').filter(Foo.tags == 'joe').order(Foo.name)
-    qq = query._MultiQuery([q1, q2],
-                           query._ordering_to_order(('name', query._ASC)))
+    qq = query._MultiQuery([q1, q2])
     res = list(qq)
     self.assertEqual(res, [self.jill, self.joe])
 

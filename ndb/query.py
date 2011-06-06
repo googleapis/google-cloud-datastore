@@ -129,6 +129,7 @@ import itertools
 
 from google.appengine.api import datastore_errors
 from google.appengine.api import datastore_types
+from google.appengine.datastore import datastore_pb
 from google.appengine.datastore import datastore_query
 from google.appengine.datastore import datastore_rpc
 from google.appengine.ext import gql
@@ -742,7 +743,7 @@ class Query(object):
           subquery = Query(kind=self.__kind, ancestor=self.__ancestor,
                            filters=subfilter, orders=self.__orders)
           subqueries.append(subquery)
-        return _MultiQuery(subqueries, orders=self.__orders)
+        return _MultiQuery(subqueries)
     return None
 
   @property
@@ -787,7 +788,7 @@ class Query(object):
 
   def order(self, *args):
     """Return a new Query with additional sort order(s) applied."""
-    # q.order(Eployee.name, -Employee.age)
+    # q.order(Employee.name, -Employee.age)
     if not args:
       return self
     orders = []
@@ -1259,7 +1260,7 @@ class _SubQueryIteratorState(object):
 class _MultiQuery(object):
   """Helper class to run queries involving !=, IN or OR operators."""
 
-  # This is not created by the user directly, but implicitly when
+  # This is not instantiated by the user directly, but implicitly when
   # iterating over a query with at least one filter using an IN, OR or
   # != operator.  Note that some options must be interpreted by
   # _MultiQuery instead of passed to the underlying Queries' methods,
@@ -1270,16 +1271,16 @@ class _MultiQuery(object):
   # are identical except one has an ancestor and the other doesn't.
   # The HR datastore makes that a useful special case.
 
-  def __init__(self, subqueries, orders=None):
+  def __init__(self, subqueries):
     assert isinstance(subqueries, list), subqueries
     assert all(isinstance(subq, Query) for subq in subqueries), subqueries
-    # TODO: Assert the kinds match (and app/namespace, when we support them).
-    if orders is not None:
-      assert isinstance(orders, datastore_query.Order), repr(orders)
-    # TODO: Unify orders, insert implied orders based on inequality
-    # filters, append __key__ order.
+    kind = subqueries[0].kind
+    assert kind, 'Subquery kind cannot be missing'
+    assert all(subq.kind == kind for subq in subqueries), subqueries
+    # TODO: Assert app and namespace match, when we support them.
+    subqueries = list(_unify_sort_orders(subqueries))
     self.__subqueries = subqueries
-    self.__orders = orders
+    self.__orders = subqueries[0].orders
     self.ancestor = None  # Hack for map_query().
 
   @tasklets.tasklet
@@ -1368,7 +1369,7 @@ def _orders_to_orderings(orders):
   if isinstance(orders, datastore_query.CompositeOrder):
     # TODO: What about UTF-8?
     return [(pb.property(), pb.direction())for pb in orders._to_pbs()]
-  assert False, orders
+  assert False, 'Bad order: %r' % (orders,)
 
 
 def _ordering_to_order(ordering):
@@ -1383,3 +1384,88 @@ def _orderings_to_orders(orderings):
   if len(orders) == 1:
     return orders[0]
   return datastore_query.CompositeOrder(orders)
+
+
+# Helper functions for unifying sort orders across multiple queries.
+
+def _unify_sort_orders(queries):
+  """Generator to give a list of queries all the same sort order.
+
+  Args:
+    queries: A list of Query objects.
+
+  Yields:
+    Query objects.
+
+  Raises:
+    AssertionError if the orders cannot be unified.  (TODO: BadQueryError.)
+  """
+  the_orders = None
+  for q in queries:
+    filters = q.filters
+    if filters is None:
+      filters = []
+    else:
+      filters = filters._to_filter({})._to_pbs()
+    orders = q.orders
+    if orders is None:
+      orders = []
+    elif isinstance(orders, datastore_query.PropertyOrder):
+      orders = [orders._to_pb()]
+    else:
+      orders = orders._to_pbs()
+    new_orders = _guess_orders(filters, orders)
+    if the_orders is None:
+      the_orders = new_orders
+    else:
+      assert the_orders == new_orders, (the_orders, new_orders)
+    if orders == new_orders:
+      yield q
+    else:
+      orders = _orderings_to_orders(
+        [(pb.property(), pb.direction()) for pb in orders])
+      yield Query(kind=q.kind, ancestor=q.ancestor, filters=q.filters,
+                  orders=orders)
+
+
+def _guess_orders(filters, orders):
+  """Guess datastore orders based on filters.
+
+  This attempts to guess the actual order that the datastore service
+  will impose on the query based on the filters present.
+
+  The algorithm is currently as follows:
+  - If orders is empty, and there is an inequality filter (<, <=, >, >=),
+    then add an ascending order in the property used by that filter.
+  - If the last order isn't by __key__, add ascending order by __key__.
+
+  NOTE: This does not always match exactly what the backend does, as
+  it may use a descending index when one is available.  But for our
+  purpose it doesn't matter, since we always turn this order into an
+  explicit order.
+
+  (Copied from _GuessOrders() in the most recent datastore_stub_util.py.)
+
+  Args:
+    filters: A list of datastore_pb.Query_Filter instances.
+    orders: A list of datastore_pb.Query_Order instances.
+
+  Returns:
+    A list of datastore_pb.Query_Order instances, possibly a copy of the
+    input.
+  """
+  orders = orders[:]
+  if not orders:
+    for filter_pb in filters:
+      if filter_pb.op() != datastore_pb.Query_Filter.EQUAL:
+        order = datastore_pb.Query_Order()
+        order.set_property(filter_pb.property(0).name())
+        orders.append(order)
+        break
+
+  if (not orders or
+      orders[-1].property() != datastore_types._KEY_SPECIAL_PROPERTY):
+    order = datastore_pb.Query_Order()
+    order.set_property(datastore_types._KEY_SPECIAL_PROPERTY)
+    orders.append(order)
+  return orders
