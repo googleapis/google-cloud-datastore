@@ -83,7 +83,7 @@ class Context(object):
     self._cache = {}
     self._cache_policy = lambda key: True
     self._memcache_policy = lambda key: True
-    self._memcache_prefix = 'NDB:'  # TODO: Use this.
+    self._memcache_prefix = 'NDB:'  # TODO: Make this configurable.
     # TODO: Also add a way to compute the memcache expiration time.
 
   @tasklets.tasklet
