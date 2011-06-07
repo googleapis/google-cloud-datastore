@@ -323,6 +323,15 @@ class ModelAdapter(datastore_rpc.AbstractAdapter):
         (default).
     """
     self.default_model = default_model
+    self.want_pbs = 0
+
+  # Make this a context manager to request setting _orig_pb.
+
+  def __enter__(self):
+    self.want_pbs += 1
+
+  def __exit__(self, *args):
+    self.want_pbs -= 1
 
   def pb_to_key(self, pb):
     return Key(reference=pb)
@@ -342,7 +351,8 @@ class ModelAdapter(datastore_rpc.AbstractAdapter):
     if modelclass is None:
       raise KindError("No implementation found for kind '%s'" % kind)
     entity = modelclass._from_pb(pb)
-    entity._orig_pb = pb
+    if self.want_pbs:
+      entity._orig_pb = pb
     return entity
 
   def entity_to_pb(self, ent):
