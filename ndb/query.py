@@ -1429,15 +1429,14 @@ def _unify_sort_orders(queries):
       pass
     else:
       raise datastore_errors.BadQueryError('Sort orders cannot be unified')
+  the_orders = _orderings_to_orders(the_orderings)
   for q in queries:
     orderings = _orders_to_orderings(q.orders)
     if orderings == the_orderings:
       yield q
     else:
-      # XXX TODO: factor out of loop
-      orders = _orderings_to_orders(the_orderings)
       yield Query(kind=q.kind, ancestor=q.ancestor, filters=q.filters,
-                  orders=orders)
+                  orders=the_orders)
 
 
 def _guess_orderings(filters, orderings):
