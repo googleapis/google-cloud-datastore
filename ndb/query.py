@@ -1295,24 +1295,14 @@ class _MultiQuery(object):
     heapq.heapify(state)
 
     # Repeatedly yield the lowest entity from the state vector,
-    # filtering duplicates.  This is essentially a multi-way merge
-    # sort.  One would think it should be possible to filter
-    # duplicates simply by dropping other entities already in the
-    # state vector that are equal to the lowest entity, but because of
-    # the weird sorting of repeated properties, we have to explicitly
-    # keep a set of all keys, so we can remove later occurrences.
-    # Yes, this means that the output may not be sorted correctly.
-    # Too bad.  (I suppose you can do this in constant memory bounded
-    # by the maximum number of entries in relevant repeated
-    # properties, but I'm too lazy for now.  And yes, all this means
-    # _MultiQuery is a bit of a toy.  But where it works, it beats
-    # expecting the user to do this themselves.)
-    keys_seen = set()
+    # skipping duplicates.  This is essentially a multi-way merge
+    # sort.
+    last_key = None
     while state:
       item = heapq.heappop(state)
       ent = item.entity
-      if ent._key not in keys_seen:
-        keys_seen.add(ent._key)
+      if ent._key != last_key:
+        last_key = ent._key
         queue.putq((None, None, ent))
       subit = item.iterator
       try:
