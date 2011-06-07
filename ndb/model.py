@@ -1272,7 +1272,7 @@ class StructuredProperty(Property):
       # TODO: Avoid re-sorting for repeated values.
       for name, prop in sorted(value._properties.iteritems()):
         prop._serialize(value, pb, prefix + self._name + '.',
-                       self._repeated or parent_repeated)
+                        self._repeated or parent_repeated)
 
   def _deserialize(self, entity, p, depth=1):
     if not self._repeated:
