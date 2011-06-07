@@ -149,6 +149,7 @@ Cursor = datastore_query.Cursor
 _ASC = datastore_query.PropertyOrder.ASCENDING
 _DESC = datastore_query.PropertyOrder.DESCENDING
 _AND = datastore_query.CompositeFilter.AND
+_KEY = datastore_types._KEY_SPECIAL_PROPERTY
 
 # Table of supported comparison operators.
 _OPS = frozenset(['=', '!=', '<', '<=', '>', '>=', 'in'])
@@ -168,9 +169,8 @@ def _make_unsorted_key_value_map(pb, property_names):
         datastore_types.PropertyValueToKeyValue(prop.value()))
 
   # Adding special key property (if requested).
-  if datastore_types._KEY_SPECIAL_PROPERTY in value_map:
-    value_map[datastore_types._KEY_SPECIAL_PROPERTY] = [
-      datastore_types.ReferenceToKeyValue(pb.key())]
+  if _KEY in value_map:
+    value_map[_KEY] = [datastore_types.ReferenceToKeyValue(pb.key())]
 
   return value_map
 
@@ -1283,6 +1283,10 @@ class _MultiQuery(object):
     self.__orders = subqueries[0].orders
     self.ancestor = None  # Hack for map_query().
 
+  @property
+  def orders(self):
+    return self.__orders
+
   @tasklets.tasklet
   def run_to_queue(self, queue, conn, options=None):
     """Run this query, putting entities into the given queue."""
@@ -1398,37 +1402,45 @@ def _unify_sort_orders(queries):
     Query objects.
 
   Raises:
-    AssertionError if the orders cannot be unified.  (TODO: BadQueryError.)
+    AssertionError if the orders cannot be unified.
   """
-  the_orders = None
+  the_orderings = None
   for q in queries:
     filters = q.filters
     if filters is None:
       filters = []
     else:
       filters = filters._to_filter({})._to_pbs()
-    orders = q.orders
-    if orders is None:
-      orders = []
-    elif isinstance(orders, datastore_query.PropertyOrder):
-      orders = [orders._to_pb()]
+    orderings = _orders_to_orderings(q.orders)
+    new_orderings = _guess_orderings(filters, orderings)
+    if the_orderings is None:
+      # First time around.
+      the_orderings = new_orderings
+    elif (the_orderings == [(_KEY, _ASC)] and
+          new_orderings[1:] == [(_KEY, _ASC)]):
+      # Extend.
+      the_orderings = new_orderings
+    elif (new_orderings == [(_KEY, _ASC)] and
+          the_orderings[1:] == [(_KEY, _ASC)]):
+      # Shorter.
+      pass
+    elif the_orderings == new_orderings:
+      # Same.
+      pass
     else:
-      orders = orders._to_pbs()
-    new_orders = _guess_orders(filters, orders)
-    if the_orders is None:
-      the_orders = new_orders
-    else:
-      assert the_orders == new_orders, (the_orders, new_orders)
-    if orders == new_orders:
+      raise datastore_errors.BadQueryError('Sort orders cannot be unified')
+  for q in queries:
+    orderings = _orders_to_orderings(q.orders)
+    if orderings == the_orderings:
       yield q
     else:
-      orders = _orderings_to_orders(
-        [(pb.property(), pb.direction()) for pb in orders])
+      # XXX TODO: factor out of loop
+      orders = _orderings_to_orders(the_orderings)
       yield Query(kind=q.kind, ancestor=q.ancestor, filters=q.filters,
                   orders=orders)
 
 
-def _guess_orders(filters, orders):
+def _guess_orderings(filters, orderings):
   """Guess datastore orders based on filters.
 
   This attempts to guess the actual order that the datastore service
@@ -1448,24 +1460,20 @@ def _guess_orders(filters, orders):
 
   Args:
     filters: A list of datastore_pb.Query_Filter instances.
-    orders: A list of datastore_pb.Query_Order instances.
+    orderings: A list of (property name, direction) pairs.
 
   Returns:
-    A list of datastore_pb.Query_Order instances, possibly a copy of the
-    input.
+    A list of (property name, direction) tuples, possibly a copy of the input.
   """
-  orders = orders[:]
-  if not orders:
+  orderings = orderings[:]
+  if not orderings:
     for filter_pb in filters:
       if filter_pb.op() != datastore_pb.Query_Filter.EQUAL:
-        order = datastore_pb.Query_Order()
-        order.set_property(filter_pb.property(0).name())
-        orders.append(order)
+        ordering = (filter_pb.property(0).name(), _ASC)
+        orderings.append(ordering)
         break
 
-  if (not orders or
-      orders[-1].property() != datastore_types._KEY_SPECIAL_PROPERTY):
-    order = datastore_pb.Query_Order()
-    order.set_property(datastore_types._KEY_SPECIAL_PROPERTY)
-    orders.append(order)
-  return orders
+  if (not orderings or orderings[-1][0] != _KEY):
+    ordering = (_KEY, _ASC)
+    orderings.append(ordering)
+  return orderings
