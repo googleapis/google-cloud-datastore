@@ -1220,41 +1220,18 @@ class QueryIterator(object):
 class _SubQueryIteratorState(object):
   """Helper class for _MultiQuery."""
 
-  def __init__(self, batch_i_entity, iterator, orderings):
+  def __init__(self, batch_i_entity, iterator, orders):
     batch, i, entity = batch_i_entity
     self.entity = entity
     self.iterator = iterator
-    self.orderings = orderings
+    self.orders = orders
 
   def __cmp__(self, other):
     assert isinstance(other, _SubQueryIteratorState), repr(other)
-    assert self.orderings == other.orderings, (self.orderings, other.orderings)
+    assert self.orders == other.orders, (self.orders, other.orders)
     our_entity = self.entity
     their_entity = other.entity
-    # TODO: Renamed properties again.
-    if self.orderings:
-      for propname, direction in self.orderings:
-        our_value = getattr(our_entity, propname, None)
-        their_value = getattr(their_entity, propname, None)
-        # NOTE: Repeated properties sort by lowest value when in
-        # ascending order and highest value when in descending order.
-        # TODO: Use min_max_value_cache as datastore.py does?
-        if direction == _ASC:
-          func = min
-        else:
-          func = max
-        if isinstance(our_value, list):
-          our_value = func(our_value)
-        if isinstance(their_value, list):
-          their_value = func(their_value)
-        flag = cmp(our_value, their_value)
-        if direction == _DESC:
-          flag = -flag
-        if flag:
-          return flag
-    # All considered properties are equal; compare by key (ascending).
-    # TODO: Comparison between ints and strings is arbitrary.
-    return cmp(our_entity._key.pairs(), their_entity._key.pairs())
+    return self.orders.cmp(our_entity._orig_pb, their_entity._orig_pb)
 
 
 class _MultiQuery(object):
@@ -1302,7 +1279,6 @@ class _MultiQuery(object):
     # for IN queries.
 
     state = []
-    orderings = _orders_to_orderings(self.__orders)
     for subq in self.__subqueries:
       subit = tasklets.SerialQueueFuture('_MultiQuery.run_to_queue')
       subq.run_to_queue(subit, conn)
@@ -1311,7 +1287,7 @@ class _MultiQuery(object):
       except EOFError:
         continue
       else:
-        state.append(_SubQueryIteratorState(ent, subit, orderings))
+        state.append(_SubQueryIteratorState(ent, subit, self.__orders))
 
     # Now turn it into a sorted heap.  The heapq module claims that
     # calling heapify() is more efficient than calling heappush() for
