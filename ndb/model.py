@@ -2159,28 +2159,28 @@ def get_multi(keys):
   return [future.get_result() for future in get_multi_async(keys)]
 
 
-def put_multi_async(models):
+def put_multi_async(entities):
   """Stores a sequence of Model instances.
 
   Args:
-    models: A sequence of Model instances.
+    entities: A sequence of Model instances.
 
   Returns:
     A list of futures.
   """
-  return [model.put_async() for model in models]
+  return [entity.put_async() for entity in entities]
 
 
-def put_multi(models):
+def put_multi(entities):
   """Stores a sequence of Model instances.
 
   Args:
-    models: A sequence of Model instances.
+    entities: A sequence of Model instances.
 
   Returns:
     A list with the stored keys.
   """
-  return [future.get_result() for future in put_multi_async(models)]
+  return [future.get_result() for future in put_multi_async(entities)]
 
 
 def delete_multi_async(keys):
