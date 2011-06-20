@@ -396,7 +396,10 @@ class Context(object):
       except Exception, err:
         t, e, tb = sys.exc_info()
         yield tconn.async_rollback(None)  # TODO: Don't block???
-        raise t, e, tb
+        if issubclass(t, datastore_errors.Rollback):
+          return
+        else:
+          raise t, e, tb
       else:
         ok = yield tconn.async_commit(None)
         if ok:

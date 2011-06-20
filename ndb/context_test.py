@@ -7,6 +7,7 @@ import sys
 import time
 import unittest
 
+from google.appengine.api import datastore_errors
 from google.appengine.api import memcache
 from google.appengine.datastore import datastore_rpc
 
@@ -406,6 +407,36 @@ class ContextTests(test_utils.DatastoreTest):
       yield self.ctx.transaction(callback)
       self.assertEqual(self.ctx._cache[key].bar, 2)
     foo().check_success()
+
+  def testContext_TransactionException(self):
+    key = model.Key('Foo', 1)
+    @tasklets.tasklet
+    def foo():
+      ent = model.Expando(bar=1)
+      yield self.ctx.put(ent)
+      @tasklets.tasklet
+      def callback():
+        ctx = tasklets.get_context()
+        key = yield ent.put_async()
+        raise Exception('foo')
+      yield self.ctx.transaction(callback)
+    self.assertRaises(Exception, foo().check_success)
+    self.assertEqual(key.get(), None)
+
+  def testContext_TransactionRollback(self):
+    key = model.Key('Foo', 1)
+    @tasklets.tasklet
+    def foo():
+      ent = model.Expando(bar=1)
+      yield self.ctx.put(ent)
+      @tasklets.tasklet
+      def callback():
+        ctx = tasklets.get_context()
+        key = yield ent.put_async()
+        raise datastore_errors.Rollback()
+      yield self.ctx.transaction(callback)
+    foo().check_success()
+    self.assertEqual(key.get(), None)
 
   def testContext_GetOrInsert(self):
     # This also tests Context.transaction()
