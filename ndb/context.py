@@ -6,6 +6,7 @@
 import logging
 import sys
 
+from google.appengine.api import datastore  # For taskqueue coordination
 from google.appengine.api import datastore_errors
 from google.appengine.api import memcache
 
@@ -386,27 +387,33 @@ class Context(object):
                             auto_batcher_class=self._auto_batcher_class)
       tctx.set_memcache_policy(lambda key: False)
       tasklets.set_context(tctx)
+      old_ds_conn = datastore._GetConnection()
       try:
+        datastore._SetConnection(tconn)  # For taskqueue coordination
         try:
-          result = callback()
-          if isinstance(result, tasklets.Future):
-            result = yield result
-        finally:
-          yield tctx.flush()
-      except Exception, err:
-        t, e, tb = sys.exc_info()
-        yield tconn.async_rollback(None)  # TODO: Don't block???
-        if issubclass(t, datastore_errors.Rollback):
-          return
+          try:
+            result = callback()
+            if isinstance(result, tasklets.Future):
+              result = yield result
+          finally:
+            yield tctx.flush()
+        except Exception, err:
+          t, e, tb = sys.exc_info()
+          yield tconn.async_rollback(None)  # TODO: Don't block???
+          if issubclass(t, datastore_errors.Rollback):
+            return
+          else:
+            raise t, e, tb
         else:
-          raise t, e, tb
-      else:
-        ok = yield tconn.async_commit(None)
-        if ok:
-          # TODO: This is questionable when self is transactional.
-          self._cache.update(tctx._cache)
-          self._flush_memcache(tctx._cache)
-          raise tasklets.Return(result)
+          ok = yield tconn.async_commit(None)
+          if ok:
+            # TODO: This is questionable when self is transactional.
+            self._cache.update(tctx._cache)
+            self._flush_memcache(tctx._cache)
+            raise tasklets.Return(result)
+      finally:
+        datastore._SetConnection(old_ds_conn)
+
     # Out of retries
     raise datastore_errors.TransactionFailedError(
       'The transaction could not be committed. Please try again.')

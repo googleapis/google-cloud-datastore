@@ -9,6 +9,8 @@ from google.appengine.api import apiproxy_stub_map
 from google.appengine.api import datastore_file_stub
 from google.appengine.api import memcache
 from google.appengine.api.memcache import memcache_stub
+from google.appengine.api import taskqueue
+from google.appengine.api.taskqueue import taskqueue_stub
 
 from ndb.model import *
 from ndb.query import *
@@ -18,6 +20,8 @@ ds_stub = datastore_file_stub.DatastoreFileStub('_', None)
 apiproxy_stub_map.apiproxy.RegisterStub('datastore_v3', ds_stub)
 mc_stub = memcache_stub.MemcacheServiceStub()
 apiproxy_stub_map.apiproxy.RegisterStub('memcache', mc_stub)
+tq_stub = taskqueue_stub.TaskQueueServiceStub()
+apiproxy_stub_map.apiproxy.RegisterStub('taskqueue', tq_stub)
 os.environ['APPLICATION_ID'] = '_'
 
 class Employee(Model):

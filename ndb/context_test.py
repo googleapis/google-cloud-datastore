@@ -9,6 +9,7 @@ import unittest
 
 from google.appengine.api import datastore_errors
 from google.appengine.api import memcache
+from google.appengine.api import taskqueue
 from google.appengine.datastore import datastore_rpc
 
 from ndb import context
@@ -435,6 +436,19 @@ class ContextTests(test_utils.DatastoreTest):
       yield self.ctx.transaction(callback)
     foo().check_success()
     self.assertEqual(key.get(), None)
+
+  def testContext_TransactionAddTask(self):
+    key = model.Key('Foo', 1)
+    @tasklets.tasklet
+    def foo():
+      ent = model.Expando(key=key, bar=1)
+      @tasklets.tasklet
+      def callback():
+        ctx = tasklets.get_context()
+        key = yield ctx.put(ent)
+        taskqueue.add(url='/', transactional=True)
+      yield self.ctx.transaction(callback)
+    foo().check_success()
 
   def testContext_GetOrInsert(self):
     # This also tests Context.transaction()

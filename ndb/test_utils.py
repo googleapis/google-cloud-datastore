@@ -11,8 +11,10 @@ import unittest
 
 from google.appengine.api import apiproxy_stub_map
 from google.appengine.api import datastore_file_stub
-from google.appengine.api.memcache import memcache_stub
 from google.appengine.api import memcache
+from google.appengine.api.memcache import memcache_stub
+from google.appengine.api import taskqueue
+from google.appengine.api.taskqueue import taskqueue_stub
 
 from ndb import model
 from ndb import tasklets
@@ -35,10 +37,13 @@ def set_up_basic_stubs(app_id):
   apiproxy_stub_map.apiproxy.RegisterStub('datastore_v3', ds_stub)
   mc_stub = memcache_stub.MemcacheServiceStub()
   apiproxy_stub_map.apiproxy.RegisterStub('memcache', mc_stub)
+  tq_stub = taskqueue_stub.TaskQueueServiceStub()
+  apiproxy_stub_map.apiproxy.RegisterStub('taskqueue', tq_stub)
 
   return {
     'datastore': ds_stub,
     'memcache': mc_stub,
+    'taskqueue': tq_stub,
   }
 
 
@@ -86,6 +91,8 @@ class DatastoreTest(unittest.TestCase):
     self.memcache_stub.MakeSyncCall('memcache', 'FlushAll',
                                     memcache.MemcacheFlushRequest(),
                                     memcache.MemcacheFlushResponse())
+    for q in self.taskqueue_stub.GetQueues():
+      self.taskqueue_stub.FlushQueue(q['name'])
 
   def set_up_stubs(self):
     """Set up basic stubs using classes default application id.
