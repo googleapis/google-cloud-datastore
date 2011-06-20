@@ -83,7 +83,8 @@ class Context(object):
     self._cache = {}
     self._cache_policy = lambda key: True
     self._memcache_policy = lambda key: True
-    self._memcache_prefix = 'NDB:'  # TODO: Use this.
+    self._memcache_timeout_policy = lambda key: 0
+    self._memcache_prefix = 'NDB:'  # TODO: make this configurable.
     # TODO: Also add a way to compute the memcache expiration time.
 
   @tasklets.tasklet
@@ -140,21 +141,27 @@ class Context(object):
     # Now update memcache.
     # TODO: Could we update memcache *before* calling async_put()?
     # (Hm, not for new entities but possibly for updated ones.)
-    mapping = {}
+    mappings = {}  # Maps timeout value to {urlsafe_key: pb} mapping.
     for _, ent in todo:
       if self.should_memcache(ent._key):
         pb = self._conn.adapter.entity_to_pb(ent)
+        timeout = self._memcache_timeout_policy(ent._key)
+        mapping = mappings.get(timeout)
+        if mapping is None:
+          mapping = mappings[timeout] = {}
         mapping[ent._key.urlsafe()] = pb
-    if mapping:
-      # TODO: Optionally set the memcache expiration time;
-      # maybe configurable based on key (or even entity).
-      failures = memcache.set_multi(mapping, key_prefix=self._memcache_prefix)
-      if failures:
-        badkeys = []
-        for failure in failures:
-          badkeys.append(mapping[failure].key)
-        logging.info('memcache failed to set %d out of %d keys: %s',
-                     len(failures), len(mapping), badkeys)
+    if mappings:
+      # If the timeouts are not uniform, make a separate call for each
+      # distinct timeout value.
+      for timeout, mapping in mappings.iteritems():
+        failures = memcache.set_multi(mapping, time=timeout,
+                                      key_prefix=self._memcache_prefix)
+        if failures:
+          badkeys = []
+          for failure in failures:
+            badkeys.append(mapping[failure].key)
+          logging.info('memcache failed to set %d out of %d keys: %s',
+                       len(failures), len(mapping), badkeys)
 
   @tasklets.tasklet
   def _delete_tasklet(self, todo):
@@ -171,7 +178,7 @@ class Context(object):
       # could be the keys were never cached in the first place.
 
   def get_cache_policy(self):
-    """Returns the current context cache policy.
+    """Returns the current context cache policy function.
 
     Returns:
       A function that accepts a Key instance as argument and returns
@@ -180,7 +187,7 @@ class Context(object):
     return self._cache_policy
 
   def set_cache_policy(self, func):
-    """Sets the context cache policy.
+    """Sets the context cache policy function.
 
     Args:
       func: A function that accepts a Key instance as argument and returns
@@ -200,7 +207,7 @@ class Context(object):
     return self._cache_policy(key)
 
   def get_memcache_policy(self):
-    """Returns the current memcache policy.
+    """Returns the current memcache policy function.
 
     Returns:
       A function that accepts a Key instance as argument and returns
@@ -209,13 +216,28 @@ class Context(object):
     return self._memcache_policy
 
   def set_memcache_policy(self, func):
-    """Sets the memcache policy.
+    """Sets the memcache policy function.
 
     Args:
       func: A function that accepts a Key instance as argument and returns
         a boolean indicating if it should be cached.
     """
     self._memcache_policy = func
+
+  def set_memcache_timeout_policy(self, func):
+    """Sets the policy function for memcache timeout (expiration).
+
+    Args:
+      func: A function that accepts a key instance as argument and returns
+        an integer indicating the desired memcache timeout.
+
+    If the function returns 0 it implies the default timeout.
+    """
+    self._memcache_timeout_policy = func
+
+  def get_memcache_timeout_policy(self):
+    """Returns the current policy function for memcache timeout (expiration)."""
+    return self._memcache_timeout_policy
 
   def should_memcache(self, key):
     """Return whether to use memcache for this key.
