@@ -302,14 +302,7 @@ class Future(object):
 
     else:
       logging_debug('%s yielded %r', info, value)
-      if isinstance(value, datastore_rpc.MultiRpc):
-        # TODO: Tail recursion if the RPC is already complete.
-        if len(value.rpcs) == 1:
-          value = value.rpcs[0]
-          # Fall through to next isinstance test.
-        else:
-          assert False  # TODO: Support MultiRpc using MultiFuture.
-      if isinstance(value, UserRPC):
+      if isinstance(value, (UserRPC, datastore_rpc.MultiRpc)):
         # TODO: Tail recursion if the RPC is already complete.
         eventloop.queue_rpc(value, self._on_rpc_completion, value, gen)
         return
