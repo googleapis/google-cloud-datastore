@@ -345,6 +345,10 @@ class Context(object):
               logging.info('Conflict: entity %s was modified', key)
             ent = self._cache[key]
           else:
+            # Cache the entity only if this is an ancestor query;
+            # non-ancestor queries may return stale results, since in
+            # the HRD these queries are "eventually consistent".
+            # TODO: Shouldn't we check this before considering cache hits?
             if is_ancestor_query and self.should_cache(key):
               self._cache[key] = ent
         if callback is None:
