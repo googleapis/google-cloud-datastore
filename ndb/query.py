@@ -122,6 +122,8 @@ in a tasklet, properly yielding when appropriate:
     print emp.name, emp.age
 """
 
+from __future__ import with_statement
+
 __author__ = 'guido@google.com (Guido van Rossum)'
 
 import heapq
@@ -129,6 +131,7 @@ import itertools
 
 from google.appengine.api import datastore_errors
 from google.appengine.api import datastore_types
+from google.appengine.datastore import datastore_pb
 from google.appengine.datastore import datastore_query
 from google.appengine.datastore import datastore_rpc
 from google.appengine.ext import gql
@@ -148,6 +151,7 @@ Cursor = datastore_query.Cursor
 _ASC = datastore_query.PropertyOrder.ASCENDING
 _DESC = datastore_query.PropertyOrder.DESCENDING
 _AND = datastore_query.CompositeFilter.AND
+_KEY = datastore_types._KEY_SPECIAL_PROPERTY
 
 # Table of supported comparison operators.
 _OPS = frozenset(['=', '!=', '<', '<=', '>', '>=', 'in'])
@@ -167,9 +171,8 @@ def _make_unsorted_key_value_map(pb, property_names):
         datastore_types.PropertyValueToKeyValue(prop.value()))
 
   # Adding special key property (if requested).
-  if datastore_types._KEY_SPECIAL_PROPERTY in value_map:
-    value_map[datastore_types._KEY_SPECIAL_PROPERTY] = [
-      datastore_types.ReferenceToKeyValue(pb.key())]
+  if _KEY in value_map:
+    value_map[_KEY] = [datastore_types.ReferenceToKeyValue(pb.key())]
 
   return value_map
 
@@ -742,7 +745,7 @@ class Query(object):
           subquery = Query(kind=self.__kind, ancestor=self.__ancestor,
                            filters=subfilter, orders=self.__orders)
           subqueries.append(subquery)
-        return _MultiQuery(subqueries, orders=self.__orders)
+        return _MultiQuery(subqueries)
     return None
 
   @property
@@ -787,7 +790,7 @@ class Query(object):
 
   def order(self, *args):
     """Return a new Query with additional sort order(s) applied."""
-    # q.order(Eployee.name, -Employee.age)
+    # q.order(Employee.name, -Employee.age)
     if not args:
       return self
     orders = []
@@ -1219,47 +1222,24 @@ class QueryIterator(object):
 class _SubQueryIteratorState(object):
   """Helper class for _MultiQuery."""
 
-  def __init__(self, batch_i_entity, iterator, orderings):
+  def __init__(self, batch_i_entity, iterator, orders):
     batch, i, entity = batch_i_entity
     self.entity = entity
     self.iterator = iterator
-    self.orderings = orderings
+    self.orders = orders
 
   def __cmp__(self, other):
     assert isinstance(other, _SubQueryIteratorState), repr(other)
-    assert self.orderings == other.orderings, (self.orderings, other.orderings)
+    assert self.orders == other.orders, (self.orders, other.orders)
     our_entity = self.entity
     their_entity = other.entity
-    # TODO: Renamed properties again.
-    if self.orderings:
-      for propname, direction in self.orderings:
-        our_value = getattr(our_entity, propname, None)
-        their_value = getattr(their_entity, propname, None)
-        # NOTE: Repeated properties sort by lowest value when in
-        # ascending order and highest value when in descending order.
-        # TODO: Use min_max_value_cache as datastore.py does?
-        if direction == _ASC:
-          func = min
-        else:
-          func = max
-        if isinstance(our_value, list):
-          our_value = func(our_value)
-        if isinstance(their_value, list):
-          their_value = func(their_value)
-        flag = cmp(our_value, their_value)
-        if direction == _DESC:
-          flag = -flag
-        if flag:
-          return flag
-    # All considered properties are equal; compare by key (ascending).
-    # TODO: Comparison between ints and strings is arbitrary.
-    return cmp(our_entity._key.pairs(), their_entity._key.pairs())
+    return self.orders.cmp(our_entity._orig_pb, their_entity._orig_pb)
 
 
 class _MultiQuery(object):
   """Helper class to run queries involving !=, IN or OR operators."""
 
-  # This is not created by the user directly, but implicitly when
+  # This is not instantiated by the user directly, but implicitly when
   # iterating over a query with at least one filter using an IN, OR or
   # != operator.  Note that some options must be interpreted by
   # _MultiQuery instead of passed to the underlying Queries' methods,
@@ -1270,17 +1250,21 @@ class _MultiQuery(object):
   # are identical except one has an ancestor and the other doesn't.
   # The HR datastore makes that a useful special case.
 
-  def __init__(self, subqueries, orders=None):
+  def __init__(self, subqueries):
     assert isinstance(subqueries, list), subqueries
     assert all(isinstance(subq, Query) for subq in subqueries), subqueries
-    # TODO: Assert the kinds match (and app/namespace, when we support them).
-    if orders is not None:
-      assert isinstance(orders, datastore_query.Order), repr(orders)
-    # TODO: Unify orders, insert implied orders based on inequality
-    # filters, append __key__ order.
+    kind = subqueries[0].kind
+    assert kind, 'Subquery kind cannot be missing'
+    assert all(subq.kind == kind for subq in subqueries), subqueries
+    # TODO: Assert app and namespace match, when we support them.
+    subqueries = list(_unify_sort_orders(subqueries))
     self.__subqueries = subqueries
-    self.__orders = orders
+    self.__orders = subqueries[0].orders
     self.ancestor = None  # Hack for map_query().
+
+  @property
+  def orders(self):
+    return self.__orders
 
   @tasklets.tasklet
   def run_to_queue(self, queue, conn, options=None):
@@ -1296,52 +1280,55 @@ class _MultiQuery(object):
     # Advanced TODO: sometimes cursors can work too, at least
     # for IN queries.
 
-    state = []
-    orderings = _orders_to_orderings(self.__orders)
-    for subq in self.__subqueries:
-      subit = tasklets.SerialQueueFuture('_MultiQuery.run_to_queue')
-      subq.run_to_queue(subit, conn)
-      try:
-        ent = yield subit.getq()
-      except EOFError:
-        continue
-      else:
-        state.append(_SubQueryIteratorState(ent, subit, orderings))
+    # This with-statement causes the adapter to set _orig_pb on all
+    # entities it converts from protobuf.
+    # TODO: Does this interact properly with the cache?
+    with conn.adapter:
+      state = []
+      for subq in self.__subqueries:
+        subit = tasklets.SerialQueueFuture('_MultiQuery.run_to_queue')
+        subq.run_to_queue(subit, conn)
+        try:
+          ent = yield subit.getq()
+        except EOFError:
+          continue
+        else:
+          state.append(_SubQueryIteratorState(ent, subit, self.__orders))
 
-    # Now turn it into a sorted heap.  The heapq module claims that
-    # calling heapify() is more efficient than calling heappush() for
-    # each item.
-    heapq.heapify(state)
+      # Now turn it into a sorted heap.  The heapq module claims that
+      # calling heapify() is more efficient than calling heappush() for
+      # each item.
+      heapq.heapify(state)
 
-    # Repeatedly yield the lowest entity from the state vector,
-    # filtering duplicates.  This is essentially a multi-way merge
-    # sort.  One would think it should be possible to filter
-    # duplicates simply by dropping other entities already in the
-    # state vector that are equal to the lowest entity, but because of
-    # the weird sorting of repeated properties, we have to explicitly
-    # keep a set of all keys, so we can remove later occurrences.
-    # Yes, this means that the output may not be sorted correctly.
-    # Too bad.  (I suppose you can do this in constant memory bounded
-    # by the maximum number of entries in relevant repeated
-    # properties, but I'm too lazy for now.  And yes, all this means
-    # _MultiQuery is a bit of a toy.  But where it works, it beats
-    # expecting the user to do this themselves.)
-    keys_seen = set()
-    while state:
-      item = heapq.heappop(state)
-      ent = item.entity
-      if ent._key not in keys_seen:
-        keys_seen.add(ent._key)
-        queue.putq((None, None, ent))
-      subit = item.iterator
-      try:
-        batch, i, ent = yield subit.getq()
-      except EOFError:
-        pass
-      else:
-        item.entity = ent
-        heapq.heappush(state, item)
-    queue.complete()
+      # Repeatedly yield the lowest entity from the state vector,
+      # filtering duplicates.  This is essentially a multi-way merge
+      # sort.  One would think it should be possible to filter
+      # duplicates simply by dropping other entities already in the
+      # state vector that are equal to the lowest entity, but because of
+      # the weird sorting of repeated properties, we have to explicitly
+      # keep a set of all keys, so we can remove later occurrences.
+      # Yes, this means that the output may not be sorted correctly.
+      # Too bad.  (I suppose you can do this in constant memory bounded
+      # by the maximum number of entries in relevant repeated
+      # properties, but I'm too lazy for now.  And yes, all this means
+      # _MultiQuery is a bit of a toy.  But where it works, it beats
+      # expecting the user to do this themselves.)
+      keys_seen = set()
+      while state:
+        item = heapq.heappop(state)
+        ent = item.entity
+        if ent._key not in keys_seen:
+          keys_seen.add(ent._key)
+          queue.putq((None, None, ent))
+        subit = item.iterator
+        try:
+          batch, i, ent = yield subit.getq()
+        except EOFError:
+          pass
+        else:
+          item.entity = ent
+          heapq.heappush(state, item)
+      queue.complete()
 
   # Datastore API using the default context.
 
@@ -1368,7 +1355,7 @@ def _orders_to_orderings(orders):
   if isinstance(orders, datastore_query.CompositeOrder):
     # TODO: What about UTF-8?
     return [(pb.property(), pb.direction())for pb in orders._to_pbs()]
-  assert False, orders
+  assert False, 'Bad order: %r' % (orders,)
 
 
 def _ordering_to_order(ordering):
@@ -1383,3 +1370,91 @@ def _orderings_to_orders(orderings):
   if len(orders) == 1:
     return orders[0]
   return datastore_query.CompositeOrder(orders)
+
+
+# Helper functions for unifying sort orders across multiple queries.
+
+def _unify_sort_orders(queries):
+  """Generator to give a list of queries all the same sort order.
+
+  Args:
+    queries: A list of Query objects.
+
+  Yields:
+    Query objects.
+
+  Raises:
+    AssertionError if the orders cannot be unified.
+  """
+  the_orderings = None
+  for q in queries:
+    filters = q.filters
+    if filters is None:
+      filters = []
+    else:
+      filters = filters._to_filter({})._to_pbs()
+    orderings = _orders_to_orderings(q.orders)
+    new_orderings = _guess_orderings(filters, orderings)
+    if the_orderings is None:
+      # First time around.
+      the_orderings = new_orderings
+    elif (the_orderings == [(_KEY, _ASC)] and
+          new_orderings[1:] == [(_KEY, _ASC)]):
+      # Extend.
+      the_orderings = new_orderings
+    elif (new_orderings == [(_KEY, _ASC)] and
+          the_orderings[1:] == [(_KEY, _ASC)]):
+      # Shorter.
+      pass
+    elif the_orderings == new_orderings:
+      # Same.
+      pass
+    else:
+      raise datastore_errors.BadQueryError('Sort orders cannot be unified')
+  the_orders = _orderings_to_orders(the_orderings)
+  for q in queries:
+    orderings = _orders_to_orderings(q.orders)
+    if orderings == the_orderings:
+      yield q
+    else:
+      yield Query(kind=q.kind, ancestor=q.ancestor, filters=q.filters,
+                  orders=the_orders)
+
+
+def _guess_orderings(filters, orderings):
+  """Guess datastore orders based on filters.
+
+  This attempts to guess the actual order that the datastore service
+  will impose on the query based on the filters present.
+
+  The algorithm is currently as follows:
+  - If orders is empty, and there is an inequality filter (<, <=, >, >=),
+    then add an ascending order in the property used by that filter.
+  - If the last order isn't by __key__, add ascending order by __key__.
+
+  NOTE: This does not always match exactly what the backend does, as
+  it may use a descending index when one is available.  But for our
+  purpose it doesn't matter, since we always turn this order into an
+  explicit order.
+
+  (Copied from _GuessOrders() in the most recent datastore_stub_util.py.)
+
+  Args:
+    filters: A list of datastore_pb.Query_Filter instances.
+    orderings: A list of (property name, direction) pairs.
+
+  Returns:
+    A list of (property name, direction) tuples, possibly a copy of the input.
+  """
+  orderings = orderings[:]
+  if not orderings:
+    for filter_pb in filters:
+      if filter_pb.op() != datastore_pb.Query_Filter.EQUAL:
+        ordering = (filter_pb.property(0).name(), _ASC)
+        orderings.append(ordering)
+        break
+
+  if (not orderings or orderings[-1][0] != _KEY):
+    ordering = (_KEY, _ASC)
+    orderings.append(ordering)
+  return orderings
