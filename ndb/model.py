@@ -323,6 +323,15 @@ class ModelAdapter(datastore_rpc.AbstractAdapter):
         (default).
     """
     self.default_model = default_model
+    self.want_pbs = 0
+
+  # Make this a context manager to request setting _orig_pb.
+
+  def __enter__(self):
+    self.want_pbs += 1
+
+  def __exit__(self, *args):
+    self.want_pbs -= 1
 
   def pb_to_key(self, pb):
     return Key(reference=pb)
@@ -341,7 +350,10 @@ class ModelAdapter(datastore_rpc.AbstractAdapter):
     modelclass = Model._kind_map.get(kind, self.default_model)
     if modelclass is None:
       raise KindError("No implementation found for kind '%s'" % kind)
-    return modelclass._from_pb(pb)
+    entity = modelclass._from_pb(pb)
+    if self.want_pbs:
+      entity._orig_pb = pb
+    return entity
 
   def entity_to_pb(self, ent):
     pb = ent._to_pb()
@@ -1270,7 +1282,7 @@ class StructuredProperty(Property):
       # TODO: Avoid re-sorting for repeated values.
       for name, prop in sorted(value._properties.iteritems()):
         prop._serialize(value, pb, prefix + self._name + '.',
-                       self._repeated or parent_repeated)
+                        self._repeated or parent_repeated)
 
   def _deserialize(self, entity, p, depth=1):
     if not self._repeated:
