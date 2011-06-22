@@ -714,8 +714,8 @@ class Query(object):
     while rpc is not None:
       batch = yield rpc
       rpc = batch.next_batch_async(options)
-      for i, ent in enumerate(batch.results):
-        queue.putq((batch, i, ent))
+      for i, result in enumerate(batch.results):
+        queue.putq((batch, i, result))
     queue.complete()
 
   def _maybe_multi_query(self):
@@ -856,6 +856,9 @@ class Query(object):
                                             options=_make_options(q_options),
                                             merge_future=merge_future)
 
+  # TODO: Default limit to infinity for fetch*() and count*()?
+  # (And then also allow specifying it as a keyword argument.)
+
   @datastore_rpc._positional(2)
   def fetch(self, limit, **q_options):
     """Fetch a list of query results, up to a limit.
@@ -878,12 +881,6 @@ class Query(object):
     This is the asynchronous version of Query.fetch().
     """
     assert 'limit' not in q_options, q_options
-    if not isinstance(self.__filters, DisjunctionNode):
-      # TODO: Set these once _MultiQuery supports options.
-      q_options['limit'] = limit
-      q_options.setdefault('prefetch_size', limit)
-      q_options.setdefault('batch_size', limit)
-    # TODO: Maybe it's better to use map_async() here?
     res = []
     it = self.iter(**q_options)
     while (yield it.has_next_async()):
@@ -942,12 +939,17 @@ class Query(object):
 
     This is the asynchronous version of Query.count().
     """
+    # TODO: Support offset by incorporating it to the limit.
     assert 'offset' not in q_options, q_options
     assert 'limit' not in q_options, q_options
     if (self.__filters is not None and
         isinstance(self.__filters, DisjunctionNode)):
-      # _MultiQuery isn't yet smart enough to support the trick below,
+      # _MultiQuery does not support iterating over result batches,
       # so just fetch results and count them.
+      # TODO: Use QueryIterator to avoid materializing the results list.
+      q_options.setdefault('prefetch_size', limit)
+      q_options.setdefault('batch_size', limit)
+      q_options.setdefault('keys_only', True)
       results = yield self.fetch_async(limit, **q_options)
       raise tasklets.Return(len(results))
 
@@ -1253,32 +1255,65 @@ class _MultiQuery(object):
   def run_to_queue(self, queue, conn, options=None):
     """Run this query, putting entities into the given queue."""
     # Create a list of (first-entity, subquery-iterator) tuples.
-    # TODO: Use the specified sort order.
-    assert options is None, '_MultiQuery does not take options yet'
 
-    # TODO: Emulate various options (offset, limit, keys_only) while
-    # rejecting others (cursors) and passing yet others along to the
-    # subqueries (batch_size etc.).
+    if options is None:
+      # Default options.
+      offset = None
+      limit = None
+      keys_only = None
+    else:
+      # Check that no cursors are involved; we don't support those (yet).
+      if options.start_cursor or options.end_cursor or options.produce_cursors:
+        raise datastore_errors.BadArgumentError(
+          '_MultiQuery does not support cursors yet')
+      # Capture options we need to simulate.
+      offset = options.offset
+      limit = options.limit
+      keys_only = options.keys_only
+      # Decide if we need to modify the options passed to subqueries.
+      modifiers = {}
+      if offset:
+        # TODO: Keep this if we will run them sequentially.
+        modifiers['offset'] = None
+      if limit is not None:
+        # TODO: Could set this to offset + limit?
+        modifiers['limit'] = None
+      if keys_only and self.__orders is not None:
+        modifiers['keys_only'] = None
+      if modifiers:
+        options = QueryOptions(**modifiers)
 
-    # Advanced TODO: sometimes cursors can work too, at least
-    # for IN queries.
+    to_skip = 0
+    if offset:
+      to_skip = offset
 
-    # TODO: Stop iterating when no more results are required.
+    if limit is None:
+      limit = 2**63 - 1
 
     if self.__orders is None:
       # Run the subqueries sequentially; there is no order to keep.
       keys_seen = set()
       for subq in self.__subqueries:
         subit = tasklets.SerialQueueFuture('_MultiQuery.run_to_queue[ser]')
-        subq.run_to_queue(subit, conn)
+        subq.run_to_queue(subit, conn, options=options)
         while True:
           try:
-            batch, i, ent = yield subit.getq()
+            batch, i, result = yield subit.getq()
           except EOFError:
             break
-          if ent._key not in keys_seen:
-            keys_seen.add(ent._key)
-            queue.putq((None, None, ent))
+          if keys_only:
+            key = result
+          else:
+            key = result._key
+          if key not in keys_seen:
+            keys_seen.add(key)
+            if to_skip > 0:
+              to_skip -= 1
+            else:
+              if limit <= 0:
+                break
+              limit -= 1
+              queue.putq((None, None, result))
       queue.complete()
       return
 
@@ -1321,7 +1356,16 @@ class _MultiQuery(object):
         ent = item.entity
         if ent._key not in keys_seen:
           keys_seen.add(ent._key)
-          queue.putq((None, None, ent))
+          if to_skip > 0:
+            to_skip -= 1
+          else:
+            if limit <= 0:
+              break
+            limit -= 1
+            if keys_only:
+              queue.putq((None, None, ent._key))
+            else:
+              queue.putq((None, None, ent))
         subit = item.iterator
         try:
           batch, i, ent = yield subit.getq()

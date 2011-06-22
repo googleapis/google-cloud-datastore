@@ -518,6 +518,33 @@ class QueryTests(test_utils.DatastoreTest):
       self.assertEqual(res, [self.jill, self.joe])
     foo()
 
+  def testMultiQueryIteratorUnordered(self):
+    q = query.Query(kind='Foo').filter(Foo.tags.IN(['joe', 'jill']))
+    @tasklets.synctasklet
+    def foo():
+      it = iter(q)
+      res = []
+      while (yield it.has_next_async()):
+        val = it.next()
+        res.append(val)
+      self.assertEqual(set(r._key for r in res),
+                       set([self.jill._key, self.joe._key]))
+    foo()
+
+  def testMultiQueryFetch(self):
+    q = Foo.query(Foo.tags.IN(['joe', 'jill'])).order(-Foo.name)
+    expected = [self.joe, self.jill]
+    self.assertEqual(q.fetch(10), expected)
+    self.assertEqual(q.fetch(10, offset=1), expected[1:])
+    self.assertEqual(q.fetch(10, keys_only=True), [e._key for e in expected])
+
+  def testMultiQueryFetchUnordered(self):
+    q = Foo.query(Foo.tags.IN(['joe', 'jill']))
+    expected = [self.joe, self.jill]
+    self.assertEqual(q.fetch(10), expected)
+    self.assertEqual(q.fetch(10, offset=1), expected[1:])
+    self.assertEqual(q.fetch(10, keys_only=True), [e._key for e in expected])
+
   def testNotEqualOperator(self):
     q = query.Query(kind='Foo').filter(Foo.rate != 2)
     res = list(q)
