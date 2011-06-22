@@ -692,26 +692,27 @@ class Query(object):
     if filters is not None:
       post_filters = filters._post_filters()
       filters = filters._to_filter(bindings)
-    dsqry = datastore_query.Query(kind=kind,
-                                  ancestor=ancestor,
-                                  filter_predicate=filters,
-                                  order=self.__orders)
+    dsquery = datastore_query.Query(kind=kind,
+                                    ancestor=ancestor,
+                                    filter_predicate=filters,
+                                    order=self.__orders)
     if post_filters is not None:
-      dsqry = datastore_query._AugmentedQuery(
-        dsqry,
+      dsquery = datastore_query._AugmentedQuery(
+        dsquery,
         in_memory_filter=post_filters._to_filter(bindings, post=True))
-    return dsqry
+    return dsquery
 
   @tasklets.tasklet
-  def run_to_queue(self, queue, conn, options=None):
+  def run_to_queue(self, queue, conn, options=None, dsquery=None):
     """Run this query, putting entities into the given queue."""
     multiquery = self._maybe_multi_query()
     if multiquery is not None:
       multiquery.run_to_queue(queue, conn, options=options)  # No return value.
       return
-    dsqry = self._get_query(conn)
+    if dsquery is None:
+      dsquery = self._get_query(conn)
     orig_options = options
-    rpc = dsqry.run_async(conn, options)
+    rpc = dsquery.run_async(conn, options)
     skipped = 0
     count = 0
     while rpc is not None:
@@ -970,8 +971,8 @@ class Query(object):
     q_options['limit'] = 0
     options = _make_options(q_options)
     conn = tasklets.get_context()._conn
-    dsqry = self._get_query(conn)
-    rpc = dsqry.run_async(conn, options)
+    dsquery = self._get_query(conn)
+    rpc = dsquery.run_async(conn, options)
     total = 0
     while rpc is not None:
       batch = yield rpc
@@ -1216,10 +1217,11 @@ class QueryIterator(object):
 class _SubQueryIteratorState(object):
   """Helper class for _MultiQuery."""
 
-  def __init__(self, batch_i_entity, iterator, orders):
+  def __init__(self, batch_i_entity, iterator, dsquery, orders):
     batch, i, entity = batch_i_entity
     self.entity = entity
     self.iterator = iterator
+    self.dsquery = dsquery
     self.orders = orders
 
   def __cmp__(self, other):
@@ -1227,9 +1229,19 @@ class _SubQueryIteratorState(object):
     assert self.orders == other.orders, (self.orders, other.orders)
     lhs = self.entity._orig_pb
     rhs = other.entity._orig_pb
+    lhs_filter = self.dsquery._filter_predicate
+    rhs_filter = other.dsquery._filter_predicate
     names = self.orders._get_prop_names()
+    if lhs_filter is not None:
+      names |= lhs_filter._get_prop_names()
+    if rhs_filter is not None:
+      names |= rhs_filter._get_prop_names()
     lhs_value_map = datastore_query._make_key_value_map(lhs, names)
     rhs_value_map = datastore_query._make_key_value_map(rhs, names)
+    if lhs_filter is not None:
+      lhs_filter._prune(lhs_value_map)
+    if rhs_filter is not None:
+      rhs_filter._prune(rhs_value_map)
     return self.orders._cmp(lhs_value_map, rhs_value_map)
 
 
@@ -1336,14 +1348,16 @@ class _MultiQuery(object):
       # Create a list of (first-entity, subquery-iterator) tuples.
       state = []
       for subq in self.__subqueries:
+        dsquery = subq._get_query(conn)
         subit = tasklets.SerialQueueFuture('_MultiQuery.run_to_queue[par]')
-        subq.run_to_queue(subit, conn)
+        subq.run_to_queue(subit, conn, options=options, dsquery=dsquery)
         try:
           thing = yield subit.getq()
         except EOFError:
           continue
         else:
-          state.append(_SubQueryIteratorState(thing, subit, self.__orders))
+          state.append(_SubQueryIteratorState(thing, subit, dsquery,
+                                              self.__orders))
 
       # Now turn it into a sorted heap.  The heapq module claims that
       # calling heapify() is more efficient than calling heappush() for
