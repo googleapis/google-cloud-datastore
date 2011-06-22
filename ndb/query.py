@@ -1271,18 +1271,19 @@ class _MultiQuery(object):
       offset = options.offset
       limit = options.limit
       keys_only = options.keys_only
-      # Decide if we need to modify the options passed to subqueries.
-      modifiers = {}
-      if offset:
-        # TODO: Keep this if we will run them sequentially.
-        modifiers['offset'] = None
-      if limit is not None:
-        # TODO: Could set this to offset + limit?
-        modifiers['limit'] = None
-      if keys_only and self.__orders is not None:
-        modifiers['keys_only'] = None
-      if modifiers:
-        options = QueryOptions(config=options, **modifiers)
+
+    # Decide if we need to modify the options passed to subqueries.
+    modifiers = {}
+    if offset:
+      # TODO: Keep this if we will run them sequentially.
+      modifiers['offset'] = None
+    if limit is not None:
+      # TODO: Could set this to offset + limit?
+      modifiers['limit'] = None
+    if keys_only and self.__orders is not None:
+      modifiers['keys_only'] = None
+    if modifiers:
+      options = QueryOptions(config=options, **modifiers)
 
     if offset is None:
       offset = 0
