@@ -156,6 +156,10 @@ _KEY = datastore_types._KEY_SPECIAL_PROPERTY
 # Table of supported comparison operators.
 _OPS = frozenset(['=', '!=', '<', '<=', '>', '>=', 'in'])
 
+# The largest possible signed 32-bit integer. Used to ensure that
+# int32 proto fields do not overflow.  (From datastore.py.)
+_MAX_INT_32 = 2**31 - 1
+
 
 # TODO: Once CL/21689469 is submitted, get rid of this and its callers.
 def _make_unsorted_key_value_map(pb, property_names):
@@ -881,6 +885,8 @@ class Query(object):
     This is the asynchronous version of Query.fetch().
     """
     assert 'limit' not in q_options, q_options
+    if limit is None:
+      limit = _MAX_INT_32
     q_options['limit'] = limit
     q_options.setdefault('prefetch_size', limit)
     q_options.setdefault('batch_size', limit)
@@ -945,6 +951,8 @@ class Query(object):
     # TODO: Support offset by incorporating it to the limit.
     assert 'offset' not in q_options, q_options
     assert 'limit' not in q_options, q_options
+    if limit is None:
+      limit = _MAX_INT_32
     if (self.__filters is not None and
         isinstance(self.__filters, DisjunctionNode)):
       # _MultiQuery does not support iterating over result batches,
@@ -1278,8 +1286,9 @@ class _MultiQuery(object):
       # TODO: Keep this if we will run them sequentially.
       modifiers['offset'] = None
     if limit is not None:
-      # TODO: Could set this to offset + limit?
-      modifiers['limit'] = None
+      # TODO: Be even more clever for sequential queries.
+      if offset:
+        modifiers['limit'] = offset + limit
     if keys_only and self.__orders is not None:
       modifiers['keys_only'] = None
     if modifiers:
@@ -1289,7 +1298,7 @@ class _MultiQuery(object):
       offset = 0
 
     if limit is None:
-      limit = 2**63 - 1
+      limit = _MAX_INT_32
 
     if self.__orders is None:
       # Run the subqueries sequentially; there is no order to keep.
