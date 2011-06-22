@@ -1225,9 +1225,12 @@ class _SubQueryIteratorState(object):
   def __cmp__(self, other):
     assert isinstance(other, _SubQueryIteratorState), repr(other)
     assert self.orders == other.orders, (self.orders, other.orders)
-    our_entity = self.entity
-    their_entity = other.entity
-    return self.orders.cmp(our_entity._orig_pb, their_entity._orig_pb)
+    lhs = self.entity._orig_pb
+    rhs = other.entity._orig_pb
+    names = self.orders._get_prop_names()
+    lhs_value_map = datastore_query._make_key_value_map(lhs, names)
+    rhs_value_map = datastore_query._make_key_value_map(rhs, names)
+    return self.orders._cmp(lhs_value_map, rhs_value_map)
 
 
 class _MultiQuery(object):
