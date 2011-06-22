@@ -545,6 +545,18 @@ class QueryTests(test_utils.DatastoreTest):
     self.assertEqual(q.fetch(10, offset=1), expected[1:])
     self.assertEqual(q.fetch(10, keys_only=True), [e._key for e in expected])
 
+  def testMultiQueryCount(self):
+    q = Foo.query(Foo.tags.IN(['joe', 'jill'])).order(Foo.name)
+    self.assertEqual(q.count(10), 2)
+    ##self.assertEqual(q.count(10, offset=1), 1)
+    self.assertEqual(q.count(10, keys_only=True), 2)
+
+  def testMultiQueryCountUnordered(self):
+    q = Foo.query(Foo.tags.IN(['joe', 'jill']))
+    self.assertEqual(q.count(10), 2)
+    ##self.assertEqual(q.count(10, offset=1), 1)
+    self.assertEqual(q.count(10, keys_only=True), 2)
+
   def testNotEqualOperator(self):
     q = query.Query(kind='Foo').filter(Foo.rate != 2)
     res = list(q)
