@@ -573,6 +573,19 @@ class QueryTests(test_utils.DatastoreTest):
     self.assertEqual(q.count(10, keys_only=True), 2)
     self.assertEqual(q.count(keys_only=True), 2)
 
+  def testMultiQueryWithAndWithoutAncestor(self):
+    class Benjamin(model.Model):
+      name = model.StringProperty()
+    ben = Benjamin(name='ben', parent=self.moe.key)
+    ben.put()
+    benji = Benjamin(name='benji')
+    benji.put()
+    bq = Benjamin.query()
+    baq = Benjamin.query(ancestor=self.moe.key)
+    mq = query._MultiQuery([bq, baq])
+    res = list(mq)
+    self.assertEqual(res, [benji, ben])
+
   def testNotEqualOperator(self):
     q = query.Query(kind='Foo').filter(Foo.rate != 2)
     res = list(q)

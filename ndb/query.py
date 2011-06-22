@@ -1410,6 +1410,8 @@ class _MultiQuery(object):
 
   __iter__ = iter
 
+  # TODO: Add fetch() etc.?
+
 
 # Helper functions to convert between orders and orderings.  An order
 # is a datastore_query.Order instance.  An ordering is a
