@@ -122,6 +122,8 @@ in a tasklet, properly yielding when appropriate:
     print emp.name, emp.age
 """
 
+from __future__ import with_statement
+
 __author__ = 'guido@google.com (Guido van Rossum)'
 
 import heapq
@@ -129,6 +131,7 @@ import itertools
 
 from google.appengine.api import datastore_errors
 from google.appengine.api import datastore_types
+from google.appengine.datastore import datastore_pb
 from google.appengine.datastore import datastore_query
 from google.appengine.datastore import datastore_rpc
 from google.appengine.ext import gql
@@ -148,9 +151,13 @@ Cursor = datastore_query.Cursor
 _ASC = datastore_query.PropertyOrder.ASCENDING
 _DESC = datastore_query.PropertyOrder.DESCENDING
 _AND = datastore_query.CompositeFilter.AND
+_KEY = datastore_types._KEY_SPECIAL_PROPERTY
 
 # Table of supported comparison operators.
 _OPS = frozenset(['=', '!=', '<', '<=', '>', '>=', 'in'])
+
+# Default limit value.  (Yes, the datastore uses int32!)
+_MAX_LIMIT = 2**31 - 1
 
 
 # TODO: Once CL/21689469 is submitted, get rid of this and its callers.
@@ -167,9 +174,8 @@ def _make_unsorted_key_value_map(pb, property_names):
         datastore_types.PropertyValueToKeyValue(prop.value()))
 
   # Adding special key property (if requested).
-  if datastore_types._KEY_SPECIAL_PROPERTY in value_map:
-    value_map[datastore_types._KEY_SPECIAL_PROPERTY] = [
-      datastore_types.ReferenceToKeyValue(pb.key())]
+  if _KEY in value_map:
+    value_map[_KEY] = [datastore_types.ReferenceToKeyValue(pb.key())]
 
   return value_map
 
@@ -348,7 +354,7 @@ class FilterNode(Node):
     if opsymbol == '!=':
       n1 = FilterNode(name, '<', value)
       n2 = FilterNode(name, '>', value)
-      return DisjunctionNode([n1, n2])
+      return DisjunctionNode(n1, n2)
     if opsymbol == 'in' and not isinstance(value, Binding):
       assert isinstance(value, (list, tuple, set, frozenset)), repr(value)
       nodes = [FilterNode(name, '=', v) for v in value]
@@ -356,7 +362,7 @@ class FilterNode(Node):
         return FalseNode()
       if len(nodes) == 1:
         return nodes[0]
-      return DisjunctionNode(nodes)
+      return DisjunctionNode(*nodes)
     self = super(FilterNode, cls).__new__(cls)
     self.__name = name
     self.__opsymbol = opsymbol
@@ -431,7 +437,7 @@ class PostFilterNode(Node):
 class ConjunctionNode(Node):
   """Tree node representing a Boolean AND operator on two or more nodes."""
 
-  def __new__(cls, nodes):
+  def __new__(cls, *nodes):
     assert nodes, 'ConjunctionNode requires at least one node'
     if len(nodes) == 1:
       return nodes[0]
@@ -460,7 +466,7 @@ class ConjunctionNode(Node):
     if not clauses:
       return FalseNode()
     if len(clauses) > 1:
-      return DisjunctionNode([ConjunctionNode(clause) for clause in clauses])
+      return DisjunctionNode(*[ConjunctionNode(*clause) for clause in clauses])
     self = super(ConjunctionNode, cls).__new__(cls)
     self.__nodes = clauses[0]
     return self
@@ -469,7 +475,7 @@ class ConjunctionNode(Node):
     return iter(self.__nodes)
 
   def __repr__(self):
-    return '%s(%r)' % (self.__class__.__name__, self.__nodes)
+    return 'OR(%s)' % (', '.join(map(str, self.__nodes)))
 
   def __eq__(self, other):
     if not isinstance(other, ConjunctionNode):
@@ -498,19 +504,19 @@ class ConjunctionNode(Node):
       return post_filters[0]
     if post_filters == self.__nodes:
       return self
-    return ConjunctionNode(post_filters)
+    return ConjunctionNode(*post_filters)
 
   def resolve(self):
     nodes = [node.resolve() for node in self.__nodes]
     if nodes == self.__nodes:
       return self
-    return ConjunctionNode(nodes)
+    return ConjunctionNode(*nodes)
 
 
 class DisjunctionNode(Node):
   """Tree node representing a Boolean OR operator on two or more nodes."""
 
-  def __new__(cls, nodes):
+  def __new__(cls, *nodes):
     assert nodes, 'DisjunctionNode requires at least one node'
     if len(nodes) == 1:
       return nodes[0]
@@ -529,7 +535,7 @@ class DisjunctionNode(Node):
     return iter(self.__nodes)
 
   def __repr__(self):
-    return '%s(%r)' % (self.__class__.__name__, self.__nodes)
+    return 'OR(%s)' % (', '.join(map(str, self.__nodes)))
 
   def __eq__(self, other):
     if not isinstance(other, DisjunctionNode):
@@ -540,28 +546,12 @@ class DisjunctionNode(Node):
     nodes = [node.resolve() for node in self.__nodes]
     if nodes == self.__nodes:
       return self
-    return DisjunctionNode(nodes)
+    return DisjunctionNode(*nodes)
 
 
-# TODO: Change ConjunctionNode and DisjunctionNode signatures so that
-# AND and OR can just be aliases for them -- or possibly even rename.
-
-def AND(*args):
-  """Construct a ConjunctionNode from one or more tree nodes."""
-  assert args, 'AND requires at least one argument'
-  assert all(isinstance(arg, Node) for arg in args), repr(args)
-  if len(args) == 1:
-    return args[0]
-  return ConjunctionNode(args)
-
-
-def OR(*args):
-  """Construct a DisjunctionNode from one or more tree nodes."""
-  assert args, 'OR requires at least one argument'
-  assert all(isinstance(arg, Node) for arg in args), repr(args)
-  if len(args) == 1:
-    return args[0]
-  return DisjunctionNode(args)
+# AND and OR are preferred aliases for these.
+AND = ConjunctionNode
+OR = DisjunctionNode
 
 
 def _args_to_val(func, args, bindings):
@@ -624,7 +614,7 @@ def parse_gql(query_string):
       filters.append(FilterNode(name, op, val))
   if filters:
     filters.sort(key=lambda x: x._sort_key())  # For predictable tests.
-    filters = ConjunctionNode(filters)
+    filters = ConjunctionNode(*filters)
   else:
     filters = None
   orders = _orderings_to_orders(gql_qry.orderings())
@@ -702,33 +692,34 @@ class Query(object):
     if filters is not None:
       post_filters = filters._post_filters()
       filters = filters._to_filter(bindings)
-    dsqry = datastore_query.Query(kind=kind,
-                                  ancestor=ancestor,
-                                  filter_predicate=filters,
-                                  order=self.__orders)
+    dsquery = datastore_query.Query(kind=kind,
+                                    ancestor=ancestor,
+                                    filter_predicate=filters,
+                                    order=self.__orders)
     if post_filters is not None:
-      dsqry = datastore_query._AugmentedQuery(
-        dsqry,
+      dsquery = datastore_query._AugmentedQuery(
+        dsquery,
         in_memory_filter=post_filters._to_filter(bindings, post=True))
-    return dsqry
+    return dsquery
 
   @tasklets.tasklet
-  def run_to_queue(self, queue, conn, options=None):
+  def run_to_queue(self, queue, conn, options=None, dsquery=None):
     """Run this query, putting entities into the given queue."""
     multiquery = self._maybe_multi_query()
     if multiquery is not None:
       multiquery.run_to_queue(queue, conn, options=options)  # No return value.
       return
-    dsqry = self._get_query(conn)
+    if dsquery is None:
+      dsquery = self._get_query(conn)
     orig_options = options
-    rpc = dsqry.run_async(conn, options)
+    rpc = dsquery.run_async(conn, options)
     skipped = 0
     count = 0
     while rpc is not None:
       batch = yield rpc
       rpc = batch.next_batch_async(options)
-      for i, ent in enumerate(batch.results):
-        queue.putq((batch, i, ent))
+      for i, result in enumerate(batch.results):
+        queue.putq((batch, i, result))
     queue.complete()
 
   def _maybe_multi_query(self):
@@ -742,7 +733,7 @@ class Query(object):
           subquery = Query(kind=self.__kind, ancestor=self.__ancestor,
                            filters=subfilter, orders=self.__orders)
           subqueries.append(subquery)
-        return _MultiQuery(subqueries, orders=self.__orders)
+        return _MultiQuery(subqueries)
     return None
 
   @property
@@ -781,13 +772,13 @@ class Query(object):
     elif len(preds) == 1:
       pred = preds[0]
     else:
-      pred = ConjunctionNode(preds)
+      pred = ConjunctionNode(*preds)
     return self.__class__(kind=self.kind, ancestor=self.ancestor,
                           orders=self.orders, filters=pred)
 
   def order(self, *args):
     """Return a new Query with additional sort order(s) applied."""
-    # q.order(Eployee.name, -Employee.age)
+    # q.order(Employee.name, -Employee.age)
     if not args:
       return self
     orders = []
@@ -869,10 +860,11 @@ class Query(object):
                                             options=_make_options(q_options),
                                             merge_future=merge_future)
 
-  # TODO: support the rest for _MultiQuery.
+  # TODO: Default limit to infinity for fetch*() and count*()?
+  # (And then also allow specifying it as a keyword argument.)
 
   @datastore_rpc._positional(2)
-  def fetch(self, limit, **q_options):
+  def fetch(self, limit=None, **q_options):
     """Fetch a list of query results, up to a limit.
 
     Args:
@@ -887,18 +879,17 @@ class Query(object):
 
   @tasklets.tasklet
   @datastore_rpc._positional(2)
-  def fetch_async(self, limit, **q_options):
+  def fetch_async(self, limit=None, **q_options):
     """Fetch a list of query results, up to a limit.
 
     This is the asynchronous version of Query.fetch().
     """
     assert 'limit' not in q_options, q_options
-    if not isinstance(self.__filters, DisjunctionNode):
-      # TODO: Set these once _MultiQuery supports options.
-      q_options['limit'] = limit
-      q_options.setdefault('prefetch_size', limit)
-      q_options.setdefault('batch_size', limit)
-    # TODO: Maybe it's better to use map_async() here?
+    if limit is None:
+      limit = _MAX_LIMIT
+    q_options['limit'] = limit
+    q_options.setdefault('prefetch_size', limit)
+    q_options.setdefault('batch_size', limit)
     res = []
     it = self.iter(**q_options)
     while (yield it.has_next_async()):
@@ -933,7 +924,7 @@ class Query(object):
     raise tasklets.Return(res[0])
 
   @datastore_rpc._positional(2)
-  def count(self, limit, **q_options):
+  def count(self, limit=None, **q_options):
     """Count the number of query results, up to a limit.
 
     This returns the same result as len(q.fetch(limit)) but more
@@ -952,17 +943,24 @@ class Query(object):
 
   @tasklets.tasklet
   @datastore_rpc._positional(2)
-  def count_async(self, limit, **q_options):
+  def count_async(self, limit=None, **q_options):
     """Count the number of query results, up to a limit.
 
     This is the asynchronous version of Query.count().
     """
+    # TODO: Support offset by incorporating it to the limit.
     assert 'offset' not in q_options, q_options
     assert 'limit' not in q_options, q_options
+    if limit is None:
+      limit = _MAX_LIMIT
     if (self.__filters is not None and
         isinstance(self.__filters, DisjunctionNode)):
-      # _MultiQuery isn't yet smart enough to support the trick below,
+      # _MultiQuery does not support iterating over result batches,
       # so just fetch results and count them.
+      # TODO: Use QueryIterator to avoid materializing the results list.
+      q_options.setdefault('prefetch_size', limit)
+      q_options.setdefault('batch_size', limit)
+      q_options.setdefault('keys_only', True)
       results = yield self.fetch_async(limit, **q_options)
       raise tasklets.Return(len(results))
 
@@ -973,8 +971,8 @@ class Query(object):
     q_options['limit'] = 0
     options = _make_options(q_options)
     conn = tasklets.get_context()._conn
-    dsqry = self._get_query(conn)
-    rpc = dsqry.run_async(conn, options)
+    dsquery = self._get_query(conn)
+    rpc = dsquery.run_async(conn, options)
     total = 0
     while rpc is not None:
       batch = yield rpc
@@ -1219,47 +1217,38 @@ class QueryIterator(object):
 class _SubQueryIteratorState(object):
   """Helper class for _MultiQuery."""
 
-  def __init__(self, batch_i_entity, iterator, orderings):
+  def __init__(self, batch_i_entity, iterator, dsquery, orders):
     batch, i, entity = batch_i_entity
     self.entity = entity
     self.iterator = iterator
-    self.orderings = orderings
+    self.dsquery = dsquery
+    self.orders = orders
 
   def __cmp__(self, other):
     assert isinstance(other, _SubQueryIteratorState), repr(other)
-    assert self.orderings == other.orderings, (self.orderings, other.orderings)
-    our_entity = self.entity
-    their_entity = other.entity
-    # TODO: Renamed properties again.
-    if self.orderings:
-      for propname, direction in self.orderings:
-        our_value = getattr(our_entity, propname, None)
-        their_value = getattr(their_entity, propname, None)
-        # NOTE: Repeated properties sort by lowest value when in
-        # ascending order and highest value when in descending order.
-        # TODO: Use min_max_value_cache as datastore.py does?
-        if direction == _ASC:
-          func = min
-        else:
-          func = max
-        if isinstance(our_value, list):
-          our_value = func(our_value)
-        if isinstance(their_value, list):
-          their_value = func(their_value)
-        flag = cmp(our_value, their_value)
-        if direction == _DESC:
-          flag = -flag
-        if flag:
-          return flag
-    # All considered properties are equal; compare by key (ascending).
-    # TODO: Comparison between ints and strings is arbitrary.
-    return cmp(our_entity._key.pairs(), their_entity._key.pairs())
+    assert self.orders == other.orders, (self.orders, other.orders)
+    lhs = self.entity._orig_pb
+    rhs = other.entity._orig_pb
+    lhs_filter = self.dsquery._filter_predicate
+    rhs_filter = other.dsquery._filter_predicate
+    names = self.orders._get_prop_names()
+    if lhs_filter is not None:
+      names |= lhs_filter._get_prop_names()
+    if rhs_filter is not None:
+      names |= rhs_filter._get_prop_names()
+    lhs_value_map = datastore_query._make_key_value_map(lhs, names)
+    rhs_value_map = datastore_query._make_key_value_map(rhs, names)
+    if lhs_filter is not None:
+      lhs_filter._prune(lhs_value_map)
+    if rhs_filter is not None:
+      rhs_filter._prune(rhs_value_map)
+    return self.orders._cmp(lhs_value_map, rhs_value_map)
 
 
 class _MultiQuery(object):
   """Helper class to run queries involving !=, IN or OR operators."""
 
-  # This is not created by the user directly, but implicitly when
+  # This is not instantiated by the user directly, but implicitly when
   # iterating over a query with at least one filter using an IN, OR or
   # != operator.  Note that some options must be interpreted by
   # _MultiQuery instead of passed to the underlying Queries' methods,
@@ -1270,78 +1259,149 @@ class _MultiQuery(object):
   # are identical except one has an ancestor and the other doesn't.
   # The HR datastore makes that a useful special case.
 
-  def __init__(self, subqueries, orders=None):
+  def __init__(self, subqueries):
     assert isinstance(subqueries, list), subqueries
     assert all(isinstance(subq, Query) for subq in subqueries), subqueries
-    # TODO: Assert the kinds match (and app/namespace, when we support them).
-    if orders is not None:
-      assert isinstance(orders, datastore_query.Order), repr(orders)
-    # TODO: Unify orders, insert implied orders based on inequality
-    # filters, append __key__ order.
+    kind = subqueries[0].kind
+    assert kind, 'Subquery kind cannot be missing'
+    assert all(subq.kind == kind for subq in subqueries), subqueries
+    # TODO: Assert app and namespace match, when we support them.
+    orders = subqueries[0].orders
+    assert all(subq.orders == orders for subq in subqueries), subqueries
     self.__subqueries = subqueries
     self.__orders = orders
     self.ancestor = None  # Hack for map_query().
 
+  @property
+  def orders(self):
+    return self.__orders
+
   @tasklets.tasklet
   def run_to_queue(self, queue, conn, options=None):
     """Run this query, putting entities into the given queue."""
-    # Create a list of (first-entity, subquery-iterator) tuples.
-    # TODO: Use the specified sort order.
-    assert options is None, '_MultiQuery does not take options yet'
+    if options is None:
+      # Default options.
+      offset = None
+      limit = None
+      keys_only = None
+    else:
+      # Check that no cursors are involved; we don't support those (yet).
+      if options.start_cursor or options.end_cursor or options.produce_cursors:
+        raise datastore_errors.BadArgumentError(
+          '_MultiQuery does not support cursors yet')
+      # Capture options we need to simulate.
+      offset = options.offset
+      limit = options.limit
+      keys_only = options.keys_only
 
-    # TODO: Emulate various options (offset, limit, keys_only) while
-    # rejecting others (cursors) and passing yet others along to the
-    # subqueries (batch_size etc.).
+    # Decide if we need to modify the options passed to subqueries.
+    modifiers = {}
+    if offset:
+      # TODO: Keep this if we will run them sequentially.
+      modifiers['offset'] = None
+    if limit is not None:
+      # TODO: Be even more clever for sequential queries.
+      if offset:
+        modifiers['limit'] = offset + limit
+    if keys_only and self.__orders is not None:
+      modifiers['keys_only'] = None
+    if modifiers:
+      options = QueryOptions(config=options, **modifiers)
 
-    # Advanced TODO: sometimes cursors can work too, at least
-    # for IN queries.
+    if offset is None:
+      offset = 0
 
-    state = []
-    orderings = _orders_to_orderings(self.__orders)
-    for subq in self.__subqueries:
-      subit = tasklets.SerialQueueFuture('_MultiQuery.run_to_queue')
-      subq.run_to_queue(subit, conn)
-      try:
-        ent = yield subit.getq()
-      except EOFError:
-        continue
-      else:
-        state.append(_SubQueryIteratorState(ent, subit, orderings))
+    if limit is None:
+      limit = _MAX_LIMIT
 
-    # Now turn it into a sorted heap.  The heapq module claims that
-    # calling heapify() is more efficient than calling heappush() for
-    # each item.
-    heapq.heapify(state)
+    if self.__orders is None:
+      # Run the subqueries sequentially; there is no order to keep.
+      keys_seen = set()
+      for subq in self.__subqueries:
+        subit = tasklets.SerialQueueFuture('_MultiQuery.run_to_queue[ser]')
+        subq.run_to_queue(subit, conn, options=options)
+        while True:
+          try:
+            batch, i, result = yield subit.getq()
+          except EOFError:
+            break
+          if keys_only:
+            key = result
+          else:
+            key = result._key
+          if key not in keys_seen:
+            keys_seen.add(key)
+            if offset > 0:
+              offset -= 1
+            else:
+              if limit <= 0:
+                break
+              limit -= 1
+              queue.putq((None, None, result))
+      queue.complete()
+      return
 
-    # Repeatedly yield the lowest entity from the state vector,
-    # filtering duplicates.  This is essentially a multi-way merge
-    # sort.  One would think it should be possible to filter
-    # duplicates simply by dropping other entities already in the
-    # state vector that are equal to the lowest entity, but because of
-    # the weird sorting of repeated properties, we have to explicitly
-    # keep a set of all keys, so we can remove later occurrences.
-    # Yes, this means that the output may not be sorted correctly.
-    # Too bad.  (I suppose you can do this in constant memory bounded
-    # by the maximum number of entries in relevant repeated
-    # properties, but I'm too lazy for now.  And yes, all this means
-    # _MultiQuery is a bit of a toy.  But where it works, it beats
-    # expecting the user to do this themselves.)
-    keys_seen = set()
-    while state:
-      item = heapq.heappop(state)
-      ent = item.entity
-      if ent._key not in keys_seen:
-        keys_seen.add(ent._key)
-        queue.putq((None, None, ent))
-      subit = item.iterator
-      try:
-        batch, i, ent = yield subit.getq()
-      except EOFError:
-        pass
-      else:
-        item.entity = ent
-        heapq.heappush(state, item)
-    queue.complete()
+    # This with-statement causes the adapter to set _orig_pb on all
+    # entities it converts from protobuf.
+    # TODO: Does this interact properly with the cache?
+    with conn.adapter:
+      # Create a list of (first-entity, subquery-iterator) tuples.
+      state = []
+      for subq in self.__subqueries:
+        dsquery = subq._get_query(conn)
+        subit = tasklets.SerialQueueFuture('_MultiQuery.run_to_queue[par]')
+        subq.run_to_queue(subit, conn, options=options, dsquery=dsquery)
+        try:
+          thing = yield subit.getq()
+        except EOFError:
+          continue
+        else:
+          state.append(_SubQueryIteratorState(thing, subit, dsquery,
+                                              self.__orders))
+
+      # Now turn it into a sorted heap.  The heapq module claims that
+      # calling heapify() is more efficient than calling heappush() for
+      # each item.
+      heapq.heapify(state)
+
+      # Repeatedly yield the lowest entity from the state vector,
+      # filtering duplicates.  This is essentially a multi-way merge
+      # sort.  One would think it should be possible to filter
+      # duplicates simply by dropping other entities already in the
+      # state vector that are equal to the lowest entity, but because of
+      # the weird sorting of repeated properties, we have to explicitly
+      # keep a set of all keys, so we can remove later occurrences.
+      # Yes, this means that the output may not be sorted correctly.
+      # Too bad.  (I suppose you can do this in constant memory bounded
+      # by the maximum number of entries in relevant repeated
+      # properties, but I'm too lazy for now.  And yes, all this means
+      # _MultiQuery is a bit of a toy.  But where it works, it beats
+      # expecting the user to do this themselves.)
+      keys_seen = set()
+      while state:
+        item = heapq.heappop(state)
+        ent = item.entity
+        if ent._key not in keys_seen:
+          keys_seen.add(ent._key)
+          if offset > 0:
+            offset -= 1
+          else:
+            if limit <= 0:
+              break
+            limit -= 1
+            if keys_only:
+              queue.putq((None, None, ent._key))
+            else:
+              queue.putq((None, None, ent))
+        subit = item.iterator
+        try:
+          batch, i, ent = yield subit.getq()
+        except EOFError:
+          pass
+        else:
+          item.entity = ent
+          heapq.heappush(state, item)
+      queue.complete()
 
   # Datastore API using the default context.
 
@@ -1349,6 +1409,8 @@ class _MultiQuery(object):
     return QueryIterator(self, **q_options)
 
   __iter__ = iter
+
+  # TODO: Add fetch() etc.?
 
 
 # Helper functions to convert between orders and orderings.  An order
@@ -1368,7 +1430,7 @@ def _orders_to_orderings(orders):
   if isinstance(orders, datastore_query.CompositeOrder):
     # TODO: What about UTF-8?
     return [(pb.property(), pb.direction())for pb in orders._to_pbs()]
-  assert False, orders
+  assert False, 'Bad order: %r' % (orders,)
 
 
 def _ordering_to_order(ordering):

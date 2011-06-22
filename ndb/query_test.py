@@ -104,8 +104,8 @@ class QueryTests(test_utils.DatastoreTest):
     q = Employee.seniors(42, 5)
     self.assertEqual(q.filters,
                      query.ConjunctionNode(
-                       [query.FilterNode('Age', '>=', 42),
-                        query.FilterNode('rank', '<=', 5)]))
+                       query.FilterNode('Age', '>=', 42),
+                       query.FilterNode('rank', '<=', 5)))
     self.assertEqual(query._orders_to_orderings(q.orders),
                      [('name', query._ASC), ('Age', query._DESC)])
 
@@ -119,8 +119,8 @@ class QueryTests(test_utils.DatastoreTest):
     q = Employee.query(query.AND(Employee.age >= 42, Employee.rank <= 5))
     self.assertEqual(q.filters,
                      query.ConjunctionNode(
-                       [query.FilterNode('Age', '>=', 42),
-                        query.FilterNode('rank', '<=', 5)]))
+                       query.FilterNode('Age', '>=', 42),
+                       query.FilterNode('rank', '<=', 5)))
 
   def testOrQuery(self):
     class Employee(model.Model):
@@ -132,8 +132,8 @@ class QueryTests(test_utils.DatastoreTest):
     q = Employee.query(query.OR(Employee.age < 42, Employee.rank > 5))
     self.assertEqual(q.filters,
                      query.DisjunctionNode(
-                       [query.FilterNode('Age', '<', 42),
-                        query.FilterNode('rank', '>', 5)]))
+                       query.FilterNode('Age', '<', 42),
+                       query.FilterNode('rank', '>', 5)))
 
   def testEmptyInFilter(self):
     class Employee(model.Model):
@@ -161,8 +161,8 @@ class QueryTests(test_utils.DatastoreTest):
     q = Employee.query(Employee.name.IN(['a', 'b']))
     self.assertEqual(q.filters,
                      query.DisjunctionNode(
-                       [query.FilterNode('name', '=', 'a'),
-                        query.FilterNode('name', '=', 'b')]))
+                       query.FilterNode('name', '=', 'a'),
+                       query.FilterNode('name', '=', 'b')))
     a = Employee(name='a')
     a.put()
     b = Employee(name='b')
@@ -275,8 +275,7 @@ class QueryTests(test_utils.DatastoreTest):
   def testMultiQuery(self):
     q1 = query.Query(kind='Foo').filter(Foo.tags == 'jill').order(Foo.name)
     q2 = query.Query(kind='Foo').filter(Foo.tags == 'joe').order(Foo.name)
-    qq = query._MultiQuery([q1, q2],
-                           query._ordering_to_order(('name', query._ASC)))
+    qq = query._MultiQuery([q1, q2])
     res = list(qq)
     self.assertEqual(res, [self.jill, self.joe])
 
@@ -519,6 +518,74 @@ class QueryTests(test_utils.DatastoreTest):
       self.assertEqual(res, [self.jill, self.joe])
     foo()
 
+  def testMultiQueryIteratorUnordered(self):
+    q = query.Query(kind='Foo').filter(Foo.tags.IN(['joe', 'jill']))
+    @tasklets.synctasklet
+    def foo():
+      it = iter(q)
+      res = []
+      while (yield it.has_next_async()):
+        val = it.next()
+        res.append(val)
+      self.assertEqual(set(r._key for r in res),
+                       set([self.jill._key, self.joe._key]))
+    foo()
+
+  def testMultiQueryFetch(self):
+    q = Foo.query(Foo.tags.IN(['joe', 'jill'])).order(-Foo.name)
+    expected = [self.joe, self.jill]
+    self.assertEqual(q.fetch(10), expected)
+    self.assertEqual(q.fetch(None), expected)
+    self.assertEqual(q.fetch(), expected)
+    self.assertEqual(q.fetch(2), expected)
+    self.assertEqual(q.fetch(1), expected[:1])
+    self.assertEqual(q.fetch(10, offset=1), expected[1:])
+    self.assertEqual(q.fetch(1, offset=1), expected[1:])
+    self.assertEqual(q.fetch(10, keys_only=True), [e._key for e in expected])
+
+  def testMultiQueryFetchUnordered(self):
+    q = Foo.query(Foo.tags.IN(['joe', 'jill']))
+    expected = [self.joe, self.jill]
+    self.assertEqual(q.fetch(10), expected)
+    self.assertEqual(q.fetch(None), expected)
+    self.assertEqual(q.fetch(), expected)
+    self.assertEqual(q.fetch(2), expected)
+    self.assertEqual(q.fetch(1), expected[:1])
+    self.assertEqual(q.fetch(10, offset=1), expected[1:])
+    self.assertEqual(q.fetch(1, offset=1), expected[1:])
+    self.assertEqual(q.fetch(10, keys_only=True), [e._key for e in expected])
+
+  def testMultiQueryCount(self):
+    q = Foo.query(Foo.tags.IN(['joe', 'jill'])).order(Foo.name)
+    self.assertEqual(q.count(10), 2)
+    self.assertEqual(q.count(None), 2)
+    self.assertEqual(q.count(), 2)
+    self.assertEqual(q.count(2), 2)
+    self.assertEqual(q.count(1), 1)
+    self.assertEqual(q.count(10, keys_only=True), 2)
+    self.assertEqual(q.count(keys_only=True), 2)
+
+  def testMultiQueryCountUnordered(self):
+    q = Foo.query(Foo.tags.IN(['joe', 'jill']))
+    self.assertEqual(q.count(10), 2)
+    self.assertEqual(q.count(None), 2)
+    self.assertEqual(q.count(), 2)
+    self.assertEqual(q.count(10, keys_only=True), 2)
+    self.assertEqual(q.count(keys_only=True), 2)
+
+  def testMultiQueryWithAndWithoutAncestor(self):
+    class Benjamin(model.Model):
+      name = model.StringProperty()
+    ben = Benjamin(name='ben', parent=self.moe.key)
+    ben.put()
+    benji = Benjamin(name='benji')
+    benji.put()
+    bq = Benjamin.query()
+    baq = Benjamin.query(ancestor=self.moe.key)
+    mq = query._MultiQuery([bq, baq])
+    res = list(mq)
+    self.assertEqual(res, [benji, ben])
+
   def testNotEqualOperator(self):
     q = query.Query(kind='Foo').filter(Foo.rate != 2)
     res = list(q)
@@ -536,14 +603,14 @@ class QueryTests(test_utils.DatastoreTest):
     ConjunctionNode = query.ConjunctionNode
     FilterNode = query.FilterNode
     expected = DisjunctionNode(
-      [ConjunctionNode([FilterNode('tags', '=', 'jill'),
-                        FilterNode('rate', '=', 1)]),
-       ConjunctionNode([FilterNode('tags', '=', 'jill'),
-                        FilterNode('rate', '=', 2)]),
-       ConjunctionNode([FilterNode('tags', '=', 'hello'),
-                        FilterNode('rate', '=', 1)]),
-       ConjunctionNode([FilterNode('tags', '=', 'hello'),
-                        FilterNode('rate', '=', 2)])])
+      ConjunctionNode(FilterNode('tags', '=', 'jill'),
+                      FilterNode('rate', '=', 1)),
+      ConjunctionNode(FilterNode('tags', '=', 'jill'),
+                      FilterNode('rate', '=', 2)),
+      ConjunctionNode(FilterNode('tags', '=', 'hello'),
+                      FilterNode('rate', '=', 1)),
+      ConjunctionNode(FilterNode('tags', '=', 'hello'),
+                      FilterNode('rate', '=', 2)))
     self.assertEqual(q.filters, expected)
 
   def testHalfDistributiveLaw(self):
@@ -551,16 +618,16 @@ class QueryTests(test_utils.DatastoreTest):
     ConjunctionNode = query.ConjunctionNode
     FilterNode = query.FilterNode
     filters = ConjunctionNode(
-      [FilterNode('tags', 'in', ['jill', 'hello']),
-       ConjunctionNode([FilterNode('rate', '=', 1),
-                        FilterNode('name', '=', 'moe')])])
+      FilterNode('tags', 'in', ['jill', 'hello']),
+      ConjunctionNode(FilterNode('rate', '=', 1),
+                      FilterNode('name', '=', 'moe')))
     expected = DisjunctionNode(
-      [ConjunctionNode([FilterNode('tags', '=', 'jill'),
-                        FilterNode('rate', '=', 1),
-                        FilterNode('name', '=', 'moe')]),
-       ConjunctionNode([FilterNode('tags', '=', 'hello'),
-                        FilterNode('rate', '=', 1),
-                        FilterNode('name', '=', 'moe')])])
+      ConjunctionNode(FilterNode('tags', '=', 'jill'),
+                      FilterNode('rate', '=', 1),
+                      FilterNode('name', '=', 'moe')),
+      ConjunctionNode(FilterNode('tags', '=', 'hello'),
+                      FilterNode('rate', '=', 1),
+                      FilterNode('name', '=', 'moe')))
     self.assertEqual(filters, expected)
 
   def testGqlMinimal(self):
@@ -597,8 +664,8 @@ class QueryTests(test_utils.DatastoreTest):
     self.assertEqual(qry.ancestor, None)
     self.assertEqual(qry.filters,
                      query.ConjunctionNode(
-                       [query.FilterNode('prop1', '=', 1),
-                        query.FilterNode('prop2', '=', 'a')]))
+                       query.FilterNode('prop1', '=', 1),
+                       query.FilterNode('prop2', '=', 'a')))
     self.assertEqual(qry.orders, None)
     self.assertEqual(bindings, {})
 
@@ -625,10 +692,10 @@ class QueryTests(test_utils.DatastoreTest):
     self.assertEqual(qry.ancestor, None)
     self.assertEqual(qry.filters,
                      query.ConjunctionNode(
-                       [query.FilterNode('prop1', '=',
-                                         query.Binding(None, 1)),
-                        query.FilterNode('prop2', '=',
-                                         query.Binding(None, 'foo'))]))
+                       query.FilterNode('prop1', '=',
+                                        query.Binding(None, 1)),
+                       query.FilterNode('prop2', '=',
+                                        query.Binding(None, 'foo'))))
     self.assertEqual(qry.orders, None)
     self.assertEqual(bindings, {1: query.Binding(None, 1),
                                 'foo': query.Binding(None, 'foo')})
