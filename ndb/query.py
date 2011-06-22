@@ -881,6 +881,9 @@ class Query(object):
     This is the asynchronous version of Query.fetch().
     """
     assert 'limit' not in q_options, q_options
+    q_options['limit'] = limit
+    q_options.setdefault('prefetch_size', limit)
+    q_options.setdefault('batch_size', limit)
     res = []
     it = self.iter(**q_options)
     while (yield it.has_next_async()):
@@ -1254,8 +1257,6 @@ class _MultiQuery(object):
   @tasklets.tasklet
   def run_to_queue(self, queue, conn, options=None):
     """Run this query, putting entities into the given queue."""
-    # Create a list of (first-entity, subquery-iterator) tuples.
-
     if options is None:
       # Default options.
       offset = None
@@ -1281,11 +1282,10 @@ class _MultiQuery(object):
       if keys_only and self.__orders is not None:
         modifiers['keys_only'] = None
       if modifiers:
-        options = QueryOptions(**modifiers)
+        options = QueryOptions(config=options, **modifiers)
 
-    to_skip = 0
-    if offset:
-      to_skip = offset
+    if offset is None:
+      offset = 0
 
     if limit is None:
       limit = 2**63 - 1
@@ -1307,8 +1307,8 @@ class _MultiQuery(object):
             key = result._key
           if key not in keys_seen:
             keys_seen.add(key)
-            if to_skip > 0:
-              to_skip -= 1
+            if offset > 0:
+              offset -= 1
             else:
               if limit <= 0:
                 break
@@ -1321,6 +1321,7 @@ class _MultiQuery(object):
     # entities it converts from protobuf.
     # TODO: Does this interact properly with the cache?
     with conn.adapter:
+      # Create a list of (first-entity, subquery-iterator) tuples.
       state = []
       for subq in self.__subqueries:
         subit = tasklets.SerialQueueFuture('_MultiQuery.run_to_queue[par]')
@@ -1356,8 +1357,8 @@ class _MultiQuery(object):
         ent = item.entity
         if ent._key not in keys_seen:
           keys_seen.add(ent._key)
-          if to_skip > 0:
-            to_skip -= 1
+          if offset > 0:
+            offset -= 1
           else:
             if limit <= 0:
               break
