@@ -279,13 +279,6 @@ class QueryTests(test_utils.DatastoreTest):
     res = list(qq)
     self.assertEqual(res, [self.jill, self.joe])
 
-  def testOrderUnification(self):
-    q1 = Foo.query(Foo.tags <= 'jill')
-    q2 = Foo.query(Foo.tags == 'jill')
-    qq = query._MultiQuery([q1, q2])
-    self.assertEqual(query._orders_to_orderings(qq.orders),
-                     [('tags', query._ASC), ('__key__', query._ASC)])
-
   def testIterAsync(self):
     q = query.Query(kind='Foo').filter(Foo.tags == 'jill').order(Foo.name)
     @tasklets.synctasklet

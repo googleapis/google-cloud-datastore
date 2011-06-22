@@ -872,8 +872,6 @@ class Query(object):
                                             options=_make_options(q_options),
                                             merge_future=merge_future)
 
-  # TODO: support the rest for _MultiQuery.
-
   @datastore_rpc._positional(2)
   def fetch(self, limit, **q_options):
     """Fetch a list of query results, up to a limit.
@@ -1257,9 +1255,10 @@ class _MultiQuery(object):
     assert kind, 'Subquery kind cannot be missing'
     assert all(subq.kind == kind for subq in subqueries), subqueries
     # TODO: Assert app and namespace match, when we support them.
-    subqueries = list(_unify_sort_orders(subqueries))
+    orders = subqueries[0].orders
+    assert all(subq.orders == orders for subq in subqueries), subqueries
     self.__subqueries = subqueries
-    self.__orders = subqueries[0].orders
+    self.__orders = orders
     self.ancestor = None  # Hack for map_query().
 
   @property
@@ -1280,20 +1279,39 @@ class _MultiQuery(object):
     # Advanced TODO: sometimes cursors can work too, at least
     # for IN queries.
 
+    # TODO: Stop iterating when no more results are required.
+
+    if self.__orders is None:
+      # Run the subqueries sequentially; there is no order to keep.
+      keys_seen = set()
+      for subq in self.__subqueries:
+        subit = tasklets.SerialQueueFuture('_MultiQuery.run_to_queue[ser]')
+        subq.run_to_queue(subit, conn)
+        while True:
+          try:
+            batch, i, ent = yield subit.getq()
+          except EOFError:
+            break
+          if ent._key not in keys_seen:
+            keys_seen.add(ent._key)
+            queue.putq((None, None, ent))
+      queue.complete()
+      return
+
     # This with-statement causes the adapter to set _orig_pb on all
     # entities it converts from protobuf.
     # TODO: Does this interact properly with the cache?
     with conn.adapter:
       state = []
       for subq in self.__subqueries:
-        subit = tasklets.SerialQueueFuture('_MultiQuery.run_to_queue')
+        subit = tasklets.SerialQueueFuture('_MultiQuery.run_to_queue[par]')
         subq.run_to_queue(subit, conn)
         try:
-          ent = yield subit.getq()
+          thing = yield subit.getq()
         except EOFError:
           continue
         else:
-          state.append(_SubQueryIteratorState(ent, subit, self.__orders))
+          state.append(_SubQueryIteratorState(thing, subit, self.__orders))
 
       # Now turn it into a sorted heap.  The heapq module claims that
       # calling heapify() is more efficient than calling heappush() for
@@ -1370,91 +1388,3 @@ def _orderings_to_orders(orderings):
   if len(orders) == 1:
     return orders[0]
   return datastore_query.CompositeOrder(orders)
-
-
-# Helper functions for unifying sort orders across multiple queries.
-
-def _unify_sort_orders(queries):
-  """Generator to give a list of queries all the same sort order.
-
-  Args:
-    queries: A list of Query objects.
-
-  Yields:
-    Query objects.
-
-  Raises:
-    AssertionError if the orders cannot be unified.
-  """
-  the_orderings = None
-  for q in queries:
-    filters = q.filters
-    if filters is None:
-      filters = []
-    else:
-      filters = filters._to_filter({})._to_pbs()
-    orderings = _orders_to_orderings(q.orders)
-    new_orderings = _guess_orderings(filters, orderings)
-    if the_orderings is None:
-      # First time around.
-      the_orderings = new_orderings
-    elif (the_orderings == [(_KEY, _ASC)] and
-          new_orderings[1:] == [(_KEY, _ASC)]):
-      # Extend.
-      the_orderings = new_orderings
-    elif (new_orderings == [(_KEY, _ASC)] and
-          the_orderings[1:] == [(_KEY, _ASC)]):
-      # Shorter.
-      pass
-    elif the_orderings == new_orderings:
-      # Same.
-      pass
-    else:
-      raise datastore_errors.BadQueryError('Sort orders cannot be unified')
-  the_orders = _orderings_to_orders(the_orderings)
-  for q in queries:
-    orderings = _orders_to_orderings(q.orders)
-    if orderings == the_orderings:
-      yield q
-    else:
-      yield Query(kind=q.kind, ancestor=q.ancestor, filters=q.filters,
-                  orders=the_orders)
-
-
-def _guess_orderings(filters, orderings):
-  """Guess datastore orders based on filters.
-
-  This attempts to guess the actual order that the datastore service
-  will impose on the query based on the filters present.
-
-  The algorithm is currently as follows:
-  - If orders is empty, and there is an inequality filter (<, <=, >, >=),
-    then add an ascending order in the property used by that filter.
-  - If the last order isn't by __key__, add ascending order by __key__.
-
-  NOTE: This does not always match exactly what the backend does, as
-  it may use a descending index when one is available.  But for our
-  purpose it doesn't matter, since we always turn this order into an
-  explicit order.
-
-  (Copied from _GuessOrders() in the most recent datastore_stub_util.py.)
-
-  Args:
-    filters: A list of datastore_pb.Query_Filter instances.
-    orderings: A list of (property name, direction) pairs.
-
-  Returns:
-    A list of (property name, direction) tuples, possibly a copy of the input.
-  """
-  orderings = orderings[:]
-  if not orderings:
-    for filter_pb in filters:
-      if filter_pb.op() != datastore_pb.Query_Filter.EQUAL:
-        ordering = (filter_pb.property(0).name(), _ASC)
-        orderings.append(ordering)
-        break
-
-  if (not orderings or orderings[-1][0] != _KEY):
-    ordering = (_KEY, _ASC)
-    orderings.append(ordering)
-  return orderings
