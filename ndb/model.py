@@ -1256,7 +1256,7 @@ class StructuredProperty(Property):
       pred = RepeatedStructuredPropertyPredicate(match_keys, pb,
                                                  self._name + '.')
       filters.append(PostFilterNode(pred))
-    return ConjunctionNode(filters)
+    return ConjunctionNode(*filters)
 
   def _validate(self, value):
     if not isinstance(value, self._modelclass):

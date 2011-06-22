@@ -351,7 +351,7 @@ class FilterNode(Node):
     if opsymbol == '!=':
       n1 = FilterNode(name, '<', value)
       n2 = FilterNode(name, '>', value)
-      return DisjunctionNode([n1, n2])
+      return DisjunctionNode(n1, n2)
     if opsymbol == 'in' and not isinstance(value, Binding):
       assert isinstance(value, (list, tuple, set, frozenset)), repr(value)
       nodes = [FilterNode(name, '=', v) for v in value]
@@ -359,7 +359,7 @@ class FilterNode(Node):
         return FalseNode()
       if len(nodes) == 1:
         return nodes[0]
-      return DisjunctionNode(nodes)
+      return DisjunctionNode(*nodes)
     self = super(FilterNode, cls).__new__(cls)
     self.__name = name
     self.__opsymbol = opsymbol
@@ -434,7 +434,7 @@ class PostFilterNode(Node):
 class ConjunctionNode(Node):
   """Tree node representing a Boolean AND operator on two or more nodes."""
 
-  def __new__(cls, nodes):
+  def __new__(cls, *nodes):
     assert nodes, 'ConjunctionNode requires at least one node'
     if len(nodes) == 1:
       return nodes[0]
@@ -463,7 +463,7 @@ class ConjunctionNode(Node):
     if not clauses:
       return FalseNode()
     if len(clauses) > 1:
-      return DisjunctionNode([ConjunctionNode(clause) for clause in clauses])
+      return DisjunctionNode(*[ConjunctionNode(*clause) for clause in clauses])
     self = super(ConjunctionNode, cls).__new__(cls)
     self.__nodes = clauses[0]
     return self
@@ -472,7 +472,7 @@ class ConjunctionNode(Node):
     return iter(self.__nodes)
 
   def __repr__(self):
-    return '%s(%r)' % (self.__class__.__name__, self.__nodes)
+    return 'OR(%s)' % (', '.join(map(str, self.__nodes)))
 
   def __eq__(self, other):
     if not isinstance(other, ConjunctionNode):
@@ -501,19 +501,19 @@ class ConjunctionNode(Node):
       return post_filters[0]
     if post_filters == self.__nodes:
       return self
-    return ConjunctionNode(post_filters)
+    return ConjunctionNode(*post_filters)
 
   def resolve(self):
     nodes = [node.resolve() for node in self.__nodes]
     if nodes == self.__nodes:
       return self
-    return ConjunctionNode(nodes)
+    return ConjunctionNode(*nodes)
 
 
 class DisjunctionNode(Node):
   """Tree node representing a Boolean OR operator on two or more nodes."""
 
-  def __new__(cls, nodes):
+  def __new__(cls, *nodes):
     assert nodes, 'DisjunctionNode requires at least one node'
     if len(nodes) == 1:
       return nodes[0]
@@ -532,7 +532,7 @@ class DisjunctionNode(Node):
     return iter(self.__nodes)
 
   def __repr__(self):
-    return '%s(%r)' % (self.__class__.__name__, self.__nodes)
+    return 'OR(%s)' % (', '.join(map(str, self.__nodes)))
 
   def __eq__(self, other):
     if not isinstance(other, DisjunctionNode):
@@ -543,28 +543,12 @@ class DisjunctionNode(Node):
     nodes = [node.resolve() for node in self.__nodes]
     if nodes == self.__nodes:
       return self
-    return DisjunctionNode(nodes)
+    return DisjunctionNode(*nodes)
 
 
-# TODO: Change ConjunctionNode and DisjunctionNode signatures so that
-# AND and OR can just be aliases for them -- or possibly even rename.
-
-def AND(*args):
-  """Construct a ConjunctionNode from one or more tree nodes."""
-  assert args, 'AND requires at least one argument'
-  assert all(isinstance(arg, Node) for arg in args), repr(args)
-  if len(args) == 1:
-    return args[0]
-  return ConjunctionNode(args)
-
-
-def OR(*args):
-  """Construct a DisjunctionNode from one or more tree nodes."""
-  assert args, 'OR requires at least one argument'
-  assert all(isinstance(arg, Node) for arg in args), repr(args)
-  if len(args) == 1:
-    return args[0]
-  return DisjunctionNode(args)
+# AND and OR are preferred aliases for these.
+AND = ConjunctionNode
+OR = DisjunctionNode
 
 
 def _args_to_val(func, args, bindings):
@@ -627,7 +611,7 @@ def parse_gql(query_string):
       filters.append(FilterNode(name, op, val))
   if filters:
     filters.sort(key=lambda x: x._sort_key())  # For predictable tests.
-    filters = ConjunctionNode(filters)
+    filters = ConjunctionNode(*filters)
   else:
     filters = None
   orders = _orderings_to_orders(gql_qry.orderings())
@@ -784,7 +768,7 @@ class Query(object):
     elif len(preds) == 1:
       pred = preds[0]
     else:
-      pred = ConjunctionNode(preds)
+      pred = ConjunctionNode(*preds)
     return self.__class__(kind=self.kind, ancestor=self.ancestor,
                           orders=self.orders, filters=pred)
 
