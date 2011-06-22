@@ -536,6 +536,7 @@ class QueryTests(test_utils.DatastoreTest):
     expected = [self.joe, self.jill]
     self.assertEqual(q.fetch(10), expected)
     self.assertEqual(q.fetch(None), expected)
+    self.assertEqual(q.fetch(), expected)
     self.assertEqual(q.fetch(2), expected)
     self.assertEqual(q.fetch(1), expected[:1])
     self.assertEqual(q.fetch(10, offset=1), expected[1:])
@@ -547,6 +548,7 @@ class QueryTests(test_utils.DatastoreTest):
     expected = [self.joe, self.jill]
     self.assertEqual(q.fetch(10), expected)
     self.assertEqual(q.fetch(None), expected)
+    self.assertEqual(q.fetch(), expected)
     self.assertEqual(q.fetch(2), expected)
     self.assertEqual(q.fetch(1), expected[:1])
     self.assertEqual(q.fetch(10, offset=1), expected[1:])
@@ -557,15 +559,19 @@ class QueryTests(test_utils.DatastoreTest):
     q = Foo.query(Foo.tags.IN(['joe', 'jill'])).order(Foo.name)
     self.assertEqual(q.count(10), 2)
     self.assertEqual(q.count(None), 2)
+    self.assertEqual(q.count(), 2)
     self.assertEqual(q.count(2), 2)
     self.assertEqual(q.count(1), 1)
     self.assertEqual(q.count(10, keys_only=True), 2)
+    self.assertEqual(q.count(keys_only=True), 2)
 
   def testMultiQueryCountUnordered(self):
     q = Foo.query(Foo.tags.IN(['joe', 'jill']))
     self.assertEqual(q.count(10), 2)
     self.assertEqual(q.count(None), 2)
+    self.assertEqual(q.count(), 2)
     self.assertEqual(q.count(10, keys_only=True), 2)
+    self.assertEqual(q.count(keys_only=True), 2)
 
   def testNotEqualOperator(self):
     q = query.Query(kind='Foo').filter(Foo.rate != 2)

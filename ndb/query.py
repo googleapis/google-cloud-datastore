@@ -864,7 +864,7 @@ class Query(object):
   # (And then also allow specifying it as a keyword argument.)
 
   @datastore_rpc._positional(2)
-  def fetch(self, limit, **q_options):
+  def fetch(self, limit=None, **q_options):
     """Fetch a list of query results, up to a limit.
 
     Args:
@@ -879,7 +879,7 @@ class Query(object):
 
   @tasklets.tasklet
   @datastore_rpc._positional(2)
-  def fetch_async(self, limit, **q_options):
+  def fetch_async(self, limit=None, **q_options):
     """Fetch a list of query results, up to a limit.
 
     This is the asynchronous version of Query.fetch().
@@ -924,7 +924,7 @@ class Query(object):
     raise tasklets.Return(res[0])
 
   @datastore_rpc._positional(2)
-  def count(self, limit, **q_options):
+  def count(self, limit=None, **q_options):
     """Count the number of query results, up to a limit.
 
     This returns the same result as len(q.fetch(limit)) but more
@@ -943,7 +943,7 @@ class Query(object):
 
   @tasklets.tasklet
   @datastore_rpc._positional(2)
-  def count_async(self, limit, **q_options):
+  def count_async(self, limit=None, **q_options):
     """Count the number of query results, up to a limit.
 
     This is the asynchronous version of Query.count().
