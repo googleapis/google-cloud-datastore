@@ -156,9 +156,8 @@ _KEY = datastore_types._KEY_SPECIAL_PROPERTY
 # Table of supported comparison operators.
 _OPS = frozenset(['=', '!=', '<', '<=', '>', '>=', 'in'])
 
-# The largest possible signed 32-bit integer. Used to ensure that
-# int32 proto fields do not overflow.  (From datastore.py.)
-_MAX_INT_32 = 2**31 - 1
+# Default limit value.  (Yes, the datastore uses int32!)
+_MAX_LIMIT = 2**31 - 1
 
 
 # TODO: Once CL/21689469 is submitted, get rid of this and its callers.
@@ -886,7 +885,7 @@ class Query(object):
     """
     assert 'limit' not in q_options, q_options
     if limit is None:
-      limit = _MAX_INT_32
+      limit = _MAX_LIMIT
     q_options['limit'] = limit
     q_options.setdefault('prefetch_size', limit)
     q_options.setdefault('batch_size', limit)
@@ -952,7 +951,7 @@ class Query(object):
     assert 'offset' not in q_options, q_options
     assert 'limit' not in q_options, q_options
     if limit is None:
-      limit = _MAX_INT_32
+      limit = _MAX_LIMIT
     if (self.__filters is not None and
         isinstance(self.__filters, DisjunctionNode)):
       # _MultiQuery does not support iterating over result batches,
@@ -1298,7 +1297,7 @@ class _MultiQuery(object):
       offset = 0
 
     if limit is None:
-      limit = _MAX_INT_32
+      limit = _MAX_LIMIT
 
     if self.__orders is None:
       # Run the subqueries sequentially; there is no order to keep.
