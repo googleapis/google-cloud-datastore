@@ -573,6 +573,24 @@ class QueryTests(test_utils.DatastoreTest):
     self.assertEqual(q.count(10, keys_only=True), 2)
     self.assertEqual(q.count(keys_only=True), 2)
 
+  def testMultiQueryCursors(self):
+    q = Foo.query(Foo.tags.IN(['joe', 'jill']))
+    q = q.order(Foo.tags)
+    expected = q.fetch()
+    self.assertEqual(len(expected), 2)
+    res, curs, more = q.fetch_page(1, keys_only=True)
+    self.assertEqual(res, [expected[0].key])
+    self.assertTrue(curs is not None)
+    self.assertTrue(more)
+    res, curs, more = q.fetch_page(1, keys_only=False, start_cursor=curs)
+    self.assertEqual(res, [expected[1]])
+    self.assertTrue(curs is not None)
+    self.assertFalse(more)
+    res, curs, more = q.fetch_page(1, start_cursor=curs)
+    self.assertEqual(res, [])
+    self.assertTrue(curs is None)
+    self.assertFalse(more)
+
   def testMultiQueryWithAndWithoutAncestor(self):
     class Benjamin(model.Model):
       name = model.StringProperty()

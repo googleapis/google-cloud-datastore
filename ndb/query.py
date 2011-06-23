@@ -860,9 +860,6 @@ class Query(object):
                                             options=_make_options(q_options),
                                             merge_future=merge_future)
 
-  # TODO: Default limit to infinity for fetch*() and count*()?
-  # (And then also allow specifying it as a keyword argument.)
-
   @datastore_rpc._positional(2)
   def fetch(self, limit=None, **q_options):
     """Fetch a list of query results, up to a limit.
@@ -874,7 +871,6 @@ class Query(object):
     Returns:
       A list of results.
     """
-    # NOTE: limit can't be passed as a keyword.
     return self.fetch_async(limit, **q_options).get_result()
 
   @tasklets.tasklet
@@ -1218,7 +1214,9 @@ class _SubQueryIteratorState(object):
   """Helper class for _MultiQuery."""
 
   def __init__(self, batch_i_entity, iterator, dsquery, orders):
-    batch, i, entity = batch_i_entity
+    batch, index, entity = batch_i_entity
+    self.batch = batch
+    self.index = index
     self.entity = entity
     self.iterator = iterator
     self.dsquery = dsquery
@@ -1232,6 +1230,8 @@ class _SubQueryIteratorState(object):
     lhs_filter = self.dsquery._filter_predicate
     rhs_filter = other.dsquery._filter_predicate
     names = self.orders._get_prop_names()
+    # TODO: In some future version, there won't be a need to add the
+    # filters' names.
     if lhs_filter is not None:
       names |= lhs_filter._get_prop_names()
     if rhs_filter is not None:
@@ -1285,10 +1285,6 @@ class _MultiQuery(object):
       limit = None
       keys_only = None
     else:
-      # Check that no cursors are involved; we don't support those (yet).
-      if options.start_cursor or options.end_cursor or options.produce_cursors:
-        raise datastore_errors.BadArgumentError(
-          '_MultiQuery does not support cursors yet')
       # Capture options we need to simulate.
       offset = options.offset
       limit = options.limit
@@ -1318,6 +1314,13 @@ class _MultiQuery(object):
       limit = _MAX_LIMIT
 
     if self.__orders is None:
+      if options is not None:
+        # Check that no cursors are involved; we don't support those (yet).
+        if (options.start_cursor or options.end_cursor or
+            options.produce_cursors):
+          raise datastore_errors.BadArgumentError(
+            '_MultiQuery without order does not support cursors (yet)')
+
       # Run the subqueries sequentially; there is no order to keep.
       keys_seen = set()
       for subq in self.__subqueries:
@@ -1327,7 +1330,7 @@ class _MultiQuery(object):
         subq.run_to_queue(subit, conn, options=options)
         while limit > 0:
           try:
-            batch, i, result = yield subit.getq()
+            batch, index, result = yield subit.getq()
           except EOFError:
             break
           if keys_only:
@@ -1374,33 +1377,34 @@ class _MultiQuery(object):
       # state vector that are equal to the lowest entity, but because of
       # the weird sorting of repeated properties, we have to explicitly
       # keep a set of all keys, so we can remove later occurrences.
-      # Yes, this means that the output may not be sorted correctly.
-      # Too bad.  (I suppose you can do this in constant memory bounded
-      # by the maximum number of entries in relevant repeated
-      # properties, but I'm too lazy for now.  And yes, all this means
-      # _MultiQuery is a bit of a toy.  But where it works, it beats
-      # expecting the user to do this themselves.)
+      # Note that entities will still be sorted correctly, within the
+      # constraints given by the sort order.
       keys_seen = set()
       while state and limit > 0:
         item = heapq.heappop(state)
-        ent = item.entity
-        if ent._key not in keys_seen:
-          keys_seen.add(ent._key)
+        batch = item.batch
+        index = item.index
+        entity = item.entity
+        key = entity._key
+        if key not in keys_seen:
+          keys_seen.add(key)
           if offset > 0:
             offset -= 1
           else:
             limit -= 1
             if keys_only:
-              queue.putq((None, None, ent._key))
+              queue.putq((batch, index, key))
             else:
-              queue.putq((None, None, ent))
+              queue.putq((batch, index, entity))
         subit = item.iterator
         try:
-          batch, i, ent = yield subit.getq()
+          batch, index, entity = yield subit.getq()
         except EOFError:
           pass
         else:
-          item.entity = ent
+          item.batch = batch
+          item.index = index
+          item.entity = entity
           heapq.heappush(state, item)
       queue.complete()
 
