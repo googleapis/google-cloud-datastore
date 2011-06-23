@@ -24,7 +24,6 @@ class QueryTests(test_utils.DatastoreTest):
 
   def setUp(self):
     super(QueryTests, self).setUp()
-    tasklets.set_context(context.Context())
 
     # Create class inside tests because kinds are cleared every test.
     global Foo
@@ -241,11 +240,13 @@ class QueryTests(test_utils.DatastoreTest):
     for i in range(3):
       e = Employee(name=str(i), rank=i)
       e.put()
+      e.key = None
       reports_a.append(e)
     reports_b = []
     for i in range(3, 6):
       e = Employee(name=str(i), rank=0)
       e.put()
+      e.key = None
       reports_b.append(e)
     mgr_a = Manager(name='a', report=reports_a)
     mgr_a.put()
