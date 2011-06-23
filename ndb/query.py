@@ -1291,6 +1291,16 @@ class _MultiQuery(object):
       limit = options.limit
       keys_only = options.keys_only
 
+      # Cursors are supported for certain orders only.
+      if (options.start_cursor or options.end_cursor or
+          options.produce_cursors):
+        names = set()
+        if self.__orders is not None:
+          names = self.__orders._get_prop_names()
+        if '__key__' not in names:
+          raise datastore_errors.BadArgumentError(
+            '_MultiQuery with cursors requires __key__ order')
+
     # Decide if we need to modify the options passed to subqueries.
     # NOTE: It would seem we can sometimes let the datastore handle
     # the offset natively, but this would thwart the duplicate key
@@ -1315,13 +1325,6 @@ class _MultiQuery(object):
       limit = _MAX_LIMIT
 
     if self.__orders is None:
-      if options is not None:
-        # Check that no cursors are involved; we don't support those (yet).
-        if (options.start_cursor or options.end_cursor or
-            options.produce_cursors):
-          raise datastore_errors.BadArgumentError(
-            '_MultiQuery without order does not support cursors (yet)')
-
       # Run the subqueries sequentially; there is no order to keep.
       keys_seen = set()
       for subq in self.__subqueries:

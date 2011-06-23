@@ -576,7 +576,10 @@ class QueryTests(test_utils.DatastoreTest):
 
   def testMultiQueryCursors(self):
     q = Foo.query(Foo.tags.IN(['joe', 'jill']))
+    # TODO: Check that q.fetch_page() raises an exception.
     q = q.order(Foo.tags)
+    # TODO: Check that q.fetch_page() *still* raises an exception.
+    q = q.order(Foo.key)
     expected = q.fetch()
     self.assertEqual(len(expected), 2)
     res, curs, more = q.fetch_page(1, keys_only=True)
