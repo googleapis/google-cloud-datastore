@@ -1434,7 +1434,7 @@ def _orders_to_orderings(orders):
     return [_order_to_ordering(orders)]
   if isinstance(orders, datastore_query.CompositeOrder):
     # TODO: What about UTF-8?
-    return [(pb.property(), pb.direction())for pb in orders._to_pbs()]
+    return [(pb.property(), pb.direction()) for pb in orders._to_pbs()]
   assert False, 'Bad order: %r' % (orders,)
 
 
