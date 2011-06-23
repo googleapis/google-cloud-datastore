@@ -394,7 +394,8 @@ class FilterNode(Node):
     if isinstance(value, Binding):
       bindings[value.key] = value
       value = value.resolve()
-    return datastore_query.make_filter(self.__name, self.__opsymbol, value)
+    return datastore_query.make_filter(self.__name.decode('utf-8'),
+                                       self.__opsymbol, value)
 
   def resolve(self):
     if self.__opsymbol == 'in':
@@ -692,7 +693,7 @@ class Query(object):
     if filters is not None:
       post_filters = filters._post_filters()
       filters = filters._to_filter(bindings)
-    dsquery = datastore_query.Query(kind=kind,
+    dsquery = datastore_query.Query(kind=kind.decode('utf-8'),
                                     ancestor=ancestor,
                                     filter_predicate=filters,
                                     order=self.__orders)

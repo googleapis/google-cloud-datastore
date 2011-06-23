@@ -751,6 +751,22 @@ class QueryTests(test_utils.DatastoreTest):
     res = q.get()
     self.assertEqual(res, m1)
 
+  def testUnicode(self):
+    class MyModel(model.Model):
+      n = model.IntegerProperty(u'\u4321')
+      @classmethod
+      def _get_kind(cls):
+        return u'\u1234'.encode('utf-8')
+    a = MyModel(n=42)
+    k = a.put()
+    b = k.get()
+    self.assertEqual(a, b)
+    self.assertFalse(a is b)
+    # So far so good, now try queries
+    res = MyModel.query(MyModel.n == 42).fetch()
+    self.assertEqual(res, [a])
+
+
 def main():
   unittest.main()
 
