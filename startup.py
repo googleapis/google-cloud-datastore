@@ -25,7 +25,7 @@ apiproxy_stub_map.apiproxy.RegisterStub('taskqueue', tq_stub)
 os.environ['APPLICATION_ID'] = '_'
 
 class Employee(Model):
-  name = StringProperty(u'\u1234')
+  name = StringProperty()
   age = IntegerProperty()
   rank = IntegerProperty()
 
@@ -39,10 +39,6 @@ class Employee(Model):
 
 class Manager(Employee):
   report = StructuredProperty(Employee, repeated=True)
-
-  @classmethod
-  def _get_kind(cls):
-    return u'\u4321'.encode('utf-8')
 
 reports = []
 for (name, age, rank) in [('Joe', 21, 1), ('Jim', 30, 2), ('Jane', 23, 1)]:
