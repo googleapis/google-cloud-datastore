@@ -1295,14 +1295,17 @@ class _MultiQuery(object):
       keys_only = options.keys_only
 
     # Decide if we need to modify the options passed to subqueries.
+    # NOTE: It would seem we can sometimes let the datastore handle
+    # the offset natively, but this would thwart the duplicate key
+    # detection, so we always have to emulate the offset here.
+    # We can set the limit we pass along to offset + limit though,
+    # since that is the maximum number of results from a single
+    # subquery we will ever have to consider.
     modifiers = {}
     if offset:
-      # TODO: Keep this if we will run them sequentially.
       modifiers['offset'] = None
-    if limit is not None:
-      # TODO: Be even more clever for sequential queries.
-      if offset:
-        modifiers['limit'] = offset + limit
+      if limit is not None:
+        modifiers['limit'] = min(_MAX_LIMIT, offset + limit)
     if keys_only and self.__orders is not None:
       modifiers['keys_only'] = None
     if modifiers:
@@ -1318,9 +1321,11 @@ class _MultiQuery(object):
       # Run the subqueries sequentially; there is no order to keep.
       keys_seen = set()
       for subq in self.__subqueries:
+        if limit <= 0:
+          break
         subit = tasklets.SerialQueueFuture('_MultiQuery.run_to_queue[ser]')
         subq.run_to_queue(subit, conn, options=options)
-        while True:
+        while limit > 0:
           try:
             batch, i, result = yield subit.getq()
           except EOFError:
@@ -1334,8 +1339,6 @@ class _MultiQuery(object):
             if offset > 0:
               offset -= 1
             else:
-              if limit <= 0:
-                break
               limit -= 1
               queue.putq((None, None, result))
       queue.complete()
@@ -1378,7 +1381,7 @@ class _MultiQuery(object):
       # _MultiQuery is a bit of a toy.  But where it works, it beats
       # expecting the user to do this themselves.)
       keys_seen = set()
-      while state:
+      while state and limit > 0:
         item = heapq.heappop(state)
         ent = item.entity
         if ent._key not in keys_seen:
@@ -1386,8 +1389,6 @@ class _MultiQuery(object):
           if offset > 0:
             offset -= 1
           else:
-            if limit <= 0:
-              break
             limit -= 1
             if keys_only:
               queue.putq((None, None, ent._key))
