@@ -24,7 +24,6 @@ class QueryTests(test_utils.DatastoreTest):
 
   def setUp(self):
     super(QueryTests, self).setUp()
-    tasklets.set_context(context.Context())
 
     # Create class inside tests because kinds are cleared every test.
     global Foo
@@ -241,11 +240,13 @@ class QueryTests(test_utils.DatastoreTest):
     for i in range(3):
       e = Employee(name=str(i), rank=i)
       e.put()
+      e.key = None
       reports_a.append(e)
     reports_b = []
     for i in range(3, 6):
       e = Employee(name=str(i), rank=0)
       e.put()
+      e.key = None
       reports_b.append(e)
     mgr_a = Manager(name='a', report=reports_a)
     mgr_a.put()
@@ -573,6 +574,27 @@ class QueryTests(test_utils.DatastoreTest):
     self.assertEqual(q.count(10, keys_only=True), 2)
     self.assertEqual(q.count(keys_only=True), 2)
 
+  def testMultiQueryCursors(self):
+    q = Foo.query(Foo.tags.IN(['joe', 'jill']))
+    # TODO: Check that q.fetch_page() raises an exception.
+    q = q.order(Foo.tags)
+    # TODO: Check that q.fetch_page() *still* raises an exception.
+    q = q.order(Foo.key)
+    expected = q.fetch()
+    self.assertEqual(len(expected), 2)
+    res, curs, more = q.fetch_page(1, keys_only=True)
+    self.assertEqual(res, [expected[0].key])
+    self.assertTrue(curs is not None)
+    self.assertTrue(more)
+    res, curs, more = q.fetch_page(1, keys_only=False, start_cursor=curs)
+    self.assertEqual(res, [expected[1]])
+    self.assertTrue(curs is not None)
+    self.assertFalse(more)
+    res, curs, more = q.fetch_page(1, start_cursor=curs)
+    self.assertEqual(res, [])
+    self.assertTrue(curs is None)
+    self.assertFalse(more)
+
   def testMultiQueryWithAndWithoutAncestor(self):
     class Benjamin(model.Model):
       name = model.StringProperty()
@@ -731,6 +753,22 @@ class QueryTests(test_utils.DatastoreTest):
     q = MyModel.query(MyModel.key < k2)
     res = q.get()
     self.assertEqual(res, m1)
+
+  def testUnicode(self):
+    class MyModel(model.Model):
+      n = model.IntegerProperty(u'\u4321')
+      @classmethod
+      def _get_kind(cls):
+        return u'\u1234'.encode('utf-8')
+    a = MyModel(n=42)
+    k = a.put()
+    b = k.get()
+    self.assertEqual(a, b)
+    self.assertFalse(a is b)
+    # So far so good, now try queries
+    res = MyModel.query(MyModel.n == 42).fetch()
+    self.assertEqual(res, [a])
+
 
 def main():
   unittest.main()

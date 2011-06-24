@@ -298,7 +298,10 @@ GeoPt = datastore_types.GeoPt
 
 
 class KindError(datastore_errors.BadValueError):
-  """Raised when an implementation for a kind can't be found."""
+  """Raised when an implementation for a kind can't be found.
+
+  Also raised when the Kind is not an 8-bit string.
+  """
 
 
 class ComputedPropertyError(datastore_errors.Error):
@@ -318,8 +321,8 @@ class ModelAdapter(datastore_rpc.AbstractAdapter):
     """Constructor.
 
     Args:
-      default_model: If an implementation for the kind cannot be found, use this
-        model class. If none is specified, an exception will be thrown
+      default_model: If an implementation for the kind cannot be found, use
+        this model class.  If none is specified, an exception will be thrown
         (default).
     """
     self.default_model = default_model
@@ -406,6 +409,8 @@ class Property(object):
                required=None, default=None, choices=None, validator=None):
     """Constructor.  For arguments see the module docstring."""
     if name is not None:
+      if isinstance(name, unicode):
+        name = name.encode('utf-8')
       assert '.' not in name  # The '.' is used elsewhere.
       self._name = name
     if indexed is not None:
@@ -1877,6 +1882,18 @@ class Model(object):
     Note: This is called by MetaModel, but may also be called manually
     after dynamically updating a model class.
     """
+    # Verify that _get_kind() returns an 8-bit string.
+    kind = cls._get_kind()
+    if not isinstance(kind, basestring):
+      raise KindError('Class %s defines a _get_kind() method that returns '
+                      'a non-string (%r)' % (cls.__name__, kind))
+    if not isinstance(kind, str):
+      try:
+        kind = kind.encode('ascii')  # ASCII contents is okay.
+      except UnicodeEncodeError:
+        raise KindError('Class %s defines a _get_kind() method that returns '
+                        'a Unicode string (%r); please encode using utf-8' %
+                        (cls.__name__, kind))
     cls._properties = {}  # Map of {name: Property}
     if cls.__module__ == __name__:  # Skip the classes in *this* file.
       return

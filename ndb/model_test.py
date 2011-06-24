@@ -904,12 +904,35 @@ class ModelTests(test_utils.DatastoreTest):
     self.assertEqual(MyModel.dd._get_value(ent), 2.5)
     self.assertEqual(MyModel.kk._get_value(ent), k)
 
+  def testUnicodeRenamedProperty(self):
+    class UModel(model.Model):
+      val = model.StringProperty(u'\u00fc')
+      @classmethod
+      def _get_kind(cls):
+        return u'UModel'  # Pure ASCII Unicode kind string is find.
+    u = UModel(val='abc')
+    u.put()
+    v = u.key.get()
+    self.assertFalse(u is v)
+    self.assertEqual(u.val, v.val)
+
+  def testUnicodeKind(self):
+    def helper():
+      class UModel(model.Model):
+        val = model.StringProperty()
+        @classmethod
+        def _get_kind(cls):
+          return u'\u00fcModel'
+    self.assertRaises(model.KindError, helper)
+
   def testRenamedStructuredProperty(self):
+    uhome = u'hom\u00e9'
+    uhome_enc_repr = r'hom\303\251'
     class Address(model.Model):
       st = model.StringProperty('street')
       ci = model.StringProperty('city')
     class AddressPair(model.Model):
-      ho = model.StructuredProperty(Address, 'home')
+      ho = model.StructuredProperty(Address, uhome)
       wo = model.StructuredProperty(Address, 'work')
     class Person(model.Model):
       na = model.StringProperty('name')
@@ -923,7 +946,8 @@ class ModelTests(test_utils.DatastoreTest):
     p.ad.wo.ci = 'San Francisco'
     p.ad.wo.st = '345 Spear'
     pb = p._to_pb()
-    self.assertEqual(str(pb), NESTED_PB)
+    expected = NESTED_PB.replace('home', uhome_enc_repr)
+    self.assertEqual(str(pb), expected)
 
     p = Person._from_pb(pb)
     self.assertEqual(p.na, 'Google')

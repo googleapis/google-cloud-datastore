@@ -394,7 +394,8 @@ class FilterNode(Node):
     if isinstance(value, Binding):
       bindings[value.key] = value
       value = value.resolve()
-    return datastore_query.make_filter(self.__name, self.__opsymbol, value)
+    return datastore_query.make_filter(self.__name.decode('utf-8'),
+                                       self.__opsymbol, value)
 
   def resolve(self):
     if self.__opsymbol == 'in':
@@ -692,7 +693,7 @@ class Query(object):
     if filters is not None:
       post_filters = filters._post_filters()
       filters = filters._to_filter(bindings)
-    dsquery = datastore_query.Query(kind=kind,
+    dsquery = datastore_query.Query(kind=kind.decode('utf-8'),
                                     ancestor=ancestor,
                                     filter_predicate=filters,
                                     order=self.__orders)
@@ -860,9 +861,6 @@ class Query(object):
                                             options=_make_options(q_options),
                                             merge_future=merge_future)
 
-  # TODO: Default limit to infinity for fetch*() and count*()?
-  # (And then also allow specifying it as a keyword argument.)
-
   @datastore_rpc._positional(2)
   def fetch(self, limit=None, **q_options):
     """Fetch a list of query results, up to a limit.
@@ -874,7 +872,6 @@ class Query(object):
     Returns:
       A list of results.
     """
-    # NOTE: limit can't be passed as a keyword.
     return self.fetch_async(limit, **q_options).get_result()
 
   @tasklets.tasklet
@@ -1218,7 +1215,9 @@ class _SubQueryIteratorState(object):
   """Helper class for _MultiQuery."""
 
   def __init__(self, batch_i_entity, iterator, dsquery, orders):
-    batch, i, entity = batch_i_entity
+    batch, index, entity = batch_i_entity
+    self.batch = batch
+    self.index = index
     self.entity = entity
     self.iterator = iterator
     self.dsquery = dsquery
@@ -1232,6 +1231,8 @@ class _SubQueryIteratorState(object):
     lhs_filter = self.dsquery._filter_predicate
     rhs_filter = other.dsquery._filter_predicate
     names = self.orders._get_prop_names()
+    # TODO: In some future version, there won't be a need to add the
+    # filters' names.
     if lhs_filter is not None:
       names |= lhs_filter._get_prop_names()
     if rhs_filter is not None:
@@ -1285,24 +1286,33 @@ class _MultiQuery(object):
       limit = None
       keys_only = None
     else:
-      # Check that no cursors are involved; we don't support those (yet).
-      if options.start_cursor or options.end_cursor or options.produce_cursors:
-        raise datastore_errors.BadArgumentError(
-          '_MultiQuery does not support cursors yet')
       # Capture options we need to simulate.
       offset = options.offset
       limit = options.limit
       keys_only = options.keys_only
 
+      # Cursors are supported for certain orders only.
+      if (options.start_cursor or options.end_cursor or
+          options.produce_cursors):
+        names = set()
+        if self.__orders is not None:
+          names = self.__orders._get_prop_names()
+        if '__key__' not in names:
+          raise datastore_errors.BadArgumentError(
+            '_MultiQuery with cursors requires __key__ order')
+
     # Decide if we need to modify the options passed to subqueries.
+    # NOTE: It would seem we can sometimes let the datastore handle
+    # the offset natively, but this would thwart the duplicate key
+    # detection, so we always have to emulate the offset here.
+    # We can set the limit we pass along to offset + limit though,
+    # since that is the maximum number of results from a single
+    # subquery we will ever have to consider.
     modifiers = {}
     if offset:
-      # TODO: Keep this if we will run them sequentially.
       modifiers['offset'] = None
-    if limit is not None:
-      # TODO: Be even more clever for sequential queries.
-      if offset:
-        modifiers['limit'] = offset + limit
+      if limit is not None:
+        modifiers['limit'] = min(_MAX_LIMIT, offset + limit)
     if keys_only and self.__orders is not None:
       modifiers['keys_only'] = None
     if modifiers:
@@ -1318,11 +1328,13 @@ class _MultiQuery(object):
       # Run the subqueries sequentially; there is no order to keep.
       keys_seen = set()
       for subq in self.__subqueries:
+        if limit <= 0:
+          break
         subit = tasklets.SerialQueueFuture('_MultiQuery.run_to_queue[ser]')
         subq.run_to_queue(subit, conn, options=options)
-        while True:
+        while limit > 0:
           try:
-            batch, i, result = yield subit.getq()
+            batch, index, result = yield subit.getq()
           except EOFError:
             break
           if keys_only:
@@ -1334,8 +1346,6 @@ class _MultiQuery(object):
             if offset > 0:
               offset -= 1
             else:
-              if limit <= 0:
-                break
               limit -= 1
               queue.putq((None, None, result))
       queue.complete()
@@ -1371,35 +1381,34 @@ class _MultiQuery(object):
       # state vector that are equal to the lowest entity, but because of
       # the weird sorting of repeated properties, we have to explicitly
       # keep a set of all keys, so we can remove later occurrences.
-      # Yes, this means that the output may not be sorted correctly.
-      # Too bad.  (I suppose you can do this in constant memory bounded
-      # by the maximum number of entries in relevant repeated
-      # properties, but I'm too lazy for now.  And yes, all this means
-      # _MultiQuery is a bit of a toy.  But where it works, it beats
-      # expecting the user to do this themselves.)
+      # Note that entities will still be sorted correctly, within the
+      # constraints given by the sort order.
       keys_seen = set()
-      while state:
+      while state and limit > 0:
         item = heapq.heappop(state)
-        ent = item.entity
-        if ent._key not in keys_seen:
-          keys_seen.add(ent._key)
+        batch = item.batch
+        index = item.index
+        entity = item.entity
+        key = entity._key
+        if key not in keys_seen:
+          keys_seen.add(key)
           if offset > 0:
             offset -= 1
           else:
-            if limit <= 0:
-              break
             limit -= 1
             if keys_only:
-              queue.putq((None, None, ent._key))
+              queue.putq((batch, index, key))
             else:
-              queue.putq((None, None, ent))
+              queue.putq((batch, index, entity))
         subit = item.iterator
         try:
-          batch, i, ent = yield subit.getq()
+          batch, index, entity = yield subit.getq()
         except EOFError:
           pass
         else:
-          item.entity = ent
+          item.batch = batch
+          item.index = index
+          item.entity = entity
           heapq.heappush(state, item)
       queue.complete()
 
@@ -1429,7 +1438,7 @@ def _orders_to_orderings(orders):
     return [_order_to_ordering(orders)]
   if isinstance(orders, datastore_query.CompositeOrder):
     # TODO: What about UTF-8?
-    return [(pb.property(), pb.direction())for pb in orders._to_pbs()]
+    return [(pb.property(), pb.direction()) for pb in orders._to_pbs()]
   assert False, 'Bad order: %r' % (orders,)
 
 
