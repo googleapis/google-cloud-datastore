@@ -708,7 +708,7 @@ class Query(object):
     """Run this query, putting entities into the given queue."""
     multiquery = self._maybe_multi_query()
     if multiquery is not None:
-      multiquery.run_to_queue(queue, conn, options=options)  # No return value.
+      yield multiquery.run_to_queue(queue, conn, options=options)
       return
     if dsquery is None:
       dsquery = self._get_query(conn)
@@ -1331,7 +1331,7 @@ class _MultiQuery(object):
         if limit <= 0:
           break
         subit = tasklets.SerialQueueFuture('_MultiQuery.run_to_queue[ser]')
-        subq.run_to_queue(subit, conn, options=options)
+        yield subq.run_to_queue(subit, conn, options=options)  # XXX
         while limit > 0:
           try:
             batch, index, result = yield subit.getq()
@@ -1360,7 +1360,7 @@ class _MultiQuery(object):
       for subq in self.__subqueries:
         dsquery = subq._get_query(conn)
         subit = tasklets.SerialQueueFuture('_MultiQuery.run_to_queue[par]')
-        subq.run_to_queue(subit, conn, options=options, dsquery=dsquery)
+        yield subq.run_to_queue(subit, conn, options=options, dsquery=dsquery)  # XXX
         try:
           thing = yield subit.getq()
         except EOFError:

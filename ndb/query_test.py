@@ -140,9 +140,12 @@ class QueryTests(test_utils.DatastoreTest):
     q = Employee.query(Employee.name.IN([]))
     self.assertEqual(q.filters, query.FalseNode())
     self.assertNotEqual(q.filters, 42)
-    # TODO: Test that running the query raises an exception.  This
-    # currently doesn't work because the exception is raised in a
-    # different tasklet.
+    self.assertRaises(datastore_errors.BadQueryError, q.fetch)
+
+  def testQueryExceptions(self):
+    q = Foo.query(Foo.name > '', Foo.rate > 0)
+    f = q.fetch_async()
+    self.assertRaises(datastore_errors.BadRequestError, f.check_success)
 
   def testSingletonInFilter(self):
     class Employee(model.Model):
@@ -576,9 +579,9 @@ class QueryTests(test_utils.DatastoreTest):
 
   def testMultiQueryCursors(self):
     q = Foo.query(Foo.tags.IN(['joe', 'jill']))
-    # TODO: Check that q.fetch_page() raises an exception.
+    self.assertRaises(datastore_errors.BadArgumentError, q.fetch_page, 1)
     q = q.order(Foo.tags)
-    # TODO: Check that q.fetch_page() *still* raises an exception.
+    self.assertRaises(datastore_errors.BadArgumentError, q.fetch_page, 1)
     q = q.order(Foo.key)
     expected = q.fetch()
     self.assertEqual(len(expected), 2)

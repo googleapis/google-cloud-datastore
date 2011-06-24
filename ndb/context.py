@@ -314,7 +314,7 @@ class Context(object):
     @tasklets.tasklet
     def helper():
       inq = tasklets.SerialQueueFuture()
-      query.run_to_queue(inq, self._conn, options)
+      yield query.run_to_queue(inq, self._conn, options)  # XXX
       is_ancestor_query = query.ancestor is not None
       while True:
         try:
@@ -362,7 +362,7 @@ class Context(object):
         mfut.putq(val)
       mfut.complete()
 
-    helper()
+    helper().check_success()  # XXX
     return mfut
 
   @datastore_rpc._positional(2)
