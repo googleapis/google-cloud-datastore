@@ -5,7 +5,7 @@
 .*\#.*$
 .*@.*$
 index\.yaml$
-.coverage
+.coverage$
 htmlcov$
 .DS_Store$
 workspace.xml$

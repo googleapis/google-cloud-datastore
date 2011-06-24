@@ -7,7 +7,9 @@ import sys
 import time
 import unittest
 
+from google.appengine.api import datastore_errors
 from google.appengine.api import memcache
+from google.appengine.api import taskqueue
 from google.appengine.datastore import datastore_rpc
 
 from ndb import context
@@ -169,12 +171,86 @@ class ContextTests(test_utils.DatastoreTest):
       self.assertEqual(k2, key2)
       yield tasklets.sleep(0.01)  # Let other tasklet complete.
       keys = [k1.urlsafe(), k2.urlsafe()]
-      results = memcache.get_multi(keys)
+      results = memcache.get_multi(keys, key_prefix='NDB:')
       self.assertEqual(
         results,
         {key1.urlsafe(): self.ctx._conn.adapter.entity_to_pb(ent1),
          key2.urlsafe(): self.ctx._conn.adapter.entity_to_pb(ent2)})
     foo().check_success()
+
+  def testContext_MemcachePolicy(self):
+    badkeys = []
+    def tracking_set_multi(*args, **kwds):
+      try:
+        res = save_set_multi(*args, **kwds)
+        if badkeys and not res:
+          res = badkeys
+        track.append((args, kwds, res, None))
+        return res
+      except Exception, err:
+        track.append((args, kwds, None, err))
+        raise
+    @tasklets.tasklet
+    def foo():
+      k1, k2 = yield self.ctx.put(ent1), self.ctx.put(ent2)
+      self.assertEqual(k1, key1)
+      self.assertEqual(k2, key2)
+      yield tasklets.sleep(0.01)  # Let other tasklet complete.
+    key1 = model.Key('Foo', 1)
+    key2 = model.Key('Foo', 2)
+    ent1 = model.Expando(key=key1, foo=42, bar='hello')
+    ent2 = model.Expando(key=key2, foo=1, bar='world')
+    save_set_multi = memcache.set_multi
+    try:
+      memcache.set_multi = tracking_set_multi
+      memcache.flush_all()
+
+      track = []
+      foo().check_success()
+      self.assertEqual(len(track), 1)
+      self.assertEqual(track[0][0],
+                       ({key1.urlsafe(): ent1._to_pb(),
+                         key2.urlsafe(): ent2._to_pb()},))
+      self.assertEqual(track[0][1], {'key_prefix': 'NDB:', 'time': 0})
+      memcache.flush_all()
+
+      track = []
+      self.ctx.set_memcache_policy(lambda key: False)
+      foo().check_success()
+      self.assertEqual(len(track), 0)
+      memcache.flush_all()
+
+      track = []
+      self.ctx.set_memcache_policy(lambda key: key == key1)
+      foo().check_success()
+      self.assertEqual(len(track), 1)
+      self.assertEqual(track[0][0],
+                       ({key1.urlsafe(): ent1._to_pb()},))
+      self.assertEqual(track[0][1], {'key_prefix': 'NDB:', 'time': 0})
+      memcache.flush_all()
+
+      track = []
+      self.ctx.set_memcache_policy(lambda key: True)
+      self.ctx.set_memcache_timeout_policy(lambda key: key.id())
+      foo().check_success()
+      self.assertEqual(len(track), 2)
+      self.assertEqual(track[0][0],
+                       ({key1.urlsafe(): ent1._to_pb()},))
+      self.assertEqual(track[0][1], {'key_prefix': 'NDB:', 'time': 1})
+      self.assertEqual(track[1][0],
+                       ({key2.urlsafe(): ent2._to_pb()},))
+      self.assertEqual(track[1][1], {'key_prefix': 'NDB:', 'time': 2})
+      memcache.flush_all()
+
+      track = []
+      badkeys = [key2.urlsafe()]
+      self.ctx.set_memcache_timeout_policy(lambda key: 0)
+      foo().check_success()
+      self.assertEqual(len(track), 1)
+      self.assertEqual(track[0][2], badkeys)
+      memcache.flush_all()
+    finally:
+      memcache.set_multi = save_set_multi
 
   def testContext_CacheQuery(self):
     @tasklets.tasklet
@@ -281,6 +357,20 @@ class ContextTests(test_utils.DatastoreTest):
     res = foo().get_result()
     self.assertEqual(set(res), set([('Foo', 1), ('Foo', 2), ('Foo', 3)]))
 
+  def testContext_MapQuery_Cursors(self):
+    qo = query.QueryOptions(produce_cursors=True)
+    @tasklets.tasklet
+    def callback(batch, i, ent):
+      return ent.key.pairs()[-1]
+    @tasklets.tasklet
+    def foo():
+      yield self.create_entities()
+      qry = query.Query(kind='Foo')
+      res = yield self.ctx.map_query(qry, callback, options=qo)
+      raise tasklets.Return(res)
+    res = foo().get_result()
+    self.assertEqual(set(res), set([('Foo', 1), ('Foo', 2), ('Foo', 3)]))
+
   def testContext_IterQuery(self):
     @tasklets.tasklet
     def foo():
@@ -317,6 +407,47 @@ class ContextTests(test_utils.DatastoreTest):
         yield e.put_async()
       yield self.ctx.transaction(callback)
       self.assertEqual(self.ctx._cache[key].bar, 2)
+    foo().check_success()
+
+  def testContext_TransactionException(self):
+    key = model.Key('Foo', 1)
+    @tasklets.tasklet
+    def foo():
+      ent = model.Expando(key=key, bar=1)
+      @tasklets.tasklet
+      def callback():
+        ctx = tasklets.get_context()
+        key = yield ent.put_async()
+        raise Exception('foo')
+      yield self.ctx.transaction(callback)
+    self.assertRaises(Exception, foo().check_success)
+    self.assertEqual(key.get(), None)
+
+  def testContext_TransactionRollback(self):
+    key = model.Key('Foo', 1)
+    @tasklets.tasklet
+    def foo():
+      ent = model.Expando(key=key, bar=1)
+      @tasklets.tasklet
+      def callback():
+        ctx = tasklets.get_context()
+        key = yield ent.put_async()
+        raise datastore_errors.Rollback()
+      yield self.ctx.transaction(callback)
+    foo().check_success()
+    self.assertEqual(key.get(), None)
+
+  def testContext_TransactionAddTask(self):
+    key = model.Key('Foo', 1)
+    @tasklets.tasklet
+    def foo():
+      ent = model.Expando(key=key, bar=1)
+      @tasklets.tasklet
+      def callback():
+        ctx = tasklets.get_context()
+        key = yield ctx.put(ent)
+        taskqueue.add(url='/', transactional=True)
+      yield self.ctx.transaction(callback)
     foo().check_success()
 
   def testContext_GetOrInsert(self):

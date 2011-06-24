@@ -19,6 +19,10 @@ from google.appengine.api.apiproxy_rpc import RPC
 
 from google.appengine.datastore import datastore_rpc
 
+import utils
+
+logging_debug = utils.logging_debug
+
 IDLE = RPC.IDLE
 RUNNING = RPC.RUNNING
 FINISHING = RPC.FINISHING
@@ -78,14 +82,14 @@ class EventLoop(object):
       delay = self.queue[0][0] - time.time()
       if delay is None or delay <= 0:
         when, callable, args, kwds = self.queue.pop(0)
-        logging.debug('event: %s', callable.__name__)
+        logging_debug('event: %s', callable.__name__)
         callable(*args, **kwds)
         # TODO: What if it raises an exception?
         return 0
     if self.rpcs:
       rpc = datastore_rpc.MultiRpc.wait_any(self.rpcs)
       if rpc is not None:
-        logging.debug('rpc: %s', rpc.method)
+        logging.info('rpc: %s', rpc.method)  # XXX Should be debug
         # Yes, wait_any() may return None even for a non-empty argument.
         # But no, it won't ever return an RPC not in its argument.
         assert rpc in self.rpcs, (rpc, self.rpcs)

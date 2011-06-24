@@ -252,6 +252,11 @@ A number of top-level functions also live in this module:
 
 All these have a corresponding *_async() variant as well.
 The *_multi_async() functions return a list of Futures.
+
+And finally these (without async variants):
+
+- in_transaction() tests whether you are currently running in a transaction
+- @transactional decorates functions that should be run in a transaction
 """
 
 __author__ = 'guido@google.com (Guido van Rossum)'
@@ -271,21 +276,32 @@ from google.appengine.datastore import datastore_query
 from google.appengine.datastore import datastore_rpc
 from google.appengine.datastore import entity_pb
 
+from ndb import utils
+
 # NOTE: Don't use "from ndb import key"; key is a common local variable name.
 import ndb.key
 Key = ndb.key.Key  # For export.
 
 # NOTE: Property and Error classes are added later.
 __all__ = ['Key', 'ModelAdapter', 'ModelKey', 'MetaModel', 'Model', 'Expando',
+           'BlobKey', 'GeoPt',
            'transaction', 'transaction_async',
+           'in_transaction', 'transactional',
            'get_multi', 'get_multi_async',
            'put_multi', 'put_multi_async',
            'delete_multi', 'delete_multi_async',
            ]
 
 
+BlobKey = datastore_types.BlobKey
+GeoPt = datastore_types.GeoPt
+
+
 class KindError(datastore_errors.BadValueError):
-  """Raised when an implementation for a kind can't be found."""
+  """Raised when an implementation for a kind can't be found.
+
+  Also raised when the Kind is not an 8-bit string.
+  """
 
 
 class ComputedPropertyError(datastore_errors.Error):
@@ -305,11 +321,20 @@ class ModelAdapter(datastore_rpc.AbstractAdapter):
     """Constructor.
 
     Args:
-      default_model: If an implementation for the kind cannot be found, use this
-        model class. If none is specified, an exception will be thrown
+      default_model: If an implementation for the kind cannot be found, use
+        this model class.  If none is specified, an exception will be thrown
         (default).
     """
     self.default_model = default_model
+    self.want_pbs = 0
+
+  # Make this a context manager to request setting _orig_pb.
+
+  def __enter__(self):
+    self.want_pbs += 1
+
+  def __exit__(self, *args):
+    self.want_pbs -= 1
 
   def pb_to_key(self, pb):
     return Key(reference=pb)
@@ -328,7 +353,10 @@ class ModelAdapter(datastore_rpc.AbstractAdapter):
     modelclass = Model._kind_map.get(kind, self.default_model)
     if modelclass is None:
       raise KindError("No implementation found for kind '%s'" % kind)
-    return modelclass._from_pb(pb)
+    entity = modelclass._from_pb(pb)
+    if self.want_pbs:
+      entity._orig_pb = pb
+    return entity
 
   def entity_to_pb(self, ent):
     pb = ent._to_pb()
@@ -381,6 +409,8 @@ class Property(object):
                required=None, default=None, choices=None, validator=None):
     """Constructor.  For arguments see the module docstring."""
     if name is not None:
+      if isinstance(name, unicode):
+        name = name.encode('utf-8')
       assert '.' not in name  # The '.' is used elsewhere.
       self._name = name
     if indexed is not None:
@@ -427,6 +457,9 @@ class Property(object):
     s = '%s(%s)' % (self.__class__.__name__, ', '.join(args))
     return s
 
+  def _datastore_type(self, value):
+    return value
+
   def _comparison(self, op, value):
     """Internal helper for comparison operators.
 
@@ -440,7 +473,7 @@ class Property(object):
     if value is not None:
       # TODO: Allow query.Binding instances?
       value = self._validate(value)
-    return FilterNode(self._name, op, value)
+    return FilterNode(self._name, op, self._datastore_type(value))
 
   # Comparison operators on Property instances don't compare the
   # properties; instead they return FilterNode instances that can be
@@ -723,10 +756,7 @@ class Property(object):
           value = oldval
         else:
           value = [oldval, val]
-    try:
-      self._store_value(entity, value)
-    except ComputedPropertyError, e:
-      pass
+    self._store_value(entity, value)
 
 
 def _validate_key(value, entity=None):
@@ -746,12 +776,12 @@ class ModelKey(Property):
   def __init__(self):
     self._name = '__key__'
 
+  def _datastore_type(self, value):
+    return datastore_types.Key(value.urlsafe())
+
   def _comparison(self, op, value):
-    from ndb.query import FilterNode  # Import late to avoid circular imports.
     if value is not None:
-      value = self._validate(value)
-      # TODO: Move this magic into FilterNode.
-      return FilterNode(self._name, op, datastore_types.Key(value.urlsafe()))
+      return super(ModelKey, self)._comparison(op, value)
     raise datastore_errors.BadValueError(
         "__key__ filter query can't be compared to None")
 
@@ -862,14 +892,10 @@ class StringProperty(Property):
       return None
     raw = v.stringvalue()
     try:
-      raw.decode('ascii')
-      return raw  # Don't bother with Unicode in this case
+      value = raw.decode('utf-8')
+      return value
     except UnicodeDecodeError:
-      try:
-        value = raw.decode('utf-8')
-        return value
-      except UnicodeDecodeError:
-        return raw
+      return raw
 
 
 class TextProperty(StringProperty):
@@ -907,37 +933,6 @@ class BlobProperty(Property):
     if not v.has_stringvalue():
       return None
     return v.stringvalue()
-
-
-class GeoPt(tuple):
-  """A geographical point.  This is a tuple subclass and immutable.
-
-  Fields:
-    lat: latitude, a float in degrees with abs() <= 90.
-    lon: longitude, a float in degrees with abs() <= 180.
-  """
-
-  # TODO: Use collections.namedtuple once we can drop Python 2.5 support.
-
-  __slots__ = []
-
-  def __new__(cls, lat=0.0, lon=0.0):
-    # TODO: assert abs(lat) <= 90 and abs(lon) <= 180 ?
-    # TODO: allow construction from a string of the form <float>, <float>?
-    return tuple.__new__(cls, (float(lat), float(lon)))
-
-  @property
-  def lat(self):
-    """The latitude (in degrees north of the equator, abs() <= 90)."""
-    return self[0]
-
-  @property
-  def lon(self):
-    """The longitude (in degrees west of Greenwich, abs() <= 180)."""
-    return self[1]
-
-  def __repr__(self):
-    return '%s(%.16g, %.16g)' % (self.__class__.__name__, self.lat, self.lon)
 
 
 class GeoPtProperty(Property):
@@ -1008,6 +1003,9 @@ class KeyProperty(Property):
   """A Property whose value is a Key object."""
   # TODO: optionally check the kind (or maybe require this?)
 
+  def _datastore_type(self, value):
+    return datastore_types.Key(value.urlsafe())
+
   def _validate(self, value):
     if not isinstance(value, Key):
       raise datastore_errors.BadValueError('Expected Key, got %r' % (value,))
@@ -1043,7 +1041,24 @@ class KeyProperty(Property):
     return Key(reference=ref)
 
 
-# Todo: BlobKeyProperty.
+class BlobKeyProperty(Property):
+  """A Property whose value is a BlobKey object."""
+
+  def _validate(self, value):
+    if not isinstance(value, datastore_types.BlobKey):
+      raise datastore_errors.BadValueError('Expected BlobKey, got %r' %
+                                           (value,))
+    return value
+
+  def _db_set_value(self, v, p, value):
+    assert isinstance(value, datastore_types.BlobKey)
+    p.set_meaning(entity_pb.Property.BLOBKEY)
+    v.set_stringvalue(str(value))
+
+  def _db_get_value(self, v, p):
+    if not v.has_stringvalue():
+      return None
+    return datastore_types.BlobKey(v.stringvalue())
 
 
 # The Epoch (a zero POSIX timestamp).
@@ -1052,7 +1067,7 @@ _EPOCH = datetime.datetime.utcfromtimestamp(0)
 class DateTimeProperty(Property):
   """A Property whose value is a datetime object.
 
-  NOTE: Unlike Django, auto_now_add can be overridden by setting the
+  Note: Unlike Django, auto_now_add can be overridden by setting the
   value before writing the entity.  And unlike classic db, auto_now
   does not supply a default value.  Also unlike classic db, when the
   entity is written, the property values are updated to match what
@@ -1135,6 +1150,9 @@ def _time_to_datetime(value):
 class DateProperty(DateTimeProperty):
   """A Property whose value is a date object."""
 
+  def _datastore_type(self, value):
+    return _date_to_datetime(value)
+
   def _validate(self, value):
     if (not isinstance(value, datetime.date) or
         isinstance(value, datetime.datetime)):
@@ -1156,6 +1174,9 @@ class DateProperty(DateTimeProperty):
 
 class TimeProperty(DateTimeProperty):
   """A Property whose value is a time object."""
+
+  def _datastore_type(self, value):
+    return _time_to_datetime(value)
 
   def _validate(self, value):
     if not isinstance(value, datetime.time):
@@ -1213,42 +1234,34 @@ class StructuredProperty(Property):
 
   def _comparison(self, op, value):
     if op != '=':
+      # TODO: 'in' might actually work.  But maybe it's been expanded
+      # already before we get here?
       raise datastore_errors.BadFilterError(
         'StructuredProperty filter can only use ==')
     # Import late to avoid circular imports.
     from ndb.query import FilterNode, ConjunctionNode, PostFilterNode
+    from ndb.query import RepeatedStructuredPropertyPredicate
     value = self._validate(value)  # None is not allowed!
     filters = []
+    match_keys = []
+    # TODO: Why not just iterate over value._values?
     for name, prop in value._properties.iteritems():
       val = prop._retrieve_value(value)
       if val is not None:
-        filters.append(FilterNode(self._name + '.' + name, op, val))
+        name = self._name + '.' + name
+        filters.append(FilterNode(name, op, val))
+        match_keys.append(name)
     if not filters:
       raise datastore_errors.BadFilterError(
         'StructuredProperty filter without any values')
     if len(filters) == 1:
       return filters[0]
-    filters.append(PostFilterNode(self._filter_func, value))
-    return ConjunctionNode(filters)
-
-  def _filter_func(self, value, entity):
-    if isinstance(entity, Key):
-      raise datastore_errors.BadQueryError(
-        'StructuredProperty filter cannot be used with keys_only query')
-    subentities = getattr(entity, self._code_name, None)
-    if subentities is None:
-      return False
-    if not isinstance(subentities, list):
-      subentities = [subentities]
-    for subentity in subentities:
-      for name, prop in value._properties.iteritems():
-        val = prop._retrieve_value(value)
-        if val is not None:
-          if prop._retrieve_value(subentity) != val:
-            break
-      else:
-        return True
-    return False
+    if self._repeated:
+      pb = value._to_pb(allow_partial=True)
+      pred = RepeatedStructuredPropertyPredicate(match_keys, pb,
+                                                 self._name + '.')
+      filters.append(PostFilterNode(pred))
+    return ConjunctionNode(*filters)
 
   def _validate(self, value):
     if not isinstance(value, self._modelclass):
@@ -1274,7 +1287,7 @@ class StructuredProperty(Property):
       # TODO: Avoid re-sorting for repeated values.
       for name, prop in sorted(value._properties.iteritems()):
         prop._serialize(value, pb, prefix + self._name + '.',
-                       self._repeated or parent_repeated)
+                        self._repeated or parent_repeated)
 
   def _deserialize(self, entity, p, depth=1):
     if not self._repeated:
@@ -1316,7 +1329,7 @@ class StructuredProperty(Property):
 
 
 # A custom 'meaning' for compressed blobs.
-_MEANING_COMPRESSED = 18
+_MEANING_URI_COMPRESSED = 'ZLIB'
 
 
 class LocalStructuredProperty(Property):
@@ -1341,35 +1354,77 @@ class LocalStructuredProperty(Property):
   def __init__(self, modelclass, name=None, compressed=False, **kwds):
     super(LocalStructuredProperty, self).__init__(name=name, **kwds)
     assert not self._indexed
-    if self._repeated:
-      assert not modelclass._has_repeated
     self._modelclass = modelclass
     self._compressed = compressed
 
   def _validate(self, value):
-    if not isinstance(value, self._modelclass):
+    # This is kind of a hack. Allow tuples because if the property comes from
+    # datastore *and* is unchanged *and* the property has repeated=True,
+    # _serialize() will call _do_validate() while the value is still a tuple.
+    if not isinstance(value, (self._modelclass, tuple)):
       raise datastore_errors.BadValueError('Expected %s instance, got %r' %
                                            (self._modelclass.__name__, value))
     return value
 
   def _db_set_value(self, v, p, value):
-    pb = value._to_pb()
-    serialized = pb.Encode()
-    if self._compressed:
-      p.set_meaning(_MEANING_COMPRESSED)
-      v.set_stringvalue(zlib.compress(serialized))
+    """Serializes the value to an entity_pb.
+
+    The value stored in entity._values[self._name] can be either:
+
+    - A tuple (serialized: bytes, compressed: bool), when the value comes
+      from datastore. This is the serialized model and a flag indicating if it
+      is compressed, used to lazily decompress and deserialize the property
+      when it is first accessed.
+    - An instance of self._modelclass, when the property value is set, or
+      after it is lazily decompressed and deserialized on first access.
+    """
+    if isinstance(value, tuple):
+      # Value didn't change and is still serialized, so we store it as it is.
+      serialized, compressed = value
+      assert compressed == self._compressed
     else:
-      p.set_meaning(entity_pb.Property.BLOB)
-      v.set_stringvalue(serialized)
+      pb = value._to_pb()
+      serialized = pb.Encode()
+      compressed = self._compressed
+      if compressed:
+        p.set_meaning_uri(_MEANING_URI_COMPRESSED)
+        serialized = zlib.compress(serialized)
+    if compressed:
+      # Use meaning_uri because setting meaning to something else that is not
+      # BLOB or BYTESTRING will cause the value to be decoded from utf-8
+      # in datastore_types.FromPropertyPb. This breaks the compressed string.
+      p.set_meaning_uri(_MEANING_URI_COMPRESSED)
+    p.set_meaning(entity_pb.Property.BLOB)
+    v.set_stringvalue(serialized)
 
   def _db_get_value(self, v, p):
     if not v.has_stringvalue():
       return None
-    serialized = v.stringvalue()
-    if p.has_meaning() and p.meaning() == _MEANING_COMPRESSED:
+    # Return a tuple (serialized, bool) to be lazily processed later.
+    return v.stringvalue(), p.meaning_uri() == _MEANING_URI_COMPRESSED
+
+  def _decompress_unserialize_value(self, value):
+    serialized, compressed = value
+    if compressed:
       serialized = zlib.decompress(serialized)
     pb = entity_pb.EntityProto(serialized)
     return self._modelclass._from_pb(pb, set_key=False)
+
+  def _get_value(self, entity):
+    value = super(LocalStructuredProperty, self)._get_value(entity)
+    if self._repeated:
+      if value and isinstance(value[0], tuple):
+        # Decompresses and deserializes each list item.
+        # Reuse the original list, cleaning it first.
+        values = list(value)
+        del value[:]
+        for v in values:
+          value.append(self._decompress_unserialize_value(v))
+    elif isinstance(value, tuple):
+      # Decompresses and deserializes a single item.
+      value = self._decompress_unserialize_value(value)
+      self._store_value(entity, value)
+    return value
 
 
 class GenericProperty(Property):
@@ -1507,6 +1562,9 @@ class ComputedProperty(GenericProperty):
             a calculated value.
     """
     super(ComputedProperty, self).__init__(*args, **kwargs)
+    assert not self._required, 'ComputedProperty cannot be required'
+    assert not self._repeated, 'ComputedProperty cannot be repeated'
+    assert self._default is None, 'ComputedProperty cannot have a default'
     self._func = func
 
   def _has_value(self, entity):
@@ -1520,6 +1578,9 @@ class ComputedProperty(GenericProperty):
 
   def _retrieve_value(self, entity):
     return self._func(entity)
+
+  def _deserialize(self, entity, p, depth=1):
+    pass
 
 
 class MetaModel(type):
@@ -1737,9 +1798,10 @@ class Model(object):
       return NotImplemented
     return not eq
 
-  def _to_pb(self, pb=None):
+  def _to_pb(self, pb=None, allow_partial=False):
     """Internal helper to turn an entity into an EntityProto protobuf."""
-    self._check_initialized()
+    if not allow_partial:
+      self._check_initialized()
     if pb is None:
       pb = entity_pb.EntityProto()
 
@@ -1820,15 +1882,24 @@ class Model(object):
     Note: This is called by MetaModel, but may also be called manually
     after dynamically updating a model class.
     """
+    # Verify that _get_kind() returns an 8-bit string.
+    kind = cls._get_kind()
+    if not isinstance(kind, basestring):
+      raise KindError('Class %s defines a _get_kind() method that returns '
+                      'a non-string (%r)' % (cls.__name__, kind))
+    if not isinstance(kind, str):
+      try:
+        kind = kind.encode('ascii')  # ASCII contents is okay.
+      except UnicodeEncodeError:
+        raise KindError('Class %s defines a _get_kind() method that returns '
+                        'a Unicode string (%r); please encode using utf-8' %
+                        (cls.__name__, kind))
     cls._properties = {}  # Map of {name: Property}
     if cls.__module__ == __name__:  # Skip the classes in *this* file.
       return
-    has_key = False
     for name in set(dir(cls)):
       prop = getattr(cls, name, None)
       if isinstance(prop, ModelKey):
-        # TODO: raise exception if there is not one and only one ModelKey?
-        has_key = True
         continue
       if isinstance(prop, Property):
         assert not name.startswith('_')
@@ -1837,9 +1908,6 @@ class Model(object):
         if prop._repeated:
           cls._has_repeated = True
         cls._properties[prop._name] = prop
-    if not has_key:
-      # TODO: Do we care?
-      raise datastore_errors.BadValueError("Model doesn't have a ModelKey.")
     cls._kind_map[cls._get_kind()] = cls
 
   # Datastore API using the default context.
@@ -2056,6 +2124,31 @@ def transaction_async(callback, retry=None, entity_group=None):
   return tasklets.get_context().transaction(callback, **kwds)
 
 
+def in_transaction():
+  """Return whether a transaction is currently active."""
+  from ndb import tasklets
+  return tasklets.get_context().in_transaction()
+
+
+@datastore_rpc._positional(1)
+def transactional(func):
+  """Decorator to make a function automatically run in a transaction.
+
+  If we're already in a transaction this is a no-op.
+
+  Note: If you need to override the retry count or the entity group,
+  or if you want some kind of async behavior, use the transaction()
+  function above.
+  """
+  @utils.wrapping(func)
+  def transactional_wrapper(*args, **kwds):
+    if in_transaction():
+      return func(*args, **kwds)
+    else:
+      return transaction(lambda: func(*args, **kwds))
+  return transactional_wrapper
+
+
 def get_multi_async(keys):
   """Fetches a sequence of keys.
 
@@ -2081,28 +2174,28 @@ def get_multi(keys):
   return [future.get_result() for future in get_multi_async(keys)]
 
 
-def put_multi_async(models):
+def put_multi_async(entities):
   """Stores a sequence of Model instances.
 
   Args:
-    models: A sequence of Model instances.
+    entities: A sequence of Model instances.
 
   Returns:
     A list of futures.
   """
-  return [model.put_async() for model in models]
+  return [entity.put_async() for entity in entities]
 
 
-def put_multi(models):
+def put_multi(entities):
   """Stores a sequence of Model instances.
 
   Args:
-    models: A sequence of Model instances.
+    entities: A sequence of Model instances.
 
   Returns:
     A list with the stored keys.
   """
-  return [future.get_result() for future in put_multi_async(models)]
+  return [future.get_result() for future in put_multi_async(entities)]
 
 
 def delete_multi_async(keys):

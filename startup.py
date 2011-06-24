@@ -1,7 +1,7 @@
 # Startup file for interactive prompt, used by "make python".
 
-import logging
-logging.basicConfig(level=logging.INFO)
+from ndb import utils
+utils.tweak_logging()
 
 import os
 
@@ -9,6 +9,8 @@ from google.appengine.api import apiproxy_stub_map
 from google.appengine.api import datastore_file_stub
 from google.appengine.api import memcache
 from google.appengine.api.memcache import memcache_stub
+from google.appengine.api import taskqueue
+from google.appengine.api.taskqueue import taskqueue_stub
 
 from ndb.model import *
 from ndb.query import *
@@ -18,6 +20,8 @@ ds_stub = datastore_file_stub.DatastoreFileStub('_', None)
 apiproxy_stub_map.apiproxy.RegisterStub('datastore_v3', ds_stub)
 mc_stub = memcache_stub.MemcacheServiceStub()
 apiproxy_stub_map.apiproxy.RegisterStub('memcache', mc_stub)
+tq_stub = taskqueue_stub.TaskQueueServiceStub()
+apiproxy_stub_map.apiproxy.RegisterStub('taskqueue', tq_stub)
 os.environ['APPLICATION_ID'] = '_'
 
 class Employee(Model):
@@ -39,8 +43,12 @@ class Manager(Employee):
 reports = []
 for (name, age, rank) in [('Joe', 21, 1), ('Jim', 30, 2), ('Jane', 23, 1)]:
   emp = Employee(name=name, age=age, rank=rank)
-  emp.put()
   reports.append(emp)
+f1 = put_multi_async(reports)
 
 boss = Manager(name='Fred', age=42, rank=4, report=reports)
-boss.put()
+f2 = boss.put_async()
+
+f2.get_result()
+for f in f1:
+  f.get_result()

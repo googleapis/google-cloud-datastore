@@ -6,6 +6,7 @@
 import logging
 import sys
 
+from google.appengine.api import datastore  # For taskqueue coordination
 from google.appengine.api import datastore_errors
 from google.appengine.api import memcache
 
@@ -49,6 +50,7 @@ class AutoBatcher(object):
     # We cannot postpone the inevitable any longer.
     todo = self._todo
     self._todo = []  # Get ready for the next batch
+    # TODO: Use logging_debug(), at least if len(todo) == 1.
     logging.info('AutoBatcher(%s): %d items',
                  self._todo_tasklet.__name__, len(todo))
     self._running = self._todo_tasklet(todo)
@@ -68,7 +70,7 @@ class AutoBatcher(object):
       else:
         self._autobatcher_callback()
 
-# TODO: Rename?  To what?  Session???
+
 class Context(object):
 
   def __init__(self, conn=None, auto_batcher_class=AutoBatcher):
@@ -82,6 +84,8 @@ class Context(object):
     self._cache = {}
     self._cache_policy = lambda key: True
     self._memcache_policy = lambda key: True
+    self._memcache_timeout_policy = lambda key: 0
+    self._memcache_prefix = 'NDB:'  # TODO: make this configurable.
     # TODO: Also add a way to compute the memcache expiration time.
 
   @tasklets.tasklet
@@ -98,7 +102,8 @@ class Context(object):
     memkeymap = dict((key, key.urlsafe())
                      for key in keys if self.should_memcache(key))
     if memkeymap:
-      results = memcache.get_multi(memkeymap.values())
+      results = memcache.get_multi(memkeymap.values(),
+                                   key_prefix=self._memcache_prefix)
       leftover = []
 ##      del todo[1:]  # Uncommenting this creates an interesting bug.
       for fut, key in todo:
@@ -137,21 +142,27 @@ class Context(object):
     # Now update memcache.
     # TODO: Could we update memcache *before* calling async_put()?
     # (Hm, not for new entities but possibly for updated ones.)
-    mapping = {}
+    mappings = {}  # Maps timeout value to {urlsafe_key: pb} mapping.
     for _, ent in todo:
       if self.should_memcache(ent._key):
         pb = self._conn.adapter.entity_to_pb(ent)
+        timeout = self._memcache_timeout_policy(ent._key)
+        mapping = mappings.get(timeout)
+        if mapping is None:
+          mapping = mappings[timeout] = {}
         mapping[ent._key.urlsafe()] = pb
-    if mapping:
-      # TODO: Optionally set the memcache expiration time;
-      # maybe configurable based on key (or even entity).
-      failures = memcache.set_multi(mapping)
-      if failures:
-        badkeys = []
-        for failure in failures:
-          badkeys.append(mapping[failure].key)
-        logging.info('memcache failed to set %d out of %d keys: %s',
-                     len(failures), len(mapping), badkeys)
+    if mappings:
+      # If the timeouts are not uniform, make a separate call for each
+      # distinct timeout value.
+      for timeout, mapping in mappings.iteritems():
+        failures = memcache.set_multi(mapping, time=timeout,
+                                      key_prefix=self._memcache_prefix)
+        if failures:
+          badkeys = []
+          for failure in failures:
+            badkeys.append(mapping[failure].key)
+          logging.info('memcache failed to set %d out of %d keys: %s',
+                       len(failures), len(mapping), badkeys)
 
   @tasklets.tasklet
   def _delete_tasklet(self, todo):
@@ -163,12 +174,12 @@ class Context(object):
     # Now update memcache.
     memkeys = [key.urlsafe() for key in keys if self.should_memcache(key)]
     if memkeys:
-      memcache.delete_multi(memkeys)
+      memcache.delete_multi(memkeys, key_prefix=self._memcache_prefix)
       # The value returned by delete_multi() is pretty much useless, it
       # could be the keys were never cached in the first place.
 
   def get_cache_policy(self):
-    """Returns the current context cache policy.
+    """Returns the current context cache policy function.
 
     Returns:
       A function that accepts a Key instance as argument and returns
@@ -177,7 +188,7 @@ class Context(object):
     return self._cache_policy
 
   def set_cache_policy(self, func):
-    """Sets the context cache policy.
+    """Sets the context cache policy function.
 
     Args:
       func: A function that accepts a Key instance as argument and returns
@@ -197,7 +208,7 @@ class Context(object):
     return self._cache_policy(key)
 
   def get_memcache_policy(self):
-    """Returns the current memcache policy.
+    """Returns the current memcache policy function.
 
     Returns:
       A function that accepts a Key instance as argument and returns
@@ -206,13 +217,28 @@ class Context(object):
     return self._memcache_policy
 
   def set_memcache_policy(self, func):
-    """Sets the memcache policy.
+    """Sets the memcache policy function.
 
     Args:
       func: A function that accepts a Key instance as argument and returns
         a boolean indicating if it should be cached.
     """
     self._memcache_policy = func
+
+  def set_memcache_timeout_policy(self, func):
+    """Sets the policy function for memcache timeout (expiration).
+
+    Args:
+      func: A function that accepts a key instance as argument and returns
+        an integer indicating the desired memcache timeout.
+
+    If the function returns 0 it implies the default timeout.
+    """
+    self._memcache_timeout_policy = func
+
+  def get_memcache_timeout_policy(self):
+    """Returns the current policy function for memcache timeout (expiration)."""
+    return self._memcache_timeout_policy
 
   def should_memcache(self, key):
     """Return whether to use memcache for this key.
@@ -248,10 +274,12 @@ class Context(object):
     should_cache = self.should_cache(key)
     if should_cache and key in self._cache:
       entity = self._cache[key]  # May be None, meaning "doesn't exist".
-    else:
-      entity = yield self._get_batcher.add(key)
-      if should_cache:
-        self._cache[key] = entity
+      if entity is None or entity._key == key:
+        # If entity's key didn't change later, it is ok. See issue #13.
+        raise tasklets.Return(entity)
+    entity = yield self._get_batcher.add(key)
+    if should_cache:
+      self._cache[key] = entity
     raise tasklets.Return(entity)
 
   @tasklets.tasklet
@@ -290,13 +318,19 @@ class Context(object):
       is_ancestor_query = query.ancestor is not None
       while True:
         try:
-          ent = yield inq.getq()
+          batch, i, ent = yield inq.getq()
         except EOFError:
           break
         if isinstance(ent, model.Key):
           pass  # It was a keys-only query and ent is really a Key.
         else:
           key = ent._key
+          if key in self._cache:
+            hit = self._cache[key]
+            if hit is not None and hit.key != key:
+              # The cached entry has been mutated to have a different key.
+              # That's a false hit.  Get rid of it.  See issue #13.
+              del self._cache[key]
           if key in self._cache:
             # Assume the cache is more up to date.
             if self._cache[key] is None:
@@ -311,12 +345,20 @@ class Context(object):
               logging.info('Conflict: entity %s was modified', key)
             ent = self._cache[key]
           else:
+            # Cache the entity only if this is an ancestor query;
+            # non-ancestor queries may return stale results, since in
+            # the HRD these queries are "eventually consistent".
+            # TODO: Shouldn't we check this before considering cache hits?
             if is_ancestor_query and self.should_cache(key):
               self._cache[key] = ent
         if callback is None:
           val = ent
         else:
-          val = callback(ent)  # TODO: If this raises, log and ignore
+          # TODO: If the callback raises, log and ignore.
+          if options is not None and options.produce_cursors:
+            val = callback(batch, i, ent)
+          else:
+            val = callback(ent)
         mfut.putq(val)
       mfut.complete()
 
@@ -324,8 +366,8 @@ class Context(object):
     return mfut
 
   @datastore_rpc._positional(2)
-  def iter_query(self, query, options=None):
-    return self.map_query(query, callback=None, options=options,
+  def iter_query(self, query, callback=None, options=None):
+    return self.map_query(query, callback=callback, options=options,
                           merge_future=tasklets.SerialQueueFuture())
 
   @tasklets.tasklet
@@ -349,27 +391,40 @@ class Context(object):
                             auto_batcher_class=self._auto_batcher_class)
       tctx.set_memcache_policy(lambda key: False)
       tasklets.set_context(tctx)
+      old_ds_conn = datastore._GetConnection()
       try:
+        datastore._SetConnection(tconn)  # For taskqueue coordination
         try:
-          result = callback()
-          if isinstance(result, tasklets.Future):
-            result = yield result
-        finally:
-          yield tctx.flush()
-      except Exception, err:
-        t, e, tb = sys.exc_info()
-        yield tconn.async_rollback(None)  # TODO: Don't block???
-        raise t, e, tb
-      else:
-        ok = yield tconn.async_commit(None)
-        if ok:
-          # TODO: This is questionable when self is transactional.
-          self._cache.update(tctx._cache)
-          self._flush_memcache(tctx._cache)
-          raise tasklets.Return(result)
+          try:
+            result = callback()
+            if isinstance(result, tasklets.Future):
+              result = yield result
+          finally:
+            yield tctx.flush()
+        except Exception, err:
+          t, e, tb = sys.exc_info()
+          yield tconn.async_rollback(None)  # TODO: Don't block???
+          if issubclass(t, datastore_errors.Rollback):
+            return
+          else:
+            raise t, e, tb
+        else:
+          ok = yield tconn.async_commit(None)
+          if ok:
+            # TODO: This is questionable when self is transactional.
+            self._cache.update(tctx._cache)
+            self._flush_memcache(tctx._cache)
+            raise tasklets.Return(result)
+      finally:
+        datastore._SetConnection(old_ds_conn)
+
     # Out of retries
     raise datastore_errors.TransactionFailedError(
       'The transaction could not be committed. Please try again.')
+
+  def in_transaction(self):
+    """Return whether a transaction is currently active."""
+    return isinstance(self._conn, datastore_rpc.TransactionalConnection)
 
   def flush_cache(self):
     """Clears the in-memory cache.
@@ -382,7 +437,7 @@ class Context(object):
     keys = set(key for key in keys if self.should_memcache(key))
     if keys:
       memkeys = [key.urlsafe() for key in keys]
-      memcache.delete_multi(memkeys)
+      memcache.delete_multi(memkeys, key_prefix=self._memcache_prefix)
 
   @tasklets.tasklet
   def get_or_insert(self, model_class, name,

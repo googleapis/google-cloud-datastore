@@ -64,14 +64,14 @@ deploy:
 	appcfg.py update .
 
 python:
-	PYTHONPATH=$(GAEPATH):. $(PYTHON) -i startup.py
+	PYTHONPATH=$(GAEPATH):. $(PYTHON) -i startup.py $(FLAGS)
 
 python_raw:
 	PYTHONPATH=$(GAEPATH):. $(PYTHON)
 
 zip:
-	D=`pwd`; D=`basename $$D`; cd ..; rm $$D.zip; zip $$D.zip `hg st -c -m -a -n -X $$D/.idea $$D`
+	D=`pwd`; D=`basename $$D`; cd ..; rm -f $$D.zip; zip $$D.zip `hg st -c -m -a -n -X $$D/.idea $$D`
 
 clean:
-	rm -rf htmlcov
-	rm -f `find . -name \*.pyc -o -name \*~ -o -name @* -o -name \*.orig`
+	rm -rf htmlcov .coverage
+	rm -f `find . -name \*.pyc -o -name \*~ -o -name @\* -o -name \*.orig -o -name \*.rej`

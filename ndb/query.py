@@ -56,7 +56,9 @@ to the .query() method:
                       Employee.age < 40)  # Only those in their 30s
 
 Query objects are immutable, so these methods always return a new
-Query object; the above calls to filter() do not affect q1.
+Query object; the above calls to filter() do not affect q1.  (On the
+other hand, operations that are effectively no-ops may return the
+original Query object.)
 
 Sort orders can also be combined this way, and .filter() and .order()
 calls may be intermixed:
@@ -74,35 +76,62 @@ The simplest way to retrieve Query results is a for-loop:
   for emp in q3:
     print emp.name, emp.age
 
-Some other operations:
+Some other methods to run a query and access its results:
 
+  q.iter() # Return an iterator; same as iter(q) but more flexible
   q.map(callback) # Call the callback function for each query result
   q.fetch(N) # Return a list of the first N results
+  q.get() # Return the first result
   q.count(N) # Return the number of results, with a maximum of N
+  q.fetch_page(N, start_cursor=cursor) # Return (results, cursor, has_more)
 
-These have asynchronous variants as well, which return a Future; to
-get the operation's ultimate result, yield the Future (when inside a
-tasklet) or call the Future's get_result() method (outside a tasklet):
+All of the above methods take a standard set of additional query
+options, either in the form of keyword arguments such as
+keys_only=True, or as QueryOptions object passed with
+options=QueryOptions(...).  The most important query options are:
+
+  keys_only: bool, if set the results are keys instead of entities
+  limit: int, limits the number of results returned
+  offset: int, skips this many results first
+  start_cursor: Cursor, start returning results after this position
+  end_cursor: Cursor, stop returning results after this position
+  batch_size: int, hint for the number of results returned per RPC
+  prefetch_size: int, hint for the number of results in the first RPC
+  produce_cursors: bool, return Cursor objects with the results
+
+For additional (obscure) query options and more details on them,
+including an explanation of Cursors, see datastore_query.py.
+
+All of the above methods except for iter() have asynchronous variants
+as well, which return a Future; to get the operation's ultimate
+result, yield the Future (when inside a tasklet) or call the Future's
+get_result() method (outside a tasklet):
 
   q.map_async(callback)  # Callback may be a task or a plain function
   q.fetch_async(N)
+  q.get_async()
   q.count_async(N)
+  q.fetch_page_async(N, start_cursor=cursor)
 
 Finally, there's an idiom to efficiently loop over the Query results
 in a tasklet, properly yielding when appropriate:
 
-  it = iter(q)
+  it = q.iter()
   while (yield it.has_next_async()):
     emp = it.next()
     print emp.name, emp.age
 """
 
+from __future__ import with_statement
+
 __author__ = 'guido@google.com (Guido van Rossum)'
 
 import heapq
+import itertools
 
 from google.appengine.api import datastore_errors
 from google.appengine.api import datastore_types
+from google.appengine.datastore import datastore_pb
 from google.appengine.datastore import datastore_query
 from google.appengine.datastore import datastore_rpc
 from google.appengine.ext import gql
@@ -111,30 +140,131 @@ from ndb import context
 from ndb import model
 from ndb import tasklets
 
-__all__ = ['Binding', 'AND', 'OR', 'parse_gql', 'Query', 'QueryOptions']
+__all__ = ['Binding', 'AND', 'OR', 'parse_gql', 'Query',
+           'QueryOptions', 'Cursor']
 
-QueryOptions = datastore_query.QueryOptions  # For export.
+# Re-export some useful classes from the lower-level module.
+QueryOptions = datastore_query.QueryOptions
+Cursor = datastore_query.Cursor
 
-# TODO: Make these protected.
-ASC = datastore_query.PropertyOrder.ASCENDING
-DESC = datastore_query.PropertyOrder.DESCENDING
-
+# Some local renamings.
+_ASC = datastore_query.PropertyOrder.ASCENDING
+_DESC = datastore_query.PropertyOrder.DESCENDING
 _AND = datastore_query.CompositeFilter.AND
+_KEY = datastore_types._KEY_SPECIAL_PROPERTY
 
-_OPS = {
-  '__eq': '=',
-  '__ne': '!=',
-  '__lt': '<',
-  '__le': '<=',
-  '__gt': '>',
-  '__ge': '>=',
-  '__in': 'in',
-  }
+# Table of supported comparison operators.
+_OPS = frozenset(['=', '!=', '<', '<=', '>', '>=', 'in'])
+
+# Default limit value.  (Yes, the datastore uses int32!)
+_MAX_LIMIT = 2**31 - 1
+
+
+# TODO: Once CL/21689469 is submitted, get rid of this and its callers.
+def _make_unsorted_key_value_map(pb, property_names):
+  """Like _make_key_value_map() but doesn't sort the values."""
+  value_map = dict((name, []) for name in property_names)
+
+  # Building comparable values from pb properties.
+  # NOTE: Unindexed properties are skipped.
+  for prop in pb.property_list():
+    prop_name = prop.name()
+    if prop_name in value_map:
+      value_map[prop_name].append(
+        datastore_types.PropertyValueToKeyValue(prop.value()))
+
+  # Adding special key property (if requested).
+  if _KEY in value_map:
+    value_map[_KEY] = [datastore_types.ReferenceToKeyValue(pb.key())]
+
+  return value_map
+
+
+class RepeatedStructuredPropertyPredicate(datastore_query.FilterPredicate):
+
+  def __init__(self, match_keys, pb, key_prefix):
+    super(RepeatedStructuredPropertyPredicate, self).__init__()
+    self.match_keys = match_keys
+    stripped_keys = []
+    for key in match_keys:
+      assert key.startswith(key_prefix), key
+      stripped_keys.append(key[len(key_prefix):])
+    value_map = _make_unsorted_key_value_map(pb, stripped_keys)
+    self.match_values = tuple(value_map[key][0] for key in stripped_keys)
+
+  def _get_prop_names(self):
+    return frozenset(self.match_keys)
+
+  def __call__(self, pb):
+    return self._apply(_make_unsorted_key_value_map(pb, self.match_keys))
+
+  def _apply(self, key_value_map):
+    """Apply the filter to values extracted from an entity.
+
+    Think of self.match_keys and self.match_values as representing a
+    table with one row.  For example:
+
+      match_keys = ('name', 'age', 'rank')
+      match_values = ('Joe', 24, 5)
+
+    (Except that in reality, the values are represented by tuples
+    produced by datastore_types.PropertyValueToKeyValue().)
+
+    represents this table:
+
+      |  name   |  age  |  rank  |
+      +---------+-------+--------+
+      |  'Joe'  |   24  |     5  |
+
+    Think of key_value_map as a table with the same structure but
+    (potentially) many rows.  This represents a repeated structured
+    property of a single entity.  For example:
+
+      {'name': ['Joe', 'Jane', 'Dick'],
+       'age': [24, 21, 23],
+       'rank': [5, 1, 2]}
+
+    represents this table:
+
+      |  name   |  age  |  rank  |
+      +---------+-------+--------+
+      |  'Joe'  |   24  |     5  |
+      |  'Jane' |   21  |     1  |
+      |  'Dick' |   23  |     2  |
+
+    We must determine wheter at least one row of the second table
+    exactly matches the first table.  We need this class because the
+    datastore, when asked to find an entity with name 'Joe', age 24
+    and rank 5, will include entities that have 'Joe' somewhere in the
+    name column, 24 somewhere in the age column, and 5 somewhere in
+    the rank column, but not all aligned on a single row.  Such an
+    entity should not be considered a match.
+    """
+    columns = []
+    for key in self.match_keys:
+      column = key_value_map.get(key)
+      if not column:  # None, or an empty list.
+        return False  # If any column is empty there can be no match.
+      columns.append(column)
+    # Use izip to transpose the columns into rows.
+    return self.match_values in itertools.izip(*columns)
+
+  # Don't implement _prune()!  It would mess up the row correspondence
+  # within columns.
+
+
+class CompositePostFilter(datastore_query.CompositeFilter):
+
+  def __call__(self, pb):
+    key_value_map = _make_unsorted_key_value_map(pb, self._get_prop_names())
+    return self._apply(key_value_map)
 
 
 class Binding(object):
+  """Used with GQL; for now unsupported."""
 
   def __init__(self, value=None, key=None):
+    """Constructor.  The value may be changed later."""
     self.value = value
     self.key = key
 
@@ -142,28 +272,38 @@ class Binding(object):
     return '%s(%r, %r)' % (self.__class__.__name__, self.value, self.key)
 
   def __eq__(self, other):
+    # TODO: When comparing tree nodes containing Bindings, Bindings
+    # should be compared by object identity?
     if not isinstance(other, Binding):
       return NotImplemented
     return self.value == other.value and self.key == other.key
 
   def resolve(self):
+    """Return the value currently associated with this Binding."""
     value = self.value
-    assert not isinstance(value, Binding)
+    assert not isinstance(value, Binding), 'Recursive Binding'
     return value
 
 
 class Node(object):
+  """Base class for filter expression tree nodes.
+
+  Tree nodes are considered immutable, even though they can contain
+  Binding instances, which are not.  In particular, two identical
+  trees may be represented by the same Node object in different
+  contexts.
+  """
 
   def __new__(cls):
-    assert cls is not None
+    assert cls is not Node, 'Cannot instantiate Node, only a subclass'
     return super(Node, cls).__new__(cls)
 
   def __eq__(self, other):
-    return NotImplemented
+    raise NotImplementedError
 
   def __ne__(self, other):
     eq = self.__eq__(other)
-    if eq is NotImplemented:
+    if eq is not NotImplemented:
       eq = not eq
     return eq
 
@@ -171,52 +311,58 @@ class Node(object):
     raise TypeError('Nodes cannot be ordered')
   __le__ = __lt__ = __ge__ = __gt__ = __unordered
 
-  def _to_filter(self, bindings):
+  def _to_filter(self, bindings, post=False):
+    """Helper to convert to datastore_query.Filter, or None."""
     raise NotImplementedError
 
   def _post_filters(self):
+    """Helper to extract post-filter Nodes, if any."""
     return None
 
-  def apply(self, entity):
-    return True
-
   def resolve(self):
+    """Extract the Binding's value if necessary."""
     raise NotImplementedError
 
 
 class FalseNode(Node):
+  """Tree node for an always-failing filter."""
 
   def __new__(cls):
     return super(Node, cls).__new__(cls)
 
   def __eq__(self, other):
-    if not isinstane(other, FalseNode):
+    if not isinstance(other, FalseNode):
       return NotImplemented
     return True
 
-  def _to_filter(self, bindings):
-    # TODO: Or use make_filter(name, '=', []) ?
-    raise ValueError('Cannot convert FalseNode to predicate')
+  def _to_filter(self, bindings, post=False):
+    if post:
+      return None
+    # Because there's no point submitting a query that will never
+    # return anything.
+    raise datastore_errors.BadQueryError(
+      'Cannot convert FalseNode to predicate')
 
   def resolve(self):
     return self
 
 
 class FilterNode(Node):
+  """Tree node for a single filter expression."""
 
   def __new__(cls, name, opsymbol, value):
     if opsymbol == '!=':
       n1 = FilterNode(name, '<', value)
       n2 = FilterNode(name, '>', value)
-      return DisjunctionNode([n1, n2])
+      return DisjunctionNode(n1, n2)
     if opsymbol == 'in' and not isinstance(value, Binding):
-      assert isinstance(value, (list, tuple, set, frozenset)), value
+      assert isinstance(value, (list, tuple, set, frozenset)), repr(value)
       nodes = [FilterNode(name, '=', v) for v in value]
       if not nodes:
         return FalseNode()
       if len(nodes) == 1:
         return nodes[0]
-      return DisjunctionNode(nodes)
+      return DisjunctionNode(*nodes)
     self = super(FilterNode, cls).__new__(cls)
     self.__name = name
     self.__opsymbol = opsymbol
@@ -233,65 +379,73 @@ class FilterNode(Node):
   def __eq__(self, other):
     if not isinstance(other, FilterNode):
       return NotImplemented
+    # TODO: Should nodes with values that compare equal but have
+    # different types really be considered equal?  IIUC the datastore
+    # doesn't consider 1 equal to 1.0 when it compares property values.
     return (self.__name == other.__name and
             self.__opsymbol == other.__opsymbol and
             self.__value == other.__value)
 
-  def __lt__(self, other):
-    if not isinstance(other, FilterNode):
-      return NotImplemented
-    return self._sort_key() < other._sort_key()
-
-  def _to_filter(self, bindings):
-    assert self.__opsymbol not in ('!=', 'in'), self.__opsymbol
+  def _to_filter(self, bindings, post=False):
+    if post:
+      return None
+    assert self.__opsymbol not in ('!=', 'in'), repr(self.__opsymbol)
     value = self.__value
     if isinstance(value, Binding):
       bindings[value.key] = value
       value = value.resolve()
-    return datastore_query.make_filter(self.__name, self.__opsymbol, value)
+    return datastore_query.make_filter(self.__name.decode('utf-8'),
+                                       self.__opsymbol, value)
 
   def resolve(self):
     if self.__opsymbol == 'in':
-      assert isinstance(self.__value, Binding)
+      assert isinstance(self.__value, Binding), 'Unexpanded non-Binding IN'
       return FilterNode(self.__name, self.__opsymbol, self.__value.resolve())
     else:
       return self
 
 
 class PostFilterNode(Node):
+  """Tree node representing an in-memory filtering operation.
 
-  def __new__(cls, filter_func, filter_arg):
+  This is used to represent filters that cannot be executed by the
+  datastore, for example a query for a structured value.
+  """
+
+  def __new__(cls, predicate):
     self = super(PostFilterNode, cls).__new__(cls)
-    self.filter_func = filter_func
-    self.filter_arg = filter_arg
+    self.predicate = predicate
     return self
 
-  def apply(self, entity):
-    return self.filter_func(self.filter_arg, entity)
+  def __repr__(self):
+    return '%s(%s)' % (self.__class__.__name__, self.predicate)
 
   def __eq__(self, other):
     if not isinstance(other, PostFilterNode):
       return NotImplemented
     return self is other
 
-  def _to_filter(self, bindings):
-    return None
+  def _to_filter(self, bindings, post=False):
+    if post:
+      return self.predicate
+    else:
+      return None
 
   def resolve(self):
     return self
 
 
 class ConjunctionNode(Node):
-  # AND
+  """Tree node representing a Boolean AND operator on two or more nodes."""
 
-  def __new__(cls, nodes):
-    assert nodes
+  def __new__(cls, *nodes):
+    assert nodes, 'ConjunctionNode requires at least one node'
     if len(nodes) == 1:
       return nodes[0]
     clauses = [[]]  # Outer: Disjunction; inner: Conjunction.
     # TODO: Remove duplicates?
     for node in nodes:
-      assert isinstance(node, Node), node
+      assert isinstance(node, Node), repr(node)
       if isinstance(node, DisjunctionNode):
         # Apply the distributive law: (X or Y) and (A or B) becomes
         # (X and A) or (X and B) or (Y and A) or (Y and B).
@@ -313,7 +467,7 @@ class ConjunctionNode(Node):
     if not clauses:
       return FalseNode()
     if len(clauses) > 1:
-      return DisjunctionNode([ConjunctionNode(clause) for clause in clauses])
+      return DisjunctionNode(*[ConjunctionNode(*clause) for clause in clauses])
     self = super(ConjunctionNode, cls).__new__(cls)
     self.__nodes = clauses[0]
     return self
@@ -322,16 +476,24 @@ class ConjunctionNode(Node):
     return iter(self.__nodes)
 
   def __repr__(self):
-    return '%s(%r)' % (self.__class__.__name__, self.__nodes)
+    return 'OR(%s)' % (', '.join(map(str, self.__nodes)))
 
   def __eq__(self, other):
     if not isinstance(other, ConjunctionNode):
       return NotImplemented
     return self.__nodes == other.__nodes
 
-  def _to_filter(self, bindings):
+  def _to_filter(self, bindings, post=False):
     filters = filter(None,
-                     (node._to_filter(bindings) for node in self.__nodes))
+                     (node._to_filter(bindings, post=post)
+                      for node in self.__nodes
+                      if isinstance(node, PostFilterNode) == post))
+    if not filters:
+      return None
+    if len(filters) == 1:
+      return filters[0]
+    if post:
+      return CompositePostFilter(_AND, filters)
     return datastore_query.CompositeFilter(_AND, filters)
 
   def _post_filters(self):
@@ -343,33 +505,27 @@ class ConjunctionNode(Node):
       return post_filters[0]
     if post_filters == self.__nodes:
       return self
-    return ConjunctionNode(post_filters)
-
-  def apply(self, entity):
-    for node in self.__nodes:
-      if not node.apply(entity):
-        return False
-    return True
+    return ConjunctionNode(*post_filters)
 
   def resolve(self):
     nodes = [node.resolve() for node in self.__nodes]
     if nodes == self.__nodes:
       return self
-    return ConjunctionNode(nodes)
+    return ConjunctionNode(*nodes)
 
 
 class DisjunctionNode(Node):
-  # OR
+  """Tree node representing a Boolean OR operator on two or more nodes."""
 
-  def __new__(cls, nodes):
-    assert nodes
+  def __new__(cls, *nodes):
+    assert nodes, 'DisjunctionNode requires at least one node'
     if len(nodes) == 1:
       return nodes[0]
     self = super(DisjunctionNode, cls).__new__(cls)
     self.__nodes = []
     # TODO: Remove duplicates?
     for node in nodes:
-      assert isinstance(node, Node), node
+      assert isinstance(node, Node), repr(node)
       if isinstance(node, DisjunctionNode):
         self.__nodes.extend(node.__nodes)
       else:
@@ -380,7 +536,7 @@ class DisjunctionNode(Node):
     return iter(self.__nodes)
 
   def __repr__(self):
-    return '%s(%r)' % (self.__class__.__name__, self.__nodes)
+    return 'OR(%s)' % (', '.join(map(str, self.__nodes)))
 
   def __eq__(self, other):
     if not isinstance(other, DisjunctionNode):
@@ -391,29 +547,16 @@ class DisjunctionNode(Node):
     nodes = [node.resolve() for node in self.__nodes]
     if nodes == self.__nodes:
       return self
-    return DisjunctionNode(nodes)
+    return DisjunctionNode(*nodes)
 
 
-# TODO: Change ConjunctionNode and DisjunctionNode signatures so that
-# AND and OR can just be aliases for them -- or possibly even rename.
-
-def AND(*args):
-  assert args
-  assert all(isinstance(arg, Node) for arg in args)
-  if len(args) == 1:
-    return args[0]
-  return ConjunctionNode(args)
-
-
-def OR(*args):
-  assert args
-  assert all(isinstance(arg, Node) for arg in args)
-  if len(args) == 1:
-    return args[0]
-  return DisjunctionNode(args)
+# AND and OR are preferred aliases for these.
+AND = ConjunctionNode
+OR = DisjunctionNode
 
 
 def _args_to_val(func, args, bindings):
+  """Helper for GQL parsing."""
   vals = []
   for arg in args:
     if isinstance(arg, (int, long, basestring)):
@@ -428,7 +571,7 @@ def _args_to_val(func, args, bindings):
       assert False, 'Unexpected arg (%r)' % arg
     vals.append(val)
   if func == 'nop':
-    assert len(vals) == 1
+    assert len(vals) == 1, '"nop" requires exactly one value'
     return vals[0]
   if func == 'list':
     return vals
@@ -462,29 +605,20 @@ def parse_gql(query_string):
   for ((name, op), values) in flt.iteritems():
     op = op.lower()
     if op == 'is' and name == gql.GQL._GQL__ANCESTOR:
-      assert len(values) == 1
+      assert len(values) == 1, '"is" requires exactly one value'
       [(func, args)] = values
       ancestor = _args_to_val(func, args, bindings)
       continue
-    assert op in _OPS.values()
+    assert op in _OPS, repr(op)
     for (func, args) in values:
       val = _args_to_val(func, args, bindings)
       filters.append(FilterNode(name, op, val))
   if filters:
-    filters.sort()  # For predictable tests.
-    filters = ConjunctionNode(filters)
+    filters.sort(key=lambda x: x._sort_key())  # For predictable tests.
+    filters = ConjunctionNode(*filters)
   else:
     filters = None
-  orderings = gql_qry.orderings()
-  orders = []
-  for (name, direction) in orderings:
-    orders.append(datastore_query.PropertyOrder(name, direction))
-  if not orders:
-    orders = None
-  elif len(orders) == 1:
-    orders = orders[0]
-  else:
-    orders = datastore_query.CompositeOrder(orders)
+  orders = _orderings_to_orders(gql_qry.orderings())
   qry = Query(kind=gql_qry._entity,
               ancestor=ancestor,
               filters=filters,
@@ -500,22 +634,50 @@ def parse_gql(query_string):
 
 
 class Query(object):
+  """Query object.
+
+  Usually constructed by calling Model.query().
+
+  See module docstring for examples.
+
+  Note that not all operations on Queries are supported by _MultiQuery
+  instances; the latter are generated as necessary when any of the
+  operators !=, IN or OR is used.
+  """
 
   @datastore_rpc._positional(1)
   def __init__(self, kind=None, ancestor=None, filters=None, orders=None):
+    """Constructor.
+
+    Args:
+      kind: Optional kind string.
+      ancestor: Optional ancestor Key.
+      filters: Optional Node representing a filter expression tree.
+      orders: Optional datastore_query.Order object.
+    """
     if ancestor is not None and not isinstance(ancestor, Binding):
       lastid = ancestor.pairs()[-1][1]
       assert lastid, 'ancestor cannot be an incomplete key'
     if filters is not None:
-      assert isinstance(filters, Node)
+      assert isinstance(filters, Node), repr(filters)
     if orders is not None:
-      assert isinstance(orders, datastore_query.Order)
+      assert isinstance(orders, datastore_query.Order), repr(orders)
     self.__kind = kind  # String
     self.__ancestor = ancestor  # Key
     self.__filters = filters  # None or Node subclass
     self.__orders = orders  # None or datastore_query.Order instance
 
-  # TODO: __repr__().
+  def __repr__(self):
+    args = []
+    if self.__kind is not None:
+      args.append('kind=%r' % self.__kind)
+    if self.__ancestor is not None:
+      args.append('ancestor=%r' % self.__ancestor)
+    if self.__filters is not None:
+      args.append('filters=%r' % self.__filters)
+    if self.__orders is not None:
+      args.append('orders=...')  # PropertyOrder doesn't have a good repr().
+    return '%s(%s)' % (self.__class__.__name__, ', '.join(args))
 
   def _get_query(self, connection):
     kind = self.__kind
@@ -531,44 +693,34 @@ class Query(object):
     if filters is not None:
       post_filters = filters._post_filters()
       filters = filters._to_filter(bindings)
-    dsqry = datastore_query.Query(kind=kind,
-                                  ancestor=ancestor,
-                                  filter_predicate=filters,
-                                  order=self.__orders)
-    return dsqry, post_filters
+    dsquery = datastore_query.Query(kind=kind.decode('utf-8'),
+                                    ancestor=ancestor,
+                                    filter_predicate=filters,
+                                    order=self.__orders)
+    if post_filters is not None:
+      dsquery = datastore_query._AugmentedQuery(
+        dsquery,
+        in_memory_filter=post_filters._to_filter(bindings, post=True))
+    return dsquery
 
   @tasklets.tasklet
-  def run_to_queue(self, queue, conn, options=None):
+  def run_to_queue(self, queue, conn, options=None, dsquery=None):
     """Run this query, putting entities into the given queue."""
     multiquery = self._maybe_multi_query()
     if multiquery is not None:
       multiquery.run_to_queue(queue, conn, options=options)  # No return value.
       return
-    dsqry, post_filters = self._get_query(conn)
+    if dsquery is None:
+      dsquery = self._get_query(conn)
     orig_options = options
-    if (post_filters and options is not None and
-        (options.offset or options.limit is not None)):
-      options = QueryOptions(offset=None, limit=None, config=orig_options)
-      assert options.limit is None and options.limit is None
-    rpc = dsqry.run_async(conn, options)
+    rpc = dsquery.run_async(conn, options)
     skipped = 0
     count = 0
     while rpc is not None:
       batch = yield rpc
       rpc = batch.next_batch_async(options)
-      for ent in batch.results:
-        if post_filters:
-          if not post_filters.apply(ent):
-            continue
-          if orig_options is not options:
-            if orig_options.offset and skipped < orig_options.offset:
-              skipped += 1
-              continue
-            if orig_options.limit is not None and count >= orig_options.limit:
-              rpc = None  # Quietly throw away the next batch.
-              break
-            count += 1
-        queue.putq(ent)
+      for i, result in enumerate(batch.results):
+        queue.putq((batch, i, result))
     queue.complete()
 
   def _maybe_multi_query(self):
@@ -576,32 +728,37 @@ class Query(object):
     if filters is not None:
       filters = filters.resolve()
       if isinstance(filters, DisjunctionNode):
-        # Switch to a MultiQuery.
+        # Switch to a _MultiQuery.
         subqueries = []
         for subfilter in filters:
           subquery = Query(kind=self.__kind, ancestor=self.__ancestor,
                            filters=subfilter, orders=self.__orders)
           subqueries.append(subquery)
-        return MultiQuery(subqueries, orders=self.__orders)
+        return _MultiQuery(subqueries)
     return None
 
   @property
   def kind(self):
+    """Accessor for the kind (a string or None)."""
     return self.__kind
 
   @property
   def ancestor(self):
+    """Accessor for the ancestor (a Key or None)."""
     return self.__ancestor
 
   @property
   def filters(self):
+    """Accessor for the filters (a Node or None)."""
     return self.__filters
 
   @property
   def orders(self):
+    """Accessor for the filters (a datastore_query.Order or None)."""
     return self.__orders
 
   def filter(self, *args):
+    """Return a new Query with additional filter(s) applied."""
     if not args:
       return self
     preds = []
@@ -609,19 +766,20 @@ class Query(object):
     if f:
       preds.append(f)
     for arg in args:
-      assert isinstance(arg, Node)
+      assert isinstance(arg, Node), repr(arg)
       preds.append(arg)
     if not preds:
       pred = None
     elif len(preds) == 1:
       pred = preds[0]
     else:
-      pred = ConjunctionNode(preds)
+      pred = ConjunctionNode(*preds)
     return self.__class__(kind=self.kind, ancestor=self.ancestor,
                           orders=self.orders, filters=pred)
 
   def order(self, *args):
-    # q.order(Eployee.name, -Employee.age)
+    """Return a new Query with additional sort order(s) applied."""
+    # q.order(Employee.name, -Employee.age)
     if not args:
       return self
     orders = []
@@ -630,7 +788,7 @@ class Query(object):
       orders.append(o)
     for arg in args:
       if isinstance(arg, model.Property):
-        orders.append(datastore_query.PropertyOrder(arg._name, ASC))
+        orders.append(datastore_query.PropertyOrder(arg._name, _ASC))
       elif isinstance(arg, datastore_query.Order):
         orders.append(arg)
       else:
@@ -646,66 +804,248 @@ class Query(object):
 
   # Datastore API using the default context.
 
-  def iter(self, options=None):
-    return QueryIterator(self, options=options)
+  def iter(self, **q_options):
+    """Construct an iterator over the query.
+
+    Args:
+      **q_options: All query options keyword arguments are supported.
+
+    Returns:
+      A QueryIterator object.
+    """
+    return QueryIterator(self, **q_options)
 
   __iter__ = iter
 
-  # TODO: support the rest for MultiQuery.
+  @datastore_rpc._positional(2)
+  def map(self, callback, merge_future=None, **q_options):
+    """Map a callback function or tasklet over the query results.
 
-  def map(self, callback, options=None, merge_future=None):
-    return self.map_async(callback, options=options,
-                          merge_future=merge_future).get_result()
+    Args:
+      callback: A function or tasklet to be applied to each result; see below.
+      merge_future: Optional Future subclass; see below.
+      **q_options: All query options keyword arguments are supported.
 
-  def map_async(self, callback, options=None, merge_future=None):
+    Callback signature: The callback is normally called with an entity
+    as argument.  However if keys_only=True is given, it is called
+    with a Key.  Also, when produce_cursors=True is given, it is
+    called with three arguments: the current batch, the index within
+    the batch, and the entity or Key at that index.  The callback can
+    return whatever it wants.
+
+    Optional merge future: The merge_future is an advanced argument
+    that can be used to override how the callback results are combined
+    into the overall map() return value.  By default a list of
+    callback return values is produced.  By substituting one of a
+    small number of specialized alternatives you can arrange
+    otherwise.  See tasklets.MultiFuture for the default
+    implementation and a description of the protocol the merge_future
+    object must implement the default.  Alternatives from the same
+    module include QueueFuture, SerialQueueFuture and ReducingFuture.
+
+    Returns:
+      When the query has run to completion and all callbacks have
+      returned, map() returns a list of the results of all callbacks.
+      (But see 'optional merge future' above.)
+    """
+    return self.map_async(callback, merge_future=merge_future,
+                          **q_options).get_result()
+
+  @datastore_rpc._positional(2)
+  def map_async(self, callback, merge_future=None, **q_options):
+    """Map a callback function or tasklet over the query results.
+
+    This is the asynchronous version of Query.map().
+    """
     return tasklets.get_context().map_query(self, callback,
-                                            options=options,
+                                            options=_make_options(q_options),
                                             merge_future=merge_future)
 
-  def fetch(self, limit, offset=0, options=None):
-    return self.fetch_async(limit, offset, options=options).get_result()
+  @datastore_rpc._positional(2)
+  def fetch(self, limit=None, **q_options):
+    """Fetch a list of query results, up to a limit.
+
+    Args:
+      limit: How many results to retrieve at most.
+      **q_options: All query options keyword arguments are supported.
+
+    Returns:
+      A list of results.
+    """
+    return self.fetch_async(limit, **q_options).get_result()
 
   @tasklets.tasklet
-  def fetch_async(self, limit, offset=0, options=None):
-    options = QueryOptions(limit=limit,
-                           prefetch_size=limit,
-                           batch_size=limit,
-                           offset=offset,
-                           config=options)
+  @datastore_rpc._positional(2)
+  def fetch_async(self, limit=None, **q_options):
+    """Fetch a list of query results, up to a limit.
+
+    This is the asynchronous version of Query.fetch().
+    """
+    assert 'limit' not in q_options, q_options
+    if limit is None:
+      limit = _MAX_LIMIT
+    q_options['limit'] = limit
+    q_options.setdefault('prefetch_size', limit)
+    q_options.setdefault('batch_size', limit)
     res = []
-    it = self.iter(options)
+    it = self.iter(**q_options)
     while (yield it.has_next_async()):
       res.append(it.next())
+      if len(res) >= limit:
+        break
     raise tasklets.Return(res)
 
-  def get(self, options=None):
-    return self.get_async(options=options).get_result()
+  def get(self, **q_options):
+    """Get the first query result, if any.
+
+    This is similar to calling q.fetch(1) and returning the first item
+    of the list of results, if any, otherwise None.
+
+    Args:
+      **q_options: All query options keyword arguments are supported.
+
+    Returns:
+      A single result, or None if there are no results.
+    """
+    return self.get_async(**q_options).get_result()
 
   @tasklets.tasklet
-  def get_async(self, options=None):
-    res = yield self.fetch_async(1, options=options)
+  def get_async(self, **q_options):
+    """Get the first query result, if any.
+
+    This is the asynchronous version of Query.get().
+    """
+    res = yield self.fetch_async(1, **q_options)
     if not res:
       raise tasklets.Return(None)
     raise tasklets.Return(res[0])
 
-  def count(self, limit, options=None):
-    return self.count_async(limit, options=options).get_result()
+  @datastore_rpc._positional(2)
+  def count(self, limit=None, **q_options):
+    """Count the number of query results, up to a limit.
+
+    This returns the same result as len(q.fetch(limit)) but more
+    efficiently.
+
+    Note that you must pass a maximum value to limit the amount of
+    work done by the query.
+
+    Args:
+      limit: How many results to count at most.
+      **q_options: All query options keyword arguments are supported.
+
+    Returns:
+    """
+    return self.count_async(limit, **q_options).get_result()
 
   @tasklets.tasklet
-  def count_async(self, limit, options=None):
+  @datastore_rpc._positional(2)
+  def count_async(self, limit=None, **q_options):
+    """Count the number of query results, up to a limit.
+
+    This is the asynchronous version of Query.count().
+    """
+    # TODO: Support offset by incorporating it to the limit.
+    assert 'offset' not in q_options, q_options
+    assert 'limit' not in q_options, q_options
+    if limit is None:
+      limit = _MAX_LIMIT
+    if (self.__filters is not None and
+        isinstance(self.__filters, DisjunctionNode)):
+      # _MultiQuery does not support iterating over result batches,
+      # so just fetch results and count them.
+      # TODO: Use QueryIterator to avoid materializing the results list.
+      q_options.setdefault('prefetch_size', limit)
+      q_options.setdefault('batch_size', limit)
+      q_options.setdefault('keys_only', True)
+      results = yield self.fetch_async(limit, **q_options)
+      raise tasklets.Return(len(results))
+
+    # Issue a special query requesting 0 results at a given offset.
+    # The skipped_results count will tell us how many hits there were
+    # before that offset without fetching the items.
+    q_options['offset'] = limit
+    q_options['limit'] = 0
+    options = _make_options(q_options)
     conn = tasklets.get_context()._conn
-    options = QueryOptions(offset=limit, limit=0, config=options)
-    dsqry, post_filters = self._get_query(conn)
-    if post_filters:
-      raise datastore_errors.BadQueryError(
-        'Post-filters are not supported for count().')
-    rpc = dsqry.run_async(conn, options)
+    dsquery = self._get_query(conn)
+    rpc = dsquery.run_async(conn, options)
     total = 0
     while rpc is not None:
       batch = yield rpc
       rpc = batch.next_batch_async(options)
       total += batch.skipped_results
     raise tasklets.Return(total)
+
+  @datastore_rpc._positional(2)
+  def fetch_page(self, page_size, **q_options):
+    """Fetch a page of results.
+
+    This is a specialized method for use by paging user interfaces.
+
+    Args:
+      page_size: The requested page size.  At most this many results
+        will be returned.
+
+    In addition, any keyword argument supported by the QueryOptions
+    class is supported.  In particular, to fetch the next page, you
+    pass the cursor returned by one call to the next call using
+    start_cursor=<cursor>.  A common idiom is to pass the cursor to
+    the client using <cursor>.to_websafe_string() and to reconstruct
+    that cursor on a subsequent request using
+    Cursor.from_websafe_string(<string>).
+
+    Returns:
+      A tuple (results, cursor, more) where results is a list of query
+      results, cursor is a cursor pointing just after the last result
+      returned, and more is a bool indicating whether there are
+      (likely) more results after that.
+    """
+    # NOTE: page_size can't be passed as a keyword.
+    return self.fetch_page_async(page_size, **q_options).get_result()
+
+  @tasklets.tasklet
+  @datastore_rpc._positional(2)
+  def fetch_page_async(self, page_size, **q_options):
+    """Fetch a page of results.
+
+    This is the asynchronous version of Query.fetch_page().
+    """
+    q_options.setdefault('batch_size', page_size)
+    q_options.setdefault('produce_cursors', True)
+    it = self.iter(limit=page_size+1, **q_options)
+    results = []
+    while (yield it.has_next_async()):
+      results.append(it.next())
+      if len(results) >= page_size:
+        break
+    try:
+      cursor = it.cursor_after()
+    except datastore_errors.BadArgumentError:
+      cursor = None
+    raise tasklets.Return(results, cursor, it.probably_has_next())
+
+
+def _make_options(q_options):
+  """Helper to construct a QueryOptions object from keyword arguents.
+
+  Args:
+    q_options: a dict of keyword arguments.
+
+  Note that either 'options' or 'config' can be used to pass another
+  QueryOptions object, but not both.  If another QueryOptions object is
+  given it provides default values.
+
+  Returns:
+    A QueryOptions object, or None if q_options is empty.
+  """
+  if not q_options:
+    return None
+  if 'options' in q_options:
+    # Move 'options' to 'config' since that is what QueryOptions() uses.
+    assert 'config' not in q_options, q_options
+    q_options['config'] = q_options.pop('options')
+  return QueryOptions(**q_options)
 
 
 class QueryIterator(object):
@@ -722,21 +1062,130 @@ class QueryIterator(object):
     while (yield it.has_next_async()):
       entity = it.next()
       <use entity>
+
+  You can also use q.iter([options]) instead of iter(q); this allows
+  passing query options such as keys_only or produce_cursors.
+
+  When keys_only is set, it.next() returns a key instead of an entity.
+
+  When produce_cursors is set, the methods it.cursor_before() and
+  it.cursor_after() return Cursor objects corresponding to the query
+  position just before and after the item returned by it.next().
+  Before it.next() is called for the first time, both raise an
+  exception.  Once the loop is exhausted, both return the cursor after
+  the last item returned.  Calling it.has_next() does not affect the
+  cursors; you must call it.next() before the cursors move.  Note that
+  sometimes requesting a cursor requires a datastore roundtrip (but
+  not if you happen to request a cursor corresponding to a batch
+  boundary).  If produce_cursors is not set, both methods always raise
+  an exception.
+
+  Note that queries requiring in-memory merging of multiple queries
+  (i.e. queries using the IN, != or OR operators) do not support query
+  options.
   """
 
-  def __init__(self, query, options=None):
+  # When produce_cursors is set, _lookahead collects (batch, index)
+  # pairs passed to _extended_callback(), and (_batch, _index)
+  # contain the info pertaining to the current item.
+  _lookahead = None
+  _batch = None
+  _index = None
+
+  # Indicate the loop is exhausted.
+  _exhausted = False
+
+  @datastore_rpc._positional(2)
+  def __init__(self, query, **q_options):
+    """Constructor.  Takes a Query and query options.
+
+    This is normally called by Query.iter() or Query.__iter__().
+    """
     ctx = tasklets.get_context()
-    self._iter = ctx.iter_query(query, options=options)
+    callback = None
+    options = _make_options(q_options)
+    if options is not None and options.produce_cursors:
+      callback = self._extended_callback
+    self._iter = ctx.iter_query(query, callback=callback, options=options)
     self._fut = None
 
+  def _extended_callback(self, batch, index, ent):
+    assert not self._exhausted, 'QueryIterator is already exhausted'
+    # TODO: Make _lookup a deque.
+    if self._lookahead is None:
+      self._lookahead = []
+    self._lookahead.append((batch, index))
+    return ent
+
+  def _consume_item(self):
+    if self._lookahead:
+      self._batch, self._index = self._lookahead.pop(0)
+    else:
+      self._batch = self._index = None
+
+  def cursor_before(self):
+    """Return the cursor before the current item.
+
+    You must pass a QueryOptions object with produce_cursors=True
+    for this to work.
+
+    If there is no cursor or no current item, raise BadArgumentError.
+    Before next() has returned there is no cursor.  Once the loop is
+    exhausted, this returns the cursor after the last item.
+    """
+    if self._batch is None:
+      raise datastore_errors.BadArgumentError('There is no cursor currently')
+    # TODO: if cursor_after() was called for the previous item
+    # reuse that result instead of computing it from scratch.
+    # (Some cursor() calls make a datastore roundtrip.)
+    return self._batch.cursor(self._index + self._exhausted)
+
+  def cursor_after(self):
+    """Return the cursor after the current item.
+
+    You must pass a QueryOptions object with produce_cursors=True
+    for this to work.
+
+    If there is no cursor or no current item, raise BadArgumentError.
+    Before next() has returned there is no cursor.    Once the loop is
+    exhausted, this returns the cursor after the last item.
+    """
+    if self._batch is None:
+      raise datastore_errors.BadArgumentError('There is no cursor currently')
+    return self._batch.cursor(self._index + 1)
+
   def __iter__(self):
+    """Iterator protocol: get the iterator for this iterator, i.e. self."""
     return self
 
+  def probably_has_next(self):
+    """Return whether a next item is (probably) available.
+
+    This is not quite the same as has_next(), because when
+    produce_cursors is set, some shortcuts are possible.  However, in
+    some cases (e.g. when the query has a post_filter) we can get a
+    false positive (returns True but next() will raise StopIteration).
+    There are no false negatives, if Batch.more_results doesn't lie.
+    """
+    if self._lookahead:
+      return True
+    if self._batch is not None:
+      return self._batch.more_results
+    return self.has_next()
+
   def has_next(self):
+    """Return whether a next item is available.
+
+    See the module docstring for the usage pattern.
+    """
     return self.has_next_async().get_result()
 
   @tasklets.tasklet
   def has_next_async(self):
+    """Return a Future whose result will say whether a next item is available.
+
+    See the module docstring for the usage pattern.
+    """
     if self._fut is None:
       self._fut = self._iter.getq()
     flag = True
@@ -747,158 +1196,259 @@ class QueryIterator(object):
     raise tasklets.Return(flag)
 
   def next(self):
+    """Iterator protocol: get next item or raise StopIteration."""
     if self._fut is None:
       self._fut = self._iter.getq()
     try:
       try:
-        return self._fut.get_result()
+        ent = self._fut.get_result()
+        self._consume_item()
+        return ent
       except EOFError:
+        self._exhausted = True
         raise StopIteration
     finally:
       self._fut = None
 
 
 class _SubQueryIteratorState(object):
-  # Helper class for MultiQuery.
+  """Helper class for _MultiQuery."""
 
-  def __init__(self, entity, iterator, orderings):
+  def __init__(self, batch_i_entity, iterator, dsquery, orders):
+    batch, index, entity = batch_i_entity
+    self.batch = batch
+    self.index = index
     self.entity = entity
     self.iterator = iterator
-    self.orderings = orderings
+    self.dsquery = dsquery
+    self.orders = orders
 
   def __cmp__(self, other):
-    assert isinstance(other, _SubQueryIteratorState)
-    assert self.orderings == other.orderings
-    our_entity = self.entity
-    their_entity = other.entity
-    # TODO: Renamed properties again.
-    if self.orderings:
-      for propname, direction in self.orderings:
-        our_value = getattr(our_entity, propname, None)
-        their_value = getattr(their_entity, propname, None)
-        # NOTE: Repeated properties sort by lowest value when in
-        # ascending order and highest value when in descending order.
-        # TODO: Use min_max_value_cache as datastore.py does?
-        if direction == ASC:
-          func = min
-        else:
-          func = max
-        if isinstance(our_value, list):
-          our_value = func(our_value)
-        if isinstance(their_value, list):
-          their_value = func(their_value)
-        flag = cmp(our_value, their_value)
-        if direction == DESC:
-          flag = -flag
-        if flag:
-          return flag
-    # All considered properties are equal; compare by key (ascending).
-    # TODO: Comparison between ints and strings is arbitrary.
-    return cmp(our_entity._key.pairs(), their_entity._key.pairs())
+    assert isinstance(other, _SubQueryIteratorState), repr(other)
+    assert self.orders == other.orders, (self.orders, other.orders)
+    lhs = self.entity._orig_pb
+    rhs = other.entity._orig_pb
+    lhs_filter = self.dsquery._filter_predicate
+    rhs_filter = other.dsquery._filter_predicate
+    names = self.orders._get_prop_names()
+    # TODO: In some future version, there won't be a need to add the
+    # filters' names.
+    if lhs_filter is not None:
+      names |= lhs_filter._get_prop_names()
+    if rhs_filter is not None:
+      names |= rhs_filter._get_prop_names()
+    lhs_value_map = datastore_query._make_key_value_map(lhs, names)
+    rhs_value_map = datastore_query._make_key_value_map(rhs, names)
+    if lhs_filter is not None:
+      lhs_filter._prune(lhs_value_map)
+    if rhs_filter is not None:
+      rhs_filter._prune(rhs_value_map)
+    return self.orders._cmp(lhs_value_map, rhs_value_map)
 
 
-class MultiQuery(object):
+class _MultiQuery(object):
+  """Helper class to run queries involving !=, IN or OR operators."""
 
-  # This is not created by the user directly, but implicitly by using
-  # a where() call with an __in or __ne operator.  In the future
-  # or_where() can also use this.  Note that some options must be
-  # interpreted by MultiQuery instead of passed to the underlying
-  # Queries' methods, e.g. offset (though not necessarily limit, and
-  # I'm not sure about cursors).
+  # This is not instantiated by the user directly, but implicitly when
+  # iterating over a query with at least one filter using an IN, OR or
+  # != operator.  Note that some options must be interpreted by
+  # _MultiQuery instead of passed to the underlying Queries' methods,
+  # e.g. offset (though not necessarily limit, and I'm not sure about
+  # cursors).
 
-  def __init__(self, subqueries, orders=None):
+  # TODO: Need a way to specify the unification of two queries that
+  # are identical except one has an ancestor and the other doesn't.
+  # The HR datastore makes that a useful special case.
+
+  def __init__(self, subqueries):
     assert isinstance(subqueries, list), subqueries
     assert all(isinstance(subq, Query) for subq in subqueries), subqueries
-    if orders is not None:
-      assert isinstance(orders, datastore_query.Order)
+    kind = subqueries[0].kind
+    assert kind, 'Subquery kind cannot be missing'
+    assert all(subq.kind == kind for subq in subqueries), subqueries
+    # TODO: Assert app and namespace match, when we support them.
+    orders = subqueries[0].orders
+    assert all(subq.orders == orders for subq in subqueries), subqueries
     self.__subqueries = subqueries
     self.__orders = orders
     self.ancestor = None  # Hack for map_query().
 
+  @property
+  def orders(self):
+    return self.__orders
+
   @tasklets.tasklet
   def run_to_queue(self, queue, conn, options=None):
     """Run this query, putting entities into the given queue."""
-    # Create a list of (first-entity, subquery-iterator) tuples.
-    # TODO: Use the specified sort order.
-    assert options is None  # Don't know what to do with these yet.
-    state = []
-    orderings = orders_to_orderings(self.__orders)
-    for subq in self.__subqueries:
-      subit = tasklets.SerialQueueFuture('MultiQuery.run_to_queue')
-      subq.run_to_queue(subit, conn)
-      try:
-        ent = yield subit.getq()
-      except EOFError:
-        continue
-      else:
-        state.append(_SubQueryIteratorState(ent, subit, orderings))
+    if options is None:
+      # Default options.
+      offset = None
+      limit = None
+      keys_only = None
+    else:
+      # Capture options we need to simulate.
+      offset = options.offset
+      limit = options.limit
+      keys_only = options.keys_only
 
-    # Now turn it into a sorted heap.  The heapq module claims that
-    # calling heapify() is more efficient than calling heappush() for
-    # each item.
-    heapq.heapify(state)
+      # Cursors are supported for certain orders only.
+      if (options.start_cursor or options.end_cursor or
+          options.produce_cursors):
+        names = set()
+        if self.__orders is not None:
+          names = self.__orders._get_prop_names()
+        if '__key__' not in names:
+          raise datastore_errors.BadArgumentError(
+            '_MultiQuery with cursors requires __key__ order')
 
-    # Repeatedly yield the lowest entity from the state vector,
-    # filtering duplicates.  This is essentially a multi-way merge
-    # sort.  One would think it should be possible to filter
-    # duplicates simply by dropping other entities already in the
-    # state vector that are equal to the lowest entity, but because of
-    # the weird sorting of repeated properties, we have to explicitly
-    # keep a set of all keys, so we can remove later occurrences.
-    # Yes, this means that the output may not be sorted correctly.
-    # Too bad.  (I suppose you can do this in constant memory bounded
-    # by the maximum number of entries in relevant repeated
-    # properties, but I'm too lazy for now.  And yes, all this means
-    # MultiQuery is a bit of a toy.  But where it works, it beats
-    # expecting the user to do this themselves.)
-    keys_seen = set()
-    while state:
-      item = heapq.heappop(state)
-      ent = item.entity
-      if ent._key not in keys_seen:
-        keys_seen.add(ent._key)
-        queue.putq(ent)
-      subit = item.iterator
-      try:
-        ent = yield subit.getq()
-      except EOFError:
-        pass
-      else:
-        item.entity = ent
-        heapq.heappush(state, item)
-    queue.complete()
+    # Decide if we need to modify the options passed to subqueries.
+    # NOTE: It would seem we can sometimes let the datastore handle
+    # the offset natively, but this would thwart the duplicate key
+    # detection, so we always have to emulate the offset here.
+    # We can set the limit we pass along to offset + limit though,
+    # since that is the maximum number of results from a single
+    # subquery we will ever have to consider.
+    modifiers = {}
+    if offset:
+      modifiers['offset'] = None
+      if limit is not None:
+        modifiers['limit'] = min(_MAX_LIMIT, offset + limit)
+    if keys_only and self.__orders is not None:
+      modifiers['keys_only'] = None
+    if modifiers:
+      options = QueryOptions(config=options, **modifiers)
+
+    if offset is None:
+      offset = 0
+
+    if limit is None:
+      limit = _MAX_LIMIT
+
+    if self.__orders is None:
+      # Run the subqueries sequentially; there is no order to keep.
+      keys_seen = set()
+      for subq in self.__subqueries:
+        if limit <= 0:
+          break
+        subit = tasklets.SerialQueueFuture('_MultiQuery.run_to_queue[ser]')
+        subq.run_to_queue(subit, conn, options=options)
+        while limit > 0:
+          try:
+            batch, index, result = yield subit.getq()
+          except EOFError:
+            break
+          if keys_only:
+            key = result
+          else:
+            key = result._key
+          if key not in keys_seen:
+            keys_seen.add(key)
+            if offset > 0:
+              offset -= 1
+            else:
+              limit -= 1
+              queue.putq((None, None, result))
+      queue.complete()
+      return
+
+    # This with-statement causes the adapter to set _orig_pb on all
+    # entities it converts from protobuf.
+    # TODO: Does this interact properly with the cache?
+    with conn.adapter:
+      # Create a list of (first-entity, subquery-iterator) tuples.
+      state = []
+      for subq in self.__subqueries:
+        dsquery = subq._get_query(conn)
+        subit = tasklets.SerialQueueFuture('_MultiQuery.run_to_queue[par]')
+        subq.run_to_queue(subit, conn, options=options, dsquery=dsquery)
+        try:
+          thing = yield subit.getq()
+        except EOFError:
+          continue
+        else:
+          state.append(_SubQueryIteratorState(thing, subit, dsquery,
+                                              self.__orders))
+
+      # Now turn it into a sorted heap.  The heapq module claims that
+      # calling heapify() is more efficient than calling heappush() for
+      # each item.
+      heapq.heapify(state)
+
+      # Repeatedly yield the lowest entity from the state vector,
+      # filtering duplicates.  This is essentially a multi-way merge
+      # sort.  One would think it should be possible to filter
+      # duplicates simply by dropping other entities already in the
+      # state vector that are equal to the lowest entity, but because of
+      # the weird sorting of repeated properties, we have to explicitly
+      # keep a set of all keys, so we can remove later occurrences.
+      # Note that entities will still be sorted correctly, within the
+      # constraints given by the sort order.
+      keys_seen = set()
+      while state and limit > 0:
+        item = heapq.heappop(state)
+        batch = item.batch
+        index = item.index
+        entity = item.entity
+        key = entity._key
+        if key not in keys_seen:
+          keys_seen.add(key)
+          if offset > 0:
+            offset -= 1
+          else:
+            limit -= 1
+            if keys_only:
+              queue.putq((batch, index, key))
+            else:
+              queue.putq((batch, index, entity))
+        subit = item.iterator
+        try:
+          batch, index, entity = yield subit.getq()
+        except EOFError:
+          pass
+        else:
+          item.batch = batch
+          item.index = index
+          item.entity = entity
+          heapq.heappush(state, item)
+      queue.complete()
 
   # Datastore API using the default context.
 
-  def iter(self, options=None):
-    return QueryIterator(self, options=options)
+  def iter(self, **q_options):
+    return QueryIterator(self, **q_options)
 
   __iter__ = iter
 
+  # TODO: Add fetch() etc.?
 
-def order_to_ordering(order):
+
+# Helper functions to convert between orders and orderings.  An order
+# is a datastore_query.Order instance.  An ordering is a
+# (property_name, direction) tuple.
+
+def _order_to_ordering(order):
   pb = order._to_pb()
   return (pb.property(), pb.direction())  # TODO: What about UTF-8?
 
 
-def orders_to_orderings(orders):
+def _orders_to_orderings(orders):
   if orders is None:
     return []
   if isinstance(orders, datastore_query.PropertyOrder):
-    return [order_to_ordering(orders)]
+    return [_order_to_ordering(orders)]
   if isinstance(orders, datastore_query.CompositeOrder):
     # TODO: What about UTF-8?
-    return [(pb.property(), pb.direction())for pb in orders._to_pbs()]
-  assert False, orders
+    return [(pb.property(), pb.direction()) for pb in orders._to_pbs()]
+  assert False, 'Bad order: %r' % (orders,)
 
 
-def ordering_to_order(ordering):
+def _ordering_to_order(ordering):
   name, direction = ordering
   return datastore_query.PropertyOrder(name, direction)
 
 
-def orderings_to_orders(orderings):
-  orders = [ordering_to_order(o) for o in orderings]
+def _orderings_to_orders(orderings):
+  orders = [_ordering_to_order(o) for o in orderings]
   if not orders:
     return None
   if len(orders) == 1:
