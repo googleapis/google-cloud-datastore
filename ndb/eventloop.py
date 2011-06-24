@@ -63,6 +63,15 @@ class EventLoop(object):
     assert rpc.state in (RUNNING, FINISHING), rpc.state
     if isinstance(rpc, datastore_rpc.MultiRpc):
       rpcs = rpc.rpcs
+      if len(rpcs) > 1:
+        # Don't call the callback until all sub-rpcs have completed.
+        def help_multi_rpc_along(r=rpc, c=callable, a=args, k=kwds):
+          if r.state == FINISHING:
+            c(*a, **k)
+            # TODO: And again, what about exceptions?
+        callable = help_multi_rpc_along
+        args = ()
+        kwds = {}
     else:
       rpcs = [rpc]
     for rpc in rpcs:
