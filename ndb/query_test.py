@@ -578,6 +578,7 @@ class QueryTests(test_utils.DatastoreTest):
     self.assertEqual(q.count(keys_only=True), 2)
 
   def testMultiQueryCursors(self):
+    # NOTE: This test will fail with SDK 1.5.0.  Please upgrade to 1.5.1.
     q = Foo.query(Foo.tags.IN(['joe', 'jill']))
     self.assertRaises(datastore_errors.BadArgumentError, q.fetch_page, 1)
     q = q.order(Foo.tags)

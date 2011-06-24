@@ -103,6 +103,25 @@ class ContextTests(test_utils.DatastoreTest):
     foo().check_success()
     self.assertEqual(len(MyAutoBatcher._log), 1)
 
+  def testContext_MultiRpc(self):
+    # This test really tests the proper handling of MultiRpc by
+    # queue_rpc() in eventloop.py.  It's easier to test from here, and
+    # gives more assurance that it works.
+    config = datastore_rpc.Configuration(max_get_keys=3, max_put_entities=3)
+    self.ctx._conn = model.make_connection(config, default_model=model.Expando)
+    @tasklets.tasklet
+    def foo():
+      ents = [model.Expando() for i in range(10)]
+      futs = [self.ctx.put(ent) for ent in ents]
+      keys = yield futs
+      futs = [self.ctx.get(key) for key in keys]
+      ents2 = yield futs
+      self.assertEqual(ents2, ents)
+      raise tasklets.Return(keys)
+    keys = foo().get_result()
+    print keys
+    self.assertEqual(len(keys), 10)
+
   def testContext_Cache(self):
     @tasklets.tasklet
     def foo():
