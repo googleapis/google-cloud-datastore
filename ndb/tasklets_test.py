@@ -335,6 +335,24 @@ class TaskletTests(test_utils.DatastoreTest):
         pass
     foo().check_success()
 
+  def testTasklet_YieldTupleTypeError(self):
+    @tasklets.tasklet
+    def good():
+      yield tasklets.sleep(0)
+    @tasklets.tasklet
+    def bad():
+      1/0
+      yield tasklets.sleep(0)
+    @tasklets.tasklet
+    def foo():
+      try:
+        yield good(), bad(), 42
+      except AssertionError:  # TODO: Maybe TypeError?
+        pass
+      else:
+        self.assertFalse('Should have raised AssertionError')
+    foo().check_success()
+
 class TracebackTests(unittest.TestCase):
   """Checks that errors result in reasonable tracebacks."""
 

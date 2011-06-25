@@ -318,9 +318,13 @@ class Future(object):
         # Arrange for yield to return a list of results (not Futures).
         info = 'multi-yield from ' + utils.gen_info(gen)
         mfut = MultiFuture(info)
-        for subfuture in value:
-          mfut.add_dependent(subfuture)
-        mfut.complete()
+        try:
+          for subfuture in value:
+            mfut.add_dependent(subfuture)
+          mfut.complete()
+        except Exception:
+          t, e, tb = sys.exc_info()
+          mfut.set_exception(e, tb)
         mfut.add_callback(self._on_future_completion, mfut, gen)
         return
       if is_generator(value):
@@ -410,13 +414,19 @@ class MultiFuture(Future):
     if not self._dependents:
       self._finish()
 
+  def set_exception(self, exc, tb=None):
+    self._full = True
+    super(MultiFuture, self).set_exception(exc, tb)
+
   def _finish(self):
+    assert self._full
     assert not self._dependents
-    try:
-      self.set_result([r.get_result() for r in self._results])
-    except Exception:
-      t, e, tb = sys.exc_info()
-      self.set_exception(e, tb)
+    if not self._done:
+      try:
+        self.set_result([r.get_result() for r in self._results])
+      except Exception:
+        t, e, tb = sys.exc_info()
+        self.set_exception(e, tb)
 
   def putq(self, value):
     if isinstance(value, Future):
