@@ -318,6 +318,23 @@ class TaskletTests(test_utils.DatastoreTest):
     val = fut.get_result()
     self.assertEqual(val, 55)
 
+  def testTasklet_YieldTupleError(self):
+    @tasklets.tasklet
+    def good():
+      yield tasklets.sleep(0)
+    @tasklets.tasklet
+    def bad():
+      1/0
+      yield tasklets.sleep(0)
+    @tasklets.tasklet
+    def foo():
+      try:
+        yield good(), bad(), good()
+        self.assertFalse('Should have raised ZeroDivisionError')
+      except ZeroDivisionError:
+        pass
+    foo().check_success()
+
 class TracebackTests(unittest.TestCase):
   """Checks that errors result in reasonable tracebacks."""
 

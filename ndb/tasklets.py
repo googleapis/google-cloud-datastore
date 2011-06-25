@@ -408,8 +408,15 @@ class MultiFuture(Future):
     assert not self._full
     self._full = True
     if not self._dependents:
-      # TODO: How to get multiple exceptions?
+      self._finish()
+
+  def _finish(self):
+    assert not self._dependents
+    try:
       self.set_result([r.get_result() for r in self._results])
+    except Exception:
+      t, e, tb = sys.exc_info()
+      self.set_exception(e, tb)
 
   def putq(self, value):
     if isinstance(value, Future):
@@ -430,8 +437,7 @@ class MultiFuture(Future):
   def _signal_dependent_done(self, fut):
     self._dependents.remove(fut)
     if self._full and not self._dependents:
-      # TODO: How to get multiple exceptions?
-      self.set_result([r.get_result() for r in self._results])
+      self._finish()
 
 
 class QueueFuture(Future):
