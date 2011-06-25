@@ -390,6 +390,11 @@ class MultiFuture(Future):
   From a dependent Future POV, there's nothing to be done: a callback
   is automatically added to each dependent Future which will signal
   its completion to the MultiFuture.
+
+  Error handling: if any dependent future raises an error, it is
+  propagated to mf.  To force an early error, you can call
+  mf.set_exception() instead of mf.complete().  After this you can't
+  call mf.add_dependent() or mf.putq() any more.
   """
 
   def __init__(self, info=None):
