@@ -64,3 +64,7 @@ b2.put()
 from ndb import tasklets
 ctx = tasklets.get_context()
 conn = ctx._conn
+
+E = Employee
+M = Manager
+B = BlobTest
