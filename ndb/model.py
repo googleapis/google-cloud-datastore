@@ -921,6 +921,9 @@ class BlobProperty(Property):
                                            (value,))
     return value
 
+  def _datastore_type(self, value):
+    return datastore_types.Blob(value)
+
   def _db_set_value(self, v, p, value):
     assert isinstance(value, str)
     v.set_stringvalue(value)

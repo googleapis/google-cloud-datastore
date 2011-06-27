@@ -394,6 +394,7 @@ class FilterNode(Node):
     if isinstance(value, Binding):
       bindings[value.key] = value
       value = value.resolve()
+      # TODO: validate the resolved value.
     return datastore_query.make_filter(self.__name.decode('utf-8'),
                                        self.__opsymbol, value)
 
