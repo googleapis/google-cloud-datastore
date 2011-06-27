@@ -52,3 +52,15 @@ f2 = boss.put_async()
 f2.get_result()
 for f in f1:
   f.get_result()
+
+class BlobTest(Model):
+  data = BlobProperty(indexed=True)
+
+b1 = BlobTest(data='a')
+b1.put()
+b2 = BlobTest(data='\xff\x00')
+b2.put()
+
+from ndb import tasklets
+ctx = tasklets.get_context()
+conn = ctx._conn

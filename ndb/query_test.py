@@ -787,6 +787,16 @@ class QueryTests(test_utils.DatastoreTest):
     res = MyModel.query(MyModel.n == 42).fetch()
     self.assertEqual(res, [a])
 
+  def testBlobQuery(self):
+    class MyModel(model.Model):
+      b = model.BlobProperty(indexed=True)
+    a = MyModel(b='\xff\x00')
+    a.put()
+    q = MyModel.query(MyModel.b == '\xff\x00')
+    it = iter(q)
+    b = it.next()
+    self.assertEqual(a, b)
+
 
 def main():
   unittest.main()
