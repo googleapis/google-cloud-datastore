@@ -18,6 +18,7 @@ from ndb import test_utils
 from ndb import tasklets
 from ndb.tasklets import Future, tasklet
 
+
 class TaskletTests(test_utils.DatastoreTest):
 
   def setUp(self):
@@ -259,6 +260,96 @@ class TaskletTests(test_utils.DatastoreTest):
       yield producer(), consumer()
     foo().get_result()
 
+  def testQueueFuture_Complete(self):
+    qf = tasklets.QueueFuture()
+    qf.putq(1)
+    f2 = Future()
+    qf.putq(f2)
+    self.ev.run()
+    g1 = qf.getq()
+    g2 = qf.getq()
+    g3 = qf.getq()
+    f2.set_result(2)
+    self.ev.run()
+    qf.complete()
+    self.ev.run()
+    self.assertEqual(g1.get_result(), 1)
+    self.assertEqual(g2.get_result(), 2)
+    self.assertRaises(EOFError, g3.get_result)
+    self.assertRaises(EOFError, qf.getq().get_result)
+
+  def testQueueFuture_SetException(self):
+    qf = tasklets.QueueFuture()
+    f1 = Future()
+    f1.set_result(1)
+    qf.putq(f1)
+    qf.putq(f1)
+    self.ev.run()
+    qf.putq(2)
+    self.ev.run()
+    f3 = Future()
+    f3.set_exception(ZeroDivisionError())
+    qf.putq(f3)
+    self.ev.run()
+    f4 = Future()
+    qf.putq(f4)
+    self.ev.run()
+    qf.set_exception(KeyError())
+    f4.set_result(4)
+    self.ev.run()
+    self.assertRaises(KeyError, qf.get_result)
+    # Futures are returned in the order of completion, which should be
+    # f1, f2, f3, f4.  These produce 1, 2, ZeroDivisionError, 4,
+    # respectively.  After that KeyError (the exception set on qf
+    # itself) is raised.
+    self.assertEqual(qf.getq().get_result(), 1)
+    self.assertEqual(qf.getq().get_result(), 2)
+    self.assertRaises(ZeroDivisionError, qf.getq().get_result)
+    self.assertEqual(qf.getq().get_result(), 4)
+    self.assertRaises(KeyError, qf.getq().get_result)
+    self.assertRaises(KeyError, qf.getq().get_result)
+
+  def testQueueFuture_SetExceptionAlternative(self):
+    qf = tasklets.QueueFuture()
+    g1 = qf.getq()
+    qf.set_exception(KeyError())
+    self.ev.run()
+    self.assertRaises(KeyError, g1.get_result)
+
+  def testQueueFuture_ItemException(self):
+    qf = tasklets.QueueFuture()
+    qf.putq(1)
+    f2 = Future()
+    qf.putq(f2)
+    f3 = Future()
+    f3.set_result(3)
+    self.ev.run()
+    qf.putq(f3)
+    self.ev.run()
+    f4 = Future()
+    f4.set_exception(ZeroDivisionError())
+    self.ev.run()
+    qf.putq(f4)
+    f5 = Future()
+    qf.putq(f5)
+    self.ev.run()
+    qf.complete()
+    self.ev.run()
+    f2.set_result(2)
+    self.ev.run()
+    f5.set_exception(KeyError())
+    self.ev.run()
+    # Futures are returned in the order of completion, which should be
+    # f1, f3, f4, f2, f5.  These produce 1, 3, ZeroDivisionError, 2,
+    # KeyError, respectively.  After that EOFError is raised.
+    self.assertEqual(qf.getq().get_result(), 1)
+    self.assertEqual(qf.getq().get_result(), 3)
+    self.assertRaises(ZeroDivisionError, qf.getq().get_result)
+    self.assertEqual(qf.getq().get_result(), 2)
+    self.assertRaises(KeyError, qf.getq().get_result)
+    self.assertRaises(EOFError, qf.getq().get_result)
+    self.assertRaises(EOFError, qf.getq().get_result)
+
   def testSerialQueueFuture(self):
     q = tasklets.SerialQueueFuture()
     @tasklets.tasklet
@@ -414,6 +505,7 @@ class TaskletTests(test_utils.DatastoreTest):
       else:
         self.assertFalse('Should have raised AssertionError')
     foo().check_success()
+
 
 class TracebackTests(unittest.TestCase):
   """Checks that errors result in reasonable tracebacks."""

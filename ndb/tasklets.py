@@ -494,6 +494,7 @@ class QueueFuture(Future):
     self._completed = collections.deque()
     self._waiting = collections.deque()
     # Invariant: at least one of _completed and _waiting is empty.
+    # Also: _full and not _dependents <==> _done.
     super(QueueFuture, self).__init__(info=info)
 
   # TODO: __repr__
@@ -507,7 +508,7 @@ class QueueFuture(Future):
 
   def set_exception(self, exc, tb=None):
     self._full = True
-    super(QueryFuture, self).set_exception(exc, tb)
+    super(QueueFuture, self).set_exception(exc, tb)
     if not self._dependents:
       self._mark_finished()
 
@@ -539,7 +540,7 @@ class QueueFuture(Future):
       self._pass_result(waiter, exc, tb, val)
     else:
       self._completed.append((exc, tb, val))
-    if self._full and not self._dependents:
+    if self._full and not self._dependents and not self._done:
       self.set_result(None)
       self._mark_finished()
 
@@ -561,13 +562,13 @@ class QueueFuture(Future):
     return fut
 
   def _pass_eof(self, fut):
-    if self._done:
-      exc = self.get_exception()
-      if exc is not None:
-        tb = self.get_traceback()
-      else:
-        exc = EOFError('Queue is empty')
-        tb = None
+    assert self._done
+    exc = self.get_exception()
+    if exc is not None:
+      tb = self.get_traceback()
+    else:
+      exc = EOFError('Queue is empty')
+      tb = None
     self._pass_result(fut, exc, tb, None)
 
   def _pass_result(self, fut, exc, tb, val):
@@ -938,7 +939,7 @@ def set_context(new_context):
 # - Code not running in a tasklet can call f.get_result() or f.wait() on
 #   a future.  This is implemented by a simple loop like the following:
 
-#     while not self.done:
+#     while not self._done:
 #       eventloop.run1()
 
 # - Here eventloop.run1() runs one "atomic" part of the event loop:
