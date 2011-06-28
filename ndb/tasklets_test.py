@@ -18,6 +18,7 @@ from ndb import test_utils
 from ndb import tasklets
 from ndb.tasklets import Future, tasklet
 
+
 class TaskletTests(test_utils.DatastoreTest):
 
   def setUp(self):
@@ -173,6 +174,68 @@ class TaskletTests(test_utils.DatastoreTest):
     self.assertTrue(mfut.done())
     self.assertEqual(mfut.get_result(), [42])
 
+  def testMultiFuture_SetException(self):
+    mf = tasklets.MultiFuture()
+    f1 = Future()
+    f2 = Future()
+    f3 = Future()
+    f2.set_result(2)
+    mf.putq(f1)
+    f1.set_result(1)
+    mf.putq(f2)
+    mf.putq(f3)
+    mf.putq(4)
+    self.ev.run()
+    mf.set_exception(ZeroDivisionError())
+    f3.set_result(3)
+    self.ev.run()
+    self.assertRaises(ZeroDivisionError, mf.get_result)
+
+  def testMultiFuture_ItemException(self):
+    mf = tasklets.MultiFuture()
+    f1 = Future()
+    f2 = Future()
+    f3 = Future()
+    f2.set_result(2)
+    mf.putq(f1)
+    f1.set_exception(ZeroDivisionError())
+    mf.putq(f2)
+    mf.putq(f3)
+    f3.set_result(3)
+    self.ev.run()
+    mf.complete()
+    self.assertRaises(ZeroDivisionError, mf.get_result)
+
+  def testMultiFuture_Repr(self):
+    mf = tasklets.MultiFuture('info')
+    r1 = repr(mf)
+    mf.putq(1)
+    r2 = repr(mf)
+    f2 = Future()
+    f2.set_result(2)
+    mf.putq(2)
+    r3 = repr(mf)
+    self.ev.run()
+    r4 = repr(mf)
+    f3 = Future()
+    mf.putq(f3)
+    r5 = repr(mf)
+    mf.complete()
+    r6 = repr(mf)
+    f3.set_result(3)
+    self.ev.run()
+    r7 = repr(mf)
+    for r in r1, r2, r3, r4, r5, r6, r7:
+      self.assertTrue(
+        re.match(
+          r'<MultiFuture [\da-f]+ created by '
+          r'testMultiFuture_Repr\(tasklets_test.py:\d+\) for info; ',
+          r))
+      if r is r7:
+        self.assertTrue('result' in r)
+      else:
+        self.assertTrue('pending' in r)
+
   def testQueueFuture(self):
     q = tasklets.QueueFuture()
     @tasklets.tasklet
@@ -196,6 +259,96 @@ class TaskletTests(test_utils.DatastoreTest):
     def foo():
       yield producer(), consumer()
     foo().get_result()
+
+  def testQueueFuture_Complete(self):
+    qf = tasklets.QueueFuture()
+    qf.putq(1)
+    f2 = Future()
+    qf.putq(f2)
+    self.ev.run()
+    g1 = qf.getq()
+    g2 = qf.getq()
+    g3 = qf.getq()
+    f2.set_result(2)
+    self.ev.run()
+    qf.complete()
+    self.ev.run()
+    self.assertEqual(g1.get_result(), 1)
+    self.assertEqual(g2.get_result(), 2)
+    self.assertRaises(EOFError, g3.get_result)
+    self.assertRaises(EOFError, qf.getq().get_result)
+
+  def testQueueFuture_SetException(self):
+    qf = tasklets.QueueFuture()
+    f1 = Future()
+    f1.set_result(1)
+    qf.putq(f1)
+    qf.putq(f1)
+    self.ev.run()
+    qf.putq(2)
+    self.ev.run()
+    f3 = Future()
+    f3.set_exception(ZeroDivisionError())
+    qf.putq(f3)
+    self.ev.run()
+    f4 = Future()
+    qf.putq(f4)
+    self.ev.run()
+    qf.set_exception(KeyError())
+    f4.set_result(4)
+    self.ev.run()
+    self.assertRaises(KeyError, qf.get_result)
+    # Futures are returned in the order of completion, which should be
+    # f1, f2, f3, f4.  These produce 1, 2, ZeroDivisionError, 4,
+    # respectively.  After that KeyError (the exception set on qf
+    # itself) is raised.
+    self.assertEqual(qf.getq().get_result(), 1)
+    self.assertEqual(qf.getq().get_result(), 2)
+    self.assertRaises(ZeroDivisionError, qf.getq().get_result)
+    self.assertEqual(qf.getq().get_result(), 4)
+    self.assertRaises(KeyError, qf.getq().get_result)
+    self.assertRaises(KeyError, qf.getq().get_result)
+
+  def testQueueFuture_SetExceptionAlternative(self):
+    qf = tasklets.QueueFuture()
+    g1 = qf.getq()
+    qf.set_exception(KeyError())
+    self.ev.run()
+    self.assertRaises(KeyError, g1.get_result)
+
+  def testQueueFuture_ItemException(self):
+    qf = tasklets.QueueFuture()
+    qf.putq(1)
+    f2 = Future()
+    qf.putq(f2)
+    f3 = Future()
+    f3.set_result(3)
+    self.ev.run()
+    qf.putq(f3)
+    self.ev.run()
+    f4 = Future()
+    f4.set_exception(ZeroDivisionError())
+    self.ev.run()
+    qf.putq(f4)
+    f5 = Future()
+    qf.putq(f5)
+    self.ev.run()
+    qf.complete()
+    self.ev.run()
+    f2.set_result(2)
+    self.ev.run()
+    f5.set_exception(KeyError())
+    self.ev.run()
+    # Futures are returned in the order of completion, which should be
+    # f1, f3, f4, f2, f5.  These produce 1, 3, ZeroDivisionError, 2,
+    # KeyError, respectively.  After that EOFError is raised.
+    self.assertEqual(qf.getq().get_result(), 1)
+    self.assertEqual(qf.getq().get_result(), 3)
+    self.assertRaises(ZeroDivisionError, qf.getq().get_result)
+    self.assertEqual(qf.getq().get_result(), 2)
+    self.assertRaises(KeyError, qf.getq().get_result)
+    self.assertRaises(EOFError, qf.getq().get_result)
+    self.assertRaises(EOFError, qf.getq().get_result)
 
   def testSerialQueueFuture(self):
     q = tasklets.SerialQueueFuture()
@@ -221,31 +374,61 @@ class TaskletTests(test_utils.DatastoreTest):
       yield producer(), consumer()
     foo()
 
-  def testReducerFuture(self):
-    @tasklets.tasklet
-    def sum_tasklet(arg):
-      yield tasklets.sleep(0.01)
-      raise tasklets.Return(sum(arg))
-    @tasklets.tasklet
-    def produce_one(i):
-      yield tasklets.sleep(i * 0.01)
-      raise tasklets.Return(i)
-    @tasklets.tasklet
-    def producer():
-      for i in range(10):
-        q.add_dependent(produce_one(i))
-      q.complete()
-    @tasklets.tasklet
-    def consumer():
-      total = yield q
-      self.assertEqual(total, sum(range(10)))
-    @tasklets.tasklet
-    def foo():
-      yield producer(), consumer()
-    q = tasklets.ReducingFuture(sum_tasklet, batch_size=3)
-    foo().get_result()
-    q = tasklets.ReducingFuture(sum, batch_size=3)
-    foo().get_result()
+  def testSerialQueueFuture_Complete(self):
+    sqf = tasklets.SerialQueueFuture()
+    g1 = sqf.getq()
+    sqf.complete()
+    self.assertRaises(EOFError, g1.get_result)
+
+  def testSerialQueueFuture_SetException(self):
+    sqf = tasklets.SerialQueueFuture()
+    g1 = sqf.getq()
+    sqf.set_exception(KeyError())
+    self.assertRaises(KeyError, g1.get_result)
+
+  def testSerialQueueFuture_ItemException(self):
+    sqf = tasklets.SerialQueueFuture()
+    g1 = sqf.getq()
+    f1 = Future()
+    sqf.putq(f1)
+    sqf.complete()
+    f1.set_exception(ZeroDivisionError())
+    self.assertRaises(ZeroDivisionError, g1.get_result)
+
+  def testSerialQueueFuture_PutQ_1(self):
+    sqf = tasklets.SerialQueueFuture()
+    f1 = Future()
+    sqf.putq(f1)
+    sqf.complete()
+    f1.set_result(1)
+    self.assertEqual(sqf.getq().get_result(), 1)
+
+  def testSerialQueueFuture_PutQ_2(self):
+    sqf = tasklets.SerialQueueFuture()
+    sqf.putq(1)
+    sqf.complete()
+    self.assertEqual(sqf.getq().get_result(), 1)
+
+  def testSerialQueueFuture_PutQ_3(self):
+    sqf = tasklets.SerialQueueFuture()
+    g1 = sqf.getq()
+    sqf.putq(1)
+    sqf.complete()
+    self.assertEqual(g1.get_result(), 1)
+
+  def testSerialQueueFuture_PutQ_4(self):
+    sqf = tasklets.SerialQueueFuture()
+    g1 = sqf.getq()
+    f1 = Future()
+    sqf.putq(f1)
+    sqf.complete()
+    f1.set_result(1)
+    self.assertEqual(g1.get_result(), 1)
+
+  def testSerialQueueFuture_GetQ(self):
+    sqf = tasklets.SerialQueueFuture()
+    sqf.set_exception(KeyError())
+    self.assertRaises(KeyError, sqf.getq().get_result)
 
   def testGetReturnValue(self):
       r0 = tasklets.Return()
@@ -317,6 +500,42 @@ class TaskletTests(test_utils.DatastoreTest):
     fut = fib(10)
     val = fut.get_result()
     self.assertEqual(val, 55)
+
+  def testTasklet_YieldTupleError(self):
+    @tasklets.tasklet
+    def good():
+      yield tasklets.sleep(0)
+    @tasklets.tasklet
+    def bad():
+      1/0
+      yield tasklets.sleep(0)
+    @tasklets.tasklet
+    def foo():
+      try:
+        yield good(), bad(), good()
+        self.assertFalse('Should have raised ZeroDivisionError')
+      except ZeroDivisionError:
+        pass
+    foo().check_success()
+
+  def testTasklet_YieldTupleTypeError(self):
+    @tasklets.tasklet
+    def good():
+      yield tasklets.sleep(0)
+    @tasklets.tasklet
+    def bad():
+      1/0
+      yield tasklets.sleep(0)
+    @tasklets.tasklet
+    def foo():
+      try:
+        yield good(), bad(), 42
+      except AssertionError:  # TODO: Maybe TypeError?
+        pass
+      else:
+        self.assertFalse('Should have raised AssertionError')
+    foo().check_success()
+
 
 class TracebackTests(unittest.TestCase):
   """Checks that errors result in reasonable tracebacks."""

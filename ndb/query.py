@@ -128,6 +128,7 @@ __author__ = 'guido@google.com (Guido van Rossum)'
 
 import heapq
 import itertools
+import sys
 
 from google.appengine.api import datastore_errors
 from google.appengine.api import datastore_types
@@ -394,6 +395,7 @@ class FilterNode(Node):
     if isinstance(value, Binding):
       bindings[value.key] = value
       value = value.resolve()
+      # TODO: validate the resolved value.
     return datastore_query.make_filter(self.__name.decode('utf-8'),
                                        self.__opsymbol, value)
 
@@ -706,22 +708,30 @@ class Query(object):
   @tasklets.tasklet
   def run_to_queue(self, queue, conn, options=None, dsquery=None):
     """Run this query, putting entities into the given queue."""
-    multiquery = self._maybe_multi_query()
-    if multiquery is not None:
-      multiquery.run_to_queue(queue, conn, options=options)  # No return value.
-      return
-    if dsquery is None:
-      dsquery = self._get_query(conn)
-    orig_options = options
-    rpc = dsquery.run_async(conn, options)
-    skipped = 0
-    count = 0
-    while rpc is not None:
-      batch = yield rpc
-      rpc = batch.next_batch_async(options)
-      for i, result in enumerate(batch.results):
-        queue.putq((batch, i, result))
-    queue.complete()
+    try:
+      multiquery = self._maybe_multi_query()
+      if multiquery is not None:
+        yield multiquery.run_to_queue(queue, conn, options=options)
+        return
+
+      if dsquery is None:
+        dsquery = self._get_query(conn)
+      orig_options = options
+      rpc = dsquery.run_async(conn, options)
+      skipped = 0
+      count = 0
+      while rpc is not None:
+        batch = yield rpc
+        rpc = batch.next_batch_async(options)
+        for i, result in enumerate(batch.results):
+          queue.putq((batch, i, result))
+      queue.complete()
+
+    except Exception:
+      if not queue.done():
+        t, e, tb = sys.exc_info()
+        queue.set_exception(e, tb)
+      raise
 
   def _maybe_multi_query(self):
     filters = self.__filters

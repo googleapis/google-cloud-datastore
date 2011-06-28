@@ -318,9 +318,13 @@ class Future(object):
         # Arrange for yield to return a list of results (not Futures).
         info = 'multi-yield from ' + utils.gen_info(gen)
         mfut = MultiFuture(info)
-        for subfuture in value:
-          mfut.add_dependent(subfuture)
-        mfut.complete()
+        try:
+          for subfuture in value:
+            mfut.add_dependent(subfuture)
+          mfut.complete()
+        except Exception, err:
+          _, _, tb = sys.exc_info()
+          mfut.set_exception(err, tb)
         mfut.add_callback(self._on_future_completion, mfut, gen)
         return
       if is_generator(value):
@@ -362,6 +366,9 @@ def sleep(dt):
 class MultiFuture(Future):
   """A Future that depends on multiple other Futures.
 
+  This is used internally by 'v1, v2, ... = yield f1, f2, ...'; the
+  semantics (e.g. error handling) are constrained by that use case.
+
   The protocol from the caller's POV is:
 
     mf = MultiFuture()
@@ -386,9 +393,15 @@ class MultiFuture(Future):
   From a dependent Future POV, there's nothing to be done: a callback
   is automatically added to each dependent Future which will signal
   its completion to the MultiFuture.
+
+  Error handling: if any dependent future raises an error, it is
+  propagated to mf.  To force an early error, you can call
+  mf.set_exception() instead of mf.complete().  After this you can't
+  call mf.add_dependent() or mf.putq() any more.
   """
 
   def __init__(self, info=None):
+    __ndb_debug__ = 'SKIP'  # Hide this frame from self._where
     self._full = False
     self._dependents = set()
     self._results = []
@@ -403,13 +416,30 @@ class MultiFuture(Future):
       lines.append(fut.dump_stack().replace('\n', '\n  '))
     return '\n waiting for '.join(lines)
 
-  # TODO: Rename this method?  (But to what?)
+  # TODO: Maybe rename this method, since completion of a Future/RPC
+  # already means something else.  But to what?
   def complete(self):
     assert not self._full
     self._full = True
     if not self._dependents:
-      # TODO: How to get multiple exceptions?
-      self.set_result([r.get_result() for r in self._results])
+      self._finish()
+
+  # TODO: Maybe don't overload set_exception() with this?
+  def set_exception(self, exc, tb=None):
+    self._full = True
+    super(MultiFuture, self).set_exception(exc, tb)
+
+  def _finish(self):
+    assert self._full
+    assert not self._dependents
+    assert not self._done
+    try:
+      result = [r.get_result() for r in self._results]
+    except Exception, err:
+      _, _, tb = sys.exc_info()
+      self.set_exception(err, tb)
+    else:
+      self.set_result(result)
 
   def putq(self, value):
     if isinstance(value, Future):
@@ -429,9 +459,8 @@ class MultiFuture(Future):
 
   def _signal_dependent_done(self, fut):
     self._dependents.remove(fut)
-    if self._full and not self._dependents:
-      # TODO: How to get multiple exceptions?
-      self.set_result([r.get_result() for r in self._results])
+    if self._full and not self._dependents and not self._done:
+      self._finish()
 
 
 class QueueFuture(Future):
@@ -459,14 +488,13 @@ class QueueFuture(Future):
   """
   # TODO: Refactor to share code with MultiFuture.
 
-  # TODO: Kill getq(default) or add it uniformly.
-  _RAISE_ERROR = object()  # Marker for getq() default value.
-
   def __init__(self, info=None):
     self._full = False
     self._dependents = set()
-    self._completed = list()
-    self._waiting = list()  # List of (Future, default) tuples.
+    self._completed = collections.deque()
+    self._waiting = collections.deque()
+    # Invariant: at least one of _completed and _waiting is empty.
+    # Also: _full and not _dependents <==> _done.
     super(QueueFuture, self).__init__(info=info)
 
   # TODO: __repr__
@@ -474,6 +502,13 @@ class QueueFuture(Future):
   def complete(self):
     assert not self._full
     self._full = True
+    if not self._dependents:
+      self.set_result(None)
+      self._mark_finished()
+
+  def set_exception(self, exc, tb=None):
+    self._full = True
+    super(QueueFuture, self).set_exception(exc, tb)
     if not self._dependents:
       self._mark_finished()
 
@@ -501,37 +536,40 @@ class QueueFuture(Future):
     if exc is None:
       val = fut.get_result()
     if self._waiting:
-      waiter, default = self._waiting.pop(0)
+      waiter = self._waiting.popleft()
       self._pass_result(waiter, exc, tb, val)
     else:
       self._completed.append((exc, tb, val))
-    if self._full and not self._dependents:
+    if self._full and not self._dependents and not self._done:
+      self.set_result(None)
       self._mark_finished()
 
   def _mark_finished(self):
-    waiting = self._waiting[:]
-    del self._waiting[:]
-    for waiter, default in waiting:
-      self._pass_eof(waiter, default)
-    self.set_result(None)
+    assert self._done
+    while self._waiting:
+      waiter = self._waiting.popleft()
+      self._pass_eof(waiter)
 
-  def getq(self, default=_RAISE_ERROR):
-    # The default is only used when EOFError is raised.
+  def getq(self):
     fut = Future()
     if self._completed:
-      exc, tb, val = self._completed.pop(0)
+      exc, tb, val = self._completed.popleft()
       self._pass_result(fut, exc, tb, val)
     elif self._full and not self._dependents:
-      self._pass_eof(fut, default)
+      self._pass_eof(fut)
     else:
-      self._waiting.append((fut, default))
+      self._waiting.append(fut)
     return fut
 
-  def _pass_eof(self, fut, default):
-    if default is self._RAISE_ERROR:
-      self._pass_result(fut, EOFError('Queue is empty'), None, None)
+  def _pass_eof(self, fut):
+    assert self._done
+    exc = self.get_exception()
+    if exc is not None:
+      tb = self.get_traceback()
     else:
-      self._pass_result(fut, None, None, default)
+      exc = EOFError('Queue is empty')
+      tb = None
+    self._pass_result(fut, exc, tb, None)
 
   def _pass_result(self, fut, exc, tb, val):
       if exc is not None:
@@ -541,13 +579,63 @@ class QueueFuture(Future):
 
 
 class SerialQueueFuture(Future):
-  """Like QueueFuture but maintains the order of insertion."""
+  """Like QueueFuture but maintains the order of insertion.
+
+  This class is used by Query operations.
+
+  Invariants:
+
+  - At least one of _queue and _waiting is empty.
+  - The Futures in _waiting are always pending.
+
+  (The Futures in _queue may be pending or completed.)
+
+  In the discussion below, add_dependent() is treated the same way as
+  putq().
+
+  If putq() is ahead of getq(), the situation is like this:
+
+                         putq()
+                         v
+    _queue: [f1, f2, ...]; _waiting: []
+    ^
+    getq()
+
+  Here, putq() appends a Future to the right of _queue, and getq()
+  removes one from the left.
+
+  If getq() is ahead of putq(), it's like this:
+
+              putq()
+              v
+    _queue: []; _waiting: [f1, f2, ...]
+                                       ^
+                                       getq()
+
+  Here, putq() removes a Future from the left of _waiting, and getq()
+  appends one to the right.
+
+  When both are empty, putq() appends a Future to the right of _queue,
+  while getq() appends one to the right of _waiting.
+
+  The _full flag means that no more calls to putq() will be made; it
+  is set by calling either complete() or set_exception().
+
+  Calling complete() signals that no more putq() calls will be made.
+  If getq() is behind, subsequent getq() calls will eat up _queue
+  until it is empty, and after that will return a Future that passes
+  EOFError (note that getq() itself never raises EOFError).  If getq()
+  is ahead when complete() is called, the Futures in _waiting are all
+  passed an EOFError exception (thereby eating up _waiting).
+
+  If, instead of complete(), set_exception() is called, the exception
+  and traceback set there will be used instead of EOFError.
+  """
 
   def __init__(self, info=None):
     self._full = False
     self._queue = collections.deque()
     self._waiting = collections.deque()
-    # Invariant: at least one of _queue and _waiting is empty.
     super(SerialQueueFuture, self).__init__(info=info)
 
   # TODO: __repr__
@@ -560,6 +648,13 @@ class SerialQueueFuture(Future):
       waiter.set_exception(EOFError('Queue is empty'))
     if not self._queue:
       self.set_result(None)
+
+  def set_exception(self, exc, tb=None):
+    self._full = True
+    super(SerialQueueFuture, self).set_exception(exc, tb)
+    while self._waiting:
+      waiter = self._waiting.popleft()
+      waiter.set_exception(exc, tb)
 
   def putq(self, value):
     if isinstance(value, Future):
@@ -578,23 +673,42 @@ class SerialQueueFuture(Future):
     assert not self._full
     if self._waiting:
       waiter = self._waiting.popleft()
-      # TODO: Transfer errors too.
-      fut.add_callback(lambda: waiter.set_result(fut.get_result()))
+      fut.add_callback(_transfer_result, fut, waiter)
     else:
       self._queue.append(fut)
 
   def getq(self):
     if self._queue:
       fut = self._queue.popleft()
+      # TODO: Isn't it better to call self.set_result(None) in complete()?
+      if not self._queue and self._full and not self._done:
+        self.set_result(None)
     else:
       fut = Future()
       if self._full:
-        fut.set_exception(EOFError('Queue is empty'))
+        assert self._done  # Else, self._queue should be non-empty.
+        err = None
+        err = self.get_exception()
+        if err is not None:
+          tb = self.get_traceback()
+        else:
+          err = EOFError('Queue is empty')
+          tb = None
+        fut.set_exception(err, tb)
       else:
         self._waiting.append(fut)
-    if self._full and not self.done():
-      self.set_result(None)
     return fut
+
+
+def _transfer_result(fut1, fut2):
+  """Helper to transfer result or errors from one Future to another."""
+  exc = fut1.get_exception()
+  if exc is not None:
+    tb = fut1.get_traceback()
+    fut2.set_exception(exc, tb)
+  else:
+    val = fut1.get_result()
+    fut2.set_result(val)
 
 
 class ReducingFuture(Future):
@@ -616,8 +730,8 @@ class ReducingFuture(Future):
     self._batch_size = batch_size
     self._full = False
     self._dependents = set()
-    self._completed = list()
-    self._queue = list()
+    self._completed = collections.deque()
+    self._queue = collections.deque()
     super(ReducingFuture, self).__init__(info=info)
 
   # TODO: __repr__
@@ -627,6 +741,8 @@ class ReducingFuture(Future):
     self._full = True
     if not self._dependents:
       self._mark_finished()
+
+  # TODO: set_exception()
 
   def putq(self, value):
     if isinstance(value, Future):
@@ -649,12 +765,25 @@ class ReducingFuture(Future):
   def _signal_dependent_done(self, fut):
     assert fut.done()
     self._dependents.remove(fut)
-    val = fut.get_result()  # TODO: What about exceptions here?
+    if self._done:
+      return  # Already done.
+    try:
+      val = fut.get_result()
+    except Exception, err:
+      _, _, tb = sys.exc_info()
+      self.set_exception(err, tb)
+      self._queue.clear()
+      return
     self._queue.append(val)
     if len(self._queue) >= self._batch_size:
-      todo = self._queue[:]
-      del self._queue[:]
-      nval = self._reducer(todo)  # TODO: What if exception?
+      todo = list(self._queue)
+      self._queue.clear()
+      try:
+        nval = self._reducer(todo)
+      except Exception, err:
+        _, _, tb = sys.exc_info()
+        self.set_exception(err, tb)
+        return
       if isinstance(nval, Future):
         self._internal_add_dependent(nval)
       else:
@@ -668,9 +797,14 @@ class ReducingFuture(Future):
     elif len(self._queue) == 1:
       self.set_result(self._queue.pop())
     else:
-      todo = self._queue[:]
-      del self._queue[:]
-      nval = self._reducer(todo)  # TODO: What if exception?
+      todo = list(self._queue)
+      self._queue.clear()
+      try:
+        nval = self._reducer(todo)
+      except Exception, err:
+        _, _, tb = sys.exc_info()
+        self.set_exception(err, tb)
+        return
       if isinstance(nval, Future):
         self._internal_add_dependent(nval)
       else:
@@ -805,7 +939,7 @@ def set_context(new_context):
 # - Code not running in a tasklet can call f.get_result() or f.wait() on
 #   a future.  This is implemented by a simple loop like the following:
 
-#     while not self.done:
+#     while not self._done:
 #       eventloop.run1()
 
 # - Here eventloop.run1() runs one "atomic" part of the event loop:
