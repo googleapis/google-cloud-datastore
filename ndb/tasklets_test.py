@@ -203,7 +203,6 @@ class TaskletTests(test_utils.DatastoreTest):
     f3.set_result(3)
     self.ev.run()
     mf.complete()
-    self.ev.run()
     self.assertRaises(ZeroDivisionError, mf.get_result)
 
   def testMultiFuture_Repr(self):
@@ -226,9 +225,11 @@ class TaskletTests(test_utils.DatastoreTest):
     self.ev.run()
     r7 = repr(mf)
     for r in r1, r2, r3, r4, r5, r6, r7:
-      self.assertTrue(r.startswith('<MultiFuture '))
-      fr = ' created by testMultiFuture_Repr(tasklets_test.py:210) for info; '
-      self.assertTrue(fr in r)
+      self.assertTrue(
+        re.match(
+          r'<MultiFuture [\da-f]+ created by '
+          r'testMultiFuture_Repr\(tasklets_test.py:\d+\) for info; ',
+          r))
       if r is r7:
         self.assertTrue('result' in r)
       else:
