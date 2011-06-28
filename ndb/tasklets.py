@@ -401,6 +401,7 @@ class MultiFuture(Future):
   """
 
   def __init__(self, info=None):
+    __ndb_debug__ = 'SKIP'  # Hide this frame from self._where
     self._full = False
     self._dependents = set()
     self._results = []

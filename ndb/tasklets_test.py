@@ -173,6 +173,67 @@ class TaskletTests(test_utils.DatastoreTest):
     self.assertTrue(mfut.done())
     self.assertEqual(mfut.get_result(), [42])
 
+  def testMultiFuture_SetException(self):
+    mf = tasklets.MultiFuture()
+    f1 = Future()
+    f2 = Future()
+    f3 = Future()
+    f2.set_result(2)
+    mf.putq(f1)
+    f1.set_result(1)
+    mf.putq(f2)
+    mf.putq(f3)
+    mf.putq(4)
+    self.ev.run()
+    mf.set_exception(ZeroDivisionError())
+    f3.set_result(3)
+    self.ev.run()
+    self.assertRaises(ZeroDivisionError, mf.get_result)
+
+  def testMultiFuture_ItemException(self):
+    mf = tasklets.MultiFuture()
+    f1 = Future()
+    f2 = Future()
+    f3 = Future()
+    f2.set_result(2)
+    mf.putq(f1)
+    f1.set_exception(ZeroDivisionError())
+    mf.putq(f2)
+    mf.putq(f3)
+    f3.set_result(3)
+    self.ev.run()
+    mf.complete()
+    self.ev.run()
+    self.assertRaises(ZeroDivisionError, mf.get_result)
+
+  def testMultiFuture_Repr(self):
+    mf = tasklets.MultiFuture('info')
+    r1 = repr(mf)
+    mf.putq(1)
+    r2 = repr(mf)
+    f2 = Future()
+    f2.set_result(2)
+    mf.putq(2)
+    r3 = repr(mf)
+    self.ev.run()
+    r4 = repr(mf)
+    f3 = Future()
+    mf.putq(f3)
+    r5 = repr(mf)
+    mf.complete()
+    r6 = repr(mf)
+    f3.set_result(3)
+    self.ev.run()
+    r7 = repr(mf)
+    for r in r1, r2, r3, r4, r5, r6, r7:
+      self.assertTrue(r.startswith('<MultiFuture '))
+      fr = ' created by testMultiFuture_Repr(tasklets_test.py:210) for info; '
+      self.assertTrue(fr in r)
+      if r is r7:
+        self.assertTrue('result' in r)
+      else:
+        self.assertTrue('pending' in r)
+
   def testQueueFuture(self):
     q = tasklets.QueueFuture()
     @tasklets.tasklet
