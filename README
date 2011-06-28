@@ -41,7 +41,7 @@ How To
 ------
 
 You need to separately download and install the App Engine Python SDK,
-version 1.5.0 or later.  NOTE: previous versions don't work!!!!!!!!!
+version 1.5.1 or later.  NOTE: previous versions don't work!!!!!!!!!
 (If you don't know where to find that you are not ready to play with
 this code. :-) Assuming the SDK lives at /usr/local/google_appengine,
 you need to add that directory to your $PYTHONPATH environment
@@ -55,7 +55,8 @@ To run the tests, use
 
   make test
 
-To run the tests with coverage, use
+To run the tests with coverage, install the coverag.py package from
+http://nedbatchelder.com/code/coverage/ and then use
 
   make coverage
 
