@@ -29,8 +29,7 @@ Overview
 The code is structured into two subdirectories:
 
 - ndb: This is the main code base.  Notable submodules are
-  key.py, model.py, query.py, eventloop.py, tasks.py, and context.py.
-  (Please ignore pep380.py, this was a "fork not taken".)
+  key.py, model.py, query.py, eventloop.py, tasklets.py, and context.py.
   For each module foo.py there's a corresponding foo_test.py which
   contains unit tests for that module.
 
