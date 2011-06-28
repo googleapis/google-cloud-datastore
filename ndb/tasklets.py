@@ -686,14 +686,14 @@ class SerialQueueFuture(Future):
     else:
       fut = Future()
       if self._full:
+        assert self._done  # Else, self._queue should be non-empty.
         err = None
-        tb = None
-        if self._done:
-          err = self.get_exception()
-          if err is not None:
-            tb = self.get_traceback()
-        if err is None:
+        err = self.get_exception()
+        if err is not None:
+          tb = self.get_traceback()
+        else:
           err = EOFError('Queue is empty')
+          tb = None
         fut.set_exception(err, tb)
       else:
         self._waiting.append(fut)

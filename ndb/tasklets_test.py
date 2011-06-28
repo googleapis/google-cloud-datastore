@@ -374,31 +374,61 @@ class TaskletTests(test_utils.DatastoreTest):
       yield producer(), consumer()
     foo()
 
-  def testReducerFuture(self):
-    @tasklets.tasklet
-    def sum_tasklet(arg):
-      yield tasklets.sleep(0.01)
-      raise tasklets.Return(sum(arg))
-    @tasklets.tasklet
-    def produce_one(i):
-      yield tasklets.sleep(i * 0.01)
-      raise tasklets.Return(i)
-    @tasklets.tasklet
-    def producer():
-      for i in range(10):
-        q.add_dependent(produce_one(i))
-      q.complete()
-    @tasklets.tasklet
-    def consumer():
-      total = yield q
-      self.assertEqual(total, sum(range(10)))
-    @tasklets.tasklet
-    def foo():
-      yield producer(), consumer()
-    q = tasklets.ReducingFuture(sum_tasklet, batch_size=3)
-    foo().get_result()
-    q = tasklets.ReducingFuture(sum, batch_size=3)
-    foo().get_result()
+  def testSerialQueueFuture_Complete(self):
+    sqf = tasklets.SerialQueueFuture()
+    g1 = sqf.getq()
+    sqf.complete()
+    self.assertRaises(EOFError, g1.get_result)
+
+  def testSerialQueueFuture_SetException(self):
+    sqf = tasklets.SerialQueueFuture()
+    g1 = sqf.getq()
+    sqf.set_exception(KeyError())
+    self.assertRaises(KeyError, g1.get_result)
+
+  def testSerialQueueFuture_ItemException(self):
+    sqf = tasklets.SerialQueueFuture()
+    g1 = sqf.getq()
+    f1 = Future()
+    sqf.putq(f1)
+    sqf.complete()
+    f1.set_exception(ZeroDivisionError())
+    self.assertRaises(ZeroDivisionError, g1.get_result)
+
+  def testSerialQueueFuture_PutQ_1(self):
+    sqf = tasklets.SerialQueueFuture()
+    f1 = Future()
+    sqf.putq(f1)
+    sqf.complete()
+    f1.set_result(1)
+    self.assertEqual(sqf.getq().get_result(), 1)
+
+  def testSerialQueueFuture_PutQ_2(self):
+    sqf = tasklets.SerialQueueFuture()
+    sqf.putq(1)
+    sqf.complete()
+    self.assertEqual(sqf.getq().get_result(), 1)
+
+  def testSerialQueueFuture_PutQ_3(self):
+    sqf = tasklets.SerialQueueFuture()
+    g1 = sqf.getq()
+    sqf.putq(1)
+    sqf.complete()
+    self.assertEqual(g1.get_result(), 1)
+
+  def testSerialQueueFuture_PutQ_4(self):
+    sqf = tasklets.SerialQueueFuture()
+    g1 = sqf.getq()
+    f1 = Future()
+    sqf.putq(f1)
+    sqf.complete()
+    f1.set_result(1)
+    self.assertEqual(g1.get_result(), 1)
+
+  def testSerialQueueFuture_GetQ(self):
+    sqf = tasklets.SerialQueueFuture()
+    sqf.set_exception(KeyError())
+    self.assertRaises(KeyError, sqf.getq().get_result)
 
   def testGetReturnValue(self):
       r0 = tasklets.Return()
