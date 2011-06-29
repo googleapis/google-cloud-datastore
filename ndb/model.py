@@ -461,7 +461,7 @@ class Property(object):
     """Internal hook used by property filters.
 
     Sometimes the low-level query interface needs a specific data type
-    in order for the right filter to be constructed.
+    in order for the right filter to be constructed.  See _comparison().
     """
     return value
 
@@ -2052,6 +2052,10 @@ class Expando(Model):
   See the module docstring for details.
   """
 
+  # Set this to False (in an Expando subclass or entity) to make
+  # properties default to unindexed.
+  _default_indexed = True
+
   def _set_attributes(self, kwds):
     for name, value in kwds.iteritems():
       setattr(self, name, value)
@@ -2072,7 +2076,9 @@ class Expando(Model):
     if isinstance(value, Model):
       prop = StructuredProperty(Model, name)
     else:
-      prop = GenericProperty(name)
+      repeated = isinstance(value, list)
+      indexed = self._default_indexed
+      prop = GenericProperty(name, repeated=repeated, indexed=indexed)
     prop._code_name = name
     self._properties[name] = prop
     prop._set_value(self, value)

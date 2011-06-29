@@ -1491,6 +1491,37 @@ class ModelTests(test_utils.DatastoreTest):
     self.assertEqual(q.foo, 42)
     self.assertEqual(q.bar.hello, 'hello')
 
+  def testExpandoRepeatedProperties(self):
+    p = model.Expando(foo=1, bar=[1, 2])
+    p.baz = [3]
+    self.assertFalse(p._properties['foo']._repeated)
+    self.assertTrue(p._properties['bar']._repeated)
+    self.assertTrue(p._properties['baz']._repeated)
+    p.bar = 'abc'
+    self.assertFalse(p._properties['bar']._repeated)
+    pb = p._to_pb()
+    q = model.Expando._from_pb(pb)
+    q.key = None
+    self.assertFalse(p._properties['foo']._repeated)
+    self.assertFalse(p._properties['bar']._repeated)
+    self.assertTrue(p._properties['baz']._repeated)
+    self.assertEqual(q, model.Expando(foo=1, bar='abc', baz=[3]))
+
+  def testExpandoUnindexedProperties(self):
+    class Mine(model.Expando):
+      pass
+    a = Mine(foo=1, bar=['a', 'b'])
+    self.assertTrue(a._properties['foo']._indexed)
+    self.assertTrue(a._properties['bar']._indexed)
+    a._default_indexed = False
+    a.baz = 'baz'
+    self.assertFalse(a._properties['baz']._indexed)
+    Mine._default_indexed = False
+    b = Mine(foo=1)
+    b.bar=['a', 'b']
+    self.assertFalse(b._properties['foo']._indexed)
+    self.assertFalse(b._properties['bar']._indexed)
+
   def testComputedProperty(self):
     class ComputedTest(model.Model):
       name = model.StringProperty()
