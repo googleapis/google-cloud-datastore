@@ -458,6 +458,11 @@ class Property(object):
     return s
 
   def _datastore_type(self, value):
+    """Internal hook used by property filters.
+
+    Sometimes the low-level query interface needs a specific data type
+    in order for the right filter to be constructed.
+    """
     return value
 
   def _comparison(self, op, value):
