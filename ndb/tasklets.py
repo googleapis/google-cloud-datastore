@@ -742,7 +742,10 @@ class ReducingFuture(Future):
     if not self._dependents:
       self._mark_finished()
 
-  # TODO: set_exception()
+  def set_exception(self, exc, tb=None):
+    self._full = True
+    self._queue.clear()
+    super(ReducingFuture, self).set_exception(exc, tb)
 
   def putq(self, value):
     if isinstance(value, Future):
@@ -772,7 +775,6 @@ class ReducingFuture(Future):
     except Exception, err:
       _, _, tb = sys.exc_info()
       self.set_exception(err, tb)
-      self._queue.clear()
       return
     self._queue.append(val)
     if len(self._queue) >= self._batch_size:
