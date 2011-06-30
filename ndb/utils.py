@@ -2,6 +2,8 @@ import logging
 import os
 import sys
 
+DEBUG = True  # Set to False for some speedups
+
 def wrapping(wrapped):
   # A decorator to decorate a decorator's wrapper.  Following the lead
   # of Twisted and Monocle, this is supposed to make debugging heavily
@@ -16,6 +18,8 @@ def wrapping(wrapped):
 
 def get_stack(limit=10):
   # Return a list of strings showing where the current frame was called.
+  if not DEBUG:
+    return ()
   frame = sys._getframe(1)  # Always skip get_stack() itself.
   lines = []
   while len(lines) < limit and frame is not None:
@@ -66,7 +70,7 @@ def code_info(code, lineno=None):
 def logging_debug(*args):
   # NOTE: If you want to see debug messages, set the logging level
   # manually to logging.DEBUG - 1; or for tests use -v -v -v (see below).
-  if logging.getLogger().level < logging.DEBUG:
+  if DEBUG and logging.getLogger().level < logging.DEBUG:
     logging.debug(*args)
 
 def tweak_logging():
@@ -74,15 +78,23 @@ def tweak_logging():
   # more -v flags, turn on INFO logging; if there are 3 or more, DEBUG.
   # (A single -v just tells unittest.main() to print the name of each
   # test; we don't want to interfere with that.)
+  # Also, if there is a -q flag, set DEBUG to False, suppressing more
+  # debug info even from warnings.
+  q = 0
   v = 0
   for arg in sys.argv[1:]:
     if arg.startswith('-v'):
       v += arg.count('v')
+    if arg.startswith('-q'):
+      q += arg.count('q')
   if v >= 2:
     level = logging.INFO
     if v >= 3:
       level = logging.DEBUG - 1
     logging.basicConfig(level=level)
+  if q > 0:
+    global DEBUG
+    DEBUG = False
 
 if sys.argv[0].endswith('_test.py'):
   tweak_logging()

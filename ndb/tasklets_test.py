@@ -42,7 +42,7 @@ class TaskletTests(test_utils.DatastoreTest):
   def testFuture_Repr(self):
     f = tasklets.Future()
     prefix = (r'<Future [\da-f]+ created by '
-              r'testFuture_Repr\(tasklets_test.py:\d+\) ')
+              r'(testFuture_Repr\(tasklets_test.py:\d+\)|\?) ')
     self.assertTrue(re.match(prefix + r'pending>$', repr(f)), repr(f))
     f.set_result('abc')
     self.assertTrue(re.match(prefix + r'result \'abc\'>$', repr(f)), repr(f))
@@ -229,7 +229,7 @@ class TaskletTests(test_utils.DatastoreTest):
       self.assertTrue(
         re.match(
           r'<MultiFuture [\da-f]+ created by '
-          r'testMultiFuture_Repr\(tasklets_test.py:\d+\) for info; ',
+          r'(testMultiFuture_Repr\(tasklets_test.py:\d+\)|\?) for info; ',
           r))
       if r is r7:
         self.assertTrue('result' in r)
