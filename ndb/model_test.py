@@ -1079,6 +1079,20 @@ class ModelTests(test_utils.DatastoreTest):
     lines = difflib.unified_diff(linesp, linesq, 'Expected', 'Actual')
     self.assertEqual(pb, qb, ''.join(lines))
 
+  def testModelPickling(self):
+    global MyModel
+    class MyModel(model.Model):
+      name = model.StringProperty()
+      tags = model.StringProperty(repeated=True)
+      age = model.IntegerProperty()
+      other = model.KeyProperty()
+    my = MyModel(name='joe', tags=['python', 'ruby'], age=42,
+                 other=model.Key(MyModel, 42))
+    for proto in 0, 1, 2:
+      s = pickle.dumps(my, proto)
+      mycopy = pickle.loads(s)
+      self.assertEqual(mycopy, my)
+
   def testModelRepr(self):
     class Address(model.Model):
       street = model.StringProperty()

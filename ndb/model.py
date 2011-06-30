@@ -1684,6 +1684,14 @@ class Model(object):
     self._values = {}
     self._set_attributes(kwds)
 
+  def __getstate__(self):
+    return self._to_pb().Encode()
+
+  def __setstate__(self, serialized_pb):
+    pb = entity_pb.EntityProto(serialized_pb)
+    self.__init__()
+    self.__class__._from_pb(pb, set_key=False, ent=self)
+
   def _populate(self, **kwds):
     """Populate an instance from keyword arguments.
 
@@ -1836,14 +1844,17 @@ class Model(object):
     return pb
 
   @classmethod
-  def _from_pb(cls, pb, set_key=True):
+  def _from_pb(cls, pb, set_key=True, ent=None):
     """Internal helper to create an entity from an EntityProto protobuf."""
     assert isinstance(pb, entity_pb.EntityProto)
-    ent = cls()
+    if ent is None:
+      ent = cls()
 
-    # TODO: Move the key stuff into ModelAdapter.pb_to_entity()?
-    if set_key and pb.has_key():
-      ent._key = Key(reference=pb.key())
+    if pb.has_key():
+      key = Key(reference=pb.key())
+      # If set_key is not set, skip a trivial incomplete key.
+      if set_key or key.id() or key.parent():
+        ent._key = key
 
     indexed_properties = pb.property_list()
     unindexed_properties = pb.raw_property_list()
