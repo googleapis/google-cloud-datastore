@@ -706,10 +706,11 @@ class Property(object):
         is a repeated Property.
     """
     value = self._retrieve_value(entity)
-    if value is None and self._repeated:
-      value = []
-    elif not isinstance(value, list):
+    if not self._repeated:
       value = [value]
+    elif value is None:
+      value = []
+    assert isinstance(value, list)
     for val in value:
       if self._repeated:
         # Re-validate repeated values, since the user could have
