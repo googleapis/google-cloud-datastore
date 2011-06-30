@@ -1093,6 +1093,27 @@ class ModelTests(test_utils.DatastoreTest):
       mycopy = pickle.loads(s)
       self.assertEqual(mycopy, my)
 
+  def testRejectOldPickles(self):
+    global MyModel
+    from google.appengine.ext import db
+    class MyModel(db.Model):
+      name = db.StringProperty()
+    dumped = []
+    for proto in 0, 1, 2:
+      x = MyModel()
+      s = pickle.dumps(x)
+      dumped.append(s)
+      x.name = 'joe'
+      s = pickle.dumps(x)
+      dumped.append(s)
+      db.put(x)
+      s = pickle.dumps(x)
+      dumped.append(s)
+    class MyModel(model.Model):
+      name = model.StringProperty()
+    for s in dumped:
+      self.assertRaises(Exception, pickle.loads, s)
+
   def testModelRepr(self):
     class Address(model.Model):
       street = model.StringProperty()
