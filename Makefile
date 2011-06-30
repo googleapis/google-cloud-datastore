@@ -63,6 +63,9 @@ debug:
 deploy:
 	appcfg.py update .
 
+bench:
+	PYTHONPATH=$(GAEPATH):. $(PYTHON) bench.py $(FLAGS)
+
 python:
 	PYTHONPATH=$(GAEPATH):. $(PYTHON) -i startup.py $(FLAGS)
 
