@@ -451,7 +451,7 @@ class ContextTests(test_utils.DatastoreTest):
       def callback():
         ctx = tasklets.get_context()
         key = yield ent.put_async()
-        raise datastore_errors.Rollback()
+        raise model.Rollback()
       yield self.ctx.transaction(callback)
     foo().check_success()
     self.assertEqual(key.get(), None)
