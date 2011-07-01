@@ -1953,7 +1953,7 @@ class Model(object):
     return qry
   query = _query
 
-  def _put(self):
+  def _put(self, **ctx_options):
     """Write this entity to the datastore.
 
     If the operation creates or completes a key, the entity's key
@@ -1962,25 +1962,26 @@ class Model(object):
     Returns:
       The key for the entity.  This is always a complete key.
     """
-    return self._put_async().get_result()
+    return self._put_async(**ctx_options).get_result()
   put = _put
 
-  def _put_async(self):
+  def _put_async(self, **ctx_options):
     """Write this entity to the datastore.
 
     This is the asynchronous version of Model._put().
     """
     from ndb import tasklets
-    return tasklets.get_context().put(self)
+    return tasklets.get_context().put(self, **ctx_options)
   put_async = _put_async
 
   @classmethod
-  def _get_or_insert(cls, name, parent=None, **kwds):
+  def _get_or_insert(cls, name, parent=None, context_options=None, **kwds):
     """Transactionally retrieves an existing entity or creates a new one.
 
     Args:
       name: Key name to retrieve or create.
       parent: Parent entity key, if any.
+      context_options: ContextOptions object (not keyword args!) or None.
       **kwds: Keyword arguments to pass to the constructor of the model class
         if an instance for the specified key name does not already exist. If
         an instance with the supplied key_name and parent already exists,
@@ -1991,22 +1992,25 @@ class Model(object):
       or a new one that has just been created.
     """
     return cls._get_or_insert_async(name=name, parent=parent,
+                                    context_options=context_options,
                                     **kwds).get_result()
   get_or_insert = _get_or_insert
 
   @classmethod
-  def _get_or_insert_async(cls, name, parent=None, **kwds):
+  def _get_or_insert_async(cls, name, parent=None, context_options=None,
+                           **kwds):
     """Transactionally retrieves an existing entity or creates a new one.
 
     This is the asynchronous version of Model._get_or_insert().
     """
     from ndb import tasklets
     ctx = tasklets.get_context()
-    return ctx.get_or_insert(cls, name=name, parent=parent, **kwds)
+    return ctx.get_or_insert(cls, name=name, parent=parent,
+                             context_options=context_options, **kwds)
   get_or_insert_async = _get_or_insert_async
 
   @classmethod
-  def _allocate_ids(cls, size=None, max=None, parent=None):
+  def _allocate_ids(cls, size=None, max=None, parent=None, **ctx_options):
     """Allocates a range of key IDs for this model class.
 
     Args:
@@ -2015,48 +2019,52 @@ class Model(object):
       max: Maximum ID to allocate. Either size or max can be specified,
         not both.
       parent: Parent key for which the IDs will be allocated.
+      **ctx_options: Context options.
 
     Returns:
       A tuple with (start, end) for the allocated range, inclusive.
     """
-    return cls._allocate_ids_async(size=size, max=max,
-                                   parent=parent).get_result()
+    return cls._allocate_ids_async(size=size, max=max, parent=parent,
+                                   **ctx_options).get_result()
   allocate_ids = _allocate_ids
 
   @classmethod
-  def _allocate_ids_async(cls, size=None, max=None, parent=None):
+  def _allocate_ids_async(cls, size=None, max=None, parent=None,
+                          **ctx_options):
     """Allocates a range of key IDs for this model class.
 
     This is the asynchronous version of Model._allocate_ids().
     """
     from ndb import tasklets
     key = Key(cls._get_kind(), None, parent=parent)
-    return tasklets.get_context().allocate_ids(key, size=size, max=max)
+    return tasklets.get_context().allocate_ids(key, size=size, max=max,
+                                               **ctx_options)
   allocate_ids_async = _allocate_ids_async
 
   @classmethod
-  def _get_by_id(cls, id, parent=None):
+  def _get_by_id(cls, id, parent=None, **ctx_options):
     """Returns a instance of Model class by ID.
 
     Args:
       id: A string or integer key ID.
       parent: Parent key of the model to get.
+      **ctx_options: Context options.
 
     Returns:
       A model instance or None if not found.
     """
-    return cls._get_by_id_async(id, parent=parent).get_result()
+    return cls._get_by_id_async(id, parent=parent, **ctx_options).get_result()
   get_by_id = _get_by_id
 
   @classmethod
-  def _get_by_id_async(cls, id, parent=None):
+  def _get_by_id_async(cls, id, parent=None, **ctx_options):
     """Returns a instance of Model class by ID.
 
     This is the asynchronous version of Model._get_by_id().
     """
     from ndb import tasklets
     key = Key(cls._get_kind(), id, parent=parent)
-    return tasklets.get_context().get(key)
+    return tasklets.get_context().get(key, **ctx_options)
   get_by_id_async = _get_by_id_async
 
 
@@ -2109,7 +2117,7 @@ class Expando(Model):
 
 
 @datastore_rpc._positional(1)
-def transaction(callback, retry=None, entity_group=None):
+def transaction(callback, retry=None, entity_group=None, **ctx_options):
   """Run a callback in a transaction.
 
   Args:
@@ -2119,6 +2127,7 @@ def transaction(callback, retry=None, entity_group=None):
     entity_group: Optional root key to use as transaction entity group
       (keyword only; defaults to the root part of the first key used
       in the transaction).
+    **ctx_options: Context options.
 
   Returns:
     Whatever callback() returns.
@@ -2133,18 +2142,18 @@ def transaction(callback, retry=None, entity_group=None):
         ...
       transaction(lambda: my_callback(Key(...), 1))
   """
-  fut = transaction_async(callback, retry=retry, entity_group=entity_group)
+  fut = transaction_async(callback, retry=retry, entity_group=entity_group,
+                          **ctx_options)
   return fut.get_result()
 
 
 @datastore_rpc._positional(1)
-def transaction_async(callback, retry=None, entity_group=None):
+def transaction_async(callback, retry=None, entity_group=None, **kwds):
   """Run a callback in a transaction.
 
   This is the asynchronous version of transaction().
   """
   from ndb import tasklets
-  kwds = {}
   if retry is not None:
     kwds['retry'] = retry
   if entity_group is not None:
@@ -2165,8 +2174,8 @@ def transactional(func):
   If we're already in a transaction this is a no-op.
 
   Note: If you need to override the retry count or the entity group,
-  or if you want some kind of async behavior, use the transaction()
-  function above.
+  or if you want some kind of async behavior, or pass Context options,
+  use the transaction() function above.
   """
   @utils.wrapping(func)
   def transactional_wrapper(*args, **kwds):
@@ -2177,72 +2186,87 @@ def transactional(func):
   return transactional_wrapper
 
 
-def get_multi_async(keys):
+def get_multi_async(keys, **ctx_options):
   """Fetches a sequence of keys.
 
   Args:
     keys: A sequence of keys.
+    **ctx_options: Context options.
 
   Returns:
     A list of futures.
   """
-  return [key.get_async() for key in keys]
+  return [key.get_async(**ctx_options) for key in keys]
 
 
-def get_multi(keys):
+def get_multi(keys, **ctx_options):
   """Fetches a sequence of keys.
 
   Args:
     keys: A sequence of keys.
+    **ctx_options: Context options.
 
   Returns:
     A list whose items are either a Model instance or None if the key wasn't
     found.
   """
-  return [future.get_result() for future in get_multi_async(keys)]
+  return [future.get_result()
+          for future in get_multi_async(keys, **ctx_options)]
 
 
-def put_multi_async(entities):
+def put_multi_async(entities, **ctx_options):
   """Stores a sequence of Model instances.
 
   Args:
     entities: A sequence of Model instances.
+    **ctx_options: Context options.
 
   Returns:
     A list of futures.
   """
-  return [entity.put_async() for entity in entities]
+  return [entity.put_async(**ctx_options) for entity in entities]
 
 
-def put_multi(entities):
+def put_multi(entities, **ctx_options):
   """Stores a sequence of Model instances.
 
   Args:
     entities: A sequence of Model instances.
+    **ctx_options: Context options.
 
   Returns:
     A list with the stored keys.
   """
-  return [future.get_result() for future in put_multi_async(entities)]
+  return [future.get_result()
+          for future in put_multi_async(entities, **ctx_options)]
 
 
-def delete_multi_async(keys):
+def delete_multi_async(keys, **ctx_options):
   """Deletes a sequence of keys.
+
+  Args:
+    keys: A sequence of keys.
+    **ctx_options: Context options.
 
   Returns:
     A list of futures.
   """
-  return [key.delete_async() for key in keys]
+  return [key.delete_async(**ctx_options) for key in keys]
 
 
-def delete_multi(keys):
+def delete_multi(keys, **ctx_options):
   """Deletes a sequence of keys.
+
+  Args:
+    keys: A sequence of keys.
+    **ctx_options: Context options.
 
   Args:
     keys: A sequence of keys.
   """
   # A list full of Nones!!!
-  return [future.get_result() for future in delete_multi_async(keys)]
+  return [future.get_result()
+          for future in delete_multi_async(keys, **ctx_options)]
 
 
 # Update __all__ to contain all Property and Exception subclasses.

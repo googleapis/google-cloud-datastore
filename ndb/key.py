@@ -392,30 +392,30 @@ class Key(object):
   # Datastore API using the default context.
   # These use local import since otherwise they'd be recursive imports.
 
-  def get(self):
+  def get(self, **ctx_options):
     """Synchronously get the entity for this Key.
 
     Return None if there is no such entity.
     """
-    return self.get_async().get_result()
+    return self.get_async(**ctx_options).get_result()
 
-  def get_async(self):
+  def get_async(self, **ctx_options):
     """Return a Future whose result is the entity for this Key.
 
     If no such entity exists, a Future is still returned, and the
     Future's eventual return result be None.
     """
     from ndb import tasklets
-    return tasklets.get_context().get(self)
+    return tasklets.get_context().get(self, **ctx_options)
 
-  def delete(self):
+  def delete(self, **ctx_options):
     """Synchronously delete the entity for this Key.
 
     This is a no-op if no such entity exists.
     """
-    return self.delete_async().get_result()
+    return self.delete_async(**ctx_options).get_result()
 
-  def delete_async(self):
+  def delete_async(self, **ctx_options):
     """Schedule deletion of the entity for this Key.
 
     This returns a Future, whose result becomes available once the
@@ -424,7 +424,7 @@ class Key(object):
     no way to tell whether the entity existed or not).
     """
     from ndb import tasklets
-    return tasklets.get_context().delete(self)
+    return tasklets.get_context().delete(self, **ctx_options)
 
 
 # The remaining functions in this module are private.
