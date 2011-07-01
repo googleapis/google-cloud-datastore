@@ -105,10 +105,9 @@ class Context(object):
       results = memcache.get_multi(memkeymap.values(),
                                    key_prefix=self._memcache_prefix)
       leftover = []
-##      del todo[1:]  # Uncommenting this creates an interesting bug.
       for fut, key in todo:
-        mkey = memkeymap[key]
-        if mkey in results:
+        mkey = memkeymap.get(key)
+        if mkey is not None and mkey in results:
           pb = results[mkey]
           ent = self._conn.adapter.pb_to_entity(pb)
           fut.set_result(ent)
