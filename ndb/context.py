@@ -419,7 +419,7 @@ class Context(object):
           if ok:
             # TODO: This is questionable when self is transactional.
             self._cache.update(tctx._cache)
-            self._flush_memcache(tctx._cache)
+            self._clear_memcache(tctx._cache)
             raise tasklets.Return(result)
       finally:
         datastore._SetConnection(old_ds_conn)
@@ -432,14 +432,17 @@ class Context(object):
     """Return whether a transaction is currently active."""
     return isinstance(self._conn, datastore_rpc.TransactionalConnection)
 
-  def flush_cache(self):
+  def clear_cache(self):
     """Clears the in-memory cache.
 
     NOTE: This does not affect memcache.
     """
     self._cache.clear()
 
-  def _flush_memcache(self, keys):
+  # Backwards compatible alias.
+  flush_cache = clear_cache  # TODO: Remove this after one release.
+
+  def _clear_memcache(self, keys):
     keys = set(key for key in keys if self.should_memcache(key))
     if keys:
       memkeys = [key.urlsafe() for key in keys]
