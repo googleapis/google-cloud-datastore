@@ -1079,6 +1079,41 @@ class ModelTests(test_utils.DatastoreTest):
     lines = difflib.unified_diff(linesp, linesq, 'Expected', 'Actual')
     self.assertEqual(pb, qb, ''.join(lines))
 
+  def testModelPickling(self):
+    global MyModel
+    class MyModel(model.Model):
+      name = model.StringProperty()
+      tags = model.StringProperty(repeated=True)
+      age = model.IntegerProperty()
+      other = model.KeyProperty()
+    my = MyModel(name='joe', tags=['python', 'ruby'], age=42,
+                 other=model.Key(MyModel, 42))
+    for proto in 0, 1, 2:
+      s = pickle.dumps(my, proto)
+      mycopy = pickle.loads(s)
+      self.assertEqual(mycopy, my)
+
+  def testRejectOldPickles(self):
+    global MyModel
+    from google.appengine.ext import db
+    class MyModel(db.Model):
+      name = db.StringProperty()
+    dumped = []
+    for proto in 0, 1, 2:
+      x = MyModel()
+      s = pickle.dumps(x)
+      dumped.append(s)
+      x.name = 'joe'
+      s = pickle.dumps(x)
+      dumped.append(s)
+      db.put(x)
+      s = pickle.dumps(x)
+      dumped.append(s)
+    class MyModel(model.Model):
+      name = model.StringProperty()
+    for s in dumped:
+      self.assertRaises(Exception, pickle.loads, s)
+
   def testModelRepr(self):
     class Address(model.Model):
       street = model.StringProperty()
@@ -1490,6 +1525,37 @@ class ModelTests(test_utils.DatastoreTest):
     q = model.Expando._from_pb(pb)
     self.assertEqual(q.foo, 42)
     self.assertEqual(q.bar.hello, 'hello')
+
+  def testExpandoRepeatedProperties(self):
+    p = model.Expando(foo=1, bar=[1, 2])
+    p.baz = [3]
+    self.assertFalse(p._properties['foo']._repeated)
+    self.assertTrue(p._properties['bar']._repeated)
+    self.assertTrue(p._properties['baz']._repeated)
+    p.bar = 'abc'
+    self.assertFalse(p._properties['bar']._repeated)
+    pb = p._to_pb()
+    q = model.Expando._from_pb(pb)
+    q.key = None
+    self.assertFalse(p._properties['foo']._repeated)
+    self.assertFalse(p._properties['bar']._repeated)
+    self.assertTrue(p._properties['baz']._repeated)
+    self.assertEqual(q, model.Expando(foo=1, bar='abc', baz=[3]))
+
+  def testExpandoUnindexedProperties(self):
+    class Mine(model.Expando):
+      pass
+    a = Mine(foo=1, bar=['a', 'b'])
+    self.assertTrue(a._properties['foo']._indexed)
+    self.assertTrue(a._properties['bar']._indexed)
+    a._default_indexed = False
+    a.baz = 'baz'
+    self.assertFalse(a._properties['baz']._indexed)
+    Mine._default_indexed = False
+    b = Mine(foo=1)
+    b.bar=['a', 'b']
+    self.assertFalse(b._properties['foo']._indexed)
+    self.assertFalse(b._properties['bar']._indexed)
 
   def testComputedProperty(self):
     class ComputedTest(model.Model):

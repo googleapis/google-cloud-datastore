@@ -284,7 +284,7 @@ Key = ndb.key.Key  # For export.
 
 # NOTE: Property and Error classes are added later.
 __all__ = ['Key', 'ModelAdapter', 'ModelKey', 'MetaModel', 'Model', 'Expando',
-           'BlobKey', 'GeoPt',
+           'BlobKey', 'GeoPt', 'Rollback',
            'transaction', 'transaction_async',
            'in_transaction', 'transactional',
            'get_multi', 'get_multi_async',
@@ -295,6 +295,8 @@ __all__ = ['Key', 'ModelAdapter', 'ModelKey', 'MetaModel', 'Model', 'Expando',
 
 BlobKey = datastore_types.BlobKey
 GeoPt = datastore_types.GeoPt
+
+Rollback = datastore_errors.Rollback
 
 
 class KindError(datastore_errors.BadValueError):
@@ -458,6 +460,11 @@ class Property(object):
     return s
 
   def _datastore_type(self, value):
+    """Internal hook used by property filters.
+
+    Sometimes the low-level query interface needs a specific data type
+    in order for the right filter to be constructed.  See _comparison().
+    """
     return value
 
   def _comparison(self, op, value):
@@ -701,10 +708,11 @@ class Property(object):
         is a repeated Property.
     """
     value = self._retrieve_value(entity)
-    if value is None and self._repeated:
-      value = []
-    elif not isinstance(value, list):
+    if not self._repeated:
       value = [value]
+    elif value is None:
+      value = []
+    assert isinstance(value, list)
     for val in value:
       if self._repeated:
         # Re-validate repeated values, since the user could have
@@ -1678,6 +1686,14 @@ class Model(object):
     self._values = {}
     self._set_attributes(kwds)
 
+  def __getstate__(self):
+    return self._to_pb().Encode()
+
+  def __setstate__(self, serialized_pb):
+    pb = entity_pb.EntityProto(serialized_pb)
+    self.__init__()
+    self.__class__._from_pb(pb, set_key=False, ent=self)
+
   def _populate(self, **kwds):
     """Populate an instance from keyword arguments.
 
@@ -1830,14 +1846,17 @@ class Model(object):
     return pb
 
   @classmethod
-  def _from_pb(cls, pb, set_key=True):
+  def _from_pb(cls, pb, set_key=True, ent=None):
     """Internal helper to create an entity from an EntityProto protobuf."""
     assert isinstance(pb, entity_pb.EntityProto)
-    ent = cls()
+    if ent is None:
+      ent = cls()
 
-    # TODO: Move the key stuff into ModelAdapter.pb_to_entity()?
-    if set_key and pb.has_key():
-      ent._key = Key(reference=pb.key())
+    if pb.has_key():
+      key = Key(reference=pb.key())
+      # If set_key is not set, skip a trivial incomplete key.
+      if set_key or key.id() or key.parent():
+        ent._key = key
 
     indexed_properties = pb.property_list()
     unindexed_properties = pb.raw_property_list()
@@ -2047,6 +2066,10 @@ class Expando(Model):
   See the module docstring for details.
   """
 
+  # Set this to False (in an Expando subclass or entity) to make
+  # properties default to unindexed.
+  _default_indexed = True
+
   def _set_attributes(self, kwds):
     for name, value in kwds.iteritems():
       setattr(self, name, value)
@@ -2067,7 +2090,9 @@ class Expando(Model):
     if isinstance(value, Model):
       prop = StructuredProperty(Model, name)
     else:
-      prop = GenericProperty(name)
+      repeated = isinstance(value, list)
+      indexed = self._default_indexed
+      prop = GenericProperty(name, repeated=repeated, indexed=indexed)
     prop._code_name = name
     self._properties[name] = prop
     prop._set_value(self, value)

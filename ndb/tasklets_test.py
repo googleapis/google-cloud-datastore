@@ -42,7 +42,7 @@ class TaskletTests(test_utils.DatastoreTest):
   def testFuture_Repr(self):
     f = tasklets.Future()
     prefix = (r'<Future [\da-f]+ created by '
-              r'testFuture_Repr\(tasklets_test.py:\d+\) ')
+              r'(testFuture_Repr\(tasklets_test.py:\d+\)|\?) ')
     self.assertTrue(re.match(prefix + r'pending>$', repr(f)), repr(f))
     f.set_result('abc')
     self.assertTrue(re.match(prefix + r'result \'abc\'>$', repr(f)), repr(f))
@@ -229,7 +229,7 @@ class TaskletTests(test_utils.DatastoreTest):
       self.assertTrue(
         re.match(
           r'<MultiFuture [\da-f]+ created by '
-          r'testMultiFuture_Repr\(tasklets_test.py:\d+\) for info; ',
+          r'(testMultiFuture_Repr\(tasklets_test.py:\d+\)|\?) for info; ',
           r))
       if r is r7:
         self.assertTrue('result' in r)
@@ -429,6 +429,91 @@ class TaskletTests(test_utils.DatastoreTest):
     sqf = tasklets.SerialQueueFuture()
     sqf.set_exception(KeyError())
     self.assertRaises(KeyError, sqf.getq().get_result)
+
+  def testReducingFuture(self):
+    def reducer(arg):
+      return sum(arg)
+    rf = tasklets.ReducingFuture(reducer, batch_size=10)
+    for i in range(10):
+      rf.putq(i)
+    for i in range(10, 20):
+      f = Future()
+      rf.putq(f)
+      f.set_result(i)
+    rf.complete()
+    self.assertEqual(rf.get_result(), sum(range(20)))
+
+  def testReducingFuture_Empty(self):
+    def reducer(arg):
+      self.fail()
+    rf = tasklets.ReducingFuture(reducer)
+    rf.complete()
+    self.assertEqual(rf.get_result(), None)
+
+  def testReducingFuture_OneItem(self):
+    def reducer(arg):
+      self.fail()
+    rf = tasklets.ReducingFuture(reducer)
+    rf.putq(1)
+    rf.complete()
+    self.assertEqual(rf.get_result(), 1)
+
+  def testReducingFuture_ItemException(self):
+    def reducer(arg):
+      return sum(arg)
+    rf = tasklets.ReducingFuture(reducer)
+    f1 = Future()
+    f1.set_exception(ZeroDivisionError())
+    rf.putq(f1)
+    rf.complete()
+    self.assertRaises(ZeroDivisionError, rf.get_result)
+
+  def testReducingFuture_ReducerException_1(self):
+    def reducer(arg):
+      raise ZeroDivisionError
+    rf = tasklets.ReducingFuture(reducer)
+    rf.putq(1)
+    rf.putq(1)
+    rf.complete()
+    self.assertRaises(ZeroDivisionError, rf.get_result)
+
+  def testReducingFuture_ReducerException_2(self):
+    def reducer(arg):
+      raise ZeroDivisionError
+    rf = tasklets.ReducingFuture(reducer, batch_size=2)
+    rf.putq(1)
+    rf.putq(1)
+    rf.putq(1)
+    rf.complete()
+    self.assertRaises(ZeroDivisionError, rf.get_result)
+
+  def testReducingFuture_ReducerFuture_1(self):
+    def reducer(arg):
+      f = Future()
+      f.set_result(sum(arg))
+      return f
+    rf = tasklets.ReducingFuture(reducer, batch_size=2)
+    rf.putq(1)
+    rf.putq(1)
+    rf.complete()
+    self.assertEqual(rf.get_result(), 2)
+
+  def testReducingFuture_ReducerFuture_2(self):
+    # Weird hack to reach _internal_add_dependent() call in _mark_finished().
+    def reducer(arg):
+      res = sum(arg)
+      if len(arg) < 3:
+        f = Future()
+        f.set_result(res)
+        res = f
+      return res
+    rf = tasklets.ReducingFuture(reducer, batch_size=3)
+    rf.putq(1)
+    rf.putq(1)
+    rf.putq(1)
+    rf.putq(1)
+    rf.complete()
+    self.assertEqual(rf.get_result(), 4)
 
   def testGetReturnValue(self):
       r0 = tasklets.Return()

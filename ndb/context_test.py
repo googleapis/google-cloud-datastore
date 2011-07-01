@@ -451,7 +451,7 @@ class ContextTests(test_utils.DatastoreTest):
       def callback():
         ctx = tasklets.get_context()
         key = yield ent.put_async()
-        raise datastore_errors.Rollback()
+        raise model.Rollback()
       yield self.ctx.transaction(callback)
     foo().check_success()
     self.assertEqual(key.get(), None)
@@ -571,6 +571,20 @@ class ContextTests(test_utils.DatastoreTest):
       key = yield ctx.put(ent1)
       a = yield ctx.get(key1)
     self.assertRaises(model.KindError, foo().check_success)
+
+  def testMemachePolicy(self):
+    # Bug reported by Jack Hebert.
+    class P(model.Model): pass
+    class Q(model.Model): pass
+    def policy(key): return key.kind() != 'P'
+    self.ctx.set_cache_policy(policy)
+    self.ctx.set_memcache_policy(policy)
+    k1 = model.Key(P, 1)
+    k2 = model.Key(Q, 1)
+    f1 = self.ctx.get(k1)
+    f2 = self.ctx.get(k2)
+    e1 = f1.get_result()
+    e2 = f2.get_result()
 
 
 def main():
