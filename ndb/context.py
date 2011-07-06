@@ -407,7 +407,7 @@ class Context(object):
   def delete(self, key, **ctx_options):
     options = _make_ctx_options(ctx_options)
     yield self._delete_batcher.add(key, options)
-    if key in self._cache:
+    if self.should_cache(key, options) and key in self._cache:
       self._cache[key] = None
 
   @tasklets.tasklet
