@@ -19,6 +19,10 @@ from ndb import model, tasklets, eventloop, utils
 class ContextOptions(datastore_rpc.Configuration):
   """Configuration options that may be passed along with get/put/delete."""
 
+  # TODO: Remove this method once datastore_rpc.Configuration implements it.
+  def __hash__(self):
+    return hash(frozenset(self._values.iteritems()))
+
   @datastore_rpc.ConfigOption
   def ndb_should_cache(value):
     if not isinstance(value, bool):
