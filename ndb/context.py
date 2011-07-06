@@ -284,7 +284,10 @@ class Context(object):
     """
     flag = getattr(options, 'ndb_should_cache', None)
     if flag is None and self._cache_policy is not None:
-      flag = self._cache_policy(key)
+      if isinstance(self._cache_policy, bool):
+        flag = self._cache_policy
+      else:
+        flag = self._cache_policy(key)
     if flag is None:
       flag = getattr(self._conn.config, 'ndb_should_cache', True)
     return flag
@@ -334,7 +337,10 @@ class Context(object):
     """
     flag = getattr(options, 'ndb_should_memcache', None)
     if flag is None and self._memcache_policy is not None:
-      flag = self._memcache_policy(key)
+      if isinstance(self._memcache_policy, bool):
+        flag = self._memcache_policy
+      else:
+        flag = self._memcache_policy(key)
     if flag is None:
       flag = getattr(self._conn.config, 'ndb_should_memcache', True)
     return flag
@@ -343,7 +349,10 @@ class Context(object):
     """Return the memcache timeout to use for this key."""
     timeout = getattr(options, 'ndb_memcache_timeout', None)
     if timeout is None and self._memcache_timeout_policy is not None:
-      timeout = self._memcache_timeout_policy(key)
+      if isinstance(self._memcache_timeout_policy, (int, long, float)):
+        timeout = self._memcache_timeout_policy
+      else:
+        timeout = self._memcache_timeout_policy(key)
     if timeout is None:
       timeout = getattr(self._conn.config, 'ndb_memcache_timeout', 0)
     return timeout
@@ -498,7 +507,7 @@ class Context(object):
         entity_group=entity_group)
       tctx = self.__class__(conn=tconn,
                             auto_batcher_class=self._auto_batcher_class)
-      tctx.set_memcache_policy(lambda key: False)
+      tctx.set_memcache_policy(False)
       tasklets.set_context(tctx)
       old_ds_conn = datastore._GetConnection()
       try:
