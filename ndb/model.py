@@ -906,24 +906,153 @@ class StringProperty(Property):
       return raw
 
 
-class TextProperty(StringProperty):
+# A custom 'meaning' for compressed properties.
+_MEANING_URI_COMPRESSED = 'ZLIB'
+
+
+class _CompressedValue(str):
+  """Used as a flag for compressed values."""
+
+
+class CompressedPropertyMixin(object):
+  """A mixin to store the property value compressed using zlib."""
+
+  def _db_set_value(self, v, p, value):
+    """Sets the property value in the protocol buffer.
+
+    The value stored in entity._values[self._name] can be either:
+
+    - A _CompressedValue instance to indicate that the value is compressed.
+      This is used to lazily decompress and deserialize the property when
+      it is first accessed.
+    - The uncompressed and deserialized value, when it is set, when it was
+      not stored compressed or after it is lazily decompressed and
+      deserialized on first access.
+
+    Subclasses must override this if they need to set a different meaning
+    in the protocol buffer (the defaults are BYTESTRING or BLOB), and then
+    call _db_set_compressed_value() which will compress the value if needed.
+    """
+    if self._indexed:
+      p.set_meaning(entity_pb.Property.BYTESTRING)
+    else:
+      p.set_meaning(entity_pb.Property.BLOB)
+    self._db_set_compressed_value(v, p, value)
+
+  def _db_set_compressed_value(self, v, p, value):
+    """Sets the property value in the protocol buffer, compressed if needed."""
+    if self._compressed:
+      # Use meaning_uri because setting meaning to something else that is not
+      # BLOB or BYTESTRING will cause the value to be decoded from utf-8 in
+      # datastore_types.FromPropertyPb. That would break the compressed string.
+      p.set_meaning_uri(_MEANING_URI_COMPRESSED)
+      if not isinstance(value, _CompressedValue):
+        value = zlib.compress(self._serialize_value(value))
+    else:
+      value = self._serialize_value(value)
+    assert isinstance(value, str)
+    v.set_stringvalue(value)
+
+  def _db_get_value(self, v, p):
+    if not v.has_stringvalue():
+      return None
+    if p.meaning_uri() == _MEANING_URI_COMPRESSED:
+      # Return the value wrapped to flag it as compressed.
+      return _CompressedValue(v.stringvalue())
+    return self._deserialize_value(v.stringvalue())
+
+  def _get_value(self, entity):
+    value = super(CompressedPropertyMixin, self)._get_value(entity)
+    if self._repeated:
+      if value and isinstance(value[0], _CompressedValue):
+        # Decompress and deserialize each list item on first access.
+        for i in xrange(len(value)):
+          value[i] = self._deserialize_value(zlib.decompress(value[i]))
+    elif isinstance(value, _CompressedValue):
+      # Decompress and deserialize a single item on first access.
+      value = self._deserialize_value(zlib.decompress(value))
+      self._store_value(entity, value)
+    return value
+
+  def _serialize_value(self, value):
+    """Serializes the value, if needed.
+
+    Subclasses may override this to implement different serialization
+    mechanisms.
+    """
+    return value
+
+  def _deserialize_value(self, value):
+    """Deserializes the value, if needed.
+
+    Subclasses may override this to implement different deserialization
+    mechanisms.
+    """
+    return value
+
+
+class TextProperty(CompressedPropertyMixin, StringProperty):
   """An unindexed Property whose value is a text string of unlimited length."""
   # TODO: Maybe just use StringProperty(indexed=False)?
 
   _indexed = False
+  _compressed = False
 
-  def __init__(self, *args, **kwds):
-    super(TextProperty, self).__init__(*args, **kwds)
+  _attributes = StringProperty._attributes + ['_compressed']
+  _positional = 1
+
+  @datastore_rpc._positional(1 + _positional)
+  def __init__(self, compressed=False, **kwds):
+    super(TextProperty, self).__init__(**kwds)
     assert not self._indexed
+    self._compressed = compressed
+
+  def _validate(self, value):
+    if self._compressed and isinstance(value, _CompressedValue):
+      # A compressed value came from datastore and wasn't accessed, so it
+      # doesn't require validation.
+      return value
+    return super(TextProperty, self)._validate(value)
+
+  def _db_set_value(self, v, p, value):
+    if self._compressed:
+      p.set_meaning(entity_pb.Property.BLOB)
+    else:
+      p.set_meaning(entity_pb.Property.TEXT)
+    self._db_set_compressed_value(v, p, value)
+
+  def _serialize_value(self, value):
+    assert isinstance(value, basestring)
+    if isinstance(value, unicode):
+      return value.encode('utf-8')
+    return value
+
+  def _deserialize_value(self, value):
+    try:
+      return value.decode('utf-8')
+    except UnicodeDecodeError:
+      return value
 
 
-class BlobProperty(Property):
+class BlobProperty(CompressedPropertyMixin, Property):
   """A Property whose value is a byte string."""
   # TODO: Enforce size limit when indexed.
 
   _indexed = False
+  _compressed = False
+
+  _attributes = Property._attributes + ['_compressed']
+  _positional = 2
+
+  @datastore_rpc._positional(1 + _positional)
+  def __init__(self, name=None, compressed=False, **kwds):
+    super(BlobProperty, self).__init__(name=name, **kwds)
+    self._compressed = compressed
+    assert not (compressed and self._indexed)
 
   def _validate(self, value):
+    if self._compressed and isinstance(value, _CompressedValue):
+      return value
     if not isinstance(value, str):
       raise datastore_errors.BadValueError('Expected 8-bit string, got %r' %
                                            (value,))
@@ -931,19 +1060,6 @@ class BlobProperty(Property):
 
   def _datastore_type(self, value):
     return datastore_types.Blob(value)
-
-  def _db_set_value(self, v, p, value):
-    assert isinstance(value, str)
-    v.set_stringvalue(value)
-    if self._indexed:
-      p.set_meaning(entity_pb.Property.BYTESTRING)
-    else:
-      p.set_meaning(entity_pb.Property.BLOB)
-
-  def _db_get_value(self, v, p):
-    if not v.has_stringvalue():
-      return None
-    return v.stringvalue()
 
 
 class GeoPtProperty(Property):
@@ -1339,15 +1455,11 @@ class StructuredProperty(Property):
     prop._deserialize(subentity, p, depth + 1)
 
 
-# A custom 'meaning' for compressed blobs.
-_MEANING_URI_COMPRESSED = 'ZLIB'
-
-
-class LocalStructuredProperty(Property):
+class LocalStructuredProperty(BlobProperty):
   """Substructure that is serialized to an opaque blob.
 
   This looks like StructuredProperty on the Python side, but is
-  written to the datastore as a single opaque blob.  It is not indexed
+  written like a BlobProperty in the datastore.  It is not indexed
   and you cannot query for subproperties.  On the other hand, the
   on-disk representation is more efficient and can be made even more
   efficient by passing compressed=True, which compresses the blob
@@ -1355,87 +1467,33 @@ class LocalStructuredProperty(Property):
   """
 
   _indexed = False
-  _compressed = False
   _modelclass = None
 
-  _attributes = ['_modelclass'] + Property._attributes + ['_compressed']
+  _attributes = ['_modelclass'] + BlobProperty._attributes
   _positional = 2
 
   @datastore_rpc._positional(1 + _positional)
   def __init__(self, modelclass, name=None, compressed=False, **kwds):
-    super(LocalStructuredProperty, self).__init__(name=name, **kwds)
+    super(LocalStructuredProperty, self).__init__(name=name,
+                                                  compressed=compressed,
+                                                  **kwds)
     assert not self._indexed
     self._modelclass = modelclass
-    self._compressed = compressed
 
   def _validate(self, value):
-    # This is kind of a hack. Allow tuples because if the property comes from
-    # datastore *and* is unchanged *and* the property has repeated=True,
-    # _serialize() will call _do_validate() while the value is still a tuple.
-    if not isinstance(value, (self._modelclass, tuple)):
+    if self._compressed and isinstance(value, _CompressedValue):
+      return value
+    if not isinstance(value, self._modelclass):
       raise datastore_errors.BadValueError('Expected %s instance, got %r' %
                                            (self._modelclass.__name__, value))
     return value
 
-  def _db_set_value(self, v, p, value):
-    """Serializes the value to an entity_pb.
+  def _serialize_value(self, value):
+    return value._to_pb().Encode()
 
-    The value stored in entity._values[self._name] can be either:
-
-    - A tuple (serialized: bytes, compressed: bool), when the value comes
-      from datastore. This is the serialized model and a flag indicating if it
-      is compressed, used to lazily decompress and deserialize the property
-      when it is first accessed.
-    - An instance of self._modelclass, when the property value is set, or
-      after it is lazily decompressed and deserialized on first access.
-    """
-    if isinstance(value, tuple):
-      # Value didn't change and is still serialized, so we store it as it is.
-      serialized, compressed = value
-      assert compressed == self._compressed
-    else:
-      pb = value._to_pb()
-      serialized = pb.Encode()
-      compressed = self._compressed
-      if compressed:
-        p.set_meaning_uri(_MEANING_URI_COMPRESSED)
-        serialized = zlib.compress(serialized)
-    if compressed:
-      # Use meaning_uri because setting meaning to something else that is not
-      # BLOB or BYTESTRING will cause the value to be decoded from utf-8
-      # in datastore_types.FromPropertyPb. This breaks the compressed string.
-      p.set_meaning_uri(_MEANING_URI_COMPRESSED)
-    p.set_meaning(entity_pb.Property.BLOB)
-    v.set_stringvalue(serialized)
-
-  def _db_get_value(self, v, p):
-    if not v.has_stringvalue():
-      return None
-    # Return a tuple (serialized, bool) to be lazily processed later.
-    return v.stringvalue(), p.meaning_uri() == _MEANING_URI_COMPRESSED
-
-  def _decompress_unserialize_value(self, value):
-    serialized, compressed = value
-    if compressed:
-      serialized = zlib.decompress(serialized)
-    pb = entity_pb.EntityProto(serialized)
+  def _deserialize_value(self, value):
+    pb = entity_pb.EntityProto(value)
     return self._modelclass._from_pb(pb, set_key=False)
-
-  def _get_value(self, entity):
-    value = super(LocalStructuredProperty, self)._get_value(entity)
-    if self._repeated:
-      if value and isinstance(value[0], tuple):
-        # Decompresses and deserializes each list item.
-        # Reuse the original list, cleaning it first.
-        values = list(value)
-        del value[:]
-        for v in values:
-          value.append(self._decompress_unserialize_value(v))
-    elif isinstance(value, tuple):
-      # Decompresses and deserializes a single item.
-      value = self._decompress_unserialize_value(value)
-      self._store_value(entity, value)
-    return value
 
 
 class GenericProperty(Property):
