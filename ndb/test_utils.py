@@ -114,5 +114,5 @@ class DatastoreTest(unittest.TestCase):
     """
     from ndb import tasklets
     ctx = tasklets.get_context()
-    ctx.set_cache_policy(lambda key: False)
-    ctx.set_memcache_policy(lambda key: False)
+    ctx.set_cache_policy(False)
+    ctx.set_memcache_policy(False)
