@@ -1312,7 +1312,7 @@ class ModelTests(test_utils.DatastoreTest):
     p.address = Address(street='1600 Amphitheatre', city='Mountain View')
     p.put()
 
-    # Putting and getting to test compression and deserialization.
+    # To test compression and deserialization with untouched properties.
     p = k.get()
     p.put()
 
@@ -1320,6 +1320,9 @@ class ModelTests(test_utils.DatastoreTest):
     self.assertEqual(p.name, 'Google')
     self.assertEqual(p.address.street, '1600 Amphitheatre')
     self.assertEqual(p.address.city, 'Mountain View')
+
+    # To test compression and deserialization after properties were accessed.
+    p.put()
 
   def testLocalStructuredPropertyRepeated(self):
     class Address(model.Model):
@@ -1336,7 +1339,7 @@ class ModelTests(test_utils.DatastoreTest):
     p.address.append(Address(street='Webb crater', city='Moon'))
     p.put()
 
-    # Putting and getting to test compression and deserialization.
+    # To test compression and deserialization with untouched properties.
     p = k.get()
     p.put()
 
@@ -1346,6 +1349,9 @@ class ModelTests(test_utils.DatastoreTest):
     self.assertEqual(p.address[0].city, 'Mountain View')
     self.assertEqual(p.address[1].street, 'Webb crater')
     self.assertEqual(p.address[1].city, 'Moon')
+
+    # To test compression and deserialization after properties were accessed.
+    p.put()
 
   def testLocalStructuredPropertyRepeatedCompressed(self):
     class Address(model.Model):
@@ -1363,7 +1369,7 @@ class ModelTests(test_utils.DatastoreTest):
     p.address.append(Address(street='Webb crater', city='Moon'))
     p.put()
 
-    # Putting and getting to test compression and deserialization.
+    # To test compression and deserialization with untouched properties.
     p = k.get()
     p.put()
 
@@ -1373,6 +1379,9 @@ class ModelTests(test_utils.DatastoreTest):
     self.assertEqual(p.address[0].city, 'Mountain View')
     self.assertEqual(p.address[1].street, 'Webb crater')
     self.assertEqual(p.address[1].city, 'Moon')
+
+    # To test compression and deserialization after properties were accessed.
+    p.put()
 
   def testLocalStructuredPropertyRepeatedRepeated(self):
     class Inner(model.Model):
@@ -2156,6 +2165,87 @@ class ModelTests(test_utils.DatastoreTest):
 
     q = M.query(M.u == values['u'])
     self.assertEqual(q.get(), m)
+
+  def testNonRepeatedListValue(self):
+    class ReprProperty(model.BlobProperty):
+      def _validate(self, value):
+        # dummy
+        return value
+
+      def _serialize_value(self, value):
+        return value.__repr__()
+
+      def _deserialize_value(self, value):
+        return eval(value)
+
+    class M(model.Model):
+      p1 = ReprProperty()
+      p2 = ReprProperty(compressed=True)
+      p3 = ReprProperty(repeated=True)
+      p4 = ReprProperty(compressed=True, repeated=True)
+
+    key1 = model.Key(M, 'test')
+    value = [{'foo': 'bar'}, {'baz': 'ding'}]
+    m1 = M(key=key1, p1=value, p2=value, p3=[value, value], p4=[value, value])
+    m1.put()
+
+    # To test compression and deserialization with untouched properties.
+    m2 = key1.get()
+    m2.put()
+
+    m2 = key1.get()
+    self.assertEqual(m2.p1, value)
+    self.assertEqual(m2.p2, value)
+    self.assertEqual(m2.p3, [value, value])
+    self.assertEqual(m2.p4, [value, value])
+
+    # To test compression and deserialization after properties were accessed.
+    m2.put()
+
+  def testCompressedProperty(self):
+    class M(model.Model):
+      t1 = model.TextProperty()
+      t2 = model.TextProperty(compressed=True)
+      t3 = model.TextProperty(repeated=True)
+      t4 = model.TextProperty(compressed=True, repeated=True)
+      t5 = model.TextProperty()
+      t6 = model.TextProperty(compressed=True)
+      t7 = model.TextProperty(repeated=True)
+      t8 = model.TextProperty(compressed=True, repeated=True)
+      b1 = model.BlobProperty()
+      b2 = model.BlobProperty(compressed=True)
+      b3 = model.BlobProperty(repeated=True)
+      b4 = model.BlobProperty(compressed=True, repeated=True)
+
+    key1 = model.Key(M, 'test')
+    value1 = 'foo bar baz ding'
+    value2 = u'f\xd6\xd6 b\xe4r b\xe4z d\xefng'  # Umlauts on the vowels.
+    m1 = M(key=key1,
+           t1=value1, t2=value1, t3=[value1], t4=[value1],
+           t5=value2, t6=value2, t7=[value2], t8=[value2],
+           b1=value1, b2=value1, b3=[value1], b4=[value1])
+    m1.put()
+
+    # To test compression and deserialization with untouched properties.
+    m2 = key1.get()
+    m2.put()
+
+    m2 = key1.get()
+    self.assertEqual(m2.t1, value1)
+    self.assertEqual(m2.t2, value1)
+    self.assertEqual(m2.t3, [value1])
+    self.assertEqual(m2.t4, [value1])
+    self.assertEqual(m2.t5, value2)
+    self.assertEqual(m2.t6, value2)
+    self.assertEqual(m2.t7, [value2])
+    self.assertEqual(m2.t8, [value2])
+    self.assertEqual(m2.b1, value1)
+    self.assertEqual(m2.b2, value1)
+    self.assertEqual(m2.b3, [value1])
+    self.assertEqual(m2.b4, [value1])
+
+    # To test compression and deserialization after properties were accessed.
+    m2.put()
 
 
 class CacheTests(test_utils.DatastoreTest):
