@@ -64,7 +64,7 @@ debug:
 	$(GAE)/dev_appserver.py . --port $(PORT) --address $(ADDRESS) --debug
 
 deploy:
-	appcfg.py update .
+	/tmp/appcfg_over_stubby.par update .
 
 bench:
 	PYTHONPATH=$(GAEPATH):. $(PYTHON) bench.py $(FLAGS)
