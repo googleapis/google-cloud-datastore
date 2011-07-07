@@ -81,6 +81,18 @@ def is_generator(obj):
   """
   return isinstance(obj, types.GeneratorType)
 
+import threading as _threading  # Don't export.
+
+class _ContextHolder(_threading.local):
+
+  current_context = None
+
+  def __init__(self):
+    super(_ContextHolder, self).__init__()
+    self.all_pending = set()
+
+_context_holder = _ContextHolder()
+
 class Future(object):
   """A Future has 0 or more callbacks.
 
@@ -97,8 +109,6 @@ class Future(object):
   IDLE = RPC.IDLE  # Not yet running (unused)
   RUNNING = RPC.RUNNING  # Not yet completed.
   FINISHING = RPC.FINISHING  # Completed.
-
-  _all_pending = set()  # Set of all pending Future instances.
 
   # XXX Add docstrings to all methods.  Separate PEP 3148 API from RPC API.
 
@@ -119,7 +129,7 @@ class Future(object):
     self._traceback = None
     self._callbacks = []
     logging_debug('_all_pending: add %s', self)
-    self._all_pending.add(self)
+    _context_holder.all_pending.add(self)
     self._next = None  # Links suspended Futures together in a stack.
 
   # TODO: Add a __del__ that complains if neither get_exception() nor
@@ -159,16 +169,16 @@ class Future(object):
 
   @classmethod
   def clear_all_pending(cls):
-    if cls._all_pending:
-      logging.info('_all_pending: clear %s', cls._all_pending)
+    if _context_holder.all_pending:
+      logging.info('_all_pending: clear %s', _context_holder.all_pending)
     else:
       logging_debug('_all_pending: clear no-op')
-    cls._all_pending.clear()
+    _context_holder.all_pending.clear()
 
   @classmethod
   def dump_all_pending(cls, verbose=False):
     all = []
-    for fut in cls._all_pending:
+    for fut in _context_holder.all_pending:
       if verbose:
         line = fut.dump() + ('\n' + '-'*40)
       else:
@@ -187,7 +197,7 @@ class Future(object):
     self._result = result
     self._done = True
     logging_debug('_all_pending: remove successful %s', self)
-    self._all_pending.remove(self)
+    _context_holder.all_pending.remove(self)
     for callback, args, kwds  in self._callbacks:
       eventloop.queue_call(None, callback, *args, **kwds)
 
@@ -197,9 +207,9 @@ class Future(object):
     self._exception = exc
     self._traceback = tb
     self._done = True
-    if self in self._all_pending:
+    if self in _context_holder.all_pending:
       logging_debug('_all_pending: remove failing %s', self)
-      self._all_pending.remove(self)
+      _context_holder.all_pending.remove(self)
     else:
       logging_debug('_all_pending: not found %s', self)
     for callback, args, kwds in self._callbacks:
@@ -877,14 +887,10 @@ def synctasklet(func):
 
 _CONTEXT_KEY = '__CONTEXT__'
 
-# TODO: Use thread-local for this.
-_context = None
-
 def get_context():
-  global _context
   ctx = None
   if os.getenv(_CONTEXT_KEY):
-    ctx = _context
+    ctx = _context_holder.current_context
   if ctx is None:
     ctx = make_default_context()
     set_context(ctx)
@@ -895,9 +901,8 @@ def make_default_context():
   return context.Context()
 
 def set_context(new_context):
-  global _context
   os.environ[_CONTEXT_KEY] = '1'
-  _context = new_context
+  _context_holder.current_context = new_context
 
 # TODO: Rework the following into documentation.
 

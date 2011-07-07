@@ -132,23 +132,27 @@ class EventLoop(object):
 
 
 _EVENT_LOOP_KEY = '__EVENT_LOOP__'
-_event_loop = None
+
+import threading as _threading  # Don't export.
+
+class _LoopHolder(_threading.local):
+  current_loop = None
+
+_loop_holder = _LoopHolder()
 
 def get_event_loop():
-  """Return a singleton EventLoop instance.
+  """Return a EventLoop instance.
 
-  A new singleton is created for each new HTTP request.  We determine
+  A new instance is created for each new HTTP request.  We determine
   that we're in a new request by inspecting os.environ, which is reset
-  at the start of each request.
+  at the start of each request.  Also, each thread gets its own loop.
   """
-  # TODO: Use thread-local storage?
-  global _event_loop
   ev = None
   if os.getenv(_EVENT_LOOP_KEY):
-    ev = _event_loop
+    ev = _loop_holder.current_loop
   if ev is None:
     ev = EventLoop()
-    _event_loop = ev
+    _loop_holder.current_loop = ev
     os.environ[_EVENT_LOOP_KEY] = '1'
   return ev
 
