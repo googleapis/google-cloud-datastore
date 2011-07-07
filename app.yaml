@@ -1,0 +1,23 @@
+# Demo app.
+application: ndbdemo
+version: fibo
+runtime: python27
+api_version: 1
+threadsafe: yes
+
+handlers:
+
+- url: /hello.*
+  script: demo.hello.app
+
+- url: /test.*
+  script: demo/test.py
+
+- url: /fibo.*
+  script: demo.fibo.app
+
+- url: /.*
+  script: demo.main.app
+
+builtins:
+- appstats: on
