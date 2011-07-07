@@ -597,7 +597,7 @@ def toplevel(func):
   @utils.wrapping(func)
   def add_context_wrapper(*args, **kwds):
     __ndb_debug__ = utils.func_info(func)
-    tasklets.Future.clear_all_pending()
+    tasklets._state.clear_all_pending()
     # Reset context; a new one will be created on the first call to
     # get_context().
     tasklets.set_context(None)
