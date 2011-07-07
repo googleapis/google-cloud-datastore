@@ -4,7 +4,6 @@ import sys
 import threading
 import time
 
-from google.appengine.ext.appstats import recording
 from google.appengine.ext import webapp
 
 from ndb import tasklets, context
@@ -41,4 +40,3 @@ urls = [
   ]
 
 app = webapp.WSGIApplication(urls)
-app = recording.appstats_wsgi_middleware(app)
