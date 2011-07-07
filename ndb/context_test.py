@@ -119,7 +119,6 @@ class ContextTests(test_utils.DatastoreTest):
       self.assertEqual(ents2, ents)
       raise tasklets.Return(keys)
     keys = foo().get_result()
-    print keys
     self.assertEqual(len(keys), 10)
 
   def testContext_Cache(self):
