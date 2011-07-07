@@ -465,7 +465,8 @@ def _ConstructReference(cls, pairs=None, flat=None,
       serialized = _DecodeUrlSafe(urlsafe)
     if serialized:
       reference = _ReferenceFromSerialized(serialized)
-    assert reference.path().element_size()
+    assert reference.path().element_size(), (urlsafe, serialized,
+                                             str(reference))
     # TODO: assert that each element has a type and either an id or a name
     if not serialized:
       reference = _ReferenceFromReference(reference)
