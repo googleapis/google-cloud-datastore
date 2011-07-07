@@ -9,7 +9,7 @@ def main():
   num = 10
   try:
     num = int(sys.argv[1])
-  except:
+  except Exception:
     pass
   threads = []
   for i in range(num):
@@ -38,4 +38,3 @@ def fibonacci(n):
 
 if __name__ == '__main__':
   main()
-
