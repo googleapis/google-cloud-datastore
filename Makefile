@@ -42,6 +42,9 @@ tasklets_test:
 context_test:
 	PYTHONPATH=$(GAEPATH):. $(PYTHON) -m ndb.context_test $(FLAGS)
 
+thread_test:
+	PYTHONPATH=$(GAEPATH):. $(PYTHON) -m ndb.thread_test $(FLAGS)
+
 c cov cove cover coverage:
 	coverage erase
 	for i in $(TESTS); \
