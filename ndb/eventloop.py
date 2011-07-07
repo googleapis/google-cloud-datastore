@@ -13,19 +13,21 @@ The API here is inspired by Monocle.
 import bisect
 import logging
 import os
+import threading
 import time
 
 from google.appengine.api.apiproxy_rpc import RPC
 
 from google.appengine.datastore import datastore_rpc
 
-import utils
+from ndb import utils
 
 logging_debug = utils.logging_debug
 
 IDLE = RPC.IDLE
 RUNNING = RPC.RUNNING
 FINISHING = RPC.FINISHING
+
 
 class EventLoop(object):
   """An event loop."""
@@ -131,14 +133,14 @@ class EventLoop(object):
         break
 
 
+class _State(threading.local):
+  event_loop = None
+
+
 _EVENT_LOOP_KEY = '__EVENT_LOOP__'
 
-import threading as _threading  # Don't export.
+_state = _State()
 
-class _LoopHolder(_threading.local):
-  current_loop = None
-
-_loop_holder = _LoopHolder()
 
 def get_event_loop():
   """Return a EventLoop instance.
@@ -149,28 +151,33 @@ def get_event_loop():
   """
   ev = None
   if os.getenv(_EVENT_LOOP_KEY):
-    ev = _loop_holder.current_loop
+    ev = _state.event_loop
   if ev is None:
     ev = EventLoop()
-    _loop_holder.current_loop = ev
+    _state.event_loop = ev
     os.environ[_EVENT_LOOP_KEY] = '1'
   return ev
+
 
 def queue_call(*args, **kwds):
   ev = get_event_loop()
   ev.queue_call(*args, **kwds)
 
+
 def queue_rpc(rpc, callable=None, *args, **kwds):
   ev = get_event_loop()
   ev.queue_rpc(rpc, callable, *args, **kwds)
+
 
 def run():
   ev = get_event_loop()
   ev.run()
 
+
 def run1():
   ev = get_event_loop()
   return ev.run1()
+
 
 def run0():
   ev = get_event_loop()
