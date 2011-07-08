@@ -1139,12 +1139,6 @@ class _SubQueryIteratorState(object):
     lhs_filter = self.dsquery._filter_predicate
     rhs_filter = other.dsquery._filter_predicate
     names = self.orders._get_prop_names()
-    # TODO: In some future version, there won't be a need to add the
-    # filters' names.
-    if lhs_filter is not None:
-      names |= lhs_filter._get_prop_names()
-    if rhs_filter is not None:
-      names |= rhs_filter._get_prop_names()
     lhs_value_map = datastore_query._make_key_value_map(lhs, names)
     rhs_value_map = datastore_query._make_key_value_map(rhs, names)
     if lhs_filter is not None:
