@@ -1062,7 +1062,10 @@ class BlobProperty(CompressedPropertyMixin, Property):
     return value
 
   def _datastore_type(self, value):
-    return datastore_types.Blob(value)
+    # Since this is only used for queries, and queries imply an
+    # indexed property, check that, and always use ByteString.
+    assert self._indexed
+    return datastore_types.ByteString(value)
 
 
 class GeoPtProperty(Property):
