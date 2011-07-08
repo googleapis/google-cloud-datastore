@@ -258,6 +258,10 @@ app = webapp.WSGIApplication(urls)
 
 
 def main():
+  # Hack for Python 2.7 runtime bug.
+  import os
+  if os.getenv('USER_EMAIL') and not os.getenv('USER_ID'):
+    os.environ['USER_ID'] = os.getenv('USER_EMAIL')
   util.run_wsgi_app(app)
 
 
