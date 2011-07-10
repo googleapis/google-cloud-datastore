@@ -303,6 +303,22 @@ class Context(object):
       # The value returned by delete_multi() is pretty much useless, it
       # could be the keys were never cached in the first place.
 
+  # TODO: Unify the policy docstrings (they're getting too verbose).
+
+  # TODO: Document that all the policy functions may also:
+  # - be a constant of the right type (instead of a function);
+  # - return None (instead of a value of the right type);
+  # - be None (instead of a function or constant).
+
+  # TODO: Document that model classes may define class variables
+  # _use_{cache,memcache,datastore} or _memcache_timeout to set the
+  # default policy of that type for that class.
+
+  # TODO: Should the per-class policies be allowed to be class methods?
+
+  # TODO: Should the per-class policies override the policy set with
+  # ctx.set_XXX_policy()?
+
   def get_cache_policy(self):
     """Return the current context cache policy function.
 
@@ -337,15 +353,13 @@ class Context(object):
         flag = self._cache_policy
       else:
         flag = self._cache_policy(key)
+    if flag is None and key is not None:
+      modelclass = model.Model._kind_map.get(key.kind())
+      if modelclass is not None:
+        flag = getattr(modelclass, '_use_cache', None)
     if flag is None:
       flag = getattr(self._conn.config, 'use_cache', True)
     return flag
-
-  # TODO: Document that all the policy functions may also:
-  # - be a constant of the right type (instead of a function);
-  # - return None (instead of a value of the right type);
-  # - be None (instead of a function or constant).
-  # Also unify the docstrings (they're getting too verbose).
 
   def get_memcache_policy(self):
     """Return the current memcache policy function.
@@ -365,21 +379,6 @@ class Context(object):
     """
     self._memcache_policy = func
 
-  def set_memcache_timeout_policy(self, func):
-    """Set the policy function for memcache timeout (expiration).
-
-    Args:
-      func: A function that accepts a key instance as argument and returns
-        an integer indicating the desired memcache timeout.  May be None.
-
-    If the function returns 0 it implies the default timeout.
-    """
-    self._memcache_timeout_policy = func
-
-  def get_memcache_timeout_policy(self):
-    """Return the current policy function for memcache timeout (expiration)."""
-    return self._memcache_timeout_policy
-
   def _use_memcache(self, key, options=None):
     """Return whether to use memcache for this key.
 
@@ -396,6 +395,10 @@ class Context(object):
         flag = self._memcache_policy
       else:
         flag = self._memcache_policy(key)
+    if flag is None and key is not None:
+      modelclass = model.Model._kind_map.get(key.kind())
+      if modelclass is not None:
+        flag = getattr(modelclass, '_use_memcache', None)
     if flag is None:
       flag = getattr(self._conn.config, 'use_memcache', True)
     return flag
@@ -434,18 +437,41 @@ class Context(object):
         flag = self._datastore_policy
       else:
         flag = self._datastore_policy(key)
+    if flag is None and key is not None:
+      modelclass = model.Model._kind_map.get(key.kind())
+      if modelclass is not None:
+        flag = getattr(modelclass, '_use_datastore', None)
     if flag is None:
       flag = getattr(self._conn.config, 'use_datastore', True)
     return flag
 
+  def set_memcache_timeout_policy(self, func):
+    """Set the policy function for memcache timeout (expiration).
+
+    Args:
+      func: A function that accepts a key instance as argument and returns
+        an integer indicating the desired memcache timeout.  May be None.
+
+    If the function returns 0 it implies the default timeout.
+    """
+    self._memcache_timeout_policy = func
+
+  def get_memcache_timeout_policy(self):
+    """Return the current policy function for memcache timeout (expiration)."""
+    return self._memcache_timeout_policy
+
   def _get_memcache_timeout(self, key, options=None):
-    """Return the memcache timeout to use for this key."""
+    """Return the memcache timeout (expiration) for this key."""
     timeout = getattr(options, 'memcache_timeout', None)
     if timeout is None and self._memcache_timeout_policy is not None:
       if isinstance(self._memcache_timeout_policy, (int, long, float)):
         timeout = self._memcache_timeout_policy
       else:
         timeout = self._memcache_timeout_policy(key)
+    if timeout is None and key is not None:
+      modelclass = model.Model._kind_map.get(key.kind())
+      if modelclass is not None:
+        timeout = getattr(modelclass, '_memcache_timeout', None)
     if timeout is None:
       timeout = getattr(self._conn.config, 'memcache_timeout', 0)
     return timeout
