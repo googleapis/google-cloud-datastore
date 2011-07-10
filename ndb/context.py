@@ -214,6 +214,7 @@ class Context(object):
 
   @tasklets.tasklet
   def _put_tasklet(self, todo):
+    if hasattr(sys, 'x'): import pdb; pdb.set_trace()  # XXX
     assert todo
     # TODO: What if the same entity is being put twice?
     # TODO: What if two entities with the same key are being put?
@@ -231,10 +232,15 @@ class Context(object):
       datastore_futures = []
       datastore_entities = []
       for fut, ent in zip(futures, entities):
-        if self._use_datastore(ent._key, options):
+        key = ent._key
+        if key is None:
+          # Pass a dummy Key to _use_datastore().
+          key = model.Key(ent.__class__, None)
+        if self._use_datastore(key, options):
           datastore_futures.append(fut)
           datastore_entities.append(ent)
         else:
+          # TODO: If key is None, this is really lame.
           fut.set_result(None)
       if datastore_entities:
         keys = yield self._conn.async_put(options, datastore_entities)
@@ -305,19 +311,14 @@ class Context(object):
 
   # TODO: Unify the policy docstrings (they're getting too verbose).
 
-  # TODO: Document that all the policy functions may also:
+  # All the policy functions may also:
   # - be a constant of the right type (instead of a function);
   # - return None (instead of a value of the right type);
   # - be None (instead of a function or constant).
 
-  # TODO: Document that model classes may define class variables
+  # Model classes may define class variables or class methods
   # _use_{cache,memcache,datastore} or _memcache_timeout to set the
   # default policy of that type for that class.
-
-  # TODO: Should the per-class policies be allowed to be class methods?
-
-  # TODO: Should the per-class policies override the policy set with
-  # ctx.set_XXX_policy()?
 
   def get_cache_policy(self):
     """Return the current context cache policy function.
@@ -356,9 +357,16 @@ class Context(object):
     if flag is None and key is not None:
       modelclass = model.Model._kind_map.get(key.kind())
       if modelclass is not None:
-        flag = getattr(modelclass, '_use_cache', None)
+        policy = getattr(modelclass, '_use_cache', None)
+        if policy is not None:
+          if isinstance(policy, bool):
+            flag = policy
+          else:
+            flag = policy(key)
     if flag is None:
-      flag = getattr(self._conn.config, 'use_cache', True)
+      flag = getattr(self._conn.config, 'use_cache', None)
+    if flag is None:
+      flag = True
     return flag
 
   def get_memcache_policy(self):
@@ -398,9 +406,16 @@ class Context(object):
     if flag is None and key is not None:
       modelclass = model.Model._kind_map.get(key.kind())
       if modelclass is not None:
-        flag = getattr(modelclass, '_use_memcache', None)
+        policy = getattr(modelclass, '_use_memcache', None)
+        if policy is not None:
+          if isinstance(policy, bool):
+            flag = policy
+          else:
+            flag = policy(key)
     if flag is None:
-      flag = getattr(self._conn.config, 'use_memcache', True)
+      flag = getattr(self._conn.config, 'use_memcache', None)
+    if flag is None:
+      flag = True
     return flag
 
   def get_datastore_policy(self):
@@ -440,9 +455,16 @@ class Context(object):
     if flag is None and key is not None:
       modelclass = model.Model._kind_map.get(key.kind())
       if modelclass is not None:
-        flag = getattr(modelclass, '_use_datastore', None)
+        policy = getattr(modelclass, '_use_datastore', None)
+        if policy is not None:
+          if isinstance(policy, bool):
+            flag = policy
+          else:
+            flag = policy(key)
     if flag is None:
-      flag = getattr(self._conn.config, 'use_datastore', True)
+      flag = getattr(self._conn.config, 'use_datastore', None)
+    if flag is None:
+      flag = True
     return flag
 
   def set_memcache_timeout_policy(self, func):
@@ -471,9 +493,16 @@ class Context(object):
     if timeout is None and key is not None:
       modelclass = model.Model._kind_map.get(key.kind())
       if modelclass is not None:
-        timeout = getattr(modelclass, '_memcache_timeout', None)
+        policy = getattr(modelclass, '_memcache_timeout', None)
+        if policy is not None:
+          if isinstance(policy, (int, long, float)):
+            timeout = policy
+          else:
+            timeout = policy(key)
     if timeout is None:
-      timeout = getattr(self._conn.config, 'memcache_timeout', 0)
+      timeout = getattr(self._conn.config, 'memcache_timeout', None)
+    if timeout is None:
+      timeout = 0
     return timeout
 
   # TODO: What about conflicting requests to different autobatchers,
@@ -513,13 +542,14 @@ class Context(object):
   def put(self, entity, **ctx_options):
     options = _make_ctx_options(ctx_options)
     key = yield self._put_batcher.add(entity, options)
-    if key is not None and entity._key != key:
-      logging.info('replacing key %s with %s', entity._key, key)
-      entity._key = key
-    # TODO: For updated entities, could we update the cache first?
-    if self._use_cache(key, options):
-      # TODO: What if by now the entity is already in the cache?
-      self._cache[key] = entity
+    if key is not None:
+      if entity._key != key:
+        logging.info('replacing key %s with %s', entity._key, key)
+        entity._key = key
+      # TODO: For updated entities, could we update the cache first?
+      if self._use_cache(key, options):
+        # TODO: What if by now the entity is already in the cache?
+        self._cache[key] = entity
     raise tasklets.Return(key)
 
   @tasklets.tasklet
