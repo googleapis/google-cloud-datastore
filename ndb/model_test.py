@@ -2013,6 +2013,35 @@ class ModelTests(test_utils.DatastoreTest):
     k.delete(use_cache=False, use_memcache=False, use_datastore=True)
     self.assertEqual(k.get(use_cache=False), None)
 
+  def testContextOptions_PerClass(self):
+    # Reset policies to default.
+    ctx = tasklets.get_context()
+    ctx.set_cache_policy(None)
+    ctx.set_memcache_policy(None)
+    ctx.set_memcache_timeout_policy(None)
+
+    class M(model.Model):
+      s = model.StringProperty()
+      _use_cache = False
+      @classmethod
+      def _use_memcache(cls, key):
+        return bool(key.string_id())
+      @classmethod
+      def _use_datastore(cls, key):
+        return not bool(key.string_id())
+
+    a = M(s='a', key=model.Key(M, 'a'))  # Uses memcache only
+    b = M(s='b', key=model.Key(M, None))  # Uses datastore only
+    a.put()
+    b.put()
+
+    self.assertFalse(a.key in ctx._cache)
+    self.assertFalse(b.key in ctx._cache)
+    self.assertEqual(memcache.get('NDB:' + a.key.urlsafe()), a._to_pb())
+    self.assertEqual(memcache.get('NDB:' + b.key.urlsafe()), None)
+    self.assertEqual(ctx._conn.get([a.key]), [None])
+    self.assertEqual(ctx._conn.get([b.key]), [b])
+
   def testNamespaces(self):
     save_namespace = namespace_manager.get_namespace()
     try:
