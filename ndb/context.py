@@ -214,7 +214,6 @@ class Context(object):
 
   @tasklets.tasklet
   def _put_tasklet(self, todo):
-    if hasattr(sys, 'x'): import pdb; pdb.set_trace()  # XXX
     assert todo
     # TODO: What if the same entity is being put twice?
     # TODO: What if two entities with the same key are being put?
@@ -240,8 +239,8 @@ class Context(object):
           datastore_futures.append(fut)
           datastore_entities.append(ent)
         else:
-          # TODO: If key is None, this is really lame.
-          fut.set_result(None)
+          # TODO: If ent._key is None, this is really lame.
+          fut.set_result(ent._key)
       if datastore_entities:
         keys = yield self._conn.async_put(options, datastore_entities)
         for key, fut, ent in zip(keys, datastore_futures, datastore_entities):

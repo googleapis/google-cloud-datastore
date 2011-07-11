@@ -1978,6 +1978,41 @@ class ModelTests(test_utils.DatastoreTest):
                     for (args, kwds) in conn_args_log)
     self.assertEqual(deadlines, set([None, 2, 3]))
 
+  def testContextOptions_ThreeLevels(self):
+    # Reset policies to default.
+    ctx = tasklets.get_context()
+    ctx.set_cache_policy(None)
+    ctx.set_memcache_policy(None)
+    ctx.set_memcache_timeout_policy(None)
+
+    class M(model.Model):
+      s = model.StringProperty()
+
+    k = model.Key(M, '1')
+    a = M(s='a', key=k)
+    b = M(s='b', key=k)
+    c = M(s='c', key=k)
+
+    a.put(use_cache=True, use_memcache=False, use_datastore=False)
+    b.put(use_cache=False, use_memcache=True, use_datastore=False)
+    c.put(use_cache=False, use_memcache=False, use_datastore=True)
+
+    self.assertEqual(ctx._cache[k], a)
+    self.assertEqual(memcache.get('NDB:' + k.urlsafe()), b._to_pb())
+    self.assertEqual(ctx._conn.get([k]), [c])
+
+    self.assertEqual(k.get(), a)
+    self.assertEqual(k.get(use_cache=False), b)
+    self.assertEqual(k.get(use_cache=False, use_memcache=False), c)
+
+    k.delete(use_cache=True, use_memcache=False, use_datastore=False)
+    # Note: it is now in the Context cache marked as deleted.
+    self.assertEqual(k.get(use_cache=False), b)
+    k.delete(use_cache=False, use_memcache=True, use_datastore=False)
+    self.assertEqual(k.get(use_cache=False), c)
+    k.delete(use_cache=False, use_memcache=False, use_datastore=True)
+    self.assertEqual(k.get(use_cache=False), None)
+
   def testNamespaces(self):
     save_namespace = namespace_manager.get_namespace()
     try:
