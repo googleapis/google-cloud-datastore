@@ -111,7 +111,7 @@ class _State(threading.local):
     else:
       logging_debug('all_pending: clear no-op')
 
-  def dump_all_pending(state, verbose=False):
+  def dump_all_pending(self, verbose=False):
     all = []
     for fut in self.all_pending:
       if verbose:
