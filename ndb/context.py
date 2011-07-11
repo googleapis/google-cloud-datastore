@@ -156,10 +156,10 @@ class Context(object):
     self._put_batcher = auto_batcher_class(self._put_tasklet)
     self._delete_batcher = auto_batcher_class(self._delete_tasklet)
     self._cache = {}
-    self._cache_policy = None
-    self._memcache_policy = None
-    self._datastore_policy = None
-    self._memcache_timeout_policy = None
+    self._cache_policy = self.default_cache_policy
+    self._memcache_policy = self.default_memcache_policy
+    self._datastore_policy = self.default_datastore_policy
+    self._memcache_timeout_policy = self.default_memcache_timeout_policy
     self._memcache_prefix = 'NDB:'  # TODO: make this configurable.
 
   @tasklets.tasklet
@@ -319,6 +319,30 @@ class Context(object):
   # _use_{cache,memcache,datastore} or _memcache_timeout to set the
   # default policy of that type for that class.
 
+  @classmethod
+  def default_cache_policy(cls, key):
+    """Default cache policy.
+
+    This defers to _use_cache on the Model class.
+
+    Args:
+      key: Key instance.
+
+    Returns:
+      A bool or None.
+    """
+    flag = None
+    if key is not None:
+      modelclass = model.Model._kind_map.get(key.kind())
+      if modelclass is not None:
+        policy = getattr(modelclass, '_use_cache', None)
+        if policy is not None:
+          if isinstance(policy, bool):
+            flag = policy
+          else:
+            flag = policy(key)
+    return flag
+
   def get_cache_policy(self):
     """Return the current context cache policy function.
 
@@ -335,6 +359,8 @@ class Context(object):
       func: A function that accepts a Key instance as argument and returns
         a bool indicating if it should be cached.  May be None.
     """
+    if func is None:
+      func = self.default_cache_policy
     self._cache_policy = func
 
   def _use_cache(self, key, options=None):
@@ -353,19 +379,34 @@ class Context(object):
         flag = self._cache_policy
       else:
         flag = self._cache_policy(key)
-    if flag is None and key is not None:
+    if flag is None:
+      flag = getattr(self._conn.config, 'use_cache', None)
+    if flag is None:
+      flag = True
+    return flag
+
+  @classmethod
+  def default_memcache_policy(cls, key):
+    """Default memcache policy.
+
+    This defers to _use_memcache on the Model class.
+
+    Args:
+      key: Key instance.
+
+    Returns:
+      A bool or None.
+    """
+    flag = None
+    if key is not None:
       modelclass = model.Model._kind_map.get(key.kind())
       if modelclass is not None:
-        policy = getattr(modelclass, '_use_cache', None)
+        policy = getattr(modelclass, '_use_memcache', None)
         if policy is not None:
           if isinstance(policy, bool):
             flag = policy
           else:
             flag = policy(key)
-    if flag is None:
-      flag = getattr(self._conn.config, 'use_cache', None)
-    if flag is None:
-      flag = True
     return flag
 
   def get_memcache_policy(self):
@@ -384,6 +425,8 @@ class Context(object):
       func: A function that accepts a Key instance as argument and returns
         a bool indicating if it should be cached.  May be None.
     """
+    if func is None:
+      func = self.default_memcache_policy
     self._memcache_policy = func
 
   def _use_memcache(self, key, options=None):
@@ -402,19 +445,34 @@ class Context(object):
         flag = self._memcache_policy
       else:
         flag = self._memcache_policy(key)
-    if flag is None and key is not None:
+    if flag is None:
+      flag = getattr(self._conn.config, 'use_memcache', None)
+    if flag is None:
+      flag = True
+    return flag
+
+  @classmethod
+  def default_datastore_policy(cls, key):
+    """Default datastore policy.
+
+    This defers to _use_datastore on the Model class.
+
+    Args:
+      key: Key instance.
+
+    Returns:
+      A bool or None.
+    """
+    flag = None
+    if key is not None:
       modelclass = model.Model._kind_map.get(key.kind())
       if modelclass is not None:
-        policy = getattr(modelclass, '_use_memcache', None)
+        policy = getattr(modelclass, '_use_datastore', None)
         if policy is not None:
           if isinstance(policy, bool):
             flag = policy
           else:
             flag = policy(key)
-    if flag is None:
-      flag = getattr(self._conn.config, 'use_memcache', None)
-    if flag is None:
-      flag = True
     return flag
 
   def get_datastore_policy(self):
@@ -433,6 +491,8 @@ class Context(object):
       func: A function that accepts a Key instance as argument and returns
         a bool indicating if it should use the datastore.  May be None.
     """
+    if func is None:
+      func = self.default_datastore_policy
     self._datastore_policy = func
 
   def _use_datastore(self, key, options=None):
@@ -451,20 +511,35 @@ class Context(object):
         flag = self._datastore_policy
       else:
         flag = self._datastore_policy(key)
-    if flag is None and key is not None:
-      modelclass = model.Model._kind_map.get(key.kind())
-      if modelclass is not None:
-        policy = getattr(modelclass, '_use_datastore', None)
-        if policy is not None:
-          if isinstance(policy, bool):
-            flag = policy
-          else:
-            flag = policy(key)
     if flag is None:
       flag = getattr(self._conn.config, 'use_datastore', None)
     if flag is None:
       flag = True
     return flag
+
+  @classmethod
+  def default_memcache_timeout_policy(cls, key):
+    """Default memcache timeout policy.
+
+    This defers to _memcache_timeout on the Model class.
+
+    Args:
+      key: Key instance.
+
+    Returns:
+      Memcache timeout to use (integer or float), or None.
+    """
+    timeout = None
+    if key is not None:
+      modelclass = model.Model._kind_map.get(key.kind())
+      if modelclass is not None:
+        policy = getattr(modelclass, '_memcache_timeout', None)
+        if policy is not None:
+          if isinstance(policy, (int, long, float)):
+            timeout = policy
+          else:
+            timeout = policy(key)
+    return timeout
 
   def set_memcache_timeout_policy(self, func):
     """Set the policy function for memcache timeout (expiration).
@@ -475,6 +550,8 @@ class Context(object):
 
     If the function returns 0 it implies the default timeout.
     """
+    if func is None:
+      func = self.default_memcache_timeout_policy
     self._memcache_timeout_policy = func
 
   def get_memcache_timeout_policy(self):
@@ -489,15 +566,6 @@ class Context(object):
         timeout = self._memcache_timeout_policy
       else:
         timeout = self._memcache_timeout_policy(key)
-    if timeout is None and key is not None:
-      modelclass = model.Model._kind_map.get(key.kind())
-      if modelclass is not None:
-        policy = getattr(modelclass, '_memcache_timeout', None)
-        if policy is not None:
-          if isinstance(policy, (int, long, float)):
-            timeout = policy
-          else:
-            timeout = policy(key)
     if timeout is None:
       timeout = getattr(self._conn.config, 'memcache_timeout', None)
     if timeout is None:
