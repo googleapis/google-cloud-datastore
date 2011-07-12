@@ -156,11 +156,8 @@ class Context(object):
     self._put_batcher = auto_batcher_class(self._put_tasklet)
     self._delete_batcher = auto_batcher_class(self._delete_tasklet)
     self._cache = {}
-    self._cache_policy = self.default_cache_policy
-    self._memcache_policy = self.default_memcache_policy
-    self._datastore_policy = self.default_datastore_policy
-    self._memcache_timeout_policy = self.default_memcache_timeout_policy
-    self._memcache_prefix = 'NDB:'  # TODO: make this configurable.
+
+  _memcache_prefix = 'NDB:'  # TODO: Might make this configurable.
 
   @tasklets.tasklet
   def flush(self):
@@ -319,8 +316,8 @@ class Context(object):
   # _use_{cache,memcache,datastore} or _memcache_timeout to set the
   # default policy of that type for that class.
 
-  @classmethod
-  def default_cache_policy(cls, key):
+  @staticmethod
+  def default_cache_policy(key):
     """Default cache policy.
 
     This defers to _use_cache on the Model class.
@@ -342,6 +339,8 @@ class Context(object):
           else:
             flag = policy(key)
     return flag
+
+  _cache_policy = default_cache_policy
 
   def get_cache_policy(self):
     """Return the current context cache policy function.
@@ -374,7 +373,7 @@ class Context(object):
       True if the key should be cached, False otherwise.
     """
     flag = getattr(options, 'use_cache', None)
-    if flag is None and self._cache_policy is not None:
+    if flag is None:
       if isinstance(self._cache_policy, bool):
         flag = self._cache_policy
       else:
@@ -385,8 +384,8 @@ class Context(object):
       flag = True
     return flag
 
-  @classmethod
-  def default_memcache_policy(cls, key):
+  @staticmethod
+  def default_memcache_policy(key):
     """Default memcache policy.
 
     This defers to _use_memcache on the Model class.
@@ -408,6 +407,8 @@ class Context(object):
           else:
             flag = policy(key)
     return flag
+
+  _memcache_policy = default_memcache_policy
 
   def get_memcache_policy(self):
     """Return the current memcache policy function.
@@ -440,7 +441,7 @@ class Context(object):
       True if the key should be cached in memcache, False otherwise.
     """
     flag = getattr(options, 'use_memcache', None)
-    if flag is None and self._memcache_policy is not None:
+    if flag is None:
       if isinstance(self._memcache_policy, bool):
         flag = self._memcache_policy
       else:
@@ -451,8 +452,8 @@ class Context(object):
       flag = True
     return flag
 
-  @classmethod
-  def default_datastore_policy(cls, key):
+  @staticmethod
+  def default_datastore_policy(key):
     """Default datastore policy.
 
     This defers to _use_datastore on the Model class.
@@ -474,6 +475,8 @@ class Context(object):
           else:
             flag = policy(key)
     return flag
+
+  _datastore_policy = default_datastore_policy
 
   def get_datastore_policy(self):
     """Return the current context datastore policy function.
@@ -506,7 +509,7 @@ class Context(object):
       True if the datastore should be used, False otherwise.
     """
     flag = getattr(options, 'use_datastore', None)
-    if flag is None and self._datastore_policy is not None:
+    if flag is None:
       if isinstance(self._datastore_policy, bool):
         flag = self._datastore_policy
       else:
@@ -517,8 +520,8 @@ class Context(object):
       flag = True
     return flag
 
-  @classmethod
-  def default_memcache_timeout_policy(cls, key):
+  @staticmethod
+  def default_memcache_timeout_policy(key):
     """Default memcache timeout policy.
 
     This defers to _memcache_timeout on the Model class.
@@ -541,6 +544,8 @@ class Context(object):
             timeout = policy(key)
     return timeout
 
+  _memcache_timeout_policy = default_memcache_timeout_policy
+
   def set_memcache_timeout_policy(self, func):
     """Set the policy function for memcache timeout (expiration).
 
@@ -561,7 +566,7 @@ class Context(object):
   def _get_memcache_timeout(self, key, options=None):
     """Return the memcache timeout (expiration) for this key."""
     timeout = getattr(options, 'memcache_timeout', None)
-    if timeout is None and self._memcache_timeout_policy is not None:
+    if timeout is None:
       if isinstance(self._memcache_timeout_policy, (int, long, float)):
         timeout = self._memcache_timeout_policy
       else:
