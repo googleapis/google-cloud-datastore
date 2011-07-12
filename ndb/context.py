@@ -374,11 +374,11 @@ class Context(object):
     Returns:
       True if the key should be cached, False otherwise.
     """
-    flag = getattr(options, 'use_cache', None)
+    flag = ContextOptions.use_cache(options)
     if flag is None:
       flag = self._cache_policy(key)
     if flag is None:
-      flag = getattr(self._conn.config, 'use_cache', None)
+      flag = ContextOptions.use_cache(self._conn.config)
     if flag is None:
       flag = True
     return flag
@@ -441,11 +441,11 @@ class Context(object):
     Returns:
       True if the key should be cached in memcache, False otherwise.
     """
-    flag = getattr(options, 'use_memcache', None)
+    flag = ContextOptions.use_memcache(options)
     if flag is None:
       flag = self._memcache_policy(key)
     if flag is None:
-      flag = getattr(self._conn.config, 'use_memcache', None)
+      flag = ContextOptions.use_memcache(self._conn.config)
     if flag is None:
       flag = True
     return flag
@@ -508,11 +508,11 @@ class Context(object):
     Returns:
       True if the datastore should be used, False otherwise.
     """
-    flag = getattr(options, 'use_datastore', None)
+    flag = ContextOptions.use_datastore(options)
     if flag is None:
       flag = self._datastore_policy(key)
     if flag is None:
-      flag = getattr(self._conn.config, 'use_datastore', None)
+      flag = ContextOptions.use_datastore(self._conn.config)
     if flag is None:
       flag = True
     return flag
@@ -564,11 +564,11 @@ class Context(object):
 
   def _get_memcache_timeout(self, key, options=None):
     """Return the memcache timeout (expiration) for this key."""
-    timeout = getattr(options, 'memcache_timeout', None)
+    timeout = ContextOptions.memcache_timeout(options)
     if timeout is None:
       timeout = self._memcache_timeout_policy(key)
     if timeout is None:
-      timeout = getattr(self._conn.config, 'memcache_timeout', None)
+      timeout = ContextOptions.memcache_timeout(self._conn.config)
     if timeout is None:
       timeout = 0
     return timeout
