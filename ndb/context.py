@@ -360,6 +360,8 @@ class Context(object):
     """
     if func is None:
       func = self.default_cache_policy
+    elif isinstance(func, bool):
+      func = lambda key, flag=func: flag
     self._cache_policy = func
 
   def _use_cache(self, key, options=None):
@@ -374,10 +376,7 @@ class Context(object):
     """
     flag = getattr(options, 'use_cache', None)
     if flag is None:
-      if isinstance(self._cache_policy, bool):
-        flag = self._cache_policy
-      else:
-        flag = self._cache_policy(key)
+      flag = self._cache_policy(key)
     if flag is None:
       flag = getattr(self._conn.config, 'use_cache', None)
     if flag is None:
@@ -428,6 +427,8 @@ class Context(object):
     """
     if func is None:
       func = self.default_memcache_policy
+    elif isinstance(func, bool):
+      func = lambda key, flag=func: flag
     self._memcache_policy = func
 
   def _use_memcache(self, key, options=None):
@@ -442,10 +443,7 @@ class Context(object):
     """
     flag = getattr(options, 'use_memcache', None)
     if flag is None:
-      if isinstance(self._memcache_policy, bool):
-        flag = self._memcache_policy
-      else:
-        flag = self._memcache_policy(key)
+      flag = self._memcache_policy(key)
     if flag is None:
       flag = getattr(self._conn.config, 'use_memcache', None)
     if flag is None:
@@ -496,6 +494,8 @@ class Context(object):
     """
     if func is None:
       func = self.default_datastore_policy
+    elif isinstance(func, bool):
+      func = lambda key, flag=func: flag
     self._datastore_policy = func
 
   def _use_datastore(self, key, options=None):
@@ -510,10 +510,7 @@ class Context(object):
     """
     flag = getattr(options, 'use_datastore', None)
     if flag is None:
-      if isinstance(self._datastore_policy, bool):
-        flag = self._datastore_policy
-      else:
-        flag = self._datastore_policy(key)
+      flag = self._datastore_policy(key)
     if flag is None:
       flag = getattr(self._conn.config, 'use_datastore', None)
     if flag is None:
@@ -557,6 +554,8 @@ class Context(object):
     """
     if func is None:
       func = self.default_memcache_timeout_policy
+    elif isinstance(func, (int, long, float)):
+      func = lambda key, flag=func: flag
     self._memcache_timeout_policy = func
 
   def get_memcache_timeout_policy(self):
@@ -567,10 +566,7 @@ class Context(object):
     """Return the memcache timeout (expiration) for this key."""
     timeout = getattr(options, 'memcache_timeout', None)
     if timeout is None:
-      if isinstance(self._memcache_timeout_policy, (int, long, float)):
-        timeout = self._memcache_timeout_policy
-      else:
-        timeout = self._memcache_timeout_policy(key)
+      timeout = self._memcache_timeout_policy(key)
     if timeout is None:
       timeout = getattr(self._conn.config, 'memcache_timeout', None)
     if timeout is None:
