@@ -1264,6 +1264,7 @@ class ModelTests(test_utils.DatastoreTest):
     a = Address(street='1600 Amphitheatre')
     p.address = a
     p.address.city = 'Mountain View'
+    self.assertEqual(p.address.key, None)
     self.assertEqual(Person.name._get_value(p), 'Google')
     self.assertEqual(p.name, 'Google')
     self.assertEqual(Person.address._get_value(p), a)
@@ -1277,6 +1278,7 @@ class ModelTests(test_utils.DatastoreTest):
     # be understood.
     Person.address._compressed = True
     p = Person._from_pb(pb)
+    self.assertEqual(p.address.key, None)
     self.assertEqual(p.name, 'Google')
     self.assertEqual(p.address.street, '1600 Amphitheatre')
     self.assertEqual(p.address.city, 'Mountain View')
@@ -1288,6 +1290,7 @@ class ModelTests(test_utils.DatastoreTest):
 
     Person.address._compressed = False
     p = Person._from_pb(pb)
+    self.assertEqual(p.address.key, None)
 
     # Now try with an empty address
     p = Person()
@@ -2324,13 +2327,11 @@ class ModelTests(test_utils.DatastoreTest):
     self.assertFalse(x is y)
     self.assertEqual(
       repr(y),
-      "M(key=Key('M', 1), "
-      "b=_CompressedValue('x\\x9cKJ\\xa2=\\x00\\x00\\x8e\\x01&I'), "
-      "l=_CompressedValue('x\\x9c\\xcb\\xe2\\xcbb\\x8c/\\xe2\\xe4"
-      "\\x16bv\\xcb\\xcf\\x97`\\xe0)\\xe2\\x97b\\xc9K\\xccMU`\\xd0b"
-      "\\x95b\\xce\\xcaOmbd\\x00\\x00\\x8c\\xaa\\x07\\x93'), "
-      "t=_CompressedValue('x\\x9c+)\\xa1=\\x00\\x00\\xf1$-Q'))")
-
+      'M(key=Key(\'M\', 1), '
+      'b=_CompressedValue(\'x\\x9cKJ\\xa2=\\x00\\x00\\x8e\\x01&I\'), '
+      'l=_CompressedValue(\'x\\x9c+\\xe2\\x97b\\xc9K\\xccMU`\\xd0b'
+      '\\x95b\\xce\\xcaO\\x05\\x00"\\x87\\x03\\xeb\'), '
+      't=_CompressedValue(\'x\\x9c+)\\xa1=\\x00\\x00\\xf1$-Q\'))')
 
 class CacheTests(test_utils.DatastoreTest):
   def SetupContextCache(self):
