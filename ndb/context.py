@@ -46,9 +46,9 @@ class ContextOptions(datastore_rpc.Configuration):
 
   @datastore_rpc.ConfigOption
   def memcache_timeout(value):
-    if not isinstance(value, (int, long, float)):
+    if not isinstance(value, (int, long)):
       raise datastore_errors.BadArgumentError(
-        'memcache_timeout should be a number (%r)' % (value,))
+        'memcache_timeout should be an integer (%r)' % (value,))
     return value
 
 
@@ -527,7 +527,7 @@ class Context(object):
       key: Key instance.
 
     Returns:
-      Memcache timeout to use (integer or float), or None.
+      Memcache timeout to use (integer), or None.
     """
     timeout = None
     if key is not None:
@@ -535,7 +535,7 @@ class Context(object):
       if modelclass is not None:
         policy = getattr(modelclass, '_memcache_timeout', None)
         if policy is not None:
-          if isinstance(policy, (int, long, float)):
+          if isinstance(policy, (int, long)):
             timeout = policy
           else:
             timeout = policy(key)
@@ -554,7 +554,7 @@ class Context(object):
     """
     if func is None:
       func = self.default_memcache_timeout_policy
-    elif isinstance(func, (int, long, float)):
+    elif isinstance(func, (int, long)):
       func = lambda key, flag=func: flag
     self._memcache_timeout_policy = func
 
