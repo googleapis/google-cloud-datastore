@@ -495,10 +495,6 @@ class QueueFuture(Future):
   exception.  (I.e., q.getq() returns a Future as always, but yieding
   that Future raises EOFError.)
 
-  NOTE: If .getq() is given a default argument, it will be returned as
-  the result instead of raising EOFError.  However, other exceptions
-  are still passed through.
-
   NOTE: Values can also be pushed directly via .putq(value).  However
   there is no flow control -- if the producer is faster than the
   consumer, the queue will grow unbounded.
