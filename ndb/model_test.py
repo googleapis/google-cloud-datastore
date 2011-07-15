@@ -1869,6 +1869,7 @@ class ModelTests(test_utils.DatastoreTest):
     key = model.Key(MyModel, 'yo')
     ent = MyModel(key=key, name='yo')
     ent.put()
+    key.get(use_cache=False)  # Write to memcache.
     # Verify that it is in both caches.
     self.assertTrue(ctx._cache[key] is ent)
     self.assertEqual(memcache.get(ctx._memcache_prefix + key.urlsafe()),
@@ -1934,12 +1935,12 @@ class ModelTests(test_utils.DatastoreTest):
     ctx.set_cache_policy(True)
     ctx.set_memcache_policy(True)
     ctx.set_memcache_timeout_policy(0)
-    # Mock memcache.set_multi().
-    save_memcache_set_multi = memcache.set_multi
+    # Mock memcache.add_multi().
+    save_memcache_add_multi = memcache.add_multi
     memcache_args_log = []
-    def mock_memcache_set_multi(*args, **kwds):
+    def mock_memcache_add_multi(*args, **kwds):
       memcache_args_log.append((args, kwds))
-      return save_memcache_set_multi(*args, **kwds)
+      return save_memcache_add_multi(*args, **kwds)
     # Mock conn.async_put().
     save_conn_async_put = ctx._conn.async_put
     conn_args_log = []
@@ -1956,7 +1957,7 @@ class ModelTests(test_utils.DatastoreTest):
     e5 = MyModel(name='5')
     # Test that the timeouts make it through to memcache and the datastore.
     try:
-      memcache.set_multi = mock_memcache_set_multi
+      memcache.add_multi = mock_memcache_add_multi
       ctx._conn.async_put = mock_conn_async_put
       [f1, f3] = model.put_multi_async([e1, e3],
                                        memcache_timeout=7,
@@ -1968,8 +1969,12 @@ class ModelTests(test_utils.DatastoreTest):
       x4 = f4.get_result()
       x1 = f1.get_result()
       x3 = f3.get_result()
+      # Write to memcache.
+      model.get_multi([x1, x3], use_cache=False, memcache_timeout=7)
+      model.get_multi([x4], use_cache=False)
+      model.get_multi([x2, x5], use_cache=False, memcache_timeout=5)
     finally:
-      memcache.set_multi = save_memcache_set_multi
+      memcache.add_multi = save_memcache_add_multi
       ctx._conn.async_put = save_conn_async_put
     self.assertEqual([e1.key, e2.key, e3.key, e4.key, e5.key],
                      [x1, x2, x3, x4, x5])

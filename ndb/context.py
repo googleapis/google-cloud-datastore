@@ -15,6 +15,8 @@ from google.appengine.datastore import datastore_rpc
 import ndb.key
 from ndb import model, tasklets, eventloop, utils
 
+_LOCK_TIME = 32  # Time to lock out memcache.add() after datastore.put().
+
 
 class ContextOptions(datastore_rpc.Configuration):
   """Configuration options that may be passed along with get/put/delete."""
@@ -157,6 +159,8 @@ class Context(object):
     self._delete_batcher = auto_batcher_class(self._delete_tasklet)
     self._cache = {}
 
+  # TODO: Set proper namespace for memcache.
+
   _memcache_prefix = 'NDB:'  # TODO: Might make this configurable.
 
   @tasklets.tasklet
@@ -186,7 +190,7 @@ class Context(object):
         else:
           leftover.append((fut, key, options))
       todo = leftover
-    # Make RPC calls, segregated by ConfigOptions.
+    # Segregate things by ConfigOptions.
     by_options = {}
     for fut, key, options in todo:
       if options in by_options:
@@ -195,6 +199,8 @@ class Context(object):
         futures, keys = by_options[options] = [], []
       futures.append(fut)
       keys.append(key)
+    # Make the RPC calls.
+    mappings = {}  # Maps timeout value to {urlsafe_key: pb} mapping.
     for options, (futures, keys) in by_options.iteritems():
       datastore_futures = []
       datastore_keys = []
@@ -205,25 +211,70 @@ class Context(object):
         else:
           fut.set_result(None)
       if datastore_keys:
-        results = yield self._conn.async_get(options, datastore_keys)
-        for result, fut in zip(results, datastore_futures):
-          fut.set_result(result)
+        entities = yield self._conn.async_get(options, datastore_keys)
+        for ent, fut, key in zip(entities, datastore_futures, datastore_keys):
+          fut.set_result(ent)
+          if ent is not None and self._use_memcache(key, options):
+            pb = self._conn.adapter.entity_to_pb(ent)
+            timeout = self._get_memcache_timeout(key, options)
+            mapping = mappings.get(timeout)
+            if mapping is None:
+              mapping = mappings[timeout] = {}
+            mapping[ent._key.urlsafe()] = pb
+    if mappings:
+      # If the timeouts are not uniform, make a separate call for each
+      # distinct timeout value.
+      for timeout, mapping in mappings.iteritems():
+        # Use add, not set.  This is a no-op within _LOCK_TIME seconds
+        # of the delete done by the most recent write.
+        memcache.add_multi(mapping, time=timeout,
+                           key_prefix=self._memcache_prefix)
 
   @tasklets.tasklet
   def _put_tasklet(self, todo):
     assert todo
     # TODO: What if the same entity is being put twice?
     # TODO: What if two entities with the same key are being put?
-    # TODO: Clear entities from memcache before starting the write?
-    # TODO: Attempt to prevent dogpile effect while keeping cache consistent?
     by_options = {}
+    delete_keys = []  # For memcache.delete_multi().
+    mappings = {}  # For memcache.set_multi(), segregated by timeout.
     for fut, ent, options in todo:
+      if ent._has_complete_key():
+        if self._use_memcache(ent._key, options):
+          if self._use_datastore(ent._key, options):
+            delete_keys.append(ent._key.urlsafe())
+          else:
+            pb = self._conn.adapter.entity_to_pb(ent)
+            timeout = self._get_memcache_timeout(ent._key, options)
+            mapping = mappings.get(timeout)
+            if mapping is None:
+              mapping = mappings[timeout] = {}
+            mapping[ent._key.urlsafe()] = pb
+      else:
+        key = ent._key
+        if key is None:
+          # Create a dummy Key to call _use_datastore().
+          key = model.Key(ent.__class__, None)
+        if not self._use_datastore(key, options):
+          raise datastore_errors.BadKeyError(
+              'Cannot put incomplete key when use_datastore=False.')
       if options in by_options:
         futures, entities = by_options[options]
       else:
         futures, entities = by_options[options] = [], []
       futures.append(fut)
       entities.append(ent)
+    if delete_keys:  # Pre-emptively delete from memcache.
+      memcache.delete_multi(delete_keys, seconds=_LOCK_TIME,
+                            key_prefix=self._memcache_prefix)
+    if mappings:  # Write to memcache (only if use_datastore=False).
+      # If the timeouts are not uniform, make a separate call for each
+      # distinct timeout value.
+      for timeout, mapping in mappings.iteritems():
+        # Use add, not set.  This is a no-op within _LOCK_TIME seconds
+        # of the delete done by the most recent write.
+        memcache.add_multi(mapping, time=timeout,
+                           key_prefix=self._memcache_prefix)
     for options, (futures, entities) in by_options.iteritems():
       datastore_futures = []
       datastore_entities = []
@@ -248,44 +299,24 @@ class Context(object):
                   'Expected %r, got %r' % (key, ent._key))
             ent._key = key
           fut.set_result(key)
-    # Now update memcache.
-    # TODO: Could we update memcache *before* calling async_put()?
-    # (Hm, not for new entities but possibly for updated ones.)
-    mappings = {}  # Maps timeout value to {urlsafe_key: pb} mapping.
-    for _, ent, options in todo:
-      if not ent._has_complete_key():  # Only if use_datastore is False.
-        continue
-      if self._use_memcache(ent._key, options):
-        pb = self._conn.adapter.entity_to_pb(ent)
-        timeout = self._get_memcache_timeout(ent._key, options)
-        mapping = mappings.get(timeout)
-        if mapping is None:
-          mapping = mappings[timeout] = {}
-        mapping[ent._key.urlsafe()] = pb
-    if mappings:
-      # If the timeouts are not uniform, make a separate call for each
-      # distinct timeout value.
-      for timeout, mapping in mappings.iteritems():
-        failures = memcache.set_multi(mapping, time=timeout,
-                                      key_prefix=self._memcache_prefix)
-        if failures:
-          badkeys = []
-          for failure in failures:
-            badkeys.append(mapping[failure].key)
-          logging.info('memcache failed to set %d out of %d keys: %s',
-                       len(failures), len(mapping), badkeys)
 
   @tasklets.tasklet
   def _delete_tasklet(self, todo):
     assert todo
     by_options = {}
+    delete_keys = []  # For memcache.delete_multi()
     for fut, key, options in todo:
+      if self._use_memcache(key, options):
+        delete_keys.append(key.urlsafe())
       if options in by_options:
         futures, keys = by_options[options]
       else:
         futures, keys = by_options[options] = [], []
       futures.append(fut)
       keys.append(key)
+    if delete_keys:  # Pre-emptively delete from memcache.
+      memcache.delete_multi(delete_keys, seconds=_LOCK_TIME,
+                            key_prefix=self._memcache_prefix)
     for options, (futures, keys) in by_options.iteritems():
       datastore_keys = []
       for key in keys:
@@ -295,15 +326,6 @@ class Context(object):
         yield self._conn.async_delete(options, datastore_keys)
       for fut in futures:
         fut.set_result(None)
-    # Now update memcache.
-    memkeys = []
-    for _, key, options in todo:
-      if self._use_memcache(key, options):
-        memkeys.append(key.urlsafe())
-    if memkeys:
-      memcache.delete_multi(memkeys, key_prefix=self._memcache_prefix)
-      # The value returned by delete_multi() is pretty much useless, it
-      # could be the keys were never cached in the first place.
 
   # TODO: Unify the policy docstrings (they're getting too verbose).
 
