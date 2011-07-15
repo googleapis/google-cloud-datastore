@@ -152,113 +152,13 @@ Cursor = datastore_query.Cursor
 _ASC = datastore_query.PropertyOrder.ASCENDING
 _DESC = datastore_query.PropertyOrder.DESCENDING
 _AND = datastore_query.CompositeFilter.AND
-_KEY = datastore_types._KEY_SPECIAL_PROPERTY
+_KEY = datastore_types._KEY_SPECIAL_PROPERTY  # TODO: KEY_SPECIAL_PROPERTY
 
 # Table of supported comparison operators.
 _OPS = frozenset(['=', '!=', '<', '<=', '>', '>=', 'in'])
 
 # Default limit value.  (Yes, the datastore uses int32!)
 _MAX_LIMIT = 2**31 - 1
-
-
-# TODO: Once CL/21689469 is submitted, get rid of this and its callers.
-def _make_unsorted_key_value_map(pb, property_names):
-  """Like _make_key_value_map() but doesn't sort the values."""
-  value_map = dict((name, []) for name in property_names)
-
-  # Building comparable values from pb properties.
-  # NOTE: Unindexed properties are skipped.
-  for prop in pb.property_list():
-    prop_name = prop.name()
-    if prop_name in value_map:
-      value_map[prop_name].append(
-        datastore_types.PropertyValueToKeyValue(prop.value()))
-
-  # Adding special key property (if requested).
-  if _KEY in value_map:
-    value_map[_KEY] = [datastore_types.ReferenceToKeyValue(pb.key())]
-
-  return value_map
-
-
-class RepeatedStructuredPropertyPredicate(datastore_query.FilterPredicate):
-
-  def __init__(self, match_keys, pb, key_prefix):
-    super(RepeatedStructuredPropertyPredicate, self).__init__()
-    self.match_keys = match_keys
-    stripped_keys = []
-    for key in match_keys:
-      assert key.startswith(key_prefix), key
-      stripped_keys.append(key[len(key_prefix):])
-    value_map = _make_unsorted_key_value_map(pb, stripped_keys)
-    self.match_values = tuple(value_map[key][0] for key in stripped_keys)
-
-  def _get_prop_names(self):
-    return frozenset(self.match_keys)
-
-  def __call__(self, pb):
-    return self._apply(_make_unsorted_key_value_map(pb, self.match_keys))
-
-  def _apply(self, key_value_map):
-    """Apply the filter to values extracted from an entity.
-
-    Think of self.match_keys and self.match_values as representing a
-    table with one row.  For example:
-
-      match_keys = ('name', 'age', 'rank')
-      match_values = ('Joe', 24, 5)
-
-    (Except that in reality, the values are represented by tuples
-    produced by datastore_types.PropertyValueToKeyValue().)
-
-    represents this table:
-
-      |  name   |  age  |  rank  |
-      +---------+-------+--------+
-      |  'Joe'  |   24  |     5  |
-
-    Think of key_value_map as a table with the same structure but
-    (potentially) many rows.  This represents a repeated structured
-    property of a single entity.  For example:
-
-      {'name': ['Joe', 'Jane', 'Dick'],
-       'age': [24, 21, 23],
-       'rank': [5, 1, 2]}
-
-    represents this table:
-
-      |  name   |  age  |  rank  |
-      +---------+-------+--------+
-      |  'Joe'  |   24  |     5  |
-      |  'Jane' |   21  |     1  |
-      |  'Dick' |   23  |     2  |
-
-    We must determine wheter at least one row of the second table
-    exactly matches the first table.  We need this class because the
-    datastore, when asked to find an entity with name 'Joe', age 24
-    and rank 5, will include entities that have 'Joe' somewhere in the
-    name column, 24 somewhere in the age column, and 5 somewhere in
-    the rank column, but not all aligned on a single row.  Such an
-    entity should not be considered a match.
-    """
-    columns = []
-    for key in self.match_keys:
-      column = key_value_map.get(key)
-      if not column:  # None, or an empty list.
-        return False  # If any column is empty there can be no match.
-      columns.append(column)
-    # Use izip to transpose the columns into rows.
-    return self.match_values in itertools.izip(*columns)
-
-  # Don't implement _prune()!  It would mess up the row correspondence
-  # within columns.
-
-
-class CompositePostFilter(datastore_query.CompositeFilter):
-
-  def __call__(self, pb):
-    key_value_map = _make_unsorted_key_value_map(pb, self._get_prop_names())
-    return self._apply(key_value_map)
 
 
 class Binding(object):
@@ -342,7 +242,7 @@ class FalseNode(Node):
     # Because there's no point submitting a query that will never
     # return anything.
     raise datastore_errors.BadQueryError(
-      'Cannot convert FalseNode to predicate')
+      'Cannot convert FalseNode to filter')
 
   def resolve(self):
     return self
@@ -414,13 +314,13 @@ class PostFilterNode(Node):
   datastore, for example a query for a structured value.
   """
 
-  def __new__(cls, predicate):
+  def __new__(cls, filter):
     self = super(PostFilterNode, cls).__new__(cls)
-    self.predicate = predicate
+    self.filter = filter
     return self
 
   def __repr__(self):
-    return '%s(%s)' % (self.__class__.__name__, self.predicate)
+    return '%s(%s)' % (self.__class__.__name__, self.filter)
 
   def __eq__(self, other):
     if not isinstance(other, PostFilterNode):
@@ -429,7 +329,7 @@ class PostFilterNode(Node):
 
   def _to_filter(self, bindings, post=False):
     if post:
-      return self.predicate
+      return self.filter
     else:
       return None
 
@@ -494,8 +394,6 @@ class ConjunctionNode(Node):
       return None
     if len(filters) == 1:
       return filters[0]
-    if post:
-      return CompositePostFilter(_AND, filters)
     return datastore_query.CompositeFilter(_AND, filters)
 
   def _post_filters(self):
@@ -1241,12 +1139,6 @@ class _SubQueryIteratorState(object):
     lhs_filter = self.dsquery._filter_predicate
     rhs_filter = other.dsquery._filter_predicate
     names = self.orders._get_prop_names()
-    # TODO: In some future version, there won't be a need to add the
-    # filters' names.
-    if lhs_filter is not None:
-      names |= lhs_filter._get_prop_names()
-    if rhs_filter is not None:
-      names |= rhs_filter._get_prop_names()
     lhs_value_map = datastore_query._make_key_value_map(lhs, names)
     rhs_value_map = datastore_query._make_key_value_map(rhs, names)
     if lhs_filter is not None:
