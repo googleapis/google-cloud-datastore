@@ -14,7 +14,7 @@ from google.appengine.api import namespace_manager
 from google.appengine.api import users
 from google.appengine.datastore import entity_pb
 
-from ndb import model, query, tasklets, test_utils
+from ndb import model, query, tasklets, test_utils, eventloop
 
 TESTUSER = users.User('test@example.com', 'example.com', '123')
 AMSTERDAM = model.GeoPt(52.35, 4.9166667)
@@ -1870,6 +1870,7 @@ class ModelTests(test_utils.DatastoreTest):
     ent = MyModel(key=key, name='yo')
     ent.put()
     key.get(use_cache=False)  # Write to memcache.
+    eventloop.run0()  # Wait for async memcache request to complete.
     # Verify that it is in both caches.
     self.assertTrue(ctx._cache[key] is ent)
     self.assertEqual(memcache.get(ctx._memcache_prefix + key.urlsafe()),
@@ -1935,12 +1936,12 @@ class ModelTests(test_utils.DatastoreTest):
     ctx.set_cache_policy(True)
     ctx.set_memcache_policy(True)
     ctx.set_memcache_timeout_policy(0)
-    # Mock memcache.add_multi().
-    save_memcache_add_multi = memcache.add_multi
+    # Mock memcache.add_async().
+    save_memcache_add_async = ctx._memcache.add_async
     memcache_args_log = []
-    def mock_memcache_add_multi(*args, **kwds):
+    def mock_memcache_add_async(*args, **kwds):
       memcache_args_log.append((args, kwds))
-      return save_memcache_add_multi(*args, **kwds)
+      return save_memcache_add_async(*args, **kwds)
     # Mock conn.async_put().
     save_conn_async_put = ctx._conn.async_put
     conn_args_log = []
@@ -1957,7 +1958,7 @@ class ModelTests(test_utils.DatastoreTest):
     e5 = MyModel(name='5')
     # Test that the timeouts make it through to memcache and the datastore.
     try:
-      memcache.add_multi = mock_memcache_add_multi
+      ctx._memcache.add_async = mock_memcache_add_async
       ctx._conn.async_put = mock_conn_async_put
       [f1, f3] = model.put_multi_async([e1, e3],
                                        memcache_timeout=7,
@@ -1974,7 +1975,7 @@ class ModelTests(test_utils.DatastoreTest):
       model.get_multi([x4], use_cache=False)
       model.get_multi([x2, x5], use_cache=False, memcache_timeout=5)
     finally:
-      memcache.add_multi = save_memcache_add_multi
+      ctx._memcache.add_async = save_memcache_add_async
       ctx._conn.async_put = save_conn_async_put
     self.assertEqual([e1.key, e2.key, e3.key, e4.key, e5.key],
                      [x1, x2, x3, x4, x5])
