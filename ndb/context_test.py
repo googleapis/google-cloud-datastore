@@ -8,7 +8,7 @@ import time
 import unittest
 
 from google.appengine.api import datastore_errors
-from google.appengine.api import memcache
+from ndb import memcache
 from google.appengine.api import taskqueue
 from google.appengine.datastore import datastore_rpc
 

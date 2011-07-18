@@ -8,7 +8,7 @@ import sys
 
 from google.appengine.api import datastore  # For taskqueue coordination
 from google.appengine.api import datastore_errors
-from google.appengine.api import memcache
+from ndb import memcache
 
 from google.appengine.datastore import datastore_rpc
 
