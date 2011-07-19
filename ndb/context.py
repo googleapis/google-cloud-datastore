@@ -179,8 +179,8 @@ class Context(object):
       if self._use_memcache(key, options):
         memkeymap[key] = key.urlsafe()
     if memkeymap:
-      results = yield self._memcache.get_async(memkeymap.values(),
-                                               key_prefix=self._memcache_prefix)
+      results = yield self._memcache.get_multi_async(
+        memkeymap.values(), key_prefix=self._memcache_prefix)
       leftover = []
       for fut, key, options in todo:
         mkey = memkeymap.get(key)
@@ -228,8 +228,8 @@ class Context(object):
       for timeout, mapping in mappings.iteritems():
         # Use add, not set.  This is a no-op within _LOCK_TIME seconds
         # of the delete done by the most recent write.
-        yield self._memcache.add_async(mapping, time=timeout,
-                                       key_prefix=self._memcache_prefix)
+        yield self._memcache.add_multi_async(mapping, time=timeout,
+                                             key_prefix=self._memcache_prefix)
 
   @tasklets.tasklet
   def _put_tasklet(self, todo):
@@ -266,16 +266,16 @@ class Context(object):
       futures.append(fut)
       entities.append(ent)
     if delete_keys:  # Pre-emptively delete from memcache.
-      yield self._memcache.delete_async(delete_keys, seconds=_LOCK_TIME,
-                                        key_prefix=self._memcache_prefix)
+      yield self._memcache.delete_multi_async(delete_keys, seconds=_LOCK_TIME,
+                                              key_prefix=self._memcache_prefix)
     if mappings:  # Write to memcache (only if use_datastore=False).
       # If the timeouts are not uniform, make a separate call for each
       # distinct timeout value.
       for timeout, mapping in mappings.iteritems():
         # Use add, not set.  This is a no-op within _LOCK_TIME seconds
         # of the delete done by the most recent write.
-        yield self._memcache.add_async(mapping, time=timeout,
-                                       key_prefix=self._memcache_prefix)
+        yield self._memcache.add_multi_async(mapping, time=timeout,
+                                             key_prefix=self._memcache_prefix)
     for options, (futures, entities) in by_options.iteritems():
       datastore_futures = []
       datastore_entities = []
@@ -316,8 +316,8 @@ class Context(object):
       futures.append(fut)
       keys.append(key)
     if delete_keys:  # Pre-emptively delete from memcache.
-      yield self._memcache.delete_async(delete_keys, seconds=_LOCK_TIME,
-                                        key_prefix=self._memcache_prefix)
+      yield self._memcache.delete_multi_async(delete_keys, seconds=_LOCK_TIME,
+                                              key_prefix=self._memcache_prefix)
     for options, (futures, keys) in by_options.iteritems():
       datastore_keys = []
       for key in keys:
@@ -798,8 +798,8 @@ class Context(object):
     keys = set(key for key in keys if self._use_memcache(key))
     if keys:
       memkeys = [key.urlsafe() for key in keys]
-      yield self._memcache.delete_async(memkeys,
-                                        key_prefix=self._memcache_prefix)
+      yield self._memcache.delete_multi_async(memkeys,
+                                              key_prefix=self._memcache_prefix)
 
   @tasklets.tasklet
   def get_or_insert(self, model_class, name,

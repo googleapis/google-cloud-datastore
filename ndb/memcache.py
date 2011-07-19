@@ -541,7 +541,7 @@ class Client(object):
     """
     if _is_pair(key):
       key = key[1]
-    rpc = self.get_async([key], namespace=namespace, for_cas=for_cas)
+    rpc = self.get_multi_async([key], namespace=namespace, for_cas=for_cas)
     results = rpc.get_result()
     return results.get(key)
 
@@ -571,11 +571,11 @@ class Client(object):
       Even if the key_prefix was specified, that key_prefix won't be on
       the keys in the returned dictionary.
     """
-    rpc = self.get_async(keys, key_prefix, namespace, for_cas)
+    rpc = self.get_multi_async(keys, key_prefix, namespace, for_cas)
     return rpc.get_result()
 
-  def get_async(self, keys, key_prefix='', namespace=None, for_cas=False,
-                rpc=None):
+  def get_multi_async(self, keys, key_prefix='', namespace=None,
+                      for_cas=False, rpc=None):
     """Async version of get_multi()."""
     request = MemcacheGetRequest()
     self._add_app_id(request)
@@ -635,7 +635,7 @@ class Client(object):
       This can be used as a boolean value, where a network failure is the
       only bad condition.
     """
-    rpc = self.delete_async([key], seconds, namespace=namespace)
+    rpc = self.delete_multi_async([key], seconds, namespace=namespace)
     results = rpc.get_result()
     if not results:
       return DELETE_NETWORK_FAILURE
@@ -666,12 +666,12 @@ class Client(object):
       True if all operations completed successfully.  False if one
       or more failed to complete.
     """
-    rpc = self.delete_async(keys, seconds, key_prefix, namespace)
+    rpc = self.delete_multi_async(keys, seconds, key_prefix, namespace)
     results = rpc.get_result()
     return bool(results)
 
-  def delete_async(self, keys, seconds=0, key_prefix='', namespace=None,
-                   rpc=None):
+  def delete_multi_async(self, keys, seconds=0, key_prefix='',
+                         namespace=None, rpc=None):
     """Async version of delete_multi() -- note different return value.
 
     Returns:
@@ -822,8 +822,8 @@ class Client(object):
       that failed due to the item not already existing, or an add
       failing due to the item not already existing.
     """
-    rpc = self._set_async_with_policy(policy, {key: value}, time, '',
-                                      namespace)
+    rpc = self._set_multi_async_with_policy(policy, {key: value},
+                                            time, '', namespace)
     status_dict = rpc.get_result()
     if not status_dict:
       return False
@@ -860,8 +860,8 @@ class Client(object):
       a list of all input keys is returned; in this case the keys
       may or may not have been updated.
     """
-    rpc = self._set_async_with_policy(policy, mapping, time, key_prefix,
-                                      namespace)
+    rpc = self._set_multi_async_with_policy(policy, mapping, time,
+                                            key_prefix, namespace)
     status_dict = rpc.get_result()
     server_keys, user_key = rpc.user_data
 
@@ -879,8 +879,8 @@ class Client(object):
     return unset_list
 
 
-  def _set_async_with_policy(self, policy, mapping, time=0, key_prefix='',
-                             namespace=None, rpc=None):
+  def _set_multi_async_with_policy(self, policy, mapping, time=0,
+                                   key_prefix='', namespace=None, rpc=None):
     """Async version of _set_multi_with_policy() -- note different return.
 
     Returns:
@@ -912,8 +912,8 @@ class Client(object):
       item.set_set_policy(policy)
       item.set_expiration_time(int(math.ceil(time)))
       if set_cas_id:
-
         cas_id = self._cas_ids.get(server_key)
+
         if cas_id is not None:
           item.set_cas_id(cas_id)
 
@@ -965,16 +965,16 @@ class Client(object):
                                        time=time, key_prefix=key_prefix,
                                        namespace=namespace)
 
-  def set_async(self, mapping, time=0,  key_prefix='', min_compress_len=0,
-                namespace=None, rpc=None):
+  def set_multi_async(self, mapping, time=0,  key_prefix='',
+                      min_compress_len=0, namespace=None, rpc=None):
     """Async version of set_multi() -- note different return value.
 
     Returns:
-      See _set_async_with_policy().
+      See _set_multi_async_with_policy().
     """
-    return self._set_async_with_policy(MemcacheSetRequest.SET, mapping,
-                                       time=time, key_prefix=key_prefix,
-                                       namespace=namespace, rpc=rpc)
+    return self._set_multi_async_with_policy(MemcacheSetRequest.SET, mapping,
+                                             time=time, key_prefix=key_prefix,
+                                             namespace=namespace, rpc=rpc)
 
   def add_multi(self, mapping, time=0, key_prefix='', min_compress_len=0,
                 namespace=None):
@@ -1000,16 +1000,16 @@ class Client(object):
                                        time=time, key_prefix=key_prefix,
                                        namespace=namespace)
 
-  def add_async(self, mapping, time=0,  key_prefix='', min_compress_len=0,
-                namespace=None, rpc=None):
+  def add_multi_async(self, mapping, time=0,  key_prefix='',
+                      min_compress_len=0, namespace=None, rpc=None):
     """Async version of add_multi() -- note different return value.
 
     Returns:
-      See _set_async_with_policy().
+      See _set_multi_async_with_policy().
     """
-    return self._set_async_with_policy(MemcacheSetRequest.ADD, mapping,
-                                       time=time, key_prefix=key_prefix,
-                                       namespace=namespace, rpc=rpc)
+    return self._set_multi_async_with_policy(MemcacheSetRequest.ADD, mapping,
+                                             time=time, key_prefix=key_prefix,
+                                             namespace=namespace, rpc=rpc)
 
   def replace_multi(self, mapping, time=0, key_prefix='', min_compress_len=0,
                     namespace=None):
@@ -1035,16 +1035,17 @@ class Client(object):
                                        time=time, key_prefix=key_prefix,
                                        namespace=namespace)
 
-  def replace_async(self, mapping, time=0,  key_prefix='', min_compress_len=0,
-                namespace=None, rpc=None):
+  def replace_multi_async(self, mapping, time=0,  key_prefix='',
+                          min_compress_len=0, namespace=None, rpc=None):
     """Async version of replace_multi() -- note different return value.
 
     Returns:
-      See _set_async_with_policy().
+      See _set_multi_async_with_policy().
     """
-    return self._set_async_with_policy(MemcacheSetRequest.REPLACE, mapping,
-                                       time=time, key_prefix=key_prefix,
-                                       namespace=namespace, rpc=rpc)
+    return self._set_multi_async_with_policy(MemcacheSetRequest.REPLACE,
+                                             mapping,
+                                             time=time, key_prefix=key_prefix,
+                                             namespace=namespace, rpc=rpc)
 
   def cas_multi(self, mapping, time=0, key_prefix='', namespace=None):
     """Compare_and_set update for multiple keys.
@@ -1070,16 +1071,16 @@ class Client(object):
                                        time=time, key_prefix=key_prefix,
                                        namespace=namespace)
 
-  def cas_async(self, mapping, time=0,  key_prefix='', namespace=None,
-                rpc=None):
+  def cas_multi_async(self, mapping, time=0,  key_prefix='',
+                      namespace=None, rpc=None):
     """Async version of cas_multi() -- note different return value.
 
     Returns:
-      See _set_async_with_policy().
+      See _set_multi_async_with_policy().
     """
-    return self._set_async_with_policy(MemcacheSetRequest.CAS, mapping,
-                                       time=time, key_prefix=key_prefix,
-                                       namespace=namespace, rpc=rpc)
+    return self._set_multi_async_with_policy(MemcacheSetRequest.CAS, mapping,
+                                             time=time, key_prefix=key_prefix,
+                                             namespace=namespace, rpc=rpc)
 
   def incr(self, key, delta=1, namespace=None, initial_value=None):
     """Atomically increments a key's value.
@@ -1215,10 +1216,10 @@ class Client(object):
       else:
         if is_negative:
           delta = -delta
-        return self.offset_async(dict((k, delta) for k in it),
-                                 namespace=namespace,
-                                 initial_value=initial_value,
-                                 rpc=rpc)
+        return self.offset_multi_async(dict((k, delta) for k in it),
+                                       namespace=namespace,
+                                       initial_value=initial_value,
+                                       rpc=rpc)
 
 
     request = MemcacheIncrementRequest()
@@ -1268,11 +1269,12 @@ class Client(object):
       was not an integer type. The values will wrap-around at unsigned 64-bit
       integer-maximum and underflow will be floored at zero.
     """
-    rpc = self.offset_async(mapping, key_prefix, namespace, initial_value)
+    rpc = self.offset_multi_async(mapping, key_prefix,
+                                  namespace, initial_value)
     return rpc.get_result()
 
-  def offset_async(self, mapping, key_prefix='',
-                   namespace=None, initial_value=None, rpc=None):
+  def offset_multi_async(self, mapping, key_prefix='',
+                         namespace=None, initial_value=None, rpc=None):
     """Async version of offset_multi()."""
     if initial_value is not None:
       if not isinstance(initial_value, (int, long)):
@@ -1340,7 +1342,9 @@ def setup_client(client_obj):
   Use this method if you want to have customer persistent_id() or
   persistent_load() functions associated with your client.
 
-  NOTE: We don't expose the _async methods as functions; they're too obscure.
+  NOTE: We don't expose the _async methods as functions; they're too
+  obscure; and we don't expose gets(), cas() and cas_multi() because
+  they maintain state on the client object.
 
   Args:
     client_obj: Instance of the memcache.Client object.

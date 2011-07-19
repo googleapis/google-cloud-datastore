@@ -224,9 +224,9 @@ class ContextTests(test_utils.DatastoreTest):
     key2 = model.Key('Foo', 2)
     ent1 = model.Expando(key=key1, foo=42, bar='hello')
     ent2 = model.Expando(key=key2, foo=1, bar='world')
-    save_add_async = self.ctx._memcache.add_async
+    save_add_multi_async = self.ctx._memcache.add_multi_async
     try:
-      self.ctx._memcache.add_async = tracking_add_async
+      self.ctx._memcache.add_multi_async = tracking_add_multi_async
       yield self.ctx._memcache.flush_all_async()
 
       track = []
@@ -274,7 +274,7 @@ class ContextTests(test_utils.DatastoreTest):
       self.assertEqual(track[0][2], badkeys)
       yield self.ctx._memcache.flush_all_async()
     finally:
-      self.ctx._memcache.add_async = save_add_async
+      self.ctx._memcache.add_multi_async = save_add_multi_async
 
   def testContext_CacheQuery(self):
     @tasklets.tasklet
