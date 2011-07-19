@@ -187,6 +187,9 @@ class ContextTests(test_utils.DatastoreTest):
       k1, k2 = yield self.ctx.put(ent1), self.ctx.put(ent2)
       self.assertEqual(k1, key1)
       self.assertEqual(k2, key2)
+      # Write to memcache.
+      yield (self.ctx.get(k1, use_cache=False),
+             self.ctx.get(k2, use_cache=False))
       yield tasklets.sleep(0.01)  # Let other tasklet complete.
       keys = [k1.urlsafe(), k2.urlsafe()]
       results = memcache.get_multi(keys, key_prefix='NDB:')
@@ -198,9 +201,9 @@ class ContextTests(test_utils.DatastoreTest):
 
   def testContext_MemcachePolicy(self):
     badkeys = []
-    def tracking_set_multi(*args, **kwds):
+    def tracking_add_multi(*args, **kwds):
       try:
-        res = save_set_multi(*args, **kwds)
+        res = save_add_multi(*args, **kwds)
         if badkeys and not res:
           res = badkeys
         track.append((args, kwds, res, None))
@@ -213,14 +216,17 @@ class ContextTests(test_utils.DatastoreTest):
       k1, k2 = yield self.ctx.put(ent1), self.ctx.put(ent2)
       self.assertEqual(k1, key1)
       self.assertEqual(k2, key2)
+      # Write to memcache.
+      yield (self.ctx.get(k1, use_cache=False),
+             self.ctx.get(k2, use_cache=False))
       yield tasklets.sleep(0.01)  # Let other tasklet complete.
     key1 = model.Key('Foo', 1)
     key2 = model.Key('Foo', 2)
     ent1 = model.Expando(key=key1, foo=42, bar='hello')
     ent2 = model.Expando(key=key2, foo=1, bar='world')
-    save_set_multi = memcache.set_multi
+    save_add_multi = memcache.add_multi
     try:
-      memcache.set_multi = tracking_set_multi
+      memcache.add_multi = tracking_add_multi
       memcache.flush_all()
 
       track = []
@@ -268,7 +274,7 @@ class ContextTests(test_utils.DatastoreTest):
       self.assertEqual(track[0][2], badkeys)
       memcache.flush_all()
     finally:
-      memcache.set_multi = save_set_multi
+      memcache.add_multi = save_add_multi
 
   def testContext_CacheQuery(self):
     @tasklets.tasklet

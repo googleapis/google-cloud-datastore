@@ -1495,10 +1495,12 @@ class LocalStructuredProperty(BlobProperty):
     return value
 
   def _serialize_value(self, value):
-    return value._to_pb().Encode()
+    pb = value._to_pb(set_key=False)
+    return pb.SerializePartialToString()
 
   def _deserialize_value(self, value):
-    pb = entity_pb.EntityProto(value)
+    pb = entity_pb.EntityProto()
+    pb.MergePartialFromString(value)
     return self._modelclass._from_pb(pb, set_key=False)
 
 
@@ -1881,28 +1883,29 @@ class Model(object):
       return NotImplemented
     return not eq
 
-  def _to_pb(self, pb=None, allow_partial=False):
+  def _to_pb(self, pb=None, allow_partial=False, set_key=True):
     """Internal helper to turn an entity into an EntityProto protobuf."""
     if not allow_partial:
       self._check_initialized()
     if pb is None:
       pb = entity_pb.EntityProto()
 
-    # TODO: Move the key stuff into ModelAdapter.entity_to_pb()?
-    key = self._key
-    if key is None:
-      pairs = [(self._get_kind(), None)]
-      ref = ndb.key._ReferenceFromPairs(pairs, reference=pb.mutable_key())
-    else:
-      ref = key._reference()  # Don't copy
-      pb.mutable_key().CopyFrom(ref)
-    group = pb.mutable_entity_group()  # Must initialize this.
-    # To work around an SDK issue, only set the entity group if the
-    # full key is complete.  TODO: Remove the top test once fixed.
-    if key is not None and key.id():
-      elem = ref.path().element(0)
-      if elem.id() or elem.name():
-        group.add_element().CopyFrom(elem)
+    if set_key:
+      # TODO: Move the key stuff into ModelAdapter.entity_to_pb()?
+      key = self._key
+      if key is None:
+        pairs = [(self._get_kind(), None)]
+        ref = ndb.key._ReferenceFromPairs(pairs, reference=pb.mutable_key())
+      else:
+        ref = key._reference()  # Don't copy
+        pb.mutable_key().CopyFrom(ref)
+      group = pb.mutable_entity_group()  # Must initialize this.
+      # To work around an SDK issue, only set the entity group if the
+      # full key is complete.  TODO: Remove the top test once fixed.
+      if key is not None and key.id():
+        elem = ref.path().element(0)
+        if elem.id() or elem.name():
+          group.add_element().CopyFrom(elem)
 
     for name, prop in sorted(self._properties.iteritems()):
       prop._serialize(self, pb)

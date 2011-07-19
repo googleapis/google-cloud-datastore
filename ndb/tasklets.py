@@ -111,7 +111,7 @@ class _State(threading.local):
     else:
       logging_debug('all_pending: clear no-op')
 
-  def dump_all_pending(state, verbose=False):
+  def dump_all_pending(self, verbose=False):
     all = []
     for fut in self.all_pending:
       if verbose:
@@ -494,10 +494,6 @@ class QueueFuture(Future):
   result is already returned return EOFError as their Future's
   exception.  (I.e., q.getq() returns a Future as always, but yieding
   that Future raises EOFError.)
-
-  NOTE: If .getq() is given a default argument, it will be returned as
-  the result instead of raising EOFError.  However, other exceptions
-  are still passed through.
 
   NOTE: Values can also be pushed directly via .putq(value).  However
   there is no flow control -- if the producer is faster than the

@@ -1264,6 +1264,7 @@ class ModelTests(test_utils.DatastoreTest):
     a = Address(street='1600 Amphitheatre')
     p.address = a
     p.address.city = 'Mountain View'
+    self.assertEqual(p.address.key, None)
     self.assertEqual(Person.name._get_value(p), 'Google')
     self.assertEqual(p.name, 'Google')
     self.assertEqual(Person.address._get_value(p), a)
@@ -1277,6 +1278,7 @@ class ModelTests(test_utils.DatastoreTest):
     # be understood.
     Person.address._compressed = True
     p = Person._from_pb(pb)
+    self.assertEqual(p.address.key, None)
     self.assertEqual(p.name, 'Google')
     self.assertEqual(p.address.street, '1600 Amphitheatre')
     self.assertEqual(p.address.city, 'Mountain View')
@@ -1288,6 +1290,7 @@ class ModelTests(test_utils.DatastoreTest):
 
     Person.address._compressed = False
     p = Person._from_pb(pb)
+    self.assertEqual(p.address.key, None)
 
     # Now try with an empty address
     p = Person()
@@ -1866,43 +1869,44 @@ class ModelTests(test_utils.DatastoreTest):
     key = model.Key(MyModel, 'yo')
     ent = MyModel(key=key, name='yo')
     ent.put()
+    key.get(use_cache=False)  # Write to memcache.
     # Verify that it is in both caches.
     self.assertTrue(ctx._cache[key] is ent)
     self.assertEqual(memcache.get(ctx._memcache_prefix + key.urlsafe()),
                      ent._to_pb())
     # Get it bypassing the in-process cache.
-    ent_copy = key.get(ndb_should_cache=False)
+    ent_copy = key.get(use_cache=False)
     self.assertEqual(ent_copy, ent)
     self.assertFalse(ent_copy is ent)
     # Put it bypassing both caches.
     ent_copy.name = 'yoyo'
-    ent_copy.put(ndb_should_cache=False, ndb_should_memcache=False)
+    ent_copy.put(use_cache=False, use_memcache=False)
     # Get it from the in-process cache.
     ent2 = key.get()
     self.assertTrue(ent2 is ent)
     self.assertEqual(ent2.name, 'yo')
     self.assertEqual(ent_copy.name, 'yoyo')  # Should not have changed.
     # Get it from memcache.
-    ent3 = key.get(ndb_should_cache=False)
+    ent3 = key.get(use_cache=False)
     self.assertFalse(ent3 is ent)
     self.assertFalse(ent3 is ent2)
     self.assertEqual(ent3.name, 'yo')
     self.assertEqual(ent_copy.name, 'yoyo')  # Should not have changed.
     # Get it from the datastore.
-    ent4 = key.get(ndb_should_cache=False, ndb_should_memcache=False)
+    ent4 = key.get(use_cache=False, use_memcache=False)
     self.assertFalse(ent4 is ent)
     self.assertFalse(ent4 is ent2)
     self.assertFalse(ent4 is ent3)
     self.assertFalse(ent4 is ent_copy)
     self.assertEqual(ent4.name, 'yoyo')
     # Delete it from the datastore but leave it in the caches.
-    key.delete(ndb_should_cache=False, ndb_should_memcache=False)
+    key.delete(use_cache=False, use_memcache=False)
     # Assure it is gone from the datastore.
     [ent5] = model.get_multi([key],
-                             ndb_should_cache=False, ndb_should_memcache=False)
+                             use_cache=False, use_memcache=False)
     self.assertEqual(ent5, None)
     # Assure it is still in memcache.
-    ent6 = key.get(ndb_should_cache=False)
+    ent6 = key.get(use_cache=False)
     self.assertEqual(ent6.name, 'yo')
     self.assertEqual(memcache.get(ctx._memcache_prefix + key.urlsafe()),
                      ent._to_pb())
@@ -1911,9 +1915,9 @@ class ModelTests(test_utils.DatastoreTest):
     self.assertEqual(ent7.name, 'yo')
     self.assertTrue(ctx._cache[key] is ent7)
     # Delete it from memcache.
-    model.delete_multi([key], ndb_should_cache=False)
+    model.delete_multi([key], use_cache=False)
     # Assure it is gone from memcache.
-    ent8 = key.get(ndb_should_cache=False)
+    ent8 = key.get(use_cache=False)
     self.assertEqual(ent8, None)
     # Assure it is still in the in-memory cache.
     ent9 = key.get()
@@ -1931,12 +1935,12 @@ class ModelTests(test_utils.DatastoreTest):
     ctx.set_cache_policy(True)
     ctx.set_memcache_policy(True)
     ctx.set_memcache_timeout_policy(0)
-    # Mock memcache.set_multi().
-    save_memcache_set_multi = memcache.set_multi
+    # Mock memcache.add_multi().
+    save_memcache_add_multi = memcache.add_multi
     memcache_args_log = []
-    def mock_memcache_set_multi(*args, **kwds):
+    def mock_memcache_add_multi(*args, **kwds):
       memcache_args_log.append((args, kwds))
-      return save_memcache_set_multi(*args, **kwds)
+      return save_memcache_add_multi(*args, **kwds)
     # Mock conn.async_put().
     save_conn_async_put = ctx._conn.async_put
     conn_args_log = []
@@ -1953,20 +1957,24 @@ class ModelTests(test_utils.DatastoreTest):
     e5 = MyModel(name='5')
     # Test that the timeouts make it through to memcache and the datastore.
     try:
-      memcache.set_multi = mock_memcache_set_multi
+      memcache.add_multi = mock_memcache_add_multi
       ctx._conn.async_put = mock_conn_async_put
       [f1, f3] = model.put_multi_async([e1, e3],
-                                       ndb_memcache_timeout=7,
+                                       memcache_timeout=7,
                                        deadline=3)
       [f4] = model.put_multi_async([e4],
                                    deadline=2)
       [x2, x5] = model.put_multi([e2, e5],
-                                 ndb_memcache_timeout=5)
+                                 memcache_timeout=5)
       x4 = f4.get_result()
       x1 = f1.get_result()
       x3 = f3.get_result()
+      # Write to memcache.
+      model.get_multi([x1, x3], use_cache=False, memcache_timeout=7)
+      model.get_multi([x4], use_cache=False)
+      model.get_multi([x2, x5], use_cache=False, memcache_timeout=5)
     finally:
-      memcache.set_multi = save_memcache_set_multi
+      memcache.add_multi = save_memcache_add_multi
       ctx._conn.async_put = save_conn_async_put
     self.assertEqual([e1.key, e2.key, e3.key, e4.key, e5.key],
                      [x1, x2, x3, x4, x5])
@@ -1977,6 +1985,70 @@ class ModelTests(test_utils.DatastoreTest):
     deadlines = set(args[0]._values.get('deadline')
                     for (args, kwds) in conn_args_log)
     self.assertEqual(deadlines, set([None, 2, 3]))
+
+  def testContextOptions_ThreeLevels(self):
+    # Reset policies to default.
+    ctx = tasklets.get_context()
+    ctx.set_cache_policy(None)
+    ctx.set_memcache_policy(None)
+    ctx.set_memcache_timeout_policy(None)
+
+    class M(model.Model):
+      s = model.StringProperty()
+
+    k = model.Key(M, '1')
+    a = M(s='a', key=k)
+    b = M(s='b', key=k)
+    c = M(s='c', key=k)
+
+    a.put(use_cache=True, use_memcache=False, use_datastore=False)
+    b.put(use_cache=False, use_memcache=True, use_datastore=False)
+    c.put(use_cache=False, use_memcache=False, use_datastore=True)
+
+    self.assertEqual(ctx._cache[k], a)
+    self.assertEqual(memcache.get('NDB:' + k.urlsafe()), b._to_pb())
+    self.assertEqual(ctx._conn.get([k]), [c])
+
+    self.assertEqual(k.get(), a)
+    self.assertEqual(k.get(use_cache=False), b)
+    self.assertEqual(k.get(use_cache=False, use_memcache=False), c)
+
+    k.delete(use_cache=True, use_memcache=False, use_datastore=False)
+    # Note: it is now in the Context cache marked as deleted.
+    self.assertEqual(k.get(use_cache=False), b)
+    k.delete(use_cache=False, use_memcache=True, use_datastore=False)
+    self.assertEqual(k.get(use_cache=False), c)
+    k.delete(use_cache=False, use_memcache=False, use_datastore=True)
+    self.assertEqual(k.get(use_cache=False), None)
+
+  def testContextOptions_PerClass(self):
+    # Reset policies to default.
+    ctx = tasklets.get_context()
+    ctx.set_cache_policy(None)
+    ctx.set_memcache_policy(None)
+    ctx.set_memcache_timeout_policy(None)
+
+    class M(model.Model):
+      s = model.StringProperty()
+      _use_cache = False
+      @classmethod
+      def _use_memcache(cls, key):
+        return bool(key.string_id())
+      @classmethod
+      def _use_datastore(cls, key):
+        return not bool(key.string_id())
+
+    a = M(s='a', key=model.Key(M, 'a'))  # Uses memcache only
+    b = M(s='b', key=model.Key(M, None))  # Uses datastore only
+    a.put()
+    b.put()
+
+    self.assertFalse(a.key in ctx._cache)
+    self.assertFalse(b.key in ctx._cache)
+    self.assertEqual(memcache.get('NDB:' + a.key.urlsafe()), a._to_pb())
+    self.assertEqual(memcache.get('NDB:' + b.key.urlsafe()), None)
+    self.assertEqual(ctx._conn.get([a.key]), [None])
+    self.assertEqual(ctx._conn.get([b.key]), [b])
 
   def testNamespaces(self):
     save_namespace = namespace_manager.get_namespace()
@@ -2260,13 +2332,11 @@ class ModelTests(test_utils.DatastoreTest):
     self.assertFalse(x is y)
     self.assertEqual(
       repr(y),
-      "M(key=Key('M', 1), "
-      "b=_CompressedValue('x\\x9cKJ\\xa2=\\x00\\x00\\x8e\\x01&I'), "
-      "l=_CompressedValue('x\\x9c\\xcb\\xe2\\xcbb\\x8c/\\xe2\\xe4"
-      "\\x16bv\\xcb\\xcf\\x97`\\xe0)\\xe2\\x97b\\xc9K\\xccMU`\\xd0b"
-      "\\x95b\\xce\\xcaOmbd\\x00\\x00\\x8c\\xaa\\x07\\x93'), "
-      "t=_CompressedValue('x\\x9c+)\\xa1=\\x00\\x00\\xf1$-Q'))")
-
+      'M(key=Key(\'M\', 1), '
+      'b=_CompressedValue(\'x\\x9cKJ\\xa2=\\x00\\x00\\x8e\\x01&I\'), '
+      'l=_CompressedValue(\'x\\x9c+\\xe2\\x97b\\xc9K\\xccMU`\\xd0b'
+      '\\x95b\\xce\\xcaO\\x05\\x00"\\x87\\x03\\xeb\'), '
+      't=_CompressedValue(\'x\\x9c+)\\xa1=\\x00\\x00\\xf1$-Q\'))')
 
 class CacheTests(test_utils.DatastoreTest):
   def SetupContextCache(self):

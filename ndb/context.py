@@ -15,6 +15,8 @@ from google.appengine.datastore import datastore_rpc
 import ndb.key
 from ndb import model, tasklets, eventloop, utils
 
+_LOCK_TIME = 32  # Time to lock out memcache.add() after datastore.put().
+
 
 class ContextOptions(datastore_rpc.Configuration):
   """Configuration options that may be passed along with get/put/delete."""
@@ -24,26 +26,41 @@ class ContextOptions(datastore_rpc.Configuration):
     return hash(frozenset(self._values.iteritems()))
 
   @datastore_rpc.ConfigOption
-  def ndb_should_cache(value):
+  def use_cache(value):
     if not isinstance(value, bool):
       raise datastore_errors.BadArgumentError(
-        'ndb_should_cache should be a bool (%r)' % (value,))
+        'use_cache should be a bool (%r)' % (value,))
     return value
 
   @datastore_rpc.ConfigOption
-  def ndb_should_memcache(value):
+  def use_memcache(value):
     if not isinstance(value, bool):
       raise datastore_errors.BadArgumentError(
-        'ndb_should_memcache should be a bool (%r)' % (value,))
+        'use_memcache should be a bool (%r)' % (value,))
     return value
-
 
   @datastore_rpc.ConfigOption
-  def ndb_memcache_timeout(value):
-    if not isinstance(value, (int, long, float)):
+  def use_datastore(value):
+    if not isinstance(value, bool):
       raise datastore_errors.BadArgumentError(
-        'ndb_memcache_timeout should be a number (%r)' % (value,))
+        'use_datastore should be a bool (%r)' % (value,))
     return value
+
+  @datastore_rpc.ConfigOption
+  def memcache_timeout(value):
+    if not isinstance(value, (int, long)):
+      raise datastore_errors.BadArgumentError(
+        'memcache_timeout should be an integer (%r)' % (value,))
+    return value
+
+
+# For backwards compatibility, translate these option names.
+_OPTION_TRANSLATIONS = {
+  'options': 'config',
+  'ndb_should_cache': 'use_cache',
+  'ndb_should_memcache': 'use_memcache',
+  'ndb_memcache_timeout': 'memcache_timeout',
+}
 
 
 def _make_ctx_options(ctx_options):
@@ -61,10 +78,14 @@ def _make_ctx_options(ctx_options):
   """
   if not ctx_options:
     return None
-  if 'options' in ctx_options:
-    # Move 'options' to 'config' since that is what QueryOptions() uses.
-    assert 'config' not in ctx_options, ctx_options
-    ctx_options['config'] = ctx_options.pop('options')
+  for key in list(ctx_options):
+    translation = _OPTION_TRANSLATIONS.get(key)
+    if translation:
+      assert translation not in ctx_options, (key, translation)
+      if key.startswith('ndb_'):
+        logging.warning('Context option %s is deprecated; use %s instead',
+                        key, translation)
+      ctx_options[translation] = ctx_options.pop(key)
   return ContextOptions(**ctx_options)
 
 
@@ -137,10 +158,10 @@ class Context(object):
     self._put_batcher = auto_batcher_class(self._put_tasklet)
     self._delete_batcher = auto_batcher_class(self._delete_tasklet)
     self._cache = {}
-    self._cache_policy = None
-    self._memcache_policy = None
-    self._memcache_timeout_policy = None
-    self._memcache_prefix = 'NDB:'  # TODO: make this configurable.
+
+  # TODO: Set proper namespace for memcache.
+
+  _memcache_prefix = 'NDB:'  # TODO: Might make this configurable.
 
   @tasklets.tasklet
   def flush(self):
@@ -154,7 +175,7 @@ class Context(object):
     # First check memcache.
     memkeymap = {}
     for fut, key, options in todo:
-      if self.should_memcache(key, options):
+      if self._use_memcache(key, options):
         memkeymap[key] = key.urlsafe()
     if memkeymap:
       results = memcache.get_multi(memkeymap.values(),
@@ -169,7 +190,7 @@ class Context(object):
         else:
           leftover.append((fut, key, options))
       todo = leftover
-    # Make RPC calls, segregated by ConfigOptions.
+    # Segregate things by ConfigOptions.
     by_options = {}
     for fut, key, options in todo:
       if options in by_options:
@@ -178,85 +199,170 @@ class Context(object):
         futures, keys = by_options[options] = [], []
       futures.append(fut)
       keys.append(key)
+    # Make the RPC calls.
+    mappings = {}  # Maps timeout value to {urlsafe_key: pb} mapping.
     for options, (futures, keys) in by_options.iteritems():
-      results = yield self._conn.async_get(options, keys)
-      for result, fut in zip(results, futures):
-        fut.set_result(result)
+      datastore_futures = []
+      datastore_keys = []
+      for fut, key in zip(futures, keys):
+        if self._use_datastore(key, options):
+          datastore_keys.append(key)
+          datastore_futures.append(fut)
+        else:
+          fut.set_result(None)
+      if datastore_keys:
+        entities = yield self._conn.async_get(options, datastore_keys)
+        for ent, fut, key in zip(entities, datastore_futures, datastore_keys):
+          fut.set_result(ent)
+          if ent is not None and self._use_memcache(key, options):
+            pb = self._conn.adapter.entity_to_pb(ent)
+            timeout = self._get_memcache_timeout(key, options)
+            mapping = mappings.get(timeout)
+            if mapping is None:
+              mapping = mappings[timeout] = {}
+            mapping[ent._key.urlsafe()] = pb
+    if mappings:
+      # If the timeouts are not uniform, make a separate call for each
+      # distinct timeout value.
+      for timeout, mapping in mappings.iteritems():
+        # Use add, not set.  This is a no-op within _LOCK_TIME seconds
+        # of the delete done by the most recent write.
+        memcache.add_multi(mapping, time=timeout,
+                           key_prefix=self._memcache_prefix)
 
   @tasklets.tasklet
   def _put_tasklet(self, todo):
     assert todo
     # TODO: What if the same entity is being put twice?
     # TODO: What if two entities with the same key are being put?
-    # TODO: Clear entities from memcache before starting the write?
-    # TODO: Attempt to prevent dogpile effect while keeping cache consistent?
     by_options = {}
+    delete_keys = []  # For memcache.delete_multi().
+    mappings = {}  # For memcache.set_multi(), segregated by timeout.
     for fut, ent, options in todo:
+      if ent._has_complete_key():
+        if self._use_memcache(ent._key, options):
+          if self._use_datastore(ent._key, options):
+            delete_keys.append(ent._key.urlsafe())
+          else:
+            pb = self._conn.adapter.entity_to_pb(ent)
+            timeout = self._get_memcache_timeout(ent._key, options)
+            mapping = mappings.get(timeout)
+            if mapping is None:
+              mapping = mappings[timeout] = {}
+            mapping[ent._key.urlsafe()] = pb
+      else:
+        key = ent._key
+        if key is None:
+          # Create a dummy Key to call _use_datastore().
+          key = model.Key(ent.__class__, None)
+        if not self._use_datastore(key, options):
+          raise datastore_errors.BadKeyError(
+              'Cannot put incomplete key when use_datastore=False.')
       if options in by_options:
         futures, entities = by_options[options]
       else:
         futures, entities = by_options[options] = [], []
       futures.append(fut)
       entities.append(ent)
-    for options, (futures, entities) in by_options.iteritems():
-      keys = yield self._conn.async_put(options, entities)
-      for key, fut, ent in zip(keys, futures, entities):
-        if key != ent._key:
-          if ent._has_complete_key():
-            raise datastore_errors.BadKeyError(
-                'Entity key differs from the one returned by the datastore. '
-                'Expected %r, got %r' % (key, ent._key))
-          ent._key = key
-        fut.set_result(key)
-    # Now update memcache.
-    # TODO: Could we update memcache *before* calling async_put()?
-    # (Hm, not for new entities but possibly for updated ones.)
-    mappings = {}  # Maps timeout value to {urlsafe_key: pb} mapping.
-    for _, ent, options in todo:
-      if self.should_memcache(ent._key, options):
-        pb = self._conn.adapter.entity_to_pb(ent)
-        timeout = self.get_memcache_timeout(ent._key, options)
-        mapping = mappings.get(timeout)
-        if mapping is None:
-          mapping = mappings[timeout] = {}
-        mapping[ent._key.urlsafe()] = pb
-    if mappings:
+    if delete_keys:  # Pre-emptively delete from memcache.
+      memcache.delete_multi(delete_keys, seconds=_LOCK_TIME,
+                            key_prefix=self._memcache_prefix)
+    if mappings:  # Write to memcache (only if use_datastore=False).
       # If the timeouts are not uniform, make a separate call for each
       # distinct timeout value.
       for timeout, mapping in mappings.iteritems():
-        failures = memcache.set_multi(mapping, time=timeout,
-                                      key_prefix=self._memcache_prefix)
-        if failures:
-          badkeys = []
-          for failure in failures:
-            badkeys.append(mapping[failure].key)
-          logging.info('memcache failed to set %d out of %d keys: %s',
-                       len(failures), len(mapping), badkeys)
+        # Use add, not set.  This is a no-op within _LOCK_TIME seconds
+        # of the delete done by the most recent write.
+        memcache.add_multi(mapping, time=timeout,
+                           key_prefix=self._memcache_prefix)
+    for options, (futures, entities) in by_options.iteritems():
+      datastore_futures = []
+      datastore_entities = []
+      for fut, ent in zip(futures, entities):
+        key = ent._key
+        if key is None:
+          # Pass a dummy Key to _use_datastore().
+          key = model.Key(ent.__class__, None)
+        if self._use_datastore(key, options):
+          datastore_futures.append(fut)
+          datastore_entities.append(ent)
+        else:
+          # TODO: If ent._key is None, this is really lame.
+          fut.set_result(ent._key)
+      if datastore_entities:
+        keys = yield self._conn.async_put(options, datastore_entities)
+        for key, fut, ent in zip(keys, datastore_futures, datastore_entities):
+          if key != ent._key:
+            if ent._has_complete_key():
+              raise datastore_errors.BadKeyError(
+                  'Entity key differs from the one returned by the datastore. '
+                  'Expected %r, got %r' % (key, ent._key))
+            ent._key = key
+          fut.set_result(key)
 
   @tasklets.tasklet
   def _delete_tasklet(self, todo):
     assert todo
     by_options = {}
+    delete_keys = []  # For memcache.delete_multi()
     for fut, key, options in todo:
+      if self._use_memcache(key, options):
+        delete_keys.append(key.urlsafe())
       if options in by_options:
         futures, keys = by_options[options]
       else:
         futures, keys = by_options[options] = [], []
       futures.append(fut)
       keys.append(key)
+    if delete_keys:  # Pre-emptively delete from memcache.
+      memcache.delete_multi(delete_keys, seconds=_LOCK_TIME,
+                            key_prefix=self._memcache_prefix)
     for options, (futures, keys) in by_options.iteritems():
-      yield self._conn.async_delete(options, keys)
+      datastore_keys = []
+      for key in keys:
+        if self._use_datastore(key, options):
+          datastore_keys.append(key)
+      if datastore_keys:
+        yield self._conn.async_delete(options, datastore_keys)
       for fut in futures:
         fut.set_result(None)
-    # Now update memcache.
-    memkeys = []
-    for _, key, options in todo:
-      if self.should_memcache(key, options):
-        memkeys.append(key.urlsafe())
-    if memkeys:
-      memcache.delete_multi(memkeys, key_prefix=self._memcache_prefix)
-      # The value returned by delete_multi() is pretty much useless, it
-      # could be the keys were never cached in the first place.
+
+  # TODO: Unify the policy docstrings (they're getting too verbose).
+
+  # All the policy functions may also:
+  # - be a constant of the right type (instead of a function);
+  # - return None (instead of a value of the right type);
+  # - be None (instead of a function or constant).
+
+  # Model classes may define class variables or class methods
+  # _use_{cache,memcache,datastore} or _memcache_timeout to set the
+  # default policy of that type for that class.
+
+  @staticmethod
+  def default_cache_policy(key):
+    """Default cache policy.
+
+    This defers to _use_cache on the Model class.
+
+    Args:
+      key: Key instance.
+
+    Returns:
+      A bool or None.
+    """
+    flag = None
+    if key is not None:
+      modelclass = model.Model._kind_map.get(key.kind())
+      if modelclass is not None:
+        policy = getattr(modelclass, '_use_cache', None)
+        if policy is not None:
+          if isinstance(policy, bool):
+            flag = policy
+          else:
+            flag = policy(key)
+    return flag
+
+  _cache_policy = default_cache_policy
 
   def get_cache_policy(self):
     """Return the current context cache policy function.
@@ -274,9 +380,13 @@ class Context(object):
       func: A function that accepts a Key instance as argument and returns
         a bool indicating if it should be cached.  May be None.
     """
+    if func is None:
+      func = self.default_cache_policy
+    elif isinstance(func, bool):
+      func = lambda key, flag=func: flag
     self._cache_policy = func
 
-  def should_cache(self, key, options=None):
+  def _use_cache(self, key, options=None):
     """Return whether to use the context cache for this key.
 
     Args:
@@ -286,15 +396,40 @@ class Context(object):
     Returns:
       True if the key should be cached, False otherwise.
     """
-    flag = getattr(options, 'ndb_should_cache', None)
-    if flag is None and self._cache_policy is not None:
-      if isinstance(self._cache_policy, bool):
-        flag = self._cache_policy
-      else:
-        flag = self._cache_policy(key)
+    flag = ContextOptions.use_cache(options)
     if flag is None:
-      flag = getattr(self._conn.config, 'ndb_should_cache', True)
+      flag = self._cache_policy(key)
+    if flag is None:
+      flag = ContextOptions.use_cache(self._conn.config)
+    if flag is None:
+      flag = True
     return flag
+
+  @staticmethod
+  def default_memcache_policy(key):
+    """Default memcache policy.
+
+    This defers to _use_memcache on the Model class.
+
+    Args:
+      key: Key instance.
+
+    Returns:
+      A bool or None.
+    """
+    flag = None
+    if key is not None:
+      modelclass = model.Model._kind_map.get(key.kind())
+      if modelclass is not None:
+        policy = getattr(modelclass, '_use_memcache', None)
+        if policy is not None:
+          if isinstance(policy, bool):
+            flag = policy
+          else:
+            flag = policy(key)
+    return flag
+
+  _memcache_policy = default_memcache_policy
 
   def get_memcache_policy(self):
     """Return the current memcache policy function.
@@ -312,7 +447,123 @@ class Context(object):
       func: A function that accepts a Key instance as argument and returns
         a bool indicating if it should be cached.  May be None.
     """
+    if func is None:
+      func = self.default_memcache_policy
+    elif isinstance(func, bool):
+      func = lambda key, flag=func: flag
     self._memcache_policy = func
+
+  def _use_memcache(self, key, options=None):
+    """Return whether to use memcache for this key.
+
+    Args:
+      key: Key instance.
+      options: ContextOptions instance, or None.
+
+    Returns:
+      True if the key should be cached in memcache, False otherwise.
+    """
+    flag = ContextOptions.use_memcache(options)
+    if flag is None:
+      flag = self._memcache_policy(key)
+    if flag is None:
+      flag = ContextOptions.use_memcache(self._conn.config)
+    if flag is None:
+      flag = True
+    return flag
+
+  @staticmethod
+  def default_datastore_policy(key):
+    """Default datastore policy.
+
+    This defers to _use_datastore on the Model class.
+
+    Args:
+      key: Key instance.
+
+    Returns:
+      A bool or None.
+    """
+    flag = None
+    if key is not None:
+      modelclass = model.Model._kind_map.get(key.kind())
+      if modelclass is not None:
+        policy = getattr(modelclass, '_use_datastore', None)
+        if policy is not None:
+          if isinstance(policy, bool):
+            flag = policy
+          else:
+            flag = policy(key)
+    return flag
+
+  _datastore_policy = default_datastore_policy
+
+  def get_datastore_policy(self):
+    """Return the current context datastore policy function.
+
+    Returns:
+      A function that accepts a Key instance as argument and returns
+      a bool indicating if it should use the datastore.  May be None.
+    """
+    return self._datastore_policy
+
+  def set_datastore_policy(self, func):
+    """Set the context datastore policy function.
+
+    Args:
+      func: A function that accepts a Key instance as argument and returns
+        a bool indicating if it should use the datastore.  May be None.
+    """
+    if func is None:
+      func = self.default_datastore_policy
+    elif isinstance(func, bool):
+      func = lambda key, flag=func: flag
+    self._datastore_policy = func
+
+  def _use_datastore(self, key, options=None):
+    """Return whether to use the datastore for this key.
+
+    Args:
+      key: Key instance.
+      options: ContextOptions instance, or None.
+
+    Returns:
+      True if the datastore should be used, False otherwise.
+    """
+    flag = ContextOptions.use_datastore(options)
+    if flag is None:
+      flag = self._datastore_policy(key)
+    if flag is None:
+      flag = ContextOptions.use_datastore(self._conn.config)
+    if flag is None:
+      flag = True
+    return flag
+
+  @staticmethod
+  def default_memcache_timeout_policy(key):
+    """Default memcache timeout policy.
+
+    This defers to _memcache_timeout on the Model class.
+
+    Args:
+      key: Key instance.
+
+    Returns:
+      Memcache timeout to use (integer), or None.
+    """
+    timeout = None
+    if key is not None:
+      modelclass = model.Model._kind_map.get(key.kind())
+      if modelclass is not None:
+        policy = getattr(modelclass, '_memcache_timeout', None)
+        if policy is not None:
+          if isinstance(policy, (int, long)):
+            timeout = policy
+          else:
+            timeout = policy(key)
+    return timeout
+
+  _memcache_timeout_policy = default_memcache_timeout_policy
 
   def set_memcache_timeout_policy(self, func):
     """Set the policy function for memcache timeout (expiration).
@@ -323,42 +574,25 @@ class Context(object):
 
     If the function returns 0 it implies the default timeout.
     """
+    if func is None:
+      func = self.default_memcache_timeout_policy
+    elif isinstance(func, (int, long)):
+      func = lambda key, flag=func: flag
     self._memcache_timeout_policy = func
 
   def get_memcache_timeout_policy(self):
     """Return the current policy function for memcache timeout (expiration)."""
     return self._memcache_timeout_policy
 
-  def should_memcache(self, key, options=None):
-    """Return whether to use memcache for this key.
-
-    Args:
-      key: Key instance.
-      options: ContextOptions instance, or None.
-
-    Returns:
-      True if the key should be cached, False otherwise.
-    """
-    flag = getattr(options, 'ndb_should_memcache', None)
-    if flag is None and self._memcache_policy is not None:
-      if isinstance(self._memcache_policy, bool):
-        flag = self._memcache_policy
-      else:
-        flag = self._memcache_policy(key)
-    if flag is None:
-      flag = getattr(self._conn.config, 'ndb_should_memcache', True)
-    return flag
-
-  def get_memcache_timeout(self, key, options=None):
-    """Return the memcache timeout to use for this key."""
-    timeout = getattr(options, 'ndb_memcache_timeout', None)
-    if timeout is None and self._memcache_timeout_policy is not None:
-      if isinstance(self._memcache_timeout_policy, (int, long, float)):
-        timeout = self._memcache_timeout_policy
-      else:
-        timeout = self._memcache_timeout_policy(key)
+  def _get_memcache_timeout(self, key, options=None):
+    """Return the memcache timeout (expiration) for this key."""
+    timeout = ContextOptions.memcache_timeout(options)
     if timeout is None:
-      timeout = getattr(self._conn.config, 'ndb_memcache_timeout', 0)
+      timeout = self._memcache_timeout_policy(key)
+    if timeout is None:
+      timeout = ContextOptions.memcache_timeout(self._conn.config)
+    if timeout is None:
+      timeout = 0
     return timeout
 
   # TODO: What about conflicting requests to different autobatchers,
@@ -383,14 +617,14 @@ class Context(object):
       A Model instance it the key exists in the datastore; None otherwise.
     """
     options = _make_ctx_options(ctx_options)
-    should_cache = self.should_cache(key, options)
-    if should_cache and key in self._cache:
+    use_cache = self._use_cache(key, options)
+    if use_cache and key in self._cache:
       entity = self._cache[key]  # May be None, meaning "doesn't exist".
       if entity is None or entity._key == key:
         # If entity's key didn't change later, it is ok. See issue #13.
         raise tasklets.Return(entity)
     entity = yield self._get_batcher.add(key, options)
-    if should_cache:
+    if use_cache:
       self._cache[key] = entity
     raise tasklets.Return(entity)
 
@@ -398,20 +632,21 @@ class Context(object):
   def put(self, entity, **ctx_options):
     options = _make_ctx_options(ctx_options)
     key = yield self._put_batcher.add(entity, options)
-    if entity._key != key:
-      logging.info('replacing key %s with %s', entity._key, key)
-      entity._key = key
-    # TODO: For updated entities, could we update the cache first?
-    if self.should_cache(key, options):
-      # TODO: What if by now the entity is already in the cache?
-      self._cache[key] = entity
+    if key is not None:
+      if entity._key != key:
+        logging.info('replacing key %s with %s', entity._key, key)
+        entity._key = key
+      # TODO: For updated entities, could we update the cache first?
+      if self._use_cache(key, options):
+        # TODO: What if by now the entity is already in the cache?
+        self._cache[key] = entity
     raise tasklets.Return(key)
 
   @tasklets.tasklet
   def delete(self, key, **ctx_options):
     options = _make_ctx_options(ctx_options)
     yield self._delete_batcher.add(key, options)
-    if self.should_cache(key, options) and key in self._cache:
+    if self._use_cache(key, options) and key in self._cache:
       self._cache[key] = None
 
   @tasklets.tasklet
@@ -465,7 +700,7 @@ class Context(object):
               # non-ancestor queries may return stale results, since in
               # the HRD these queries are "eventually consistent".
               # TODO: Shouldn't we check this before considering cache hits?
-              if is_ancestor_query and self.should_cache(key, options):
+              if is_ancestor_query and self._use_cache(key, options):
                 self._cache[key] = ent
           if callback is None:
             val = ent
@@ -559,7 +794,7 @@ class Context(object):
   flush_cache = clear_cache  # TODO: Remove this after one release.
 
   def _clear_memcache(self, keys):
-    keys = set(key for key in keys if self.should_memcache(key))
+    keys = set(key for key in keys if self._use_memcache(key))
     if keys:
       memkeys = [key.urlsafe() for key in keys]
       memcache.delete_multi(memkeys, key_prefix=self._memcache_prefix)
