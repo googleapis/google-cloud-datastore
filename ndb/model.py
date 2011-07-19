@@ -1372,30 +1372,29 @@ class StructuredProperty(Property):
       raise datastore_errors.BadFilterError(
         'StructuredProperty filter can only use ==')
     # Import late to avoid circular imports.
-    from ndb.query import FilterNode, ConjunctionNode, PostFilterNode, _AND
+    from ndb.query import FilterNode, ConjunctionNode, PostFilterNode
+    from ndb.query import RepeatedStructuredPropertyPredicate
     value = self._validate(value)  # None is not allowed!
-    nodes = []
+    filters = []
     match_keys = []
     # TODO: Why not just iterate over value._values?
     for name, prop in value._properties.iteritems():
       val = prop._retrieve_value(value)
       if val is not None:
         name = self._name + '.' + name
-        nodes.append(FilterNode(name, op, val))
+        filters.append(FilterNode(name, op, val))
         match_keys.append(name)
-    if not nodes:
+    if not filters:
       raise datastore_errors.BadFilterError(
         'StructuredProperty filter without any values')
-    if len(nodes) == 1:
-      return nodes[0]
+    if len(filters) == 1:
+      return filters[0]
     if self._repeated:
-      bindings = {}
-      filters = [node._to_filter(bindings) for node in nodes]
-      assert not bindings, bindings  # These filters shouldn't use bindings.
-      composite_f = datastore_query.CompositeFilter(_AND, filters)
-      correlation_f = datastore_query.CorrelationFilter(composite_f)
-      nodes.append(PostFilterNode(correlation_f))
-    return ConjunctionNode(*nodes)
+      pb = value._to_pb(allow_partial=True)
+      pred = RepeatedStructuredPropertyPredicate(match_keys, pb,
+                                                 self._name + '.')
+      filters.append(PostFilterNode(pred))
+    return ConjunctionNode(*filters)
 
   def _validate(self, value):
     if not isinstance(value, self._modelclass):
