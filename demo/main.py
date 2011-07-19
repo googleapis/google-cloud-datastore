@@ -85,12 +85,6 @@ class UrlSummary(model.Model):
   when = model.FloatProperty()
 
 
-def fix_user_id():
-  email = os.getenv('USER_EMAIL')
-  if email and not os.getenv('USER_ID'):
-    os.environ['USER_ID'] = email
-
-
 def account_key(userid):
   return model.Key(flat=['Account', userid])
 
@@ -115,7 +109,6 @@ class HomePage(webapp.RequestHandler):
 
   @context.toplevel
   def get(self):
-    fix_user_id()
     nickname = 'Anonymous'
     user = users.get_current_user()
     if user is not None:
@@ -181,7 +174,6 @@ class HomePage(webapp.RequestHandler):
 
   @context.toplevel
   def post(self):
-    fix_user_id()
     # TODO: XSRF protection.
     body = self.request.get('body', '').strip()
     if body:
@@ -198,7 +190,6 @@ class AccountPage(webapp.RequestHandler):
 
   @context.toplevel
   def get(self):
-    fix_user_id()
     user = users.get_current_user()
     if not user:
       self.redirect(users.create_login_url('/account'))
@@ -224,7 +215,6 @@ class AccountPage(webapp.RequestHandler):
 
   @context.toplevel
   def post(self):
-    fix_user_id()
     # TODO: XSRF protection.
     @tasklets.tasklet
     def helper():
