@@ -1199,14 +1199,42 @@ class ModelTests(test_utils.DatastoreTest):
   def testPropertyRepr(self):
     p = model.Property()
     self.assertEqual(repr(p), 'Property()')
+
     p = model.IntegerProperty('foo', indexed=False, repeated=True)
     self.assertEqual(repr(p),
                      "IntegerProperty('foo', indexed=False, repeated=True)")
+
     class Address(model.Model):
       street = model.StringProperty()
       city = model.StringProperty()
     p = model.StructuredProperty(Address, 'foo')
     self.assertEqual(repr(p), "StructuredProperty(Address, 'foo')")
+    q = model.LocalStructuredProperty(Address, 'bar')
+    self.assertEqual(repr(q), "LocalStructuredProperty(Address, 'bar')")
+
+    class MyModel(model.Model):
+      boolp = model.BooleanProperty()
+      intp = model.IntegerProperty()
+      floatp = model.FloatProperty()
+      strp = model.StringProperty()
+      txtp = model.TextProperty()
+      blobp = model.BlobProperty()
+      geoptp = model.GeoPtProperty()
+      userp = model.UserProperty()
+      keyp = model.KeyProperty()
+      blobkeyp = model.BlobKeyProperty()
+      datetimep = model.DateTimeProperty()
+      datep = model.DateProperty()
+      timep = model.TimeProperty()
+      structp = model.StructuredProperty(Address)
+      localstructp = model.LocalStructuredProperty(Address)
+      genp = model.GenericProperty()
+      compp = model.ComputedProperty(lambda e: 'x')
+    self.assertEqual(repr(MyModel.key), "ModelKey('__key__')")
+    for name, prop in MyModel._properties.iteritems():
+      s = repr(prop)
+      self.assertTrue(s.startswith(prop.__class__.__name__ + '('), s)
+
 
   def testValidation(self):
     class All(model.Model):
