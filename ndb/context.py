@@ -886,7 +886,7 @@ class Context(object):
         all_results.update(results)
     for fut, (opname, key, value, time), options in todo:
       status = all_results.get(key)
-      fut.set_result(status)
+      fut.set_result(status == memcache.MemcacheSetResponse.STORED)
 
   @tasklets.tasklet
   def _memcache_del_tasklet(self, todo):

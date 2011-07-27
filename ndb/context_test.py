@@ -20,11 +20,9 @@ from ndb import tasklets
 from ndb import test_utils
 
 
-# Constants from memcache
-EXISTS = memcache.MemcacheSetResponse.EXISTS  # 4
-ERROR = memcache.MemcacheSetResponse.ERROR  # 3
-NOT_STORED = memcache.MemcacheSetResponse.NOT_STORED  # 2
-STORED = memcache.MemcacheSetResponse.STORED  # 1
+# Return values for memcache_{set,add,replace,cas}.
+STORED = True
+NOT_STORED = False
 
 
 class MyAutoBatcher(context.AutoBatcher):
