@@ -191,15 +191,15 @@ class Context(object):
     assert todo
     # First check memcache.
     leftover = []
-    memkeymap = {}
+    mfut_etc = []
     for fut, key, options in todo:
       if self._use_memcache(key, options):
-        memkey = self._memcache_prefix + key.urlsafe()
-        memkeymap[memkey] = (fut, key, options, self.memcache_get(memkey))
+        keystr = self._memcache_prefix + key.urlsafe()
+        mfut_etc.append((self.memcache_get(keystr), fut, key, options))
       else:
         leftover.append((fut, key, options))
-    for memkey, (fut, key, options, mfut) in memkeymap.iteritems():
-      mval = mfut.get_result()
+    for mfut, fut, key, options in mfut_etc:
+      mval = yield mfut
       if mval is None:
         leftover.append((fut, key, options))
       else:
@@ -252,7 +252,7 @@ class Context(object):
     # TODO: What if the same entity is being put twice?
     # TODO: What if two entities with the same key are being put?
     by_options = {}
-    memcache_futures = []  # To wait for memcache_{set,delete}() calls.
+    memcache_futures = []  # To wait for memcache_{add,delete}() calls.
     for fut, ent, options in todo:
       if ent._has_complete_key():
         if self._use_memcache(ent._key, options):
@@ -281,7 +281,8 @@ class Context(object):
     # Wait for memcache operations before starting datastore RPCs.
     for fut in memcache_futures:
       yield fut
-    # TODO: do the RPCs concurrently
+    # Start all datastore RPCs.
+    rpcs_etc = []
     for options, (futures, entities) in by_options.iteritems():
       datastore_futures = []
       datastore_entities = []
@@ -297,7 +298,11 @@ class Context(object):
           # TODO: If ent._key is None, this is really lame.
           fut.set_result(ent._key)
       if datastore_entities:
-        keys = yield self._conn.async_put(options, datastore_entities)
+        rpc = self._conn.async_put(options, datastore_entities)
+        rpcs_etc.append((rpc, datastore_futures, datastore_entities))
+    # Wait for all datastore RPCs.
+    for rpc, datastore_futures, datastore_entities in rpcs_etc:
+        keys = yield rpc
         for key, fut, ent in zip(keys, datastore_futures, datastore_entities):
           if key != ent._key:
             if ent._has_complete_key():
@@ -311,30 +316,36 @@ class Context(object):
   def _delete_tasklet(self, todo):
     assert todo
     by_options = {}
-    delete_keys = []  # For memcache.delete_multi()
+    delete_futures = []  # For memcache.delete_multi()
     for fut, key, options in todo:
       if self._use_memcache(key, options):
-        delete_keys.append(key.urlsafe())
+        keystr = self._memcache_prefix + key.urlsafe()
+        delete_futures.append(self.memcache_delete(keystr, seconds=_LOCK_TIME))
       if options in by_options:
         futures, keys = by_options[options]
       else:
         futures, keys = by_options[options] = [], []
       futures.append(fut)
       keys.append(key)
-    if delete_keys:  # Pre-emptively delete from memcache.
-      # XXX use self.memcache_delete()
-      yield self._memcache.delete_multi_async(delete_keys, seconds=_LOCK_TIME,
-                                              key_prefix=self._memcache_prefix)
-    # TODO: do the RPCs concurrently
+    # Wait for memcache operations.
+    for fut in delete_futures:
+      yield fut
+    # Start all datastore RPCs.
+    rpcs = []
     for options, (futures, keys) in by_options.iteritems():
       datastore_keys = []
       for key in keys:
         if self._use_datastore(key, options):
           datastore_keys.append(key)
       if datastore_keys:
-        yield self._conn.async_delete(options, datastore_keys)
-      for fut in futures:
-        fut.set_result(None)
+        rpc = self._conn.async_delete(options, datastore_keys)
+        rpcs.append(rpc)
+    # Wait for all datastore RPCs.
+    for rpc in rpcs:
+      yield rpc
+    # Send a dummy result to all original Futures.
+    for fut in futures:
+      fut.set_result(None)
 
   # TODO: Unify the policy docstrings (they're getting too verbose).
 
@@ -799,16 +810,14 @@ class Context(object):
     """
     self._cache.clear()
 
-  # Backwards compatible alias.
-  flush_cache = clear_cache  # TODO: Remove this after one release.
-
   def _clear_memcache(self, keys):
     keys = set(key for key in keys if self._use_memcache(key))
-    if keys:
-      memkeys = [key.urlsafe() for key in keys]
-      # XXX use self.memcache_delete()
-      yield self._memcache.delete_multi_async(memkeys,
-                                              key_prefix=self._memcache_prefix)
+    futures = []
+    for key in keys:
+      keystr = self._memcache_prefix + key.urlsafe()
+      futures.append(self.memcache_delete(keystr))
+    for fut in futures:
+      yield fut
 
   @tasklets.tasklet
   def get_or_insert(self, model_class, name,

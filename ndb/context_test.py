@@ -108,7 +108,13 @@ class ContextTests(test_utils.DatastoreTest):
       yield fut2
       yield fut3
     foo().check_success()
-    self.assertEqual(len(MyAutoBatcher._log), 1)
+    self.assertEqual(len(MyAutoBatcher._log), 2)
+    name, todo = MyAutoBatcher._log[0]
+    self.assertEqual(name, '_delete_tasklet')
+    self.assertEqual(len(todo), 3)
+    name, todo = MyAutoBatcher._log[1]
+    self.assertEqual(name, '_memcache_del_tasklet')
+    self.assertEqual(len(todo), 3)
 
   def testContext_MultiRpc(self):
     # This test really tests the proper handling of MultiRpc by
