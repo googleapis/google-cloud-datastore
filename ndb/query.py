@@ -1365,12 +1365,17 @@ class _MultiQuery(object):
     # entities it converts from protobuf.
     # TODO: Does this interact properly with the cache?
     with conn.adapter:
-      # Create a list of (first-entity, subquery-iterator) tuples.
-      state = []
+      # Start running all the sub-queries.
+      todo = []  # List of (subit, dsquery) tuples.
       for subq in self.__subqueries:
         dsquery = subq._get_query(conn)
         subit = tasklets.SerialQueueFuture('_MultiQuery.run_to_queue[par]')
         subq.run_to_queue(subit, conn, options=options, dsquery=dsquery)
+        todo.append((subit, dsquery))
+
+      # Create a list of (first-entity, subquery-iterator) tuples.
+      state = []  # List of _SubQueryIteratorState instances.
+      for subit, dsquery in todo:
         try:
           thing = yield subit.getq()
         except EOFError:
