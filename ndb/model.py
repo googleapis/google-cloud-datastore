@@ -1212,6 +1212,9 @@ class DateTimeProperty(Property):
 
   _attributes = Property._attributes + ['_auto_now', '_auto_now_add']
 
+  _auto_now = False
+  _auto_now_add = False
+
   @datastore_rpc._positional(1 + Property._positional)
   def __init__(self, name=None, auto_now=False, auto_now_add=False, **kwds):
     super(DateTimeProperty, self).__init__(name=name, **kwds)
