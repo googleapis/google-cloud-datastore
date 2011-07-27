@@ -863,9 +863,10 @@ class Context(object):
   @tasklets.tasklet
   def _memcache_get_tasklet(self, todo):
     assert todo
-    keys = []
+    keys = set()
     for fut, key, options in todo:
-      keys.append(key)
+      keys.add(key)
+    logging.info('XXX: get: %s', keys)
     results = yield self._memcache.get_multi_async(keys)
     for fut, key, options in todo:
       fut.set_result(results.get(key))
@@ -885,6 +886,7 @@ class Context(object):
     for (opname, timeout), mapping in mappings.iteritems():
       methodname = opname + '_multi_async'
       method = getattr(self._memcache, methodname)
+      logging.info('XXX: %s: %s', opname, mapping)
       results = yield method(mapping, time=timeout)
       if results:
         all_results.update(results)
@@ -895,11 +897,12 @@ class Context(object):
   @tasklets.tasklet
   def _memcache_del_tasklet(self, todo):
     assert todo
-    keys = []
+    keys = set()
     # XXX: segregate by timeout
     # TODO: do the RPCs concurrently
     for fut, key, options in todo:
-      keys.append(key)
+      keys.add(key)
+    logging.info('XXX: delete: %s', keys)
     results = yield self._memcache.delete_multi_async(keys)
     if not results:
       for fut, key, options in todo:
@@ -921,6 +924,7 @@ class Context(object):
     # TODO: do the RPCs concurrently
     all_results = {}
     for initial_value, mapping in mappings.iteritems():
+      logging.info('XXX: offset: %s', mapping)
       fut = self._memcache.offset_multi_async(mapping,
                                               initial_value=initial_value)
       results = yield fut
