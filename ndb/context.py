@@ -845,13 +845,26 @@ class Context(object):
   @tasklets.tasklet
   def _memcache_get_tasklet(self, todo):
     assert todo
+    cas_keys = set()
     keys = set()
-    for fut, key, options in todo:
-      keys.add(key)
-    logging.info('XXX: get: %s', keys)
-    results = yield self._memcache.get_multi_async(keys)
-    for fut, key, options in todo:
-      fut.set_result(results.get(key))
+    for fut, (key, for_cas), options in todo:
+      if for_cas:
+        cas_keys.add(key)
+      else:
+        keys.add(key)
+    all_results = {}
+    if keys:
+      logging.info('XXX: get: %s', keys)
+      results = yield self._memcache.get_multi_async(keys)
+      if results:
+        all_results.update(results)
+    if cas_keys:
+      logging.info('XXX: gets: %s', keys)
+      results = yield self._memcache.get_multi_async(cas_keys, for_cas=True)
+      if results:
+        all_results.update(results)
+    for fut, (key, for_cas), options in todo:
+      fut.set_result(all_results.get(key))
 
   @tasklets.tasklet
   def _memcache_set_tasklet(self, todo):
@@ -904,7 +917,7 @@ class Context(object):
           all_results[key] = None
     # Transfer results to original Futures.
     # TODO: Do this as results become available instead of at the end.
-    for fut, key, options in todo:
+    for fut, (key, seconds), options in todo:
       fut.set_result(all_results.get(key))
 
   @tasklets.tasklet
@@ -929,72 +942,62 @@ class Context(object):
       result = all_results.get(key)
       fut.set_result(result)
 
-  @tasklets.tasklet
-  def memcache_get(self, key):
+  def memcache_get(self, key, for_cas=False):
     """An auto-batching wrapper for memcache.get() or .get_multi().
 
     Args:
       key: Key to set.  This must be a string; no prefix is applied.
+      for_cas: If True, request and store CAS ids on the Context.
 
     Returns:
-      The value retrieved from memcache, or None.
+      A Future (!) whose return value is the value retrieved from
+      memcache, or None.
     """
     assert isinstance(key, str)
-    value = yield self._memcache_get_batcher.add(key)
-    raise tasklets.Return(value)
+    assert isinstance(for_cas, bool)
+    return self._memcache_get_batcher.add((key, for_cas))
 
   # XXX: Docstrings below.
 
-  @tasklets.tasklet
+  def memcache_gets(self, key):
+    return self.memcache_get(key, for_cas=True)
+
   def memcache_set(self, key, value, time=0):
     assert isinstance(key, str)
     assert isinstance(time, (int, long))
-    value = yield self._memcache_set_batcher.add(('set', key, value, time))
-    raise tasklets.Return(value)
+    return self._memcache_set_batcher.add(('set', key, value, time))
 
-  @tasklets.tasklet
   def memcache_add(self, key, value, time=0):
     assert isinstance(key, str)
     assert isinstance(time, (int, long))
-    value = yield self._memcache_set_batcher.add(('add', key, value, time))
-    raise tasklets.Return(value)
+    return self._memcache_set_batcher.add(('add', key, value, time))
 
-  @tasklets.tasklet
   def memcache_replace(self, key, value, time=0):
     assert isinstance(key, str)
     assert isinstance(time, (int, long))
-    value = yield self._memcache_set_batcher.add(('replace', key, value, time))
-    raise tasklets.Return(value)
+    return self._memcache_set_batcher.add(('replace', key, value, time))
 
-  @tasklets.tasklet
   def memcache_cas(self, key, value, time=0):
     assert isinstance(key, str)
     assert isinstance(time, (int, long))
-    value = yield self._memcache_set_batcher.add(('cas', key, value, time))
-    raise tasklets.Return(value)
+    return self._memcache_set_batcher.add(('cas', key, value, time))
 
-  @tasklets.tasklet
   def memcache_delete(self, key, seconds=0):
     assert isinstance(key, str)
     assert isinstance(seconds, (int, long))
-    value = yield self._memcache_del_batcher.add((key, seconds), None)
-    raise tasklets.Return(value)
+    return self._memcache_del_batcher.add((key, seconds), None)
 
-  @tasklets.tasklet
   def memcache_incr(self, key, delta=1, initial_value=None):
     assert isinstance(key, str)
     assert isinstance(delta, (int, long))
-    # TODO: Constrain initial_value to (int, long)?
-    value = yield self._memcache_off_batcher.add((key, delta, initial_value))
-    raise tasklets.Return(value)
+    assert initial_value is None or isinstance(initial_value, (int, long))
+    return self._memcache_off_batcher.add((key, delta, initial_value))
 
-  @tasklets.tasklet
   def memcache_decr(self, key, delta=1, initial_value=None):
     assert isinstance(key, str)
     assert isinstance(delta, (int, long))
-    # TODO: Constrain initial_value to (int, long)?
-    value = yield self._memcache_off_batcher.add((key, -delta, initial_value))
-    raise tasklets.Return(value)
+    assert initial_value is None or isinstance(initial_value, (int, long))
+    return self._memcache_off_batcher.add((key, -delta, initial_value))
 
 
 def toplevel(func):

@@ -20,6 +20,13 @@ from ndb import tasklets
 from ndb import test_utils
 
 
+# Constants from memcache
+EXISTS = memcache.MemcacheSetResponse.EXISTS  # 4
+ERROR = memcache.MemcacheSetResponse.ERROR  # 3
+NOT_STORED = memcache.MemcacheSetResponse.NOT_STORED  # 2
+STORED = memcache.MemcacheSetResponse.STORED  # 1
+
+
 class MyAutoBatcher(context.AutoBatcher):
 
   _log = []
@@ -603,6 +610,68 @@ class ContextTests(test_utils.DatastoreTest):
     f2 = self.ctx.get(k2)
     e1 = f1.get_result()
     e2 = f2.get_result()
+
+  def testMemcacheAPI(self):
+    @tasklets.tasklet
+    def foo():
+      ctx = tasklets.get_context()
+      k1 = 'k1'
+      k2 = 'k2'
+      vv = yield ctx.memcache_get(k1), ctx.memcache_get(k2)
+      self.assertEqual(vv, [None, None])
+      v1 = '24'
+      v2 = 42
+      vv = yield ctx.memcache_set(k1, v1), ctx.memcache_set(k2, v2)
+      self.assertEqual(vv, [STORED, STORED])
+      vv = yield ctx.memcache_get(k1), ctx.memcache_get(k2)
+      self.assertEqual(vv, [v1, v2])
+      vv = yield ctx.memcache_incr(k1), ctx.memcache_decr(k2)
+      self.assertEqual(vv, [25, 41])
+      vv = yield ctx.memcache_get(k1), ctx.memcache_get(k2)
+      self.assertEqual(vv, ['25', 41])
+      vv = yield ctx.memcache_incr(k1, -1), ctx.memcache_decr(k2, -1)
+      self.assertEqual(vv, [24, 42])
+      vv = yield ctx.memcache_get(k1), ctx.memcache_get(k2)
+      self.assertEqual(vv, [v1, v2])
+      vv = yield ctx.memcache_add(k1, 'a'), ctx.memcache_add(k2, 'b')
+      self.assertEqual(vv, [NOT_STORED, NOT_STORED])
+      vv = yield ctx.memcache_replace(k1, 'a'), ctx.memcache_replace(k2, 'b')
+      self.assertEqual(vv, [STORED, STORED])
+      vv = yield ctx.memcache_delete(k1), ctx.memcache_delete(k2)
+      self.assertEqual(vv, [memcache.DELETE_SUCCESSFUL,
+                            memcache.DELETE_SUCCESSFUL])
+      vv = yield ctx.memcache_delete(k1), ctx.memcache_delete(k2)
+      self.assertEqual(vv, [memcache.DELETE_ITEM_MISSING,
+                            memcache.DELETE_ITEM_MISSING])
+      vv = yield ctx.memcache_incr(k1), ctx.memcache_decr(k2)
+      self.assertEqual(vv, [None, None])
+      vv = yield ctx.memcache_replace(k1, 'a'), ctx.memcache_replace(k2, 'b')
+      self.assertEqual(vv, [NOT_STORED, NOT_STORED])
+      vv = yield ctx.memcache_add(k1, 'a'), ctx.memcache_add(k2, 'b')
+      self.assertEqual(vv, [STORED, STORED])
+      vv = yield ctx.memcache_incr(k1), ctx.memcache_decr(k2)
+      self.assertEqual(vv, [None, None])
+
+    foo().get_result()
+
+  def testMemcacheCAS(self):
+    @tasklets.tasklet
+    def foo():
+      c1 = context.Context()
+      c2 = context.Context()
+      k1 = 'k1'
+      k2 = 'k2'
+      yield c1.memcache_set(k1, 'a'), c1.memcache_set(k2, 'b')
+      vv = yield c2.memcache_get(k1), c2.memcache_get(k2)
+      self.assertEqual(vv, ['a', 'b'])
+      vv = yield c1.memcache_gets(k1), c1.memcache_get(k2, for_cas=True)
+      self.assertEqual(vv, ['a', 'b'])
+      ffff = [c1.memcache_cas(k1, 'x'), c1.memcache_cas(k2, 'y'),
+              c2.memcache_cas(k1, 'p'), c2.memcache_cas(k2, 'q')]
+      vvvv = yield ffff
+      self.assertEqual(vvvv, [STORED, STORED, NOT_STORED, NOT_STORED])
+
+    foo().get_result()
 
 
 def main():
