@@ -647,6 +647,7 @@ class ContextTests(test_utils.DatastoreTest):
       self.assertEqual(vv, [NOT_STORED, NOT_STORED])
       vv = yield ctx.memcache_add(k1, 'a'), ctx.memcache_add(k2, 'b')
       self.assertEqual(vv, [STORED, STORED])
+      logging.warn('Following two errors are expected:')
       vv = yield ctx.memcache_incr(k1), ctx.memcache_decr(k2)
       self.assertEqual(vv, [None, None])
 
