@@ -638,7 +638,7 @@ class Property(object):
         value = self._do_validate(value)
     self._store_value(entity, value)
 
-  def _has_value(self, entity):
+  def _has_value(self, entity, rest=None):
     """Internal helper to ask if the entity has a value for this Property."""
     return self._name in entity._values
 
@@ -1405,6 +1405,26 @@ class StructuredProperty(Property):
                                            (self._modelclass.__name__, value))
     return value
 
+  def _has_value(self, entity, rest=None):
+    # rest: optional list of attribute names to check in addition.
+    # Basically, prop._has_value(self, ent, ['x', 'y']) is similar to
+    #   (prop._has_value(ent) and
+    #    prop.x._has_value(ent.x) and
+    #    prop.x.y._has_value(ent.x.y))
+    # assuming prop.x and prop.x.y exist.
+    # NOTE: This is not particularly efficient if len(rest) > 1,
+    # but that seems a rare case, so for now I don't care.
+    ok = super(StructuredProperty, self)._has_value(entity)
+    if ok and rest:
+      subent = self._get_value(entity)
+      assert subent is not None
+      subprop = subent._properties.get(rest[0])
+      if subprop is None:
+        ok = False
+      else:
+        ok = subprop._has_value(subent, rest[1:])
+    return ok
+
   def _serialize(self, entity, pb, prefix='', parent_repeated=False):
     # entity -> pb; pb is an EntityProto message
     value = self._retrieve_value(entity)
@@ -1442,6 +1462,7 @@ class StructuredProperty(Property):
     parts = name.split('.')
     assert len(parts) > depth, (depth, name, parts)
     next = parts[depth]
+    rest = parts[depth+1:]
     prop = self._modelclass._properties.get(next)
     assert prop is not None  # QED
 
@@ -1455,7 +1476,7 @@ class StructuredProperty(Property):
     # property yet.
     for sub in values:
       assert isinstance(sub, self._modelclass)
-      if not prop._has_value(sub):
+      if not prop._has_value(sub, rest):
         subentity = sub
         break
     else:
@@ -1647,7 +1668,7 @@ class ComputedProperty(GenericProperty):
     assert self._default is None, 'ComputedProperty cannot have a default'
     self._func = func
 
-  def _has_value(self, entity):
+  def _has_value(self, entity, rest=None):
     return True
 
   def _store_value(self, entity, value):

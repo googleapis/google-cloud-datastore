@@ -843,6 +843,28 @@ class ModelTests(test_utils.DatastoreTest):
     self.assertEqual(p.address.work.street, '345 Spear')
     self.assertEqual(p.address.work.city, 'San Francisco')
 
+  def testRepeatedNestedStructuredProperty(self):
+    class Person(model.Model):
+      first_name = model.StringProperty()
+      last_name = model.StringProperty()
+    class PersonPhone(model.Model):
+      person = model.StructuredProperty(Person)
+      phone = model.StringProperty()
+    class Phonebook(model.Model):
+      numbers = model.StructuredProperty(PersonPhone, repeated=True)
+
+    book = Phonebook.get_or_insert('test')
+    person = Person(first_name="John", last_name='Smith')
+    phone = PersonPhone(person=person, phone='1-212-555-1212')
+    book.numbers.append(phone)
+    pb = book._to_pb()
+
+    ent = Phonebook._from_pb(pb)
+    self.assertEqual(ent.numbers[0].person.first_name, 'John')
+    self.assertEqual(len(ent.numbers), 1)
+    self.assertEqual(ent.numbers[0].person.last_name, 'Smith')
+    self.assertEqual(ent.numbers[0].phone, '1-212-555-1212')
+
   def testRecursiveStructuredProperty(self):
     class Node(model.Model):
       name = model.StringProperty(indexed=False)
