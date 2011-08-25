@@ -405,7 +405,7 @@ class Key(object):
     If no such entity exists, a Future is still returned, and the
     Future's eventual return result be None.
     """
-    from ndb import tasklets
+    from . import tasklets
     return tasklets.get_context().get(self, **ctx_options)
 
   def delete(self, **ctx_options):
@@ -423,7 +423,7 @@ class Key(object):
     returned.  In all cases the Future's result is None (i.e. there is
     no way to tell whether the entity existed or not).
     """
-    from ndb import tasklets
+    from . import tasklets
     return tasklets.get_context().delete(self, **ctx_options)
 
 
@@ -499,7 +499,7 @@ def _ReferenceFromPairs(pairs, reference=None, app=None, namespace=None):
     if not isinstance(kind, basestring):
       if isinstance(kind, type):
         # Late import to avoid cycles.
-        from ndb.model import Model
+        from .model import Model
         modelclass = kind
         assert issubclass(modelclass, Model), repr(modelclass)
         kind = modelclass._get_kind()

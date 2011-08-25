@@ -12,12 +12,12 @@ from google.appengine.api import memcache
 from google.appengine.api import taskqueue
 from google.appengine.datastore import datastore_rpc
 
-from ndb import context
-from ndb import eventloop
-from ndb import model
-from ndb import query
-from ndb import tasklets
-from ndb import test_utils
+from . import context
+from . import eventloop
+from . import model
+from . import query
+from . import tasklets
+from . import test_utils
 
 
 class MyAutoBatcher(context.AutoBatcher):

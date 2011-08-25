@@ -7,7 +7,7 @@ import unittest
 from google.appengine.api import datastore_errors
 from google.appengine.datastore import entity_pb
 
-from ndb import key
+from . import key
 
 class KeyTests(unittest.TestCase):
 
@@ -226,7 +226,7 @@ class KeyTests(unittest.TestCase):
     self.assertRaises(AssertionError, key.Key, flat=['Kind', ()])
 
   def testKindFromModel(self):
-    from ndb import model
+    from . import model
     class M(model.Model):
       pass
     class N(model.Model):

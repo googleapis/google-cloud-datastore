@@ -276,11 +276,11 @@ from google.appengine.datastore import datastore_query
 from google.appengine.datastore import datastore_rpc
 from google.appengine.datastore import entity_pb
 
-from ndb import utils
+from . import utils
 
-# NOTE: Don't use "from ndb import key"; key is a common local variable name.
-import ndb.key
-Key = ndb.key.Key  # For export.
+# NOTE: 'key' is a common local variable name.
+from . import key as key_module
+Key = key_module.Key  # For export.
 
 # NOTE: Property and Error classes are added later.
 __all__ = ['Key', 'ModelAdapter', 'ModelKey', 'MetaModel', 'Model', 'Expando',
@@ -476,7 +476,7 @@ class Property(object):
     Returns:
       A FilterNode instance representing the requested comparison.
     """
-    from ndb.query import FilterNode  # Import late to avoid circular imports.
+    from .query import FilterNode  # Import late to avoid circular imports.
     if value is not None:
       # TODO: Allow query.Binding instances?
       value = self._validate(value)
@@ -523,7 +523,7 @@ class Property(object):
     as .IN(); ._IN() is provided for the case you have a
     StructuredProperty with a model that has a Property named IN.
     """
-    from ndb.query import FilterNode  # Import late to avoid circular imports.
+    from .query import FilterNode  # Import late to avoid circular imports.
     if not isinstance(value, (list, tuple)):
       raise datastore_errors.BadArgumentError('Expected list or tuple, got %r' %
                                               (value,))
@@ -1375,8 +1375,8 @@ class StructuredProperty(Property):
       raise datastore_errors.BadFilterError(
         'StructuredProperty filter can only use ==')
     # Import late to avoid circular imports.
-    from ndb.query import FilterNode, ConjunctionNode, PostFilterNode
-    from ndb.query import RepeatedStructuredPropertyPredicate
+    from .query import FilterNode, ConjunctionNode, PostFilterNode
+    from .query import RepeatedStructuredPropertyPredicate
     value = self._validate(value)  # None is not allowed!
     filters = []
     match_keys = []
@@ -1898,7 +1898,7 @@ class Model(object):
       key = self._key
       if key is None:
         pairs = [(self._get_kind(), None)]
-        ref = ndb.key._ReferenceFromPairs(pairs, reference=pb.mutable_key())
+        ref = key_module._ReferenceFromPairs(pairs, reference=pb.mutable_key())
       else:
         ref = key._reference()  # Don't copy
         pb.mutable_key().CopyFrom(ref)
@@ -2016,7 +2016,7 @@ class Model(object):
     Returns:
       A Query object.
     """
-    from ndb.query import Query  # Import late to avoid circular imports.
+    from .query import Query  # Import late to avoid circular imports.
     qry = Query(kind=cls._get_kind(), **kwds)
     if args:
       qry = qry.filter(*args)
@@ -2040,7 +2040,7 @@ class Model(object):
 
     This is the asynchronous version of Model._put().
     """
-    from ndb import tasklets
+    from . import tasklets
     return tasklets.get_context().put(self, **ctx_options)
   put_async = _put_async
 
@@ -2073,7 +2073,7 @@ class Model(object):
 
     This is the asynchronous version of Model._get_or_insert().
     """
-    from ndb import tasklets
+    from . import tasklets
     ctx = tasklets.get_context()
     return ctx.get_or_insert(cls, name=name, parent=parent,
                              context_options=context_options, **kwds)
@@ -2105,7 +2105,7 @@ class Model(object):
 
     This is the asynchronous version of Model._allocate_ids().
     """
-    from ndb import tasklets
+    from . import tasklets
     key = Key(cls._get_kind(), None, parent=parent)
     return tasklets.get_context().allocate_ids(key, size=size, max=max,
                                                **ctx_options)
@@ -2132,7 +2132,7 @@ class Model(object):
 
     This is the asynchronous version of Model._get_by_id().
     """
-    from ndb import tasklets
+    from . import tasklets
     key = Key(cls._get_kind(), id, parent=parent)
     return tasklets.get_context().get(key, **ctx_options)
   get_by_id_async = _get_by_id_async
@@ -2223,7 +2223,7 @@ def transaction_async(callback, retry=None, entity_group=None, **kwds):
 
   This is the asynchronous version of transaction().
   """
-  from ndb import tasklets
+  from . import tasklets
   if retry is not None:
     kwds['retry'] = retry
   if entity_group is not None:
@@ -2233,7 +2233,7 @@ def transaction_async(callback, retry=None, entity_group=None, **kwds):
 
 def in_transaction():
   """Return whether a transaction is currently active."""
-  from ndb import tasklets
+  from . import tasklets
   return tasklets.get_context().in_transaction()
 
 

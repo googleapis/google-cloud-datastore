@@ -3,7 +3,8 @@
 import sys
 import threading
 
-from ndb import tasklets, context
+from . import tasklets, context
+
 
 def main():
   num = 10

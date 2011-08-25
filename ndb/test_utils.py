@@ -16,9 +16,9 @@ from google.appengine.api.memcache import memcache_stub
 from google.appengine.api import taskqueue
 from google.appengine.api.taskqueue import taskqueue_stub
 
-from ndb import model
-from ndb import tasklets
-from ndb import eventloop
+from . import model
+from . import tasklets
+from . import eventloop
 
 
 def set_up_basic_stubs(app_id):
@@ -112,7 +112,6 @@ class DatastoreTest(unittest.TestCase):
     is to disable it to avoid misleading test results. Override this when
     needed.
     """
-    from ndb import tasklets
     ctx = tasklets.get_context()
     ctx.set_cache_policy(False)
     ctx.set_memcache_policy(False)

@@ -137,9 +137,9 @@ from google.appengine.datastore import datastore_query
 from google.appengine.datastore import datastore_rpc
 from google.appengine.ext import gql
 
-from ndb import context
-from ndb import model
-from ndb import tasklets
+from . import context
+from . import model
+from . import tasklets
 
 __all__ = ['Binding', 'AND', 'OR', 'parse_gql', 'Query',
            'QueryOptions', 'Cursor']

@@ -12,8 +12,8 @@ from google.appengine.api import memcache
 
 from google.appengine.datastore import datastore_rpc
 
-import ndb.key
-from ndb import model, tasklets, eventloop, utils
+from . import key as key_module
+from . import model, tasklets, eventloop, utils
 
 _LOCK_TIME = 32  # Time to lock out memcache.add() after datastore.put().
 
@@ -735,7 +735,7 @@ class Context(object):
     if entity_group is not None:
       app = entity_group.app()
     else:
-      app = ndb.key._DefaultAppId()
+      app = key_module._DefaultAppId()
     yield self.flush()
     for i in range(1 + max(0, retry)):
       transaction = yield self._conn.async_begin_transaction(options, app)
