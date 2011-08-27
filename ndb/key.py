@@ -191,7 +191,7 @@ class Key(object):
   Subclassing Key is best avoided; it would be hard to get right.
   """
 
-  __slots__ = ['__reference']
+  __slots__ = ['__reference', '__pairs']
 
   def __new__(cls, *_args, **kwargs):
     """Constructor.  See the class docstring for arguments."""
@@ -206,6 +206,7 @@ class Key(object):
         kwargs['flat'] = _args
     self = super(Key, cls).__new__(cls)
     self.__reference = _ConstructReference(cls, **kwargs)
+    self.__pairs = None
     return self
 
   def __repr__(self):
@@ -256,7 +257,7 @@ class Key(object):
 
   def __getstate__(self):
     """Private API used for pickling."""
-    return ({'pairs': tuple(self._pairs()),
+    return ({'pairs': list(self._pairs()),
              'app': self.app(),
              'namespace': self.namespace()},)
 
@@ -266,6 +267,7 @@ class Key(object):
     kwargs = state[0]
     assert isinstance(kwargs, dict)
     self.__reference = _ConstructReference(self.__class__, **kwargs)
+    self.__pairs = kwargs['pairs']
 
   def __getnewargs__(self):
     """Private API used for pickling."""
@@ -331,6 +333,11 @@ class Key(object):
 
   def _pairs(self):
     """Iterator yielding (kind, id) pairs."""
+    if self.__pairs is not None:
+      for pair in self.__pairs:
+        yield pair
+      return
+    pairs = []
     for elem in self.__reference.path().element_list():
       kind = elem.type()
       if elem.has_id():
@@ -339,7 +346,10 @@ class Key(object):
         idorname = elem.name()
       if not idorname:
         idorname = None
-      yield (kind, idorname)
+      tup = (kind, idorname)
+      pairs.append(tup)
+      yield tup
+    self.__pairs = pairs
 
   def flat(self):
     """Return a list of alternating kind and id values."""

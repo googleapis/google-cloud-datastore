@@ -69,6 +69,9 @@ deploy:
 bench:
 	PYTHONPATH=$(GAEPATH):. $(PYTHON) bench.py $(FLAGS)
 
+keybench:
+	PYTHONPATH=$(GAEPATH):. $(PYTHON) keybench.py $(FLAGS)
+
 python:
 	PYTHONPATH=$(GAEPATH):. $(PYTHON) -i startup.py $(FLAGS)
 
