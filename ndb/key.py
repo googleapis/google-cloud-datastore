@@ -136,10 +136,10 @@ class Key(object):
 
   - hash(key) -- a hash value sufficient for storing Keys in a dict.
 
-  - key.pairs() -- a list of (kind, id) pairs.
+  - key.pairs() -- a tuple of (kind, id) pairs.
 
-  - key.flat() -- a list of flattened kind and id values, i.e.
-    [kind1, id1, kind2, id2, ...].
+  - key.flat() -- a tuple of flattened kind and id values, i.e.
+    (kind1, id1, kind2, id2, ...).
 
   - key.app() -- the application id.
 
@@ -163,15 +163,8 @@ class Key(object):
 
   - key.serialized() -- a serialized Reference.
 
-  - key.reference() -- a Reference object.  Since Reference objects are
-    mutable, this returns a brand new Reference object.
-
-  - key._reference() -- the Reference object contained in the Key.
-    The caller promises not to mutate it.
-
-  - key._pairs() -- an iterator, equivalent to iter(key.pairs()).
-
-  - key._flat() -- an iterator, equivalent to iter(key.flat()).
+  - key.reference() -- a Reference object.  The caller promises not to
+    mutate it.
 
   Keys also support interaction with the datastore; these methods are
   the only ones that engage in any kind of I/O activity.  For Future
@@ -217,7 +210,7 @@ class Key(object):
     """
     # TODO: Instead of "Key('Foo', 1)" perhaps return "Key(Foo, 1)" ?
     args = []
-    for item in self._flat():
+    for item in self.flat():
       if not item:
         args.append('None')
       elif isinstance(item, basestring):
@@ -239,13 +232,13 @@ class Key(object):
     # doesn't need to return a unique value -- it only needs to ensure
     # that the hashes of equal keys are equal, not the other way
     # around.
-    return hash(tuple(self._pairs()))
+    return hash(tuple(self.pairs()))
 
   def __eq__(self, other):
     """Equality comparison operation."""
     if not isinstance(other, Key):
       return NotImplemented
-    return (tuple(self._pairs()) == tuple(other._pairs()) and
+    return (tuple(self.pairs()) == tuple(other.pairs()) and
             self.app() == other.app() and
             self.namespace() == other.namespace())
 
@@ -257,7 +250,7 @@ class Key(object):
 
   def __getstate__(self):
     """Private API used for pickling."""
-    return ({'pairs': list(self._pairs()),
+    return ({'pairs': list(self.pairs()),
              'app': self.app(),
              'namespace': self.namespace()},)
 
@@ -271,7 +264,7 @@ class Key(object):
 
   def __getnewargs__(self):
     """Private API used for pickling."""
-    return ({'pairs': tuple(self._pairs()),
+    return ({'pairs': tuple(self.pairs()),
              'app': self.app(),
              'namespace': self.namespace()},)
 
@@ -328,38 +321,30 @@ class Key(object):
     return elem.id() or None
 
   def pairs(self):
-    """Return a list of (kind, id) pairs."""
-    return list(self._pairs())
-
-  def _pairs(self):
-    """Iterator yielding (kind, id) pairs."""
-    if self.__pairs is not None:
-      for pair in self.__pairs:
-        yield pair
-      return
-    pairs = []
-    for elem in self.__reference.path().element_list():
-      kind = elem.type()
-      if elem.has_id():
-        idorname = elem.id()
-      else:
-        idorname = elem.name()
-      if not idorname:
-        idorname = None
-      tup = (kind, idorname)
-      pairs.append(tup)
-      yield tup
-    self.__pairs = pairs
+    """Return a tuple of (kind, id) pairs."""
+    pairs = self.__pairs
+    if pairs is None:
+      pairs = []
+      for elem in self.__reference.path().element_list():
+        kind = elem.type()
+        if elem.has_id():
+          idorname = elem.id()
+        else:
+          idorname = elem.name()
+        if not idorname:
+          idorname = None
+        tup = (kind, idorname)
+        pairs.append(tup)
+      self.__pairs = pairs = tuple(pairs)
+    return pairs
 
   def flat(self):
-    """Return a list of alternating kind and id values."""
-    return list(self._flat())
-
-  def _flat(self):
-    """Iterator yielding alternating kind and id values."""
-    for kind, idorname in self._pairs():
-      yield kind
-      yield idorname
+    """Return a tuple of alternating kind and id values."""
+    flat = []
+    for kind, id in self.pairs():
+      flat.append(kind)
+      flat.append(id)
+    return tuple(flat)
 
   def kind(self):
     """Return the kind of the entity referenced.
@@ -369,18 +354,12 @@ class Key(object):
     return self.__reference.path().element(-1).type()
 
   def reference(self):
-    """Return a copy of the Reference object for this Key.
+    """Return the Reference object for this Key.
 
     This is a entity_pb.Reference instance -- a protocol buffer class
     used by the lower-level API to the datastore.
-    """
-    return _ReferenceFromReference(self.__reference)
 
-  def _reference(self):
-    """Return the Reference object for this Key.
-
-    This is a backdoor API for internal use only.  The caller should
-    not mutate the return value.
+    NOTE: The caller should not mutate the return value.
     """
     return self.__reference
 

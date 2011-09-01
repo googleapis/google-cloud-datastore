@@ -17,8 +17,8 @@ from ndb import utils
 os.environ = dict(os.environ)
 
 
-def bench(n):
-  """Top-level benchmark function."""
+def bench1(n):
+  """Benchmark Key comparison and hashing."""
   a = key.Key('Foo', 42, 'Bar', 1, 'Hopla', 'lala')
   b = key.Key('Foo', 42, 'Bar', 1, 'Hopla', 'lala')
   assert a is not b
@@ -28,9 +28,27 @@ def bench(n):
     hash(a)
 
 
+def bench2(n):
+  """Benchmark Key creation."""
+  for i in xrange(n):
+    key.Key('Foo', 42, 'Bar', 1, 'Hopla', 'lala')
+
+
+def bench3(n):
+  """Benchmark Key creation with parent."""
+  p = key.Key('Foo', 42, 'Bar', 1)
+  for i in xrange(n):
+    key.Key('Hopla', 'lala', parent=p)
+
+
+def bench(n):
+  """Toplevel benchmark function."""
+  return bench1(n)
+
+
 def main():
   utils.tweak_logging()  # Interpret -v and -q flags.
-  n = 100000
+  n = 10000
   for arg in sys.argv[1:]:
     try:
       n = int(arg)
@@ -44,8 +62,8 @@ def main():
   stats.sort_stats('time')  # 'time', 'cumulative' or 'calls'
   stats.print_stats(20)  # Arg: how many to print (optional)
   # Uncomment (and tweak) the following calls for more details.
-  # stats.print_callees(100)
-  # stats.print_callers(100)
+  # stats.print_callees(10)
+  # stats.print_callers(10)
 
 
 if __name__ == '__main__':

@@ -658,8 +658,7 @@ class Query(object):
       orders: Optional datastore_query.Order object.
     """
     if ancestor is not None and not isinstance(ancestor, Binding):
-      lastid = ancestor.pairs()[-1][1]
-      assert lastid, 'ancestor cannot be an incomplete key'
+      assert ancestor.id(), 'ancestor cannot be an incomplete key'
     if filters is not None:
       assert isinstance(filters, Node), repr(filters)
     if orders is not None:

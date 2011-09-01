@@ -332,7 +332,7 @@ class ContextTests(test_utils.DatastoreTest):
     self.assertEqual(len(res), 3)
     for i, ent in enumerate(res):
       self.assertTrue(isinstance(ent, model.Model))
-      self.assertEqual(ent.key.flat(), ['Foo', i+1])
+      self.assertEqual(ent.key.flat(), ('Foo', i+1))
 
   def testContext_MapQuery_NonTaskletCallback(self):
     def callback(ent):
@@ -413,7 +413,7 @@ class ContextTests(test_utils.DatastoreTest):
     self.assertEqual(len(res), 3)
     for i, ent in enumerate(res):
       self.assertTrue(isinstance(ent, model.Model))
-      self.assertEqual(ent.key.flat(), ['Foo', i+1])
+      self.assertEqual(ent.key.flat(), ('Foo', i+1))
 
   def testContext_TransactionFailed(self):
     @tasklets.tasklet

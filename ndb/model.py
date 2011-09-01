@@ -1151,7 +1151,7 @@ class KeyProperty(Property):
   def _db_set_value(self, v, p, value):
     assert isinstance(value, Key)
     # See datastore_types.PackKey
-    ref = value._reference()  # Don't copy
+    ref = value.reference()
     rv = v.mutable_referencevalue()  # A Reference
     rv.set_app(ref.app())
     if ref.has_name_space():
@@ -1580,7 +1580,7 @@ class GenericProperty(Property):
       v.set_doublevalue(value)
     elif isinstance(value, Key):
       # See datastore_types.PackKey
-      ref = value._reference()  # Don't copy
+      ref = value.reference()
       rv = v.mutable_referencevalue()  # A Reference
       rv.set_app(ref.app())
       if ref.has_name_space():
@@ -1900,7 +1900,7 @@ class Model(object):
         pairs = [(self._get_kind(), None)]
         ref = key_module._ReferenceFromPairs(pairs, reference=pb.mutable_key())
       else:
-        ref = key._reference()  # Don't copy
+        ref = key.reference()
         pb.mutable_key().CopyFrom(ref)
       group = pb.mutable_entity_group()  # Must initialize this.
       # To work around an SDK issue, only set the entity group if the
