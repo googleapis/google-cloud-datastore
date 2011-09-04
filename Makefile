@@ -52,7 +52,7 @@ c cov cove cover coverage:
 	for i in $(TESTS); \
 	do \
 	  echo $$i; \
-	  PYTHONPATH=$(GAEPATH):. coverage run -p $$i; \
+	  PYTHONPATH=$(GAEPATH):. coverage run -p -m ndb.`basename $$i .py`; \
 	done
 	coverage combine
 	coverage html $(NONTESTS)
