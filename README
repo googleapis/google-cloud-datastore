@@ -1,0 +1,66 @@
+Introduction
+------------
+
+In this project I am developing a new, experimental datastore
+API for the Google App Engine Python runtime. I am doing this as a
+Google employee but using an open source development style as I
+believe this project will benefit from early user feedback.
+
+Eventually, when the project is sufficiently mature, the code will
+(hopefully) become a standard component of the App Engine Python SDK
+and the Python runtime. Until then, however, the way to use this code
+is to check it out from the repository and copy it into your
+application.
+
+Until the code is integrated into the SDK and runtime, I am not going
+to worry about backwards compatibility between versions of this
+experimental code. You are not required to check out the trunk,
+however I do not plan to fix bugs in older branches.
+
+See the file LICENSE for the open source licensing conditions (which
+are the same as for the App Engine SDK).
+
+--Guido van Rossum <guido@google.com>
+
+
+Overview
+--------
+
+The code is structured into two subdirectories:
+
+- ndb: This is the main code base.  Notable submodules are
+  key.py, model.py, query.py, eventloop.py, tasklets.py, and context.py.
+  For each module foo.py there's a corresponding foo_test.py which
+  contains unit tests for that module.
+
+- demo: This is where demo programs live.  There currently is only
+  one, main.py, which implements a simple guestbook.
+
+How To
+------
+
+You need to separately download and install the App Engine Python SDK,
+version 1.5.1 or later.  NOTE: previous versions don't work!!!!!!!!!
+(If you don't know where to find that you are not ready to play with
+this code. :-) Assuming the SDK lives at /usr/local/google_appengine,
+you need to add that directory to your $PYTHONPATH environment
+variable.  You should then be able to run something like this:
+
+  >>> from ndb import context
+
+If this works your setup is correct.
+
+To run the tests, use
+
+  make test
+
+To run the tests with coverage, install the coverag.py package from
+http://nedbatchelder.com/code/coverage/ and then use
+
+  make coverage
+
+To run the demo app on localhost:8080, use
+
+  make serve
+
+See the Makefile for more details.  Sorry, Windows users.

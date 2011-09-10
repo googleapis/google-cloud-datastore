@@ -1,0 +1,22 @@
+# Demo app.
+application: ndb-experiment
+version: 1
+runtime: python
+api_version: 1
+
+handlers:
+
+- url: /intest.*
+  script: demo/intest.py
+
+- url: /hello.*
+  script: demo/hello.py
+
+- url: /test.*
+  script: demo/test.py
+
+- url: /.*
+  script: demo/main.py
+
+builtins:
+- appstats: on
