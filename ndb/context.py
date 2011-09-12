@@ -859,7 +859,9 @@ class Context(object):
     if keys_only:
       raise tasklets.Return(keys)
     else:
-      entities = yield [key.get_async() for key in keys]
+      # Fetch the entities given their keys, possibly from a cache.
+      futures = [key.get_async() for key in keys]
+      entities = filter(None, [fut.get_result() for fut in futures])
       raise tasklets.Return(entities)
 
   @tasklets.tasklet
