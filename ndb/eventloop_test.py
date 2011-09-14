@@ -7,7 +7,7 @@ import unittest
 from google.appengine.api import apiproxy_stub_map
 from google.appengine.datastore import datastore_rpc
 
-from ndb import eventloop, test_utils
+from . import eventloop, test_utils
 
 class EventLoopTests(test_utils.DatastoreTest):
 

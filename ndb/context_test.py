@@ -12,12 +12,12 @@ from ndb import memcache
 from google.appengine.api import taskqueue
 from google.appengine.datastore import datastore_rpc
 
-from ndb import context
-from ndb import eventloop
-from ndb import model
-from ndb import query
-from ndb import tasklets
-from ndb import test_utils
+from . import context
+from . import eventloop
+from . import model
+from . import query
+from . import tasklets
+from . import test_utils
 
 
 # Return values for memcache_{set,add,replace,cas}.
@@ -350,7 +350,7 @@ class ContextTests(test_utils.DatastoreTest):
     self.assertEqual(len(res), 3)
     for i, ent in enumerate(res):
       self.assertTrue(isinstance(ent, model.Model))
-      self.assertEqual(ent.key.flat(), ['Foo', i+1])
+      self.assertEqual(ent.key.flat(), ('Foo', i+1))
 
   def testContext_MapQuery_NonTaskletCallback(self):
     def callback(ent):
@@ -431,7 +431,7 @@ class ContextTests(test_utils.DatastoreTest):
     self.assertEqual(len(res), 3)
     for i, ent in enumerate(res):
       self.assertTrue(isinstance(ent, model.Model))
-      self.assertEqual(ent.key.flat(), ['Foo', i+1])
+      self.assertEqual(ent.key.flat(), ('Foo', i+1))
 
   def testContext_TransactionFailed(self):
     @tasklets.tasklet
