@@ -13,11 +13,11 @@ from google.appengine.api.memcache import memcache_stub
 from google.appengine.datastore import datastore_rpc
 from google.appengine.datastore import datastore_query
 
-from ndb import context
-from ndb import model
-from ndb import query
-from ndb import tasklets
-from ndb import test_utils
+from . import context
+from . import model
+from . import query
+from . import tasklets
+from . import test_utils
 
 
 class QueryTests(test_utils.DatastoreTest):

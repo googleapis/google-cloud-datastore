@@ -70,7 +70,7 @@ from google.appengine.api.apiproxy_stub_map import UserRPC
 from google.appengine.api.apiproxy_rpc import RPC
 
 from google.appengine.datastore import datastore_rpc
-from ndb import eventloop, utils
+from . import eventloop, utils
 
 logging_debug = utils.logging_debug
 

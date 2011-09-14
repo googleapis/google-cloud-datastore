@@ -12,11 +12,11 @@ from google.appengine.api import datastore_file_stub
 
 from google.appengine.datastore import datastore_rpc
 
-from ndb import eventloop
-from ndb import model
-from ndb import test_utils
-from ndb import tasklets
-from ndb.tasklets import Future, tasklet
+from . import eventloop
+from . import model
+from . import test_utils
+from . import tasklets
+from .tasklets import Future, tasklet
 
 
 class TaskletTests(test_utils.DatastoreTest):

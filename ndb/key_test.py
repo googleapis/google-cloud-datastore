@@ -7,29 +7,29 @@ import unittest
 from google.appengine.api import datastore_errors
 from google.appengine.datastore import entity_pb
 
-from ndb import key
+from . import key
 
 class KeyTests(unittest.TestCase):
 
   def testShort(self):
     k0 = key.Key('Kind', None)
-    self.assertEqual(k0.flat(), ['Kind', None])
+    self.assertEqual(k0.flat(), ('Kind', None))
     k1 = key.Key('Kind', 1)
-    self.assertEqual(k1.flat(), ['Kind', 1])
+    self.assertEqual(k1.flat(), ('Kind', 1))
     k2 = key.Key('Parent', 42, 'Kind', 1)
-    self.assertEqual(k2.flat(), ['Parent', 42, 'Kind', 1])
+    self.assertEqual(k2.flat(), ('Parent', 42, 'Kind', 1))
 
   def testFlat(self):
-    flat = ['Kind', 1]
-    pairs = [(flat[i], flat[i+1]) for i in xrange(0, len(flat), 2)]
+    flat = ('Kind', 1)
+    pairs = tuple((flat[i], flat[i+1]) for i in xrange(0, len(flat), 2))
     k = key.Key(flat=flat)
     self.assertEqual(k.pairs(), pairs)
     self.assertEqual(k.flat(), flat)
     self.assertEqual(k.kind(), 'Kind')
 
   def testFlatLong(self):
-    flat = ['Kind', 1, 'Subkind', 'foobar']
-    pairs = [(flat[i], flat[i+1]) for i in xrange(0, len(flat), 2)]
+    flat = ('Kind', 1, 'Subkind', 'foobar')
+    pairs = tuple((flat[i], flat[i+1]) for i in xrange(0, len(flat), 2))
     k = key.Key(flat=flat)
     self.assertEqual(k.pairs(), pairs)
     self.assertEqual(k.flat(), flat)
@@ -64,13 +64,13 @@ class KeyTests(unittest.TestCase):
     self.assertEqual(k.reference(), r)
 
     k = key.Key(reference=r)
-    self.assertTrue(k._reference() is not r)
+    self.assertTrue(k.reference() is not r)
     self.assertEqual(k.serialized(), serialized)
     self.assertEqual(k.urlsafe(), urlsafe)
     self.assertEqual(k.reference(), r)
 
     k = key.Key(reference=r, app=r.app(), namespace='')
-    self.assertTrue(k._reference() is not r)
+    self.assertTrue(k.reference() is not r)
     self.assertEqual(k.serialized(), serialized)
     self.assertEqual(k.urlsafe(), urlsafe)
     self.assertEqual(k.reference(), r)
@@ -127,12 +127,12 @@ class KeyTests(unittest.TestCase):
     self.assertEqual(p.parent(), None)
 
     k = key.Key('Subkind', 'foobar', parent=p)
-    self.assertEqual(k.flat(), ['Kind', 1, 'Subkind', 'foobar'])
+    self.assertEqual(k.flat(), ('Kind', 1, 'Subkind', 'foobar'))
     self.assertEqual(k.parent(), p)
 
     k = key.Key('Subkind', 'foobar', parent=p,
                 app=p.app(), namespace=p.namespace())
-    self.assertEqual(k.flat(), ['Kind', 1, 'Subkind', 'foobar'])
+    self.assertEqual(k.flat(), ('Kind', 1, 'Subkind', 'foobar'))
     self.assertEqual(k.parent(), p)
 
   def testRoot(self):
@@ -140,14 +140,14 @@ class KeyTests(unittest.TestCase):
     self.assertEqual(p.root(), p)
 
     k = key.Key('Subkind', 'foobar', parent=p)
-    self.assertEqual(k.flat(), ['Kind', 1, 'Subkind', 'foobar'])
+    self.assertEqual(k.flat(), ('Kind', 1, 'Subkind', 'foobar'))
     self.assertEqual(k.root(), p)
 
     k2 = key.Key('Subsubkind', 42, parent=k,
                 app=p.app(), namespace=p.namespace())
-    self.assertEqual(k2.flat(), ['Kind', 1,
+    self.assertEqual(k2.flat(), ('Kind', 1,
                                  'Subkind', 'foobar',
-                                 'Subsubkind', 42])
+                                 'Subsubkind', 42))
     self.assertEqual(k2.root(), p)
 
   def testRepr_Inferior(self):
@@ -181,10 +181,10 @@ class KeyTests(unittest.TestCase):
     self.assertEqual(repr(k), "Key('Kind', 1, namespace='foo')")
 
   def testUnicode(self):
-    flat_input = [u'Kind\u1234', 1, 'Subkind', u'foobar\u4321']
-    flat = [flat_input[0].encode('utf8'), flat_input[1],
-            flat_input[2], flat_input[3].encode('utf8')]
-    pairs = [(flat[i], flat[i+1]) for i in xrange(0, len(flat), 2)]
+    flat_input = (u'Kind\u1234', 1, 'Subkind', u'foobar\u4321')
+    flat = (flat_input[0].encode('utf8'), flat_input[1],
+            flat_input[2], flat_input[3].encode('utf8'))
+    pairs = tuple((flat[i], flat[i+1]) for i in xrange(0, len(flat), 2))
     k = key.Key(flat=flat_input)
     self.assertEqual(k.pairs(), pairs)
     self.assertEqual(k.flat(), flat)
@@ -226,7 +226,7 @@ class KeyTests(unittest.TestCase):
     self.assertRaises(AssertionError, key.Key, flat=['Kind', ()])
 
   def testKindFromModel(self):
-    from ndb import model
+    from . import model
     class M(model.Model):
       pass
     class N(model.Model):
