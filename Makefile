@@ -13,6 +13,8 @@ NONTESTS=`find ndb -name [a-z]\*.py ! -name \*_test.py`
 PORT=	8080
 ADDRESS=localhost
 PYTHON= python -Wignore
+APPCFG= $(GAE)/appcfg.py
+DEV_APPSERVER=$(GAE)/dev_appserver.py
 
 test:
 	for i in $(TESTS); \
@@ -50,7 +52,7 @@ c cov cove cover coverage:
 	for i in $(TESTS); \
 	do \
 	  echo $$i; \
-	  PYTHONPATH=$(GAEPATH):. coverage run -p $$i; \
+	  PYTHONPATH=$(GAEPATH):. coverage run -p -m ndb.`basename $$i .py`; \
 	done
 	coverage combine
 	coverage html $(NONTESTS)
@@ -58,16 +60,19 @@ c cov cove cover coverage:
 	echo "open file://`pwd`/htmlcov/index.html"
 
 serve:
-	$(GAE)/dev_appserver.py . --port $(PORT) --address $(ADDRESS) $(FLAGS)
+	$(DEV_APPSERVER) . --port $(PORT) --address $(ADDRESS) $(FLAGS)
 
 debug:
-	$(GAE)/dev_appserver.py . --port $(PORT) --address $(ADDRESS) --debug $(FLAGS)
+	$(DEV_APPSERVER) . --port $(PORT) --address $(ADDRESS) --debug $(FLAGS)
 
 deploy:
-	$(GAE)/appcfg.py update . $(FLAGS)
+	$(APPCFG) update . $(FLAGS)
 
 bench:
 	PYTHONPATH=$(GAEPATH):. $(PYTHON) bench.py $(FLAGS)
+
+keybench:
+	PYTHONPATH=$(GAEPATH):. $(PYTHON) keybench.py $(FLAGS)
 
 python:
 	PYTHONPATH=$(GAEPATH):. $(PYTHON) -i startup.py $(FLAGS)

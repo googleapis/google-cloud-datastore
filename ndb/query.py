@@ -137,9 +137,9 @@ from google.appengine.datastore import datastore_query
 from google.appengine.datastore import datastore_rpc
 from google.appengine.ext import gql
 
-from ndb import context
-from ndb import model
-from ndb import tasklets
+from . import context
+from . import model
+from . import tasklets
 
 __all__ = ['Binding', 'AND', 'OR', 'parse_gql', 'Query',
            'QueryOptions', 'Cursor']
@@ -658,8 +658,7 @@ class Query(object):
       orders: Optional datastore_query.Order object.
     """
     if ancestor is not None and not isinstance(ancestor, Binding):
-      lastid = ancestor.pairs()[-1][1]
-      assert lastid, 'ancestor cannot be an incomplete key'
+      assert ancestor.id(), 'ancestor cannot be an incomplete key'
     if filters is not None:
       assert isinstance(filters, Node), repr(filters)
     if orders is not None:

@@ -20,3 +20,4 @@ handlers:
 
 builtins:
 - appstats: on
+- remote_api: on

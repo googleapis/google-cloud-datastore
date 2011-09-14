@@ -20,7 +20,7 @@ from google.appengine.api.apiproxy_rpc import RPC
 
 from google.appengine.datastore import datastore_rpc
 
-from ndb import utils
+from . import utils
 
 logging_debug = utils.logging_debug
 
