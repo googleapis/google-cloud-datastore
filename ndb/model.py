@@ -2063,7 +2063,6 @@ class Model(object):
     """
     from . import tasklets
     ctx = tasklets.get_context()
-    self.__class__._maybe_delete_fetch_all_memcache(ctx)
     return ctx.put(self, **ctx_options)
   put_async = _put_async
 
@@ -2159,49 +2158,6 @@ class Model(object):
     key = Key(cls._get_kind(), id, parent=parent)
     return tasklets.get_context().get(key, **ctx_options)
   get_by_id_async = _get_by_id_async
-
-  # Class variable to select limited query caching.
-  # Set this to an integer query limit and .fetch_all() will cache
-  # that many entities.
-  _fetch_all_limit = None
-
-  @classmethod
-  def _get_fetch_all_memcache_key(cls, ctx):
-    return ctx._memcache_prefix + 'QUERY:' + cls._get_kind()
-
-  @classmethod
-  def _maybe_delete_fetch_all_memcache(cls, ctx):
-    if cls._fetch_all_limit:
-      # NOTE: memcache_delete() returns a Future we ignore.
-      from ndb import context  # TODO: Move _LOCK_TIME into Context class.
-      ctx.memcache_delete(cls._get_fetch_all_memcache_key(ctx),
-                          seconds=context._LOCK_TIME)
-
-  # TODO: Make an async version of this.  (Problem: can't import tasklets
-  # at the top level.)
-  # TODO: Add a keys_only=<bool> flag.
-  @classmethod
-  def _fetch_all(cls):
-    limit = cls._fetch_all_limit
-    if not limit:
-      # TODO: What exception to raise, really?
-      raise ValueError('You must set %s._fetch_all_limit to use fetch_all()' %
-                       cls.__name__)
-    from ndb import tasklets
-    ctx = tasklets.get_context()
-    memcache_key = cls._get_fetch_all_memcache_key(ctx)
-    keys = ctx.memcache_get(memcache_key).get_result()
-    if keys is None:
-      # Fetch all entities and cache their keys.
-      entities = cls.query().fetch(limit)
-      keys = [ent.key for ent in entities]
-      ctx.memcache_add(memcache_key, keys).get_result()
-    else:
-      # Fetch the entities given their keys, possibly from a cache.
-      futures = [key.get_async() for key in keys]
-      entities = filter(None, [fut.get_result() for fut in futures])
-    return entities
-  fetch_all = _fetch_all
 
 
 class Expando(Model):

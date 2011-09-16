@@ -2395,30 +2395,6 @@ class ModelTests(test_utils.DatastoreTest):
       '\\x95b\\xce\\xcaO\\x05\\x00"\\x87\\x03\\xeb\'), '
       't=_CompressedValue(\'x\\x9c+)\\xa1=\\x00\\x00\\xf1$-Q\'))')
 
-  def testFetchAll(self):
-    class Foo(model.Model):
-      num = model.IntegerProperty()
-    all = []
-    for i in range(10):
-      x = Foo(num=i)
-      x.put()
-      all.append(x)
-    self.assertRaises(ValueError, Foo.fetch_all)
-    Foo._fetch_all_limit = 100
-    # TODO: Check that the first call hits only the datastore.
-    self.assertEqual(Foo.fetch_all(), all)
-    # TODO: Check that the second call doesn't hit the datastore at all.
-    self.assertEqual(Foo.fetch_all(), all)
-    y = x.key.get()
-    assert y is not x
-    x.key.delete()
-    self.assertFalse(x in Foo.fetch_all())
-    self.assertFalse(x in Foo.fetch_all())
-    y.num = 42
-    y.put()
-    self.assertTrue(y in Foo.fetch_all())
-    self.assertFalse(x in Foo.fetch_all())
-
 
 class CacheTests(test_utils.DatastoreTest):
 
