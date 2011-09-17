@@ -47,6 +47,22 @@ class EventLoopTests(test_utils.DatastoreTest):
     ev.queue = []
     ev.rpcs = {}
 
+  def testFifoOrderForEventsWithDelayNone(self):
+    order = []
+    def foo(arg): order.append(arg)
+
+    eventloop.queue_call(None, foo, 2)
+    eventloop.queue_call(None, foo, 1)
+
+    self.assertEqual(len(self.ev.queue), 2)
+    [(t1, f1, a1, k1), (t2, f2, a2, k2)] = self.ev.queue
+    self.assertEqual(a1, (2,))  # first event should has arg = 2
+    self.assertEqual(a2, (1,))  # second event should  has arg = 1
+
+    eventloop.run()
+    # test that events are executed in FIFO order, not sort order
+    self.assertEqual(order, [2, 1])
+
   def testRun(self):
     record = []
     def foo(arg):

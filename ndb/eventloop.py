@@ -10,7 +10,6 @@ enforcement of this requirement.
 The API here is inspired by Monocle.
 """
 
-import bisect
 import logging
 import os
 import threading
@@ -39,6 +38,26 @@ class EventLoop(object):
     self.queue = []
     self.rpcs = {}
 
+  def insort_event_right(self, event, lo=0, hi=None):
+    """Insert event in queue, and keep it sorted assuming queue is sorted.
+
+    If event is already in queue, insert it to the right of the rightmost
+    event (to keep FIFO order).
+
+    Optional args lo (default 0) and hi (default len(a)) bound the
+    slice of a to be searched.
+    """
+
+    if lo < 0:
+        raise ValueError('lo must be non-negative')
+    if hi is None:
+        hi = len(self.queue)
+    while lo < hi:
+        mid = (lo + hi) // 2
+        if event[0] < self.queue[mid][0]: hi = mid
+        else: lo = mid + 1
+    self.queue.insert(lo, event)
+
   # TODO: Rename to queue_callback?
   def queue_call(self, delay, callable, *args, **kwds):
     """Schedule a function call at a specific time in the future."""
@@ -49,7 +68,7 @@ class EventLoop(object):
     else:
       # Times over a billion seconds are assumed to be absolute.
       when = delay
-    bisect.insort(self.queue, (when, callable, args, kwds))
+    self.insort_event_right((when, callable, args, kwds))
 
   def queue_rpc(self, rpc, callable=None, *args, **kwds):
     """Schedule an RPC with an optional callback.
