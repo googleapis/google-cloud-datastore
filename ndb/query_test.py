@@ -694,7 +694,7 @@ class QueryTests(test_utils.DatastoreTest):
     self.assertEqual(qry.orders, None)
     self.assertEqual(bindings, {})
 
-  def testGqlAncestor(self):
+  def testGqlAncestorWithBinding(self):
     qry, options, bindings = query.parse_gql(
       'SELECT * FROM Kind WHERE ANCESTOR IS :1')
     self.assertEqual(qry.kind, 'Kind')

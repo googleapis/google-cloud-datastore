@@ -2353,10 +2353,9 @@ def delete_multi(keys, **ctx_options):
     keys: A sequence of keys.
     **ctx_options: Context options.
 
-  Args:
-    keys: A sequence of keys.
+  Returns:
+    A list whose items are all None, one per deleted key.
   """
-  # A list full of Nones!!!
   return [future.get_result()
           for future in delete_multi_async(keys, **ctx_options)]
 
