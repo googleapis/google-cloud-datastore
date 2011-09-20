@@ -283,7 +283,8 @@ from . import key as key_module
 Key = key_module.Key  # For export.
 
 # NOTE: Property and Error classes are added later.
-__all__ = ['Key', 'ModelAdapter', 'ModelKey', 'MetaModel', 'Model', 'Expando',
+__all__ = ['Key', 'ModelAdapter', 'ModelAttribute',
+           'ModelKey', 'MetaModel', 'Model', 'Expando',
            'BlobKey', 'GeoPt', 'Rollback',
            'transaction', 'transaction_async',
            'in_transaction', 'transactional',
@@ -2018,15 +2019,15 @@ class Model(object):
     if cls.__module__ == __name__:  # Skip the classes in *this* file.
       return
     for name in set(dir(cls)):
-      prop = getattr(cls, name, None)
-      if isinstance(prop, ModelAttribute):
+      attr = getattr(cls, name, None)
+      if isinstance(attr, ModelAttribute):
         assert not name.startswith('_')
-        prop._fix_up(cls, name)
-        if isinstance(prop, Property):
-          if prop._repeated:
+        attr._fix_up(cls, name)
+        if isinstance(attr, Property):
+          if attr._repeated:
             cls._has_repeated = True
-          if not isinstance(prop, ModelKey):
-            cls._properties[prop._name] = prop
+          if not isinstance(attr, ModelKey):
+            cls._properties[attr._name] = attr
     cls._kind_map[cls._get_kind()] = cls
 
   # Datastore API using the default context.
