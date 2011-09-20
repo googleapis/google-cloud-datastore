@@ -47,6 +47,9 @@ context_test:
 thread_test:
 	PYTHONPATH=$(GAEPATH):. $(PYTHON) -m ndb.thread_test $(FLAGS)
 
+runtests:
+	PYTHONPATH=$(GAEPATH):. $(PYTHON) runtests.py $(FLAGS)
+
 c cov cove cover coverage:
 	coverage erase
 	for i in $(TESTS); \
