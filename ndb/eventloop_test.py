@@ -4,9 +4,10 @@ import os
 import time
 import unittest
 
+from google.appengine.api import apiproxy_stub_map
 from google.appengine.datastore import datastore_rpc
 
-from ndb import eventloop, test_utils
+from . import eventloop, test_utils
 
 class EventLoopTests(test_utils.DatastoreTest):
 
@@ -62,10 +63,12 @@ class EventLoopTests(test_utils.DatastoreTest):
     eventloop.queue_call(0.1, foo, 42)
     config = datastore_rpc.Configuration(on_completion=foo)
     rpc = self.conn.async_get(config, [])
-    self.assertEqual(len(rpc.rpcs), 1)
+    if not isinstance(rpc, apiproxy_stub_map.UserRPC):
+      self.assertEqual(len(rpc.rpcs), 1)
+      rpc = rpc.rpcs[0]
     eventloop.queue_rpc(rpc)
     eventloop.run()
-    self.assertEqual(record, [rpc.rpcs[0], 42])
+    self.assertEqual(record, [rpc, 42])
     self.assertEqual(rpc.state, 2)  # TODO: Use apiproxy_rpc.RPC.FINISHING.
 
 def main():

@@ -534,7 +534,8 @@ class Client(object):
         for details of format.
       namespace: a string specifying an optional namespace to use in
         the request.
-      for_cas: If True, request and store CAS ids on the client.
+      for_cas: If True, request and store CAS ids on the client (see
+        cas() operation below).
 
     Returns:
       The value of the key, if found in memcache, else None.
@@ -780,11 +781,29 @@ class Client(object):
     return self._set_with_policy(MemcacheSetRequest.REPLACE,
                                  key, value, time=time, namespace=namespace)
 
-  def cas(self, key, value, time=0, namespace=None):
+  def cas(self, key, value, time=0, min_compress_len=0, namespace=None):
     """Compare-And-Set update.
 
     This requires that the key has previously been successfully
-    fetched with gets() or get(..., for_cas=True).
+    fetched with gets() or get(..., for_cas=True), and that no changes
+    have been made to the key since that fetch.  Typical usage is:
+
+      key = ...
+      client = memcache.Client()
+      value = client.gets(key)  # OR client.get(key, for_cas=True)
+      <updated value>
+      ok = client.cas(key, value)
+
+    If two processes run similar code, the first one calling cas()
+    will succeed (ok == True), while the second one will fail (ok ==
+    False).  This can be used to detect race conditions.
+
+    NOTE: some state (the CAS id) is stored on the Client object for
+    each key ever used with gets().  To prevent ever-increasing memory
+    usage, you must use a Client object when using cas(), and the
+    lifetime of your Client object should be limited to that of one
+    incoming HTTP request.  You cannot use the global-function-based
+    API.
 
     Args:
       key: Key to set.  See docs on Client for details.
@@ -799,7 +818,7 @@ class Client(object):
         the request.
 
     Returns:
-      True if updated.  False on RPC error or if the cas_id didn't match.
+      True if updated.  False on RPC error or if the CAS id didn't match.
     """
     return self._set_with_policy(MemcacheSetRequest.CAS, key, value,
                                  time, namespace)
@@ -1047,32 +1066,34 @@ class Client(object):
                                              time=time, key_prefix=key_prefix,
                                              namespace=namespace, rpc=rpc)
 
-  def cas_multi(self, mapping, time=0, key_prefix='', namespace=None):
-    """Compare_and_set update for multiple keys.
+  def cas_multi(self, mapping, time=0, key_prefix='', min_compress_len=0,
+                namespace=None):
+    """Compare-And-Set update for multiple keys.
+
+    See cas() docstring for an explanation.
 
     Args:
-      mapping: Dictionary of keys to (old_value, new_value) tuples,
-        where old_value itself is a (value, cas_id) tuple as returned
-        by get(..., for_cas=True).
+      mapping: Dictionary of keys to values.
       time: Optional expiration time, either relative number of seconds
         from current time (up to 1 month), or an absolute Unix epoch time.
         By default, items never expire, though items may be evicted due to
         memory pressure.  Float values will be rounded up to the nearest
         whole second.
       key_prefix: Prefix for to prepend to all keys.
+      min_compress_len: Unimplemented compatibility option.
       namespace: a string specifying an optional namespace to use in
         the request.
 
     Returns:
-      A list of keys whose values were NOT set because they already existed
-      in memcache.  On total success, this list should be empty.
+      A list of keys whose values were NOT set because the compare
+      failed.  On total success, this list should be empty.
     """
     return self._set_multi_with_policy(MemcacheSetRequest.CAS, mapping,
                                        time=time, key_prefix=key_prefix,
                                        namespace=namespace)
 
   def cas_multi_async(self, mapping, time=0,  key_prefix='',
-                      namespace=None, rpc=None):
+                      min_compress_len=0, namespace=None, rpc=None):
     """Async version of cas_multi() -- note different return value.
 
     Returns:

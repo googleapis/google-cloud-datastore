@@ -276,11 +276,11 @@ from google.appengine.datastore import datastore_query
 from google.appengine.datastore import datastore_rpc
 from google.appengine.datastore import entity_pb
 
-from ndb import utils
+from . import utils
 
-# NOTE: Don't use "from ndb import key"; key is a common local variable name.
-import ndb.key
-Key = ndb.key.Key  # For export.
+# NOTE: 'key' is a common local variable name.
+from . import key as key_module
+Key = key_module.Key  # For export.
 
 # NOTE: Property and Error classes are added later.
 __all__ = ['Key', 'ModelAdapter', 'ModelKey', 'MetaModel', 'Model', 'Expando',
@@ -476,7 +476,7 @@ class Property(object):
     Returns:
       A FilterNode instance representing the requested comparison.
     """
-    from ndb.query import FilterNode  # Import late to avoid circular imports.
+    from .query import FilterNode  # Import late to avoid circular imports.
     if value is not None:
       # TODO: Allow query.Binding instances?
       value = self._validate(value)
@@ -523,10 +523,10 @@ class Property(object):
     as .IN(); ._IN() is provided for the case you have a
     StructuredProperty with a model that has a Property named IN.
     """
-    from ndb.query import FilterNode  # Import late to avoid circular imports.
-    if not isinstance(value, (list, tuple)):
-      raise datastore_errors.BadArgumentError('Expected list or tuple, got %r' %
-                                              (value,))
+    from .query import FilterNode  # Import late to avoid circular imports.
+    if not isinstance(value, (list, tuple, set, frozenset)):
+      raise datastore_errors.BadArgumentError(
+        'Expected list, tuple or set, got %r' % (value,))
     values = []
     for val in value:
       if val is not None:
@@ -638,7 +638,7 @@ class Property(object):
         value = self._do_validate(value)
     self._store_value(entity, value)
 
-  def _has_value(self, entity):
+  def _has_value(self, entity, rest=None):
     """Internal helper to ask if the entity has a value for this Property."""
     return self._name in entity._values
 
@@ -1151,7 +1151,7 @@ class KeyProperty(Property):
   def _db_set_value(self, v, p, value):
     assert isinstance(value, Key)
     # See datastore_types.PackKey
-    ref = value._reference()  # Don't copy
+    ref = value.reference()
     rv = v.mutable_referencevalue()  # A Reference
     rv.set_app(ref.app())
     if ref.has_name_space():
@@ -1375,8 +1375,8 @@ class StructuredProperty(Property):
       raise datastore_errors.BadFilterError(
         'StructuredProperty filter can only use ==')
     # Import late to avoid circular imports.
-    from ndb.query import FilterNode, ConjunctionNode, PostFilterNode
-    from ndb.query import RepeatedStructuredPropertyPredicate
+    from .query import FilterNode, ConjunctionNode, PostFilterNode
+    from .query import RepeatedStructuredPropertyPredicate
     value = self._validate(value)  # None is not allowed!
     filters = []
     match_keys = []
@@ -1404,6 +1404,26 @@ class StructuredProperty(Property):
       raise datastore_errors.BadValueError('Expected %s instance, got %r' %
                                            (self._modelclass.__name__, value))
     return value
+
+  def _has_value(self, entity, rest=None):
+    # rest: optional list of attribute names to check in addition.
+    # Basically, prop._has_value(self, ent, ['x', 'y']) is similar to
+    #   (prop._has_value(ent) and
+    #    prop.x._has_value(ent.x) and
+    #    prop.x.y._has_value(ent.x.y))
+    # assuming prop.x and prop.x.y exist.
+    # NOTE: This is not particularly efficient if len(rest) > 1,
+    # but that seems a rare case, so for now I don't care.
+    ok = super(StructuredProperty, self)._has_value(entity)
+    if ok and rest:
+      subent = self._get_value(entity)
+      assert subent is not None
+      subprop = subent._properties.get(rest[0])
+      if subprop is None:
+        ok = False
+      else:
+        ok = subprop._has_value(subent, rest[1:])
+    return ok
 
   def _serialize(self, entity, pb, prefix='', parent_repeated=False):
     # entity -> pb; pb is an EntityProto message
@@ -1442,6 +1462,7 @@ class StructuredProperty(Property):
     parts = name.split('.')
     assert len(parts) > depth, (depth, name, parts)
     next = parts[depth]
+    rest = parts[depth+1:]
     prop = self._modelclass._properties.get(next)
     assert prop is not None  # QED
 
@@ -1455,7 +1476,7 @@ class StructuredProperty(Property):
     # property yet.
     for sub in values:
       assert isinstance(sub, self._modelclass)
-      if not prop._has_value(sub):
+      if not prop._has_value(sub, rest):
         subentity = sub
         break
     else:
@@ -1580,7 +1601,7 @@ class GenericProperty(Property):
       v.set_doublevalue(value)
     elif isinstance(value, Key):
       # See datastore_types.PackKey
-      ref = value._reference()  # Don't copy
+      ref = value.reference()
       rv = v.mutable_referencevalue()  # A Reference
       rv.set_app(ref.app())
       if ref.has_name_space():
@@ -1647,7 +1668,7 @@ class ComputedProperty(GenericProperty):
     assert self._default is None, 'ComputedProperty cannot have a default'
     self._func = func
 
-  def _has_value(self, entity):
+  def _has_value(self, entity, rest=None):
     return True
 
   def _store_value(self, entity, value):
@@ -1898,9 +1919,9 @@ class Model(object):
       key = self._key
       if key is None:
         pairs = [(self._get_kind(), None)]
-        ref = ndb.key._ReferenceFromPairs(pairs, reference=pb.mutable_key())
+        ref = key_module._ReferenceFromPairs(pairs, reference=pb.mutable_key())
       else:
-        ref = key._reference()  # Don't copy
+        ref = key.reference()
         pb.mutable_key().CopyFrom(ref)
       group = pb.mutable_entity_group()  # Must initialize this.
       # To work around an SDK issue, only set the entity group if the
@@ -2016,7 +2037,7 @@ class Model(object):
     Returns:
       A Query object.
     """
-    from ndb.query import Query  # Import late to avoid circular imports.
+    from .query import Query  # Import late to avoid circular imports.
     qry = Query(kind=cls._get_kind(), **kwds)
     if args:
       qry = qry.filter(*args)
@@ -2040,7 +2061,7 @@ class Model(object):
 
     This is the asynchronous version of Model._put().
     """
-    from ndb import tasklets
+    from . import tasklets
     return tasklets.get_context().put(self, **ctx_options)
   put_async = _put_async
 
@@ -2073,7 +2094,7 @@ class Model(object):
 
     This is the asynchronous version of Model._get_or_insert().
     """
-    from ndb import tasklets
+    from . import tasklets
     ctx = tasklets.get_context()
     return ctx.get_or_insert(cls, name=name, parent=parent,
                              context_options=context_options, **kwds)
@@ -2105,7 +2126,7 @@ class Model(object):
 
     This is the asynchronous version of Model._allocate_ids().
     """
-    from ndb import tasklets
+    from . import tasklets
     key = Key(cls._get_kind(), None, parent=parent)
     return tasklets.get_context().allocate_ids(key, size=size, max=max,
                                                **ctx_options)
@@ -2132,7 +2153,7 @@ class Model(object):
 
     This is the asynchronous version of Model._get_by_id().
     """
-    from ndb import tasklets
+    from . import tasklets
     key = Key(cls._get_kind(), id, parent=parent)
     return tasklets.get_context().get(key, **ctx_options)
   get_by_id_async = _get_by_id_async
@@ -2223,7 +2244,7 @@ def transaction_async(callback, retry=None, entity_group=None, **kwds):
 
   This is the asynchronous version of transaction().
   """
-  from ndb import tasklets
+  from . import tasklets
   if retry is not None:
     kwds['retry'] = retry
   if entity_group is not None:
@@ -2233,7 +2254,7 @@ def transaction_async(callback, retry=None, entity_group=None, **kwds):
 
 def in_transaction():
   """Return whether a transaction is currently active."""
-  from ndb import tasklets
+  from . import tasklets
   return tasklets.get_context().in_transaction()
 
 
