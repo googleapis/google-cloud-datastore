@@ -70,7 +70,7 @@ from google.appengine.api.apiproxy_stub_map import UserRPC
 from google.appengine.api.apiproxy_rpc import RPC
 
 from google.appengine.datastore import datastore_rpc
-from ndb import eventloop, utils
+from . import eventloop, utils
 
 logging_debug = utils.logging_debug
 
@@ -263,6 +263,7 @@ class Future(object):
     self.check_success()
     return self._result
 
+  # TODO: Have a tasklet that does this
   @classmethod
   def wait_any(cls, futures):
     # TODO: Flatten MultiRpcs.
@@ -275,6 +276,7 @@ class Future(object):
       ev.run1()
     return None
 
+  # TODO: Have a tasklet that does this
   @classmethod
   def wait_all(cls, futures):
     # TODO: Flatten MultiRpcs.
@@ -467,7 +469,7 @@ class MultiFuture(Future):
     self.add_dependent(fut)
 
   def add_dependent(self, fut):
-    assert isinstance(fut, Future)
+    assert isinstance(fut, Future), repr(fut)
     assert not self._full
     self._results.append(fut)
     if fut not in self._dependents:

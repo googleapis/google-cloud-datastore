@@ -14,7 +14,7 @@ from google.appengine.api import namespace_manager
 from google.appengine.api import users
 from google.appengine.datastore import entity_pb
 
-from ndb import model, query, tasklets, test_utils, eventloop
+from . import model, query, tasklets, test_utils, eventloop
 
 TESTUSER = users.User('test@example.com', 'example.com', '123')
 AMSTERDAM = model.GeoPt(52.35, 4.9166667)
@@ -403,6 +403,7 @@ property <
   multiple: false
 >
 """
+
 
 class ModelTests(test_utils.DatastoreTest):
 
@@ -843,6 +844,28 @@ class ModelTests(test_utils.DatastoreTest):
     self.assertEqual(p.address.work.street, '345 Spear')
     self.assertEqual(p.address.work.city, 'San Francisco')
 
+  def testRepeatedNestedStructuredProperty(self):
+    class Person(model.Model):
+      first_name = model.StringProperty()
+      last_name = model.StringProperty()
+    class PersonPhone(model.Model):
+      person = model.StructuredProperty(Person)
+      phone = model.StringProperty()
+    class Phonebook(model.Model):
+      numbers = model.StructuredProperty(PersonPhone, repeated=True)
+
+    book = Phonebook.get_or_insert('test')
+    person = Person(first_name="John", last_name='Smith')
+    phone = PersonPhone(person=person, phone='1-212-555-1212')
+    book.numbers.append(phone)
+    pb = book._to_pb()
+
+    ent = Phonebook._from_pb(pb)
+    self.assertEqual(ent.numbers[0].person.first_name, 'John')
+    self.assertEqual(len(ent.numbers), 1)
+    self.assertEqual(ent.numbers[0].person.last_name, 'Smith')
+    self.assertEqual(ent.numbers[0].phone, '1-212-555-1212')
+
   def testRecursiveStructuredProperty(self):
     class Node(model.Model):
       name = model.StringProperty(indexed=False)
@@ -1199,14 +1222,42 @@ class ModelTests(test_utils.DatastoreTest):
   def testPropertyRepr(self):
     p = model.Property()
     self.assertEqual(repr(p), 'Property()')
+
     p = model.IntegerProperty('foo', indexed=False, repeated=True)
     self.assertEqual(repr(p),
                      "IntegerProperty('foo', indexed=False, repeated=True)")
+
     class Address(model.Model):
       street = model.StringProperty()
       city = model.StringProperty()
     p = model.StructuredProperty(Address, 'foo')
     self.assertEqual(repr(p), "StructuredProperty(Address, 'foo')")
+    q = model.LocalStructuredProperty(Address, 'bar')
+    self.assertEqual(repr(q), "LocalStructuredProperty(Address, 'bar')")
+
+    class MyModel(model.Model):
+      boolp = model.BooleanProperty()
+      intp = model.IntegerProperty()
+      floatp = model.FloatProperty()
+      strp = model.StringProperty()
+      txtp = model.TextProperty()
+      blobp = model.BlobProperty()
+      geoptp = model.GeoPtProperty()
+      userp = model.UserProperty()
+      keyp = model.KeyProperty()
+      blobkeyp = model.BlobKeyProperty()
+      datetimep = model.DateTimeProperty()
+      datep = model.DateProperty()
+      timep = model.TimeProperty()
+      structp = model.StructuredProperty(Address)
+      localstructp = model.LocalStructuredProperty(Address)
+      genp = model.GenericProperty()
+      compp = model.ComputedProperty(lambda e: 'x')
+    self.assertEqual(repr(MyModel.key), "ModelKey('__key__')")
+    for name, prop in MyModel._properties.iteritems():
+      s = repr(prop)
+      self.assertTrue(s.startswith(prop.__class__.__name__ + '('), s)
+
 
   def testValidation(self):
     class All(model.Model):
@@ -1870,7 +1921,9 @@ class ModelTests(test_utils.DatastoreTest):
     ent = MyModel(key=key, name='yo')
     ent.put()
     key.get(use_cache=False)  # Write to memcache.
-    eventloop.run0()  # Wait for async memcache request to complete.
+    eventloop.run1()  # Wait for async memcache request to complete.
+    eventloop.run1()  # Yes, we need to process three events!
+    eventloop.run1()
     # Verify that it is in both caches.
     self.assertTrue(ctx._cache[key] is ent)
     self.assertEqual(memcache.get(ctx._memcache_prefix + key.urlsafe()),
@@ -1974,12 +2027,15 @@ class ModelTests(test_utils.DatastoreTest):
       model.get_multi([x1, x3], use_cache=False, memcache_timeout=7)
       model.get_multi([x4], use_cache=False)
       model.get_multi([x2, x5], use_cache=False, memcache_timeout=5)
+      eventloop.run1()  # Wait for async memcache request to complete.
+      eventloop.run1()  # Yes, we need to process two events!
+      # (And there are straggler events too, but they don't matter here.)
     finally:
       ctx._memcache.add_multi_async = save_memcache_add_multi_async
       ctx._conn.async_put = save_conn_async_put
     self.assertEqual([e1.key, e2.key, e3.key, e4.key, e5.key],
                      [x1, x2, x3, x4, x5])
-    self.assertEqual(len(memcache_args_log), 3)
+    self.assertEqual(len(memcache_args_log), 3, memcache_args_log)
     timeouts = set(kwds['time'] for args, kwds in memcache_args_log)
     self.assertEqual(timeouts, set([0, 5, 7]))
     self.assertEqual(len(conn_args_log), 3)
@@ -2339,7 +2395,9 @@ class ModelTests(test_utils.DatastoreTest):
       '\\x95b\\xce\\xcaO\\x05\\x00"\\x87\\x03\\xeb\'), '
       't=_CompressedValue(\'x\\x9c+)\\xa1=\\x00\\x00\\xf1$-Q\'))')
 
+
 class CacheTests(test_utils.DatastoreTest):
+
   def SetupContextCache(self):
     """Set up the context cache.
 
@@ -2347,7 +2405,6 @@ class CacheTests(test_utils.DatastoreTest):
     is to disable it to avoid misleading test results. Override this when
     needed.
     """
-    from ndb import tasklets
     ctx = tasklets.get_context()
     ctx.set_cache_policy(lambda key: True)
     ctx.set_memcache_policy(lambda key: True)

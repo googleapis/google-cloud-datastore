@@ -20,7 +20,7 @@ from google.appengine.api.apiproxy_rpc import RPC
 
 from google.appengine.datastore import datastore_rpc
 
-from ndb import utils
+from . import utils
 
 logging_debug = utils.logging_debug
 
@@ -100,7 +100,7 @@ class EventLoop(object):
     if self.rpcs:
       rpc = datastore_rpc.MultiRpc.wait_any(self.rpcs)
       if rpc is not None:
-        logging.info('rpc: %s', rpc.method)  # XXX Should be debug
+        logging.info('rpc: %s.%s', rpc.service, rpc.method)  # XXX debug
         # Yes, wait_any() may return None even for a non-empty argument.
         # But no, it won't ever return an RPC not in its argument.
         assert rpc in self.rpcs, (rpc, self.rpcs)

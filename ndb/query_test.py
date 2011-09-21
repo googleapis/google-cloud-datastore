@@ -13,11 +13,11 @@ from google.appengine.api.memcache import memcache_stub
 from google.appengine.datastore import datastore_rpc
 from google.appengine.datastore import datastore_query
 
-from ndb import context
-from ndb import model
-from ndb import query
-from ndb import tasklets
-from ndb import test_utils
+from . import context
+from . import model
+from . import query
+from . import tasklets
+from . import test_utils
 
 
 class QueryTests(test_utils.DatastoreTest):
@@ -154,11 +154,12 @@ class QueryTests(test_utils.DatastoreTest):
   def testEmptyInFilter(self):
     class Employee(model.Model):
       name = model.StringProperty()
-    q = Employee.query(Employee.name.IN([]))
-    self.assertEqual(q.filters, query.FalseNode())
-    self.assertNotEqual(q.filters, 42)
-    f = iter(q).has_next_async()
-    self.assertRaises(datastore_errors.BadQueryError, f.check_success)
+    for arg in [], (), set(), frozenset():
+      q = Employee.query(Employee.name.IN(arg))
+      self.assertEqual(q.filters, query.FalseNode())
+      self.assertNotEqual(q.filters, 42)
+      f = iter(q).has_next_async()
+      self.assertRaises(datastore_errors.BadQueryError, f.check_success)
 
   def testSingletonInFilter(self):
     class Employee(model.Model):
@@ -183,6 +184,17 @@ class QueryTests(test_utils.DatastoreTest):
     b = Employee(name='b')
     b.put()
     self.assertEqual(list(q), [a, b])
+
+  def testInFilterArgTypes(self):
+    class Employee(model.Model):
+      name = model.StringProperty()
+    a = Employee(name='a')
+    a.put()
+    b = Employee(name='b')
+    b.put()
+    for arg in ('a', 'b'), set(['a', 'b']), frozenset(['a', 'b']):
+      q = Employee.query(Employee.name.IN(arg))
+      self.assertEqual(list(q), [a, b])
 
   def testQueryExceptions(self):
     q = Foo.query(Foo.name > '', Foo.rate > 0)

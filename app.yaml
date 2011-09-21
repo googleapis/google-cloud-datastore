@@ -6,6 +6,9 @@ api_version: 1
 
 handlers:
 
+- url: /intest.*
+  script: demo/intest.py
+
 - url: /hello.*
   script: demo/hello.py
 
@@ -17,3 +20,4 @@ handlers:
 
 builtins:
 - appstats: on
+- remote_api: on
