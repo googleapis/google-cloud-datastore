@@ -2393,7 +2393,7 @@ class ModelTests(test_utils.DatastoreTest):
       't=_CompressedValue(\'x\\x9c+)\\xa1=\\x00\\x00\\xf1$-Q\'))')
 
   def testCorruption(self):
-    # Thanks to Ricardo Bánffy
+    # Thanks to Ricardo Banffy
     class Evil(model.Model):
       x = model.IntegerProperty()
       def __init__(self, *a, **k):
