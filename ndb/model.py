@@ -283,7 +283,8 @@ from . import key as key_module
 Key = key_module.Key  # For export.
 
 # NOTE: Property and Error classes are added later.
-__all__ = ['Key', 'ModelAdapter', 'ModelKey', 'MetaModel', 'Model', 'Expando',
+__all__ = ['Key', 'ModelAdapter', 'ModelAttribute',
+           'ModelKey', 'MetaModel', 'Model', 'Expando',
            'BlobKey', 'GeoPt', 'Rollback',
            'transaction', 'transaction_async',
            'in_transaction', 'transactional',
@@ -375,7 +376,14 @@ def make_connection(config=None, default_model=None):
       config=config)
 
 
-class Property(object):
+class ModelAttribute(object):
+  """A Base class signifying the presence of a _fix_up() method."""
+
+  def _fix_up(self, cls, code_name):
+    pass
+
+
+class Property(ModelAttribute):
   """A class describing a typed, persisted attribute of a datastore entity.
 
   Not to be confused with Python's 'property' built-in.
@@ -594,7 +602,7 @@ class Property(object):
           (value, self._name))
     return value
 
-  def _fix_up(self, code_name):
+  def _fix_up(self, cls, code_name):
     """Internal helper called to tell the property its name.
 
     This is called by _fix_up_properties() which is called by
@@ -1352,8 +1360,8 @@ class StructuredProperty(Property):
       assert not modelclass._has_repeated
     self._modelclass = modelclass
 
-  def _fix_up(self, code_name):
-    super(StructuredProperty, self)._fix_up(code_name)
+  def _fix_up(self, cls, code_name):
+    super(StructuredProperty, self)._fix_up(cls, code_name)
     self._fix_up_nested_properties()
 
   def _fix_up_nested_properties(self):
@@ -2011,16 +2019,15 @@ class Model(object):
     if cls.__module__ == __name__:  # Skip the classes in *this* file.
       return
     for name in set(dir(cls)):
-      prop = getattr(cls, name, None)
-      if isinstance(prop, ModelKey):
-        continue
-      if isinstance(prop, Property):
+      attr = getattr(cls, name, None)
+      if isinstance(attr, ModelAttribute):
         assert not name.startswith('_')
-        # TODO: Tell prop the class, for error message.
-        prop._fix_up(name)
-        if prop._repeated:
-          cls._has_repeated = True
-        cls._properties[prop._name] = prop
+        attr._fix_up(cls, name)
+        if isinstance(attr, Property):
+          if attr._repeated:
+            cls._has_repeated = True
+          if not isinstance(attr, ModelKey):
+            cls._properties[attr._name] = attr
     cls._kind_map[cls._get_kind()] = cls
 
   # Datastore API using the default context.
@@ -2062,7 +2069,8 @@ class Model(object):
     This is the asynchronous version of Model._put().
     """
     from . import tasklets
-    return tasklets.get_context().put(self, **ctx_options)
+    ctx = tasklets.get_context()
+    return ctx.put(self, **ctx_options)
   put_async = _put_async
 
   @classmethod
@@ -2352,10 +2360,9 @@ def delete_multi(keys, **ctx_options):
     keys: A sequence of keys.
     **ctx_options: Context options.
 
-  Args:
-    keys: A sequence of keys.
+  Returns:
+    A list whose items are all None, one per deleted key.
   """
-  # A list full of Nones!!!
   return [future.get_result()
           for future in delete_multi_async(keys, **ctx_options)]
 

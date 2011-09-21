@@ -112,6 +112,7 @@ class DatastoreTest(unittest.TestCase):
     is to disable it to avoid misleading test results. Override this when
     needed.
     """
-    ctx = tasklets.get_context()
+    ctx = tasklets.make_default_context()
+    tasklets.set_context(ctx)
     ctx.set_cache_policy(False)
     ctx.set_memcache_policy(False)

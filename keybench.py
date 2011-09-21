@@ -43,7 +43,7 @@ def bench3(n):
 
 def bench(n):
   """Toplevel benchmark function."""
-  return bench1(n)
+  return bench3(n)
 
 
 def main():

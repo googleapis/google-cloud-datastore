@@ -854,12 +854,10 @@ class Context(object):
         keys.add(key)
     all_results = {}
     if keys:
-      logging.info('XXX: get: %s', keys)
       results = yield self._memcache.get_multi_async(keys)
       if results:
         all_results.update(results)
     if cas_keys:
-      logging.info('XXX: gets: %s', keys)
       results = yield self._memcache.get_multi_async(cas_keys, for_cas=True)
       if results:
         all_results.update(results)
@@ -880,7 +878,6 @@ class Context(object):
     for (opname, time), mapping in mappings.iteritems():
       methodname = opname + '_multi_async'
       method = getattr(self._memcache, methodname)
-      logging.info('XXX: %s: %s, %s', opname, mapping, time)
       results = yield method(mapping, time=time)
       if results:
         all_results.update(results)
@@ -902,7 +899,6 @@ class Context(object):
     rpcs_etc = []
     for seconds, keys in by_seconds.iteritems():
       keys = list(keys)
-      logging.info('XXX: delete: %s, %s', keys, seconds)
       rpc = self._memcache.delete_multi_async(keys, seconds)
       rpcs_etc.append((rpc, keys))
     # Wait for all the RPCs.
@@ -932,7 +928,6 @@ class Context(object):
     # TODO: do the RPCs concurrently
     all_results = {}
     for initial_value, mapping in mappings.iteritems():
-      logging.info('XXX: offset: %s', mapping)
       fut = self._memcache.offset_multi_async(mapping,
                                               initial_value=initial_value)
       results = yield fut

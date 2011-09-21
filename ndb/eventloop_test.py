@@ -18,9 +18,9 @@ class EventLoopTests(test_utils.DatastoreTest):
     self.ev = eventloop.get_event_loop()
 
   def testQueueTasklet(self):
-    def f(): return 1
-    def g(): return 2
-    def h(): return 3
+    def f(number, string, a, b): return 1
+    def g(number, string): return 2
+    def h(c, d): return 3
     t_before = time.time()
     eventloop.queue_call(1, f, 42, 'hello', a=1, b=2)
     eventloop.queue_call(3, h, c=3, d=4)
@@ -30,9 +30,9 @@ class EventLoopTests(test_utils.DatastoreTest):
     [(t1, f1, a1, k1), (t2, f2, a2, k2), (t3, f3, a3, k3)] = self.ev.queue
     self.assertTrue(t1 < t2)
     self.assertTrue(t2 < t3)
-    self.assertTrue(abs(t1 - (t_before + 1)) < t_after - t_before)
-    self.assertTrue(abs(t2 - (t_before + 2)) < t_after - t_before)
-    self.assertTrue(abs(t3 - (t_before + 3)) < t_after - t_before)
+    self.assertTrue(abs(t1 - (t_before + 1)) <= t_after - t_before)
+    self.assertTrue(abs(t2 - (t_before + 2)) <= t_after - t_before)
+    self.assertTrue(abs(t3 - (t_before + 3)) <= t_after - t_before)
     self.assertEqual(f1, f)
     self.assertEqual(f2, g)
     self.assertEqual(f3, h)
@@ -46,6 +46,22 @@ class EventLoopTests(test_utils.DatastoreTest):
     ev = eventloop.get_event_loop()
     ev.queue = []
     ev.rpcs = {}
+
+  def testFifoOrderForEventsWithDelayNone(self):
+    order = []
+    def foo(arg): order.append(arg)
+
+    eventloop.queue_call(None, foo, 2)
+    eventloop.queue_call(None, foo, 1)
+
+    self.assertEqual(len(self.ev.queue), 2)
+    [(t1, f1, a1, k1), (t2, f2, a2, k2)] = self.ev.queue
+    self.assertEqual(a1, (2,))  # first event should has arg = 2
+    self.assertEqual(a2, (1,))  # second event should  has arg = 1
+
+    eventloop.run()
+    # test that events are executed in FIFO order, not sort order
+    self.assertEqual(order, [2, 1])
 
   def testRun(self):
     record = []

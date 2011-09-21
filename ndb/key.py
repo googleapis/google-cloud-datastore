@@ -184,7 +184,7 @@ class Key(object):
   Subclassing Key is best avoided; it would be hard to get right.
   """
 
-  __slots__ = ['__reference', '__pairs']
+  __slots__ = ['__reference', '__pairs', '__app', '__namespace']
 
   def __new__(cls, *_args, **kwargs):
     """Constructor.  See the class docstring for arguments."""
@@ -198,9 +198,67 @@ class Key(object):
         assert 'flat' not in kwargs
         kwargs['flat'] = _args
     self = super(Key, cls).__new__(cls)
-    self.__reference = _ConstructReference(cls, **kwargs)
-    self.__pairs = None
+    # Either __reference or (__pairs, __app, __namespace) must be set.
+    # Either one fully specifies a key; if both are set they must be
+    # consistent with each other.
+    if 'reference' in kwargs or 'serialized' in kwargs or 'urlsafe' in kwargs:
+      self.__reference = _ConstructReference(cls, **kwargs)
+      self.__pairs = None
+      self.__app = None
+      self.__namespace = None
+    elif 'pairs' in kwargs or 'flat' in kwargs:
+      self._build_from_args(**kwargs)
     return self
+
+  def _build_from_args(self, pairs=None, flat=None,
+                       app=None, namespace=None, parent=None):
+    if flat:
+      assert not pairs
+      assert len(flat) % 2 == 0
+      pairs = [(flat[i], flat[i+1]) for i in xrange(0, len(flat), 2)]
+    else:
+      pairs = list(pairs)
+    assert pairs
+    for i, (kind, id) in enumerate(pairs):
+      if isinstance(id, unicode):
+        id = id.encode('utf8')
+      elif id is None:
+        if i+1 < len(pairs):
+          raise datastore_errors.BadArgumentError(
+            'Incomplete Key entry must be last')
+      else:
+        assert isinstance(id, (int, long, str))
+      if isinstance(kind, type):
+        kind = kind._get_kind()
+      if isinstance(kind, unicode):
+        kind = kind.encode('utf8')
+      assert isinstance(kind, str), repr(kind)
+      pairs[i] = (kind, id)
+    if parent is not None:
+      if not isinstance(parent, Key):
+        raise datastore_errors.BadValueError(
+            'Expected Key instance, got %r' % parent)
+      if not parent.id():
+        raise datastore_errors.BadArgumentError(
+          'Parent cannot have incomplete key')
+      pairs[:0] = parent.pairs()
+      if app:
+        assert app == parent.app(), (app, parent.app())
+      else:
+        app = parent.app()
+      if namespace is not None:
+        assert namespace == parent.namespace(), (namespace,
+                                                 parent.namespace())
+      else:
+        namespace = parent.namespace()
+    if not app:
+      app = _DefaultAppId()
+    if namespace is None:
+      namespace = _DefaultNamespace()
+    self.__pairs = tuple(pairs)
+    self.__app = app
+    self.__namespace = namespace 
+    self.__reference = None
 
   def __repr__(self):
     """String representation, used by str() and repr().
@@ -259,8 +317,10 @@ class Key(object):
     assert len(state) == 1
     kwargs = state[0]
     assert isinstance(kwargs, dict)
-    self.__reference = _ConstructReference(self.__class__, **kwargs)
+    self.__reference = None
     self.__pairs = kwargs['pairs']
+    self.__app = kwargs['app']
+    self.__namespace = kwargs['namespace']
 
   def __getnewargs__(self):
     """Private API used for pickling."""
@@ -287,11 +347,15 @@ class Key(object):
 
   def namespace(self):
     """Return the namespace."""
-    return self.__reference.name_space()
+    if self.__namespace is None:
+      self.__namespace = self.__reference.name_space()
+    return self.__namespace
 
   def app(self):
     """Return the application id."""
-    return self.__reference.app()
+    if self.__app is None:
+      self.__app = self.__reference.app()
+    return self.__app
 
   def id(self):
     """Return the string or integer id in the last (kind, id) pair, if any.
@@ -299,6 +363,8 @@ class Key(object):
     Returns:
       A string or integer id, or None if the key is incomplete.
     """
+    if self.__pairs:
+      return self.__pairs[-1][1]
     elem = self.__reference.path().element(-1)
     return elem.name() or elem.id() or None
 
@@ -308,6 +374,11 @@ class Key(object):
     Returns:
       A string id, or None if the key has an integer id or is incomplete.
     """
+    if self.__reference is None:
+      id = self.id()
+      if not isinstance(id, basestring):
+        id = None
+      return id
     elem = self.__reference.path().element(-1)
     return elem.name() or None
 
@@ -317,6 +388,11 @@ class Key(object):
     Returns:
       An integer id, or None if the key has a string id or is incomplete.
     """
+    if self.__reference is None:
+      id = self.id()
+      if not isinstance(id, (int, long)):
+        id = None
+      return id
     elem = self.__reference.path().element(-1)
     return elem.id() or None
 
@@ -351,6 +427,8 @@ class Key(object):
 
     This is the kind from the last (kind, id) pair.
     """
+    if self.__pairs:
+      return self.__pairs[-1][0]
     return self.__reference.path().element(-1).type()
 
   def reference(self):
@@ -361,11 +439,16 @@ class Key(object):
 
     NOTE: The caller should not mutate the return value.
     """
+    if self.__reference is None:
+      self.__reference = _ConstructReference(self.__class__,
+                                             pairs=self.__pairs,
+                                             app=self.__app,
+                                             namespace=self.__namespace)
     return self.__reference
 
   def serialized(self):
     """Return a serialized Reference object for this Key."""
-    return self.__reference.Encode()
+    return self.reference().Encode()
 
   def urlsafe(self):
     """Return a url-safe string encoding this Key's Reference.
@@ -375,7 +458,7 @@ class Key(object):
     Admin Console.
     """
     # This is 3-4x faster than urlsafe_b64decode()
-    urlsafe = base64.b64encode(self.__reference.Encode())
+    urlsafe = base64.b64encode(self.reference().Encode())
     return urlsafe.rstrip('=').replace('+', '-').replace('/', '_')
 
   # Datastore API using the default context.
@@ -412,8 +495,9 @@ class Key(object):
     returned.  In all cases the Future's result is None (i.e. there is
     no way to tell whether the entity existed or not).
     """
-    from . import tasklets
-    return tasklets.get_context().delete(self, **ctx_options)
+    from . import tasklets, model
+    ctx = tasklets.get_context()
+    return ctx.delete(self, **ctx_options)
 
 
 # The remaining functions in this module are private.
@@ -431,6 +515,8 @@ def _ConstructReference(cls, pairs=None, flat=None,
     if flat:
       assert len(flat) % 2 == 0
       pairs = [(flat[i], flat[i+1]) for i in xrange(0, len(flat), 2)]
+    elif parent is not None:
+      pairs = list(pairs)
     assert pairs
     if parent is not None:
       if not isinstance(parent, Key):
@@ -485,30 +571,54 @@ def _ReferenceFromPairs(pairs, reference=None, app=None, namespace=None):
     if last:
       raise datastore_errors.BadArgumentError(
           'Incomplete Key entry must be last')
-    if not isinstance(kind, basestring):
-      if isinstance(kind, type):
+    t = type(kind)
+    if t is str:
+      pass
+    elif t is unicode:
+      kind = kind.encode('utf8')
+    else:
+      if issubclass(t, type):
         # Late import to avoid cycles.
         from .model import Model
         modelclass = kind
         assert issubclass(modelclass, Model), repr(modelclass)
         kind = modelclass._get_kind()
-      assert isinstance(kind, basestring), repr(kind)
-    if isinstance(kind, unicode):
-      kind = kind.encode('utf8')
+        t = type(kind)
+      if t is str:
+        pass
+      elif t is unicode:
+        kind = kind.encode('utf8')
+      elif issubclass(t, str):
+        pass
+      elif issubclass(t, unicode):
+        kind = kind.encode('utf8')
+      else:
+        assert False, repr(kind)
     assert 1 <= len(kind) <= 500
     elem = path.add_element()
     elem.set_type(kind)
-    if isinstance(idorname, (int, long)):
+    t = type(idorname)
+    if t is int or t is long:
       assert 1 <= idorname < 2**63
       elem.set_id(idorname)
-    elif isinstance(idorname, basestring):
-      if isinstance(idorname, unicode):
-        idorname = idorname.encode('utf8')
+    elif t is str:
+      assert 1 <= len(idorname) <= 500
+      elem.set_name(idorname)
+    elif t is unicode:
+      idorname = idorname.encode('utf8')
       assert 1 <= len(idorname) <= 500
       elem.set_name(idorname)
     elif idorname is None:
       elem.set_id(0)
       last = True
+    elif issubclass(t, (int, long)):
+      assert 1 <= idorname < 2**63
+      elem.set_id(idorname)
+    elif issubclass(t, basestring):
+      if issubclass(t, unicode):
+        idorname = idorname.encode('utf8')
+      assert 1 <= len(idorname) <= 500
+      elem.set_name(idorname)
     else:
       assert False, 'bad idorname (%r)' % (idorname,)
   # An empty app id means to use the default app id.
