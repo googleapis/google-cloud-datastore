@@ -9,7 +9,7 @@ import unittest
 
 from google.appengine.api import datastore_errors
 from google.appengine.api import datastore_types
-from ndb import memcache
+from google.appengine.api import memcache
 from google.appengine.api import namespace_manager
 from google.appengine.api import users
 from google.appengine.datastore import entity_pb

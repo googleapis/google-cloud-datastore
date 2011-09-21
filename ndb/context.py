@@ -8,7 +8,7 @@ import sys
 
 from google.appengine.api import datastore  # For taskqueue coordination
 from google.appengine.api import datastore_errors
-from ndb import memcache
+from google.appengine.api import memcache
 
 from google.appengine.datastore import datastore_rpc
 
@@ -16,12 +16,6 @@ from . import key as key_module
 from . import model, tasklets, eventloop, utils
 
 _LOCK_TIME = 32  # Time to lock out memcache.add() after datastore.put().
-
-_DELETE_STATUS_MAP = {
-  # Perversely, this is {1: 2, 2: 1}.
-  memcache.MemcacheDeleteResponse.DELETED: memcache.DELETE_SUCCESSFUL,
-  memcache.MemcacheDeleteResponse.NOT_FOUND: memcache.DELETE_ITEM_MISSING,
-}
 
 
 class ContextOptions(datastore_rpc.Configuration):
@@ -907,7 +901,7 @@ class Context(object):
       statuses = yield rpc
       if statuses:
         for key, status in zip(keys, statuses):
-          all_results[key] = _DELETE_STATUS_MAP.get(status)
+          all_results[key] = status
       else:
         for key in keys:
           all_results[key] = None
