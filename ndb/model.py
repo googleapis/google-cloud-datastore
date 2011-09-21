@@ -758,20 +758,7 @@ class Property(ModelAttribute):
       else:
         value = [val]
     else:
-      if not self._has_value(entity):
-        value = val
-      else:
-        oldval = self._retrieve_value(entity)
-        # Maybe upgrade to a list property.  Or ignore null.
-        if val is None:
-          value = oldval
-        elif oldval is None:
-          value = val
-        elif isinstance(oldval, list):
-          oldval.append(val)
-          value = oldval
-        else:
-          value = [oldval, val]
+      value = val
     self._store_value(entity, value)
 
 

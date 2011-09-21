@@ -2392,6 +2392,19 @@ class ModelTests(test_utils.DatastoreTest):
       '\\x95b\\xce\\xcaO\\x05\\x00"\\x87\\x03\\xeb\'), '
       't=_CompressedValue(\'x\\x9c+)\\xa1=\\x00\\x00\\xf1$-Q\'))')
 
+  def testCorruption(self):
+    # Thanks to Ricardo Bánffy
+    class Evil(model.Model):
+      x = model.IntegerProperty()
+      def __init__(self, *a, **k):
+        super(Evil, self).__init__(*a, **k)
+        self.x = 42
+    e = Evil()
+    e.x = 50
+    pb = e._to_pb()
+    y = Evil._from_pb(pb)
+    self.assertEqual(y.x, 50)
+
 
 class CacheTests(test_utils.DatastoreTest):
 
