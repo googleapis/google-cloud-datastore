@@ -137,7 +137,8 @@ class TaskletTests(test_utils.DatastoreTest):
     eventloop.run()
     t0, t1 = log
     dt = t1-t0
-    self.assertAlmostEqual(dt, 0.1, places=2)
+    self.assertTrue(0.08 <= dt <= 0.12,
+                    'slept too long or too short: dt=%.03f' % dt)
 
   def testMultiFuture(self):
     @tasklets.tasklet
