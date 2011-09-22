@@ -2164,22 +2164,22 @@ class Model(object):
     key = Key(cls._get_kind(), id, parent=parent)
     return tasklets.get_context().get(key, **ctx_options)
   get_by_id_async = _get_by_id_async
-  
+
   @classmethod
   def _pre_allocate_ids_hook(cls, ctx, size, max, parent):
     pass
   _default_pre_allocate_ids_hook = _pre_allocate_ids_hook
-  
+
   @classmethod
   def _post_allocate_ids_hook(cls, ctx, size, max, parent):
     pass
   _default_post_allocate_ids_hook = _post_allocate_ids_hook
- 
+
   @classmethod
   def _pre_delete_hook(cls, ctx, key):
     pass
   _default_pre_delete_hook = _pre_delete_hook
- 
+
   @classmethod
   def _post_delete_hook(cls, ctx, key):
     pass
@@ -2194,12 +2194,12 @@ class Model(object):
   def _post_get_hook(cls, ctx, key):
     pass
   _default_post_get_hook = _post_get_hook
- 
+
   @classmethod
   def _pre_put_hook(cls, ctx, ent):
     pass
   _default_pre_put_hook = _pre_put_hook
- 
+
   @classmethod
   def _post_put_hook(cls, ctx, ent):
     pass

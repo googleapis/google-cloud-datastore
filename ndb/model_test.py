@@ -2404,95 +2404,95 @@ class ModelTests(test_utils.DatastoreTest):
     pb = e._to_pb()
     y = Evil._from_pb(pb)
     self.assertEqual(y.x, 50)
-    
+
   def testPreAllocateIdsHook(self):
     self.counter = 0
-    
+
     class Foo(model.Model):
       @classmethod
       def _pre_allocate_ids_hook(cls, ctx, size, max, parent):
         self.counter += 1
-        
+
     Foo.allocate_ids(1)
     self.assertEqual(self.counter, 1,
                      'Allocate ids hook not triggered when allocating ids')
-    
+
   def testPostAllocateIdsHook(self):
     self.counter = 0
-    
+
     class Foo(model.Model):
       @classmethod
       def _post_allocate_ids_hook(cls, ctx, size, max, parent):
         self.counter += 1
-        
+
     Foo.allocate_ids(1)
     self.assertEqual(self.counter, 0,
              'Allocate ids hook triggered when allocating ids before eventloop')
     eventloop.get_event_loop().run()
     self.assertEqual(self.counter, 1,
                      'Allocate ids hook not triggered when allocating ids')
-    
+
   def testMonkeyPatchPreAllocateIdsHook(self):
     original_hook = model.Model._pre_allocate_ids_hook
     self.flag = False
-    
+
     class Foo(model.Model):
       @classmethod
       def _pre_allocate_ids_hook(cls, ctx, size, max, parent):
         self.flag = True
     model.Model._pre_allocate_ids_hook = Foo._pre_allocate_ids_hook
-    
+
     try:
       Foo.allocate_ids(1)
       self.assertTrue(self.flag)
     finally:
       model.Model._pre_allocate_ids_hook = original_hook
-    
+
   def testMonkeyPatchPostAllocateIdsHook(self):
     original_hook = model.Model._post_allocate_ids_hook
     self.flag = False
-    
+
     class Foo(model.Model):
       @classmethod
       def _post_allocate_ids_hook(cls, ctx, size, max, parent):
         self.flag = True
     model.Model._post_allocate_ids_hook = Foo._post_allocate_ids_hook
-    
+
     try:
       Foo.allocate_ids(1)
       eventloop.get_event_loop().run()
       self.assertTrue(self.flag)
     finally:
       model.Model._post_allocate_ids_hook = original_hook
-      
+
   def testPreAllocateIdsHookCannotCancelRPC(self):
     class Foo(model.Model):
       @classmethod
       def _pre_allocate_ids_hook(*args):
         raise tasklets.Return()
     self.assertRaises(tasklets.Return, Foo.allocate_ids, 1)
-    
+
   def testPrePutHook(self):
     self.counter = 0
-    
+
     class Foo(model.Model):
       @classmethod
       def _pre_put_hook(cls, ctx, key):
         self.counter += 1
-        
+
     x = Foo()
     self.assertEqual(self.counter, 0, 'Put hook triggered by entity creation')
     x.put()
     self.assertEqual(self.counter, 1, 'Put hook not triggered on entity put')
-    
+
   def testPostPutHook(self):
     self.counter = 0
-    
+
     class Foo(model.Model):
       @classmethod
       def _post_put_hook(cls, ctx, key):
         self.counter += 1
-        
+
     x = Foo()
     eventloop.get_event_loop().run()
     self.assertEqual(self.counter, 0, 'Put hook triggered by entity creation')
@@ -2501,29 +2501,29 @@ class ModelTests(test_utils.DatastoreTest):
                      'Put hook triggered by entity put before eventloop')
     eventloop.get_event_loop().run()
     self.assertEqual(self.counter, 1, 'Put hook not triggered on entity put')
-    
+
   def testPrePutHookMulti(self):
     self.counter = 0
-    
+
     class Foo(model.Model):
       @classmethod
       def _pre_put_hook(cls, ctx, key):
         self.counter +=1
-    
+
     entities = [Foo() for _ in range(10)]
     model.put_multi(entities)
     self.assertEqual(self.counter, 10,
                      '%i/10 Put hooks not triggered on model.put_multi' %
                      (10 - self.counter))
-    
+
   def testPostPutHookMulti(self):
     self.counter = 0
-    
+
     class Foo(model.Model):
       @classmethod
       def _post_put_hook(cls, ctx, key):
         self.counter +=1
-        
+
     entities = [Foo() for _ in range(10)]
     model.put_multi(entities)
     self.assertEqual(self.counter, 0,
@@ -2533,34 +2533,34 @@ class ModelTests(test_utils.DatastoreTest):
     self.assertEqual(self.counter, 10,
                      '%i/10 Put hooks not triggered on model.put_multi' %
                      (10 - self.counter))
-    
+
   def testMonkeyPatchPrePutHook(self):
     original_hook = model.Model._pre_put_hook
     self.flag = False
-    
+
     class Foo(model.Model):
       @classmethod
       def _pre_put_hook(cls, ctx, entity):
         self.flag = True
     model.Model._pre_put_hook = Foo._pre_put_hook
-    
+
     try:
       entity = Foo()
       entity.put()
       self.assertTrue(self.flag)
     finally:
       model.Model._pre_put_hook = original_hook
-    
+
   def testMonkeyPatchPostPutHook(self):
     original_hook = model.Model._post_put_hook
     self.flag = False
-    
+
     class Foo(model.Model):
       @classmethod
       def _post_put_hook(cls, ctx, entity):
         self.flag = True
     model.Model._post_put_hook = Foo._post_put_hook
-    
+
     try:
       entity = Foo()
       entity.put()
@@ -2568,7 +2568,7 @@ class ModelTests(test_utils.DatastoreTest):
       self.assertTrue(self.flag)
     finally:
       model.Model._post_put_hook = original_hook
-      
+
   def testPrePutHookCannotCancelRPC(self):
     class Foo(model.Model):
       @classmethod

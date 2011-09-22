@@ -257,7 +257,7 @@ class Key(object):
       namespace = _DefaultNamespace()
     self.__pairs = tuple(pairs)
     self.__app = app
-    self.__namespace = namespace 
+    self.__namespace = namespace
     self.__reference = None
 
   def __repr__(self):
