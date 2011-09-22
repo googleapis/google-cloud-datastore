@@ -2056,8 +2056,14 @@ class Model(object):
     This is the asynchronous version of Model._put().
     """
     from . import tasklets
+    cls = self.__class__
     ctx = tasklets.get_context()
-    return ctx.put(self, **ctx_options)
+    cls._pre_put_hook(ctx, self)
+    fut = ctx.put(self, **ctx_options)
+    post_hook = cls._post_put_hook
+    if post_hook is not Model._default_post_put_hook:
+      fut.add_callback(post_hook, ctx, self)
+    return fut
   put_async = _put_async
 
   @classmethod
@@ -2122,9 +2128,15 @@ class Model(object):
     This is the asynchronous version of Model._allocate_ids().
     """
     from . import tasklets
+    ctx = tasklets.get_context()
+    cls._pre_allocate_ids_hook(ctx, size, max, parent)
     key = Key(cls._get_kind(), None, parent=parent)
-    return tasklets.get_context().allocate_ids(key, size=size, max=max,
-                                               **ctx_options)
+    fut = tasklets.get_context().allocate_ids(key, size=size, max=max,
+                                              **ctx_options)
+    post_hook = cls._post_allocate_ids_hook
+    if post_hook is not Model._default_post_allocate_ids_hook:
+      fut.add_callback(post_hook, ctx, size, max, parent)
+    return fut
   allocate_ids_async = _allocate_ids_async
 
   @classmethod
@@ -2152,6 +2164,46 @@ class Model(object):
     key = Key(cls._get_kind(), id, parent=parent)
     return tasklets.get_context().get(key, **ctx_options)
   get_by_id_async = _get_by_id_async
+  
+  @classmethod
+  def _pre_allocate_ids_hook(cls, ctx, size, max, parent):
+    pass
+  _default_pre_allocate_ids_hook = _pre_allocate_ids_hook
+  
+  @classmethod
+  def _post_allocate_ids_hook(cls, ctx, size, max, parent):
+    pass
+  _default_post_allocate_ids_hook = _post_allocate_ids_hook
+ 
+  @classmethod
+  def _pre_delete_hook(cls, ctx, key):
+    pass
+  _default_pre_delete_hook = _pre_delete_hook
+ 
+  @classmethod
+  def _post_delete_hook(cls, ctx, key):
+    pass
+  _default_post_delete_hook = _post_delete_hook
+
+  @classmethod
+  def _pre_get_hook(cls, ctx, key):
+    pass
+  _default_pre_get_hook = _pre_get_hook
+
+  @classmethod
+  def _post_get_hook(cls, ctx, key):
+    pass
+  _default_post_get_hook = _post_get_hook
+ 
+  @classmethod
+  def _pre_put_hook(cls, ctx, ent):
+    pass
+  _default_pre_put_hook = _pre_put_hook
+ 
+  @classmethod
+  def _post_put_hook(cls, ctx, ent):
+    pass
+  _default_post_put_hook = _post_put_hook
 
 
 class Expando(Model):

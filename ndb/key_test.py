@@ -7,9 +7,9 @@ import unittest
 from google.appengine.api import datastore_errors
 from google.appengine.datastore import entity_pb
 
-from . import key
+from . import eventloop, key, model, tasklets, test_utils
 
-class KeyTests(unittest.TestCase):
+class KeyTests(test_utils.DatastoreTest):
 
   def testShort(self):
     k0 = key.Key('Kind', None)
@@ -241,6 +241,245 @@ class KeyTests(unittest.TestCase):
   def testKindFromBadValue(self):
     # TODO: BadArgumentError
     self.assertRaises(Exception, key.Key, 42, 42)
+    
+  def testPreDeleteHook(self):
+    self.counter = 0
+    
+    class Foo(model.Model):
+      @classmethod
+      def _pre_delete_hook(cls, ctx, key):
+        self.counter += 1
+        
+    x = Foo()
+    self.assertEqual(self.counter, 0,
+                     'Delete hook triggered by entity creation')
+    x.put()
+    self.assertEqual(self.counter, 0, 'Delete hook triggered by entity put')
+    x.key.delete()
+    self.assertEqual(self.counter, 1,
+                     'Delete hook not triggered on key deletion')
+    
+  def testPostDeleteHook(self):
+    self.counter = 0
+    
+    class Foo(model.Model):
+      @classmethod
+      def _post_delete_hook(cls, ctx, key):
+        self.counter += 1
+        
+    x = Foo()
+    eventloop.get_event_loop().run()
+    self.assertEqual(self.counter, 0,
+                     'Delete hook triggered by entity creation')
+    x.put()
+    eventloop.get_event_loop().run()
+    self.assertEqual(self.counter, 0, 'Delete hook triggered by entity put')
+    x.key.delete()
+    self.assertEqual(self.counter, 0,
+                     'Delete hook triggered by key deletion before eventloop')
+    eventloop.get_event_loop().run()
+    self.assertEqual(self.counter, 1,
+                     'Delete hook not triggered on key deletion')
+    
+  def testPreDeleteHookMulti(self):
+    self.counter = 0
+    
+    class Foo(model.Model):
+      @classmethod
+      def _pre_delete_hook(cls, ctx, key):
+        self.counter += 1
+        
+    entities = [Foo() for _ in range(10)]
+    model.put_multi(entities)
+    keys = [entity.key for entity in entities]
+    model.delete_multi(keys)
+    self.assertEqual(self.counter, 10,
+                     '%i/10 Delete hooks not triggered on model.delete_multi' %
+                     (10 - self.counter))
+    
+  def testPostDeleteHookMulti(self):
+    self.counter = 0
+    
+    class Foo(model.Model):
+      @classmethod
+      def _post_delete_hook(cls, ctx, key):
+        self.counter += 1
+        
+    entities = [Foo() for _ in range(10)]
+    model.put_multi(entities)
+    keys = [entity.key for entity in entities]
+    model.delete_multi(keys)
+    self.assertEqual(self.counter, 0,
+         '%i/10 Delete hooks triggered by model.delete_multi before eventloop' %
+         self.counter)
+    eventloop.get_event_loop().run()
+    self.assertEqual(self.counter, 10,
+                     '%i/10 Delete hooks not triggered on model.delete_multi' %
+                     (10 - self.counter))
+    
+  def testMonkeyPatchPreDeleteHook(self):
+    original_hook = model.Model._pre_delete_hook
+    self.flag = False
+    
+    class Foo(model.Model):
+      @classmethod
+      def _pre_delete_hook(cls, ctx, key):
+        self.flag = True
+    model.Model._pre_delete_hook = Foo._pre_delete_hook
+    
+    try:
+      entity = Foo()
+      entity.put()
+      entity.key.delete()
+      self.assertTrue(self.flag)
+    finally:
+      model.Model._pre_delete_hook = original_hook
+    
+  def testMonkeyPatchPostDeleteHook(self):
+    original_hook = model.Model._post_delete_hook
+    self.flag = False
+    
+    class Foo(model.Model):
+      @classmethod
+      def _post_delete_hook(cls, ctx, key):
+        self.flag = True
+    model.Model._post_delete_hook = Foo._post_delete_hook
+    
+    try:
+      entity = Foo()
+      entity.put()
+      entity.key.delete()
+      eventloop.get_event_loop().run()
+      self.assertTrue(self.flag)
+    finally:
+      model.Model._post_delete_hook = original_hook
+      
+  def testPreDeleteHookCannotCancelRPC(self):
+    class Foo(model.Model):
+      @classmethod
+      def _pre_delete_hook(*args):
+        raise tasklets.Return()
+    entity = Foo()
+    entity.put()
+    self.assertRaises(tasklets.Return, entity.key.delete)
+    
+  def testPreGetHook(self):
+    self.counter = 0
+    
+    class Foo(model.Model):
+      @classmethod
+      def _pre_get_hook(cls, ctx, key):
+        self.counter += 1
+        
+    x = Foo()
+    self.assertEqual(self.counter, 0, 'Get hook triggered by entity creation')
+    x.put()
+    self.assertEqual(self.counter, 0, 'Get hook triggered by entity put')
+    x.key.get()
+    self.assertEqual(self.counter, 1, 'Get hook not triggered on key get')
+    
+  def testPostGetHook(self):
+    self.counter = 0
+    
+    class Foo(model.Model):
+      @classmethod
+      def _post_get_hook(cls, ctx, key):
+        self.counter += 1
+        
+    x = Foo()
+    eventloop.get_event_loop().run()
+    self.assertEqual(self.counter, 0, 'Get hook triggered by entity creation')
+    x.put()
+    eventloop.get_event_loop().run()
+    self.assertEqual(self.counter, 0, 'Get hook triggered by entity put')
+    x.key.get()
+    self.assertEqual(self.counter, 0,
+                     'Get hook triggered by key get before eventloop')
+    eventloop.get_event_loop().run()
+    self.assertEqual(self.counter, 1,
+                     'Get hook not triggered on key get')
+    
+  def testPreGetHookMulti(self):
+    self.counter = 0
+    
+    class Foo(model.Model):
+      @classmethod
+      def _pre_get_hook(cls, ctx, key):
+        self.counter += 1
+        
+    entities = [Foo() for _ in range(10)]
+    model.put_multi(entities)
+    keys = [entity.key for entity in entities]
+    model.get_multi(keys)
+    self.assertEqual(self.counter, 10,
+                     '%i/10 Get hooks not triggered on model.get_multi' %
+                     (10 - self.counter))
+    
+  def testPostGetHookMulti(self):
+    self.counter = 0
+    
+    class Foo(model.Model):
+      @classmethod
+      def _post_get_hook(cls, ctx, key):
+        self.counter += 1
+        
+    entities = [Foo() for _ in range(10)]
+    model.put_multi(entities)
+    keys = [entity.key for entity in entities]
+    model.get_multi(keys)
+    self.assertEqual(self.counter, 0,
+         '%i/10 Get hooks triggered by model.get_multi before eventloop' %
+         self.counter)
+    eventloop.get_event_loop().run()
+    self.assertEqual(self.counter, 10,
+                     '%i/10 Get hooks not triggered on model.get_multi' %
+                     (10 - self.counter))
+    
+  def testMonkeyPatchPreGetHook(self):
+    original_hook = model.Model._pre_get_hook
+    self.flag = False
+    
+    class Foo(model.Model):
+      @classmethod
+      def _pre_get_hook(cls, ctx, key):
+        self.flag = True
+    model.Model._pre_get_hook = Foo._pre_get_hook
+    
+    try:
+      entity = Foo()
+      entity.put()
+      entity.key.get()
+      self.assertTrue(self.flag)
+    finally:
+      model.Model._pre_get_hook = original_hook
+    
+  def testMonkeyPatchPostGetHook(self):
+    original_hook = model.Model._post_get_hook
+    self.flag = False
+    
+    class Foo(model.Model):
+      @classmethod
+      def _post_get_hook(cls, ctx, key):
+        self.flag = True
+    model.Model._post_get_hook = Foo._post_get_hook
+    
+    try:
+      entity = Foo()
+      entity.put()
+      entity.key.get()
+      eventloop.get_event_loop().run()
+      self.assertTrue(self.flag)
+    finally:
+      model.Model._post_get_hook = original_hook
+      
+  def testPreGetHookCannotCancelRPC(self):
+    class Foo(model.Model):
+      @classmethod
+      def _pre_get_hook(*args):
+        raise tasklets.Return()
+    entity = Foo()
+    entity.put()
+    self.assertRaises(tasklets.Return, entity.key.get)
 
 
 def main():

@@ -477,8 +477,17 @@ class Key(object):
     If no such entity exists, a Future is still returned, and the
     Future's eventual return result be None.
     """
-    from . import tasklets
-    return tasklets.get_context().get(self, **ctx_options)
+    from . import model, tasklets
+    ctx = tasklets.get_context()
+    cls = model.Model._get_kind_map().get(self.kind())
+    if cls:
+      cls._pre_get_hook(ctx, self)
+    fut = ctx.get(self, **ctx_options)
+    if cls:
+      post_hook = cls._post_get_hook
+      if post_hook is not model.Model._default_post_get_hook:
+        fut.add_callback(post_hook, ctx, self)
+    return fut
 
   def delete(self, **ctx_options):
     """Synchronously delete the entity for this Key.
@@ -497,7 +506,15 @@ class Key(object):
     """
     from . import tasklets, model
     ctx = tasklets.get_context()
-    return ctx.delete(self, **ctx_options)
+    cls = model.Model._get_kind_map().get(self.kind())
+    if cls:
+      cls._pre_delete_hook(ctx, self)
+    fut = ctx.delete(self, **ctx_options)
+    if cls:
+      post_hook = cls._post_delete_hook
+      if post_hook is not model.Model._default_post_delete_hook:
+        fut.add_callback(post_hook, ctx, self)
+    return fut
 
 
 # The remaining functions in this module are private.
