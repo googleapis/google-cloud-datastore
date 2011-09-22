@@ -2165,6 +2165,17 @@ class Model(object):
     return tasklets.get_context().get(key, **ctx_options)
   get_by_id_async = _get_by_id_async
 
+  # Hooks that wrap around mutations.  They are all class methods.
+  # To use these, override them in your model class and call
+  # super(<myclass>, cls).<hook>(ctx, <ent-or-key>).
+
+  # Note that the pre-hooks are called before the operation is
+  # scheduled.  The post-hooks are called (by the Future) after the
+  # operation has completed.
+
+  # Do not use or touch the _default_* hooks.  These exist for
+  # internal use only.
+
   @classmethod
   def _pre_allocate_ids_hook(cls, ctx, size, max, parent):
     pass
