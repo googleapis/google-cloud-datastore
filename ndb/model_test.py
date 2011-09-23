@@ -2610,11 +2610,27 @@ class CacheTests(test_utils.DatastoreTest):
     # makes the test correct.
     self.assertEqual(f.key, model.Key(Employee, 'joe'))
 
-  def test_issue_57(self):
+  def test_issue_57_cache(self):
+    class Employee(model.Model):
+      pass
+    ctx = tasklets.get_context()
+    ctx.set_cache_policy(True)
+    ctx.set_memcache_policy(False)
+    e = Employee()
+    key = e.put()
+    e = key.get()  # Warm the cache
+    def trans():
+      key.delete()
+    model.transaction(trans)
+    e = key.get()
+    self.assertEqual(e, None)
+
+  def test_issue_57_memcache(self):
     class Employee(model.Model):
       pass
     ctx = tasklets.get_context()
     ctx.set_cache_policy(False)
+    ctx.set_memcache_policy(True)
     e = Employee()
     key = e.put()
     e = key.get()  # Warm the cache
