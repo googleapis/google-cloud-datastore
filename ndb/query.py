@@ -648,7 +648,8 @@ class Query(object):
   """
 
   @datastore_rpc._positional(1)
-  def __init__(self, kind=None, ancestor=None, filters=None, orders=None):
+  def __init__(self, kind=None, ancestor=None, filters=None, orders=None,
+               app=None, namespace=None):
     """Constructor.
 
     Args:
@@ -656,6 +657,8 @@ class Query(object):
       ancestor: Optional ancestor Key.
       filters: Optional Node representing a filter expression tree.
       orders: Optional datastore_query.Order object.
+      app: Optional app id.
+      namespace: Optional namespace.
     """
     if ancestor is not None and not isinstance(ancestor, Binding):
       assert ancestor.id(), 'ancestor cannot be an incomplete key'
@@ -667,6 +670,8 @@ class Query(object):
     self.__ancestor = ancestor  # Key
     self.__filters = filters  # None or Node subclass
     self.__orders = orders  # None or datastore_query.Order instance
+    self.__app = app
+    self.__namespace = namespace
 
   def __repr__(self):
     args = []
@@ -678,6 +683,10 @@ class Query(object):
       args.append('filters=%r' % self.__filters)
     if self.__orders is not None:
       args.append('orders=...')  # PropertyOrder doesn't have a good repr().
+    if self.__app is not None:
+      args.append('app=%r' % self.__app)
+    if self.__namespace is not None:
+      args.append('namespace=%r' % self.__namespace)
     return '%s(%s)' % (self.__class__.__name__, ', '.join(args))
 
   def _get_query(self, connection):
@@ -694,7 +703,9 @@ class Query(object):
     if filters is not None:
       post_filters = filters._post_filters()
       filters = filters._to_filter(bindings)
-    dsquery = datastore_query.Query(kind=kind.decode('utf-8'),
+    dsquery = datastore_query.Query(app=self.__app,
+                                    namespace=self.__namespace,
+                                    kind=kind.decode('utf-8'),
                                     ancestor=ancestor,
                                     filter_predicate=filters,
                                     order=self.__orders)
