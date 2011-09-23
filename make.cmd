@@ -9,6 +9,7 @@ REM Requires that an official Python installer in the 2.5 series is used and
 REM that Python is installed in the default location.
 
 REM TODO: Support versions 2.6 and 2.7
+SETLOCAL
 SET PYTHONVER=25
 
 SET FLAGS=
@@ -62,3 +63,4 @@ REM TODO: Implement zip
 REM TODO: Implement clean
 
 :end
+ENDLOCAL
