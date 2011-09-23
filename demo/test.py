@@ -15,7 +15,7 @@ def main():
   print
   qry = Message.query().order(-Message.when)
   for msg in qry:
-    print time.ctime(msg.when), repr(msg.body)
+    print time.ctime(msg.when or 0), repr(msg.body)
     if msg.userid is None:
       print '  * Anonymous'
     else:

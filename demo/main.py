@@ -168,8 +168,10 @@ class HomePage(webapp.RequestHandler):
                  '<a%s href="%s">' % (hover, cgi.escape(url)) +
                  cgi.escape(url) + '</a>' + cgi.escape(post))
     text = '%s - %s - %s<br>' % (cgi.escape(nickname),
-                                 time.ctime(message.when),
+                                 time.ctime(message.when or 0),
                                  escbody)
+    if message.when is None:
+      message.when = 0
     raise tasklets.Return((-message.when, text))
 
   @context.toplevel
