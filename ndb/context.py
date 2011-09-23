@@ -183,23 +183,28 @@ class Context(object):
   @tasklets.tasklet
   def _get_tasklet(self, todo):
     assert todo
-    # First check memcache.
-    leftover = []
-    mfut_etc = []
-    for fut, key, options in todo:
-      if self._use_memcache(key, options):
-        keystr = self._memcache_prefix + key.urlsafe()
-        mfut_etc.append((self.memcache_get(keystr), fut, key, options))
-      else:
-        leftover.append((fut, key, options))
-    for mfut, fut, key, options in mfut_etc:
-      mval = yield mfut
-      if mval is None:
-        leftover.append((fut, key, options))
-      else:
-        ent = self._conn.adapter.pb_to_entity(mval)
-        fut.set_result(ent)
-    todo = leftover
+    in_transaction = isinstance(self._conn,
+                                datastore_rpc.TransactionalConnection)
+
+    # First check memcache, except in transactions.
+    if not in_transaction:
+      leftover = []
+      mfut_etc = []
+      for fut, key, options in todo:
+        if self._use_memcache(key, options):
+          keystr = self._memcache_prefix + key.urlsafe()
+          mfut_etc.append((self.memcache_get(keystr), fut, key, options))
+        else:
+          leftover.append((fut, key, options))
+      for mfut, fut, key, options in mfut_etc:
+        mval = yield mfut
+        if mval is None:
+          leftover.append((fut, key, options))
+        else:
+          ent = self._conn.adapter.pb_to_entity(mval)
+          fut.set_result(ent)
+      todo = leftover
+
     # Segregate things by ConfigOptions.
     by_options = {}
     for fut, key, options in todo:
@@ -209,6 +214,7 @@ class Context(object):
         futures, keys = by_options[options] = [], []
       futures.append(fut)
       keys.append(key)
+
     # Make the datastore RPC calls, starting them all concurrently.
     rpcs_etc = []  # List of (rpc, options, futures, types) tuples.
     for options, (futures, keys) in by_options.iteritems():
@@ -223,19 +229,25 @@ class Context(object):
       if datastore_keys:
         rpc = self._conn.async_get(options, datastore_keys)
         rpcs_etc.append((rpc, options, datastore_futures, datastore_keys))
+
+    # Now wait for the datastore RPCs, pass the results to the futures,
+    # and update memcache as needed (except in transactions).
     add_futures = []
     for rpc, options, datastore_futures, datastore_keys in rpcs_etc:
       entities = yield rpc
       for ent, fut, key in zip(entities, datastore_futures, datastore_keys):
-          fut.set_result(ent)
-          if ent is not None and self._use_memcache(key, options):
-            pb = self._conn.adapter.entity_to_pb(ent)
-            timeout = self._get_memcache_timeout(key, options)
-            keystr = self._memcache_prefix + ent._key.urlsafe()
-            # Use add, not set.  This is a no-op within _LOCK_TIME
-            # seconds of the delete done by the most recent write.
-            fut = self.memcache_add(keystr, pb, time=timeout)
-            add_futures.append(fut)
+        fut.set_result(ent)
+        if (not in_transaction and
+            ent is not None and
+            self._use_memcache(key, options)):
+          pb = self._conn.adapter.entity_to_pb(ent)
+          timeout = self._get_memcache_timeout(key, options)
+          keystr = self._memcache_prefix + ent._key.urlsafe()
+          # Use add, not set.  This is a no-op within _LOCK_TIME
+          # seconds of the delete done by the most recent write.
+          fut = self.memcache_add(keystr, pb, time=timeout)
+          add_futures.append(fut)
+
     # Wait for the memcache add() calls.
     for fut in add_futures:
       yield fut
@@ -660,7 +672,7 @@ class Context(object):
   def delete(self, key, **ctx_options):
     options = _make_ctx_options(ctx_options)
     yield self._delete_batcher.add(key, options)
-    if self._use_cache(key, options) and key in self._cache:
+    if self._use_cache(key, options):
       self._cache[key] = None
 
   @tasklets.tasklet
@@ -760,7 +772,13 @@ class Context(object):
         entity_group=entity_group)
       tctx = self.__class__(conn=tconn,
                             auto_batcher_class=self._auto_batcher_class)
-      tctx.set_memcache_policy(False)
+      # Copy memcache policies.  Note that get() will never use
+      # memcache in a transaction, but put and delete should do their
+      # memcache thing (which is to mark the key as deleted for
+      # _LOCK_TIME seconds).  Also note that the in-process cache and
+      # datastore policies keep their default (on) state.
+      tctx.set_memcache_policy(self.get_memcache_policy())
+      tctx.set_memcache_timeout_policy(self.get_memcache_timeout_policy())
       tasklets.set_context(tctx)
       old_ds_conn = datastore._GetConnection()
       try:
@@ -784,7 +802,7 @@ class Context(object):
           if ok:
             # TODO: This is questionable when self is transactional.
             self._cache.update(tctx._cache)
-            self._clear_memcache(tctx._cache)
+            yield self._clear_memcache(tctx._cache)
             raise tasklets.Return(result)
       finally:
         datastore._SetConnection(old_ds_conn)
@@ -804,14 +822,14 @@ class Context(object):
     """
     self._cache.clear()
 
+  @tasklets.tasklet
   def _clear_memcache(self, keys):
     keys = set(key for key in keys if self._use_memcache(key))
     futures = []
     for key in keys:
       keystr = self._memcache_prefix + key.urlsafe()
-      futures.append(self.memcache_delete(keystr))
-    for fut in futures:
-      yield fut
+      futures.append(self.memcache_delete(keystr, seconds=_LOCK_TIME))
+    yield futures
 
   @tasklets.tasklet
   def get_or_insert(self, model_class, name,
