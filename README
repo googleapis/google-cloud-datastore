@@ -63,4 +63,5 @@ To run the demo app on localhost:8080, use
 
   make serve
 
-See the Makefile for more details.  Sorry, Windows users.
+See the Makefile for more details.  For Windows users, the "make.cmd"
+script may be of interest.
