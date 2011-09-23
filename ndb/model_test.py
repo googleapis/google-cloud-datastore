@@ -2587,9 +2587,10 @@ class CacheTests(test_utils.DatastoreTest):
     is to disable it to avoid misleading test results. Override this when
     needed.
     """
-    ctx = tasklets.get_context()
-    ctx.set_cache_policy(lambda key: True)
-    ctx.set_memcache_policy(lambda key: True)
+    ctx = tasklets.make_default_context()
+    tasklets.set_context(ctx)
+    ctx.set_cache_policy(True)
+    ctx.set_memcache_policy(True)
 
   def test_issue_13(self):
     class Employee(model.Model):
@@ -2608,6 +2609,20 @@ class CacheTests(test_utils.DatastoreTest):
     # Removing key from context cache when it is set to a different one
     # makes the test correct.
     self.assertEqual(f.key, model.Key(Employee, 'joe'))
+
+  def test_issue_57(self):
+    class Employee(model.Model):
+      pass
+    ctx = tasklets.get_context()
+    ctx.set_cache_policy(False)
+    e = Employee()
+    key = e.put()
+    e = key.get()  # Warm the cache
+    def trans():
+      key.delete()
+    model.transaction(trans)
+    e = key.get()
+    self.assertEqual(e, None)
 
 
 def main():
