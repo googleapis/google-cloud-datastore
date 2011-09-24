@@ -2061,7 +2061,7 @@ class Model(object):
     cls._pre_put_hook(ctx, self)
     fut = ctx.put(self, **ctx_options)
     post_hook = cls._post_put_hook
-    if post_hook is not Model._default_post_put_hook:
+    if not cls._is_default_hook(Model._default_post_put_hook, post_hook):
       fut.add_callback(post_hook, ctx, self)
     return fut
   put_async = _put_async
@@ -2134,7 +2134,8 @@ class Model(object):
     fut = tasklets.get_context().allocate_ids(key, size=size, max=max,
                                               **ctx_options)
     post_hook = cls._post_allocate_ids_hook
-    if post_hook is not Model._default_post_allocate_ids_hook:
+    if not cls._is_default_hook(Model._default_post_allocate_ids_hook,
+                                post_hook):
       fut.add_callback(post_hook, ctx, size, max, parent)
     return fut
   allocate_ids_async = _allocate_ids_async
@@ -2215,6 +2216,24 @@ class Model(object):
   def _post_put_hook(cls, ctx, ent):
     pass
   _default_post_put_hook = _post_put_hook
+  
+  @staticmethod
+  def _is_default_hook(default_hook, hook):
+    """Checks whether a specific hook is in its default state.
+    
+    Args:
+      cls: A ndb.model.Model class.
+      default_hook: Callable specified by ndb internally (do not override).
+      hook: The hook defined by a model class using _post_*_hook. 
+    
+    Raises:
+      TypeError if either the default hook or the tested hook are not callable. 
+    """
+    if not hasattr(default_hook, '__call__'):
+      raise TypeError('Default hooks for ndb.model.Model must be callable')
+    if not hasattr(hook, '__call__'):
+      raise TypeError('Hooks must be callable')
+    return default_hook.im_func is hook.im_func
 
 
 class Expando(Model):

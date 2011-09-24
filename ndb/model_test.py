@@ -2472,6 +2472,17 @@ class ModelTests(test_utils.DatastoreTest):
         raise tasklets.Return()
     self.assertRaises(tasklets.Return, Foo.allocate_ids, 1)
 
+  def test_issue_58_allocate_ids(self):
+    ctx = tasklets.get_context()
+    ctx.set_cache_policy(False)
+    class EmptyModel(model.Model):
+      pass
+    EmptyModel.allocate_ids(1)
+    ev = eventloop.get_event_loop()
+    ev_len = len(ev.queue)
+    self.assertEqual(ev_len, 0,
+                     'Allocate ids hook queued default no-op: %r' % ev.queue)
+
   def testPrePutHook(self):
     self.counter = 0
 
@@ -2576,6 +2587,19 @@ class ModelTests(test_utils.DatastoreTest):
         raise tasklets.Return()
     entity = Foo()
     self.assertRaises(tasklets.Return, entity.put)
+
+  def test_issue_58_put(self):
+    ctx = tasklets.get_context()
+    ctx.set_cache_policy(False)
+    class EmptyModel(model.Model):
+      pass
+    entity = EmptyModel()
+    entity.put()
+    ev = eventloop.get_event_loop()
+    ev.run0() # Trigger check_success
+    ev_len = len(ev.queue)
+    self.assertEqual(ev_len, 0,
+                     'Put hook queued default no-op: %r' % ev.queue)
 
 
 class CacheTests(test_utils.DatastoreTest):

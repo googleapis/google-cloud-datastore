@@ -485,7 +485,8 @@ class Key(object):
     fut = ctx.get(self, **ctx_options)
     if cls:
       post_hook = cls._post_get_hook
-      if post_hook is not model.Model._default_post_get_hook:
+      if not cls._is_default_hook(model.Model._default_post_get_hook,
+                                  post_hook):
         fut.add_callback(post_hook, ctx, self)
     return fut
 
@@ -512,7 +513,8 @@ class Key(object):
     fut = ctx.delete(self, **ctx_options)
     if cls:
       post_hook = cls._post_delete_hook
-      if post_hook is not model.Model._default_post_delete_hook:
+      if not cls._is_default_hook(model.Model._default_post_delete_hook,
+                                  post_hook):
         fut.add_callback(post_hook, ctx, self)
     return fut
 

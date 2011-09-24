@@ -363,6 +363,20 @@ class KeyTests(test_utils.DatastoreTest):
     entity.put()
     self.assertRaises(tasklets.Return, entity.key.delete)
 
+  def test_issue_58_delete(self):
+    ctx = tasklets.get_context()
+    ctx.set_cache_policy(False)
+    class EmptyModel(model.Model):
+      pass
+    entity = EmptyModel()
+    entity.put()
+    entity.key.delete()
+    ev = eventloop.get_event_loop()
+    ev.run0() # Trigger check_success
+    ev_len = len(ev.queue)
+    self.assertEqual(ev_len, 0,
+                     'Delete hook queued default no-op: %r' % ev.queue)
+
   def testPreGetHook(self):
     self.counter = 0
 
@@ -480,6 +494,20 @@ class KeyTests(test_utils.DatastoreTest):
     entity = Foo()
     entity.put()
     self.assertRaises(tasklets.Return, entity.key.get)
+
+  def test_issue_58_get(self):
+    ctx = tasklets.get_context()
+    ctx.set_cache_policy(False)
+    class EmptyModel(model.Model):
+      pass
+    entity = EmptyModel()
+    entity.put()
+    entity.key.get()
+    ev = eventloop.get_event_loop()
+    ev.run0() # Trigger check_success
+    ev_len = len(ev.queue)
+    self.assertEqual(ev_len, 0,
+                     'Get hook queued default no-op: %r' % ev.queue)
 
 
 def main():
