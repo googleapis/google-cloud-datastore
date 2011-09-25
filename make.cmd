@@ -1,66 +1,169 @@
 @ECHO OFF
 
 REM Convenience to run tests on Windows.
+REM
+REM You must have installed the App Engine SDK toolkit, version 1.5.4 or later.
+REM
+REM An optional second argument specifies the Python version as a two digit
+REM number (2.6.5 == 26), the default is 25 (as in 2.5.x).
+REM
+REM Environment variables that override defaults:
+REM  - PYTHON: path to a specific python.exe to use
+REM  - PYTHON25, PYTHON26, PYTHON27: same as PYTHON but for individual versions
+REM  - PYTHONFLAGS: flags to pass python, defaults to -Wignore
+REM  - PYTHONFLAGS25, PYTHONFLAGS26, PYTHONFLAGS27: same as PYTHONFLAGS but for
+REM													individual versions
+REM  - GAE: path to the google_appengine directory
+REM  - FLAGS: flags to pass either python.exe or dev_appserver.py/appcfg.py
+REM  - PORT: port number for development server to use
+REM  - PORT25, PORT26, PORT27: same as PORT but for individual versions
+REM  - ADDRESS: IP address/hostname for development server to use
 
-REM You must have installed the App Engine SDK toolkit, version 1.5.4 or
-REM later, and it must be installed in the default location.
-
-REM Requires that an official Python installer in the 2.5 series is used and
-REM that Python is installed in the default location.
-
-REM TODO: Support versions 2.6 and 2.7
+:start
 SETLOCAL
-SET PYTHONVER=25
+SET SUPPORTED_VERSIONS=(25 26 27)
 
-SET FLAGS=
-SET PORT=8080
-SET ADDRESS=localhost
+:processarguments
+IF NOT "%3"=="" (
+	ECHO Invalid argument %3
+	GOTO end
+)
+SET MAKE=%0
+SET VERSION=%2
+FOR /F "TOKENS=1,2,3 DELIMS=_" %%A IN ("%1") DO SET T1=%%A&SET T2=%%B&SET T3=%%C
+SET TARGET=%T1%
+IF NOT "%T3%"=="" (
+	SET TARGET=%TARGET%_%T2%
+	SET T2=%T3%
+)
+IF /I "%T2%"=="all" (
+	IF "%VERSION%"=="" GOTO all
+	ECHO Cannot specify Python version %VERSION% if using an all target
+	GOTO end
+)
+IF NOT "%T2%"=="" SET TARGET=%TARGET%_%T2%
 
-REM Find Google App Engine
-SET GAESUBDIR=Google\google_appengine
-IF EXIST "%PROGRAMFILES(x86)%" SET PROGRAMFILES=%PROGRAMFILES(x86)%
-SET GAE=%PROGRAMFILES%\%GAESUBDIR%
-IF EXIST "%GAE%" GOTO gaefound
+:detectpythonversion
+IF "%VERSION%"=="" SET VERSION=25
+REM TODO: Do not rely on pythonxx batch labels
+FOR %%A IN %SUPPORTED_VERSIONS% DO IF "%VERSION%"=="%%A" GOTO python%%A
+ECHO Will not work with Python version %VERSION%
+GOTO end
+
+:python25
+IF NOT "%PYTHON25%"==""      SET PYTHON=%PYTHON25%
+IF NOT "%PYTHONFLAGS25%"=="" SET PYTHONFLAGS=%PYTHONFLAGS25%
+IF NOT "%PORT25%"==""        SET PORT=%PORT25%
+GOTO findpython
+
+:python26
+IF NOT "%PYTHON26%"==""      SET PYTHON=%PYTHON26%
+IF NOT "%PYTHONFLAGS26%"=="" SET PYTHONFLAGS=%PYTHONFLAGS26%
+IF NOT "%PORT26%"==""        SET PORT=%PORT26%
+GOTO findpython
+
+:python27
+IF NOT "%PYTHON27%"==""      SET PYTHON=%PYTHON27%
+IF NOT "%PYTHONFLAGS27%"=="" SET PYTHONFLAGS=%PYTHONFLAGS27%
+IF NOT "%PORT27%"==""        SET PORT=%PORT27%
+GOTO findpython
+
+:findpython
+IF "%PYTHON%"=="" SET PYTHON=C:\Python%VERSION%\python.exe
+IF EXIST "%PYTHON%" GOTO findgae
+ECHO Could not find python executable %PYTHON%
+GOTO end
+
+:findgae
+IF NOT "%PROGRAMFILES(x86)%"=="" SET PROGRAMFILES=%PROGRAMFILES(x86)%
+IF "%GAE%"=="" SET GAE=%PROGRAMFILES%\Google\google_appengine
+IF EXIST "%GAE%" GOTO setvariables
 ECHO Could not find App Engine in %GAE%
 GOTO end
 
-:gaefound
-REM Google App Engine Variables
-SET GAEPATH=%GAE%;%GAE%\lib\yaml\lib;%GAE%\lib\webob
+:setvariables
+IF "%PYTHONFLAGS%"=="" SET PYTHONFLAGS=-Wignore
+SET PYTHONPATH=%GAE%;%GAE%\lib\yaml\lib;%GAE%\lib\webob
 SET APPCFG="%GAE%\appcfg.py"
 SET DEV_APPSERVER="%GAE%\dev_appserver.py"
+IF "%PORT%"=="" SET PORT=8080
+IF "%ADDRESS%"=="" SET ADDRESS=localhost
 
-REM Find Python
-SET PYTHON=C:\Python%PYTHONVER%\python.exe
-IF EXIST %PYTHON% GOTO pythonfound
-ECHO Could not find python.exe in C:\Python%PYTHONVER%\
+:maketarget
+SET TEST_TARGETS=(key, model, query, rpc, eventloop, tasklets, context, thread)
+FOR %%A IN %TEST_TARGETS% DO IF /I "%TARGET%"=="%%A_test" GOTO runtest
+IF /I "%TARGET%"=="runtests" GOTO runtests
+REM TODO: Implement coverage
+SET COVERAGE_TARGETS%=(c, cov, cove, cover, coverage)
+FOR %%A IN %COVERAGE_TARGETS% DO IF /I "%TARGET%"=="%%A" GOTO unimplemented
+IF /I "%TARGET%"=="serve"          GOTO serve
+IF /I "%TARGET%"=="debug"          GOTO debug
+IF /I "%TARGET%"=="deploy"         GOTO deploy
+SET BENCH_TARGETS%=(bench, keybench)
+FOR %%A IN %BENCH_TARGETS% DO IF /I "%TARGET%"=="%%A" GOTO bench
+IF /I "%TARGET%"=="python"         GOTO python
+IF /I "%TARGET%"=="python_raw"     GOTO pythonraw
+REM TODO: Implement zip
+IF /I "%TARGET%"=="zip"            GOTO unimplemented
+IF /I "%TARGET%"=="clean"          GOTO clean
+IF "%TARGET%"=="" (
+	ECHO Must specify a make target e.g. serve
+) ELSE (
+	ECHO Invalid target %TARGET%
+)
 GOTO end
 
-:pythonfound
-REM Python Variables
-SET PYTHON=%PYTHON% -Wignore
-SET PYTHONPATH=%GAEPATH%
+:runtest
+IF "%VERSION%"=="25" (
+	ECHO %TARGET% only supports Python 2.6 or above due to relative imports
+	ECHO Note that the runtests target can perform this test using Python 2.5
+) ELSE (
+	CALL %PYTHON% %PYTHONFLAGS% -m ndb.%TARGET% %FLAGS%
+)
+GOTO end
 
-REM Arguments to perform actions
-IF "%1"=="key_test" %PYTHON% -m ndb.%1 %FLAGS%
-IF "%1"=="model_test" %PYTHON% -m ndb.%1 %FLAGS%
-IF "%1"=="query_test" %PYTHON% -m ndb.%1 %FLAGS%
-IF "%1"=="rpc_test" %PYTHON% -m ndb.%1 %FLAGS%
-IF "%1"=="eventloop_test" %PYTHON% -m ndb.%1 %FLAGS%
-IF "%1"=="tasklets_test" %PYTHON% -m ndb.%1 %FLAGS%
-IF "%1"=="context_test" %PYTHON% -m ndb.%1 %FLAGS%
-IF "%1"=="thread_test" %PYTHON% -m ndb.%1 %FLAGS%
-IF "%1"=="runtests" %PYTHON% %1.py %FLAGS%
-REM TODO: Implement coverage
-IF "%1"=="serve" START %PYTHON% %DEV_APPSERVER% . --port %PORT% --address %ADDRESS% %FLAGS%
-IF "%1"=="debug" START %PYTHON% %DEV_APPSERVER% . --port %PORT% --address %ADDRESS% --debug %FLAGS%
-IF "%1"=="deploy" %PYTHON% %APPCFG% update . %FLAGS%
-IF "%1"=="bench" %PYTHON% %1.py %FLAGS%
-IF "%1"=="keybench" %PYTHON% %1.py %FLAGS%
-IF "%1"=="python" %PYTHON% -i startup.py %FLAGS%
-IF "%1"=="python_raw" %PYTHON% %FLAGS%
-REM TODO: Implement zip
-REM TODO: Implement clean
+:runtests
+CALL %PYTHON% %PYTHONFLAGS% %TARGET%.py %FLAGS%
+GOTO end
+
+:debug
+SET FLAGS=%FLAGS% --debug
+
+:serve
+SET SERVE=%DEV_APPSERVER% . --port %PORT% --address %ADDRESS%
+IF EXIST %DEV_APPSERVER% START %PYTHON% %PYTHONFLAGS% %SERVE% %FLAGS%
+IF NOT EXIST %DEV_APPSERVER% ECHO Could not find dev_appserver.py in %GAE%
+GOTO end
+
+:deploy
+IF EXIST %APPCFG% CALL %PYTHON% %PYTHONFLAGS% %APPCFG% update . %FLAGS%
+IF NOT EXIST %APPCFG% ECHO Could not find appcfg.py in %GAE%
+GOTO end
+
+:bench
+CALL %PYTHON% %PYTHONFLAGS% %TARGET%.py %FLAGS%
+GOTO end
+
+:python
+SET PYTHONFLAGS=%PYTHONFLAGS% -i startup.py
+
+:pythonraw
+CALL %PYTHON% %PYTHONFLAGS% %FLAGS%
+GOTO end
+
+:clean
+RMDIR /S /Q htmlcov .coverage
+DEL /S *.pyc *~ @* *.orig *.rej #*#
+GOTO end
+
+:all
+REM TODO: Should only fail once if target is invalid/unimplemented
+FOR %%A IN %SUPPORTED_VERSIONS% DO CALL %MAKE% %TARGET% %%A
+GOTO end
+
+:unimplemented
+ECHO %TARGET% unimplemented. If you implement it, please submit a patch to:
+ECHO http://code.google.com/p/appengine-ndb-experiment/issues/detail?id=56
 
 :end
 ENDLOCAL
