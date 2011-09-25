@@ -787,18 +787,18 @@ class ModelTests(test_utils.DatastoreTest):
 
   def MultiDateAndOrTimePropertyTest(self, *args):
     ctx = tasklets.get_context()
-    
+
     # Run tests against datastore
     self.DateAndOrTimePropertyTest(*args)
     self.PrepareForPutTests(args[0])
     ctx.set_datastore_policy(False)
-    
+
     # Run tests against memcache
     ctx.set_memcache_policy(True)
     self.DateAndOrTimePropertyTest(*args)
     self.PrepareForPutTests(args[0])
     ctx.set_memcache_policy(False)
-    
+
     # Run tests against process cache
     ctx.set_cache_policy(True)
     self.DateAndOrTimePropertyTest(*args)

@@ -760,7 +760,7 @@ class Property(ModelAttribute):
     else:
       value = val
     self._store_value(entity, value)
-    
+
   def _prepare_for_put(self, entity):
     pass
 
@@ -2018,7 +2018,7 @@ class Model(object):
           if not isinstance(attr, ModelKey):
             cls._properties[attr._name] = attr
     cls._kind_map[cls._get_kind()] = cls
-    
+
   def _prepare_for_put(self):
     if self._properties:
       for prop in self._properties.itervalues():
@@ -2224,18 +2224,18 @@ class Model(object):
   def _post_put_hook(cls, ctx, ent):
     pass
   _default_post_put_hook = _post_put_hook
-  
+
   @staticmethod
   def _is_default_hook(default_hook, hook):
     """Checks whether a specific hook is in its default state.
-    
+
     Args:
       cls: A ndb.model.Model class.
       default_hook: Callable specified by ndb internally (do not override).
-      hook: The hook defined by a model class using _post_*_hook. 
-    
+      hook: The hook defined by a model class using _post_*_hook.
+
     Raises:
-      TypeError if either the default hook or the tested hook are not callable. 
+      TypeError if either the default hook or the tested hook are not callable.
     """
     if not hasattr(default_hook, '__call__'):
       raise TypeError('Default hooks for ndb.model.Model must be callable')
