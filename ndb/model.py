@@ -760,6 +760,9 @@ class Property(ModelAttribute):
     else:
       value = val
     self._store_value(entity, value)
+    
+  def _prepare_for_put(self, entity):
+    pass
 
 
 def _validate_key(value, entity=None):
@@ -1228,12 +1231,11 @@ class DateTimeProperty(Property):
   def _now(self):
     return datetime.datetime.now()
 
-  def _serialize(self, entity, *rest):
+  def _prepare_for_put(self, entity):
     if (self._auto_now or
         (self._auto_now_add and self._retrieve_value(entity) is None)):
       value = self._now()
       self._store_value(entity, value)
-    super(DateTimeProperty, self)._serialize(entity, *rest)
 
   def _db_set_value(self, v, p, value):
     assert isinstance(value, datetime.datetime)
@@ -2016,6 +2018,11 @@ class Model(object):
           if not isinstance(attr, ModelKey):
             cls._properties[attr._name] = attr
     cls._kind_map[cls._get_kind()] = cls
+    
+  def _prepare_for_put(self):
+    if self._properties:
+      for prop in self._properties.itervalues():
+        prop._prepare_for_put(self)
 
   # Datastore API using the default context.
   # These use local import since otherwise they'd be recursive imports.
@@ -2058,6 +2065,7 @@ class Model(object):
     from . import tasklets
     cls = self.__class__
     ctx = tasklets.get_context()
+    self._prepare_for_put()
     cls._pre_put_hook(ctx, self)
     fut = ctx.put(self, **ctx_options)
     post_hook = cls._post_put_hook

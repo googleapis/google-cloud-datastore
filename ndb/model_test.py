@@ -759,34 +759,65 @@ class ModelTests(test_utils.DatastoreTest):
       atime = propclass()
       times =  propclass(repeated=True)
 
-    p = Person()
+    p = Person(id=1)
     p.atime = t1
     p.times = [t1, t2]
     self.assertEqual(p.ctime, None)
     self.assertEqual(p.mtime, None)
-    pb = p._to_pb()
+    p.put()
     self.assertNotEqual(p.ctime, None)
     self.assertNotEqual(p.mtime, None)
+    pb = p._to_pb()
     q = Person._from_pb(pb)
     self.assertEqual(q.ctime, p.ctime)
     self.assertEqual(q.mtime, p.mtime)
     self.assertEqual(q.atime, t1)
     self.assertEqual(q.times, [t1, t2])
 
+  def PrepareForPutTests(self, propclass):
+    class AuditedRecord(model.Model):
+      created = propclass(auto_now_add=True)
+      modified = propclass(auto_now=True)
+    record = AuditedRecord(id=1)
+    record._to_pb()
+    self.assertEqual(record.created, None,
+                     'auto_now_add set before entity was put')
+    self.assertEqual(record.modified, None,
+                     'auto_now set before entity was put')
+
+  def MultiDateAndOrTimePropertyTest(self, *args):
+    ctx = tasklets.get_context()
+    
+    # Run tests against datastore
+    self.DateAndOrTimePropertyTest(*args)
+    self.PrepareForPutTests(args[0])
+    ctx.set_datastore_policy(False)
+    
+    # Run tests against memcache
+    ctx.set_memcache_policy(True)
+    self.DateAndOrTimePropertyTest(*args)
+    self.PrepareForPutTests(args[0])
+    ctx.set_memcache_policy(False)
+    
+    # Run tests against process cache
+    ctx.set_cache_policy(True)
+    self.DateAndOrTimePropertyTest(*args)
+    self.PrepareForPutTests(args[0])
+
   def testDateTimeProperty(self):
-    self.DateAndOrTimePropertyTest(model.DateTimeProperty,
-                                   datetime.datetime(1982, 12, 1, 9, 0, 0),
-                                   datetime.datetime(1995, 4, 15, 5, 0, 0))
+    self.MultiDateAndOrTimePropertyTest(model.DateTimeProperty,
+                                        datetime.datetime(1982, 12, 1, 9, 0, 0),
+                                        datetime.datetime(1995, 4, 15, 5, 0, 0))
 
   def testDateProperty(self):
-    self.DateAndOrTimePropertyTest(model.DateProperty,
-                                   datetime.date(1982, 12, 1),
-                                   datetime.date(1995, 4, 15))
+    self.MultiDateAndOrTimePropertyTest(model.DateProperty,
+                                        datetime.date(1982, 12, 1),
+                                        datetime.date(1995, 4, 15))
 
   def testTimeProperty(self):
-    self.DateAndOrTimePropertyTest(model.TimeProperty,
-                                   datetime.time(9, 0, 0),
-                                   datetime.time(5, 0, 0, 500))
+    self.MultiDateAndOrTimePropertyTest(model.TimeProperty,
+                                        datetime.time(9, 0, 0),
+                                        datetime.time(5, 0, 0, 500))
 
   def testStructuredProperty(self):
     class Address(model.Model):
