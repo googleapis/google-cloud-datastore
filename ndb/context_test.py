@@ -208,7 +208,7 @@ class ContextTests(test_utils.DatastoreTest):
       # Write to memcache.
       yield (self.ctx.get(k1, use_cache=False),
              self.ctx.get(k2, use_cache=False))
-      yield tasklets.sleep(0.01)  # Let other tasklet complete.
+      eventloop.run()  # Let other tasklet complete.
       keys = [k1.urlsafe(), k2.urlsafe()]
       results = memcache.get_multi(keys, key_prefix='NDB:')
       self.assertEqual(
@@ -237,7 +237,7 @@ class ContextTests(test_utils.DatastoreTest):
       # Write to memcache.
       yield (self.ctx.get(k1, use_cache=False),
              self.ctx.get(k2, use_cache=False))
-      yield tasklets.sleep(0.01)  # Let other tasklet complete.
+      eventloop.run()  # Let other tasklet complete.
     key1 = model.Key('Foo', 1)
     key2 = model.Key('Foo', 2)
     ent1 = model.Expando(key=key1, foo=42, bar='hello')
