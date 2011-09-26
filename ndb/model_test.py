@@ -2515,12 +2515,12 @@ class ModelTests(test_utils.DatastoreTest):
                      'Allocate ids hook queued default no-op: %r' % ev.queue)
 
   def testPrePutHook(self):
+    test = self # Closure for inside hook
     self.counter = 0
 
     class Foo(model.Model):
-      @classmethod
-      def _pre_put_hook(cls, ctx, key):
-        self.counter += 1
+      def _pre_put_hook(self, ctx):
+        test.counter += 1
 
     x = Foo()
     self.assertEqual(self.counter, 0, 'Put hook triggered by entity creation')
@@ -2528,12 +2528,12 @@ class ModelTests(test_utils.DatastoreTest):
     self.assertEqual(self.counter, 1, 'Put hook not triggered on entity put')
 
   def testPostPutHook(self):
+    test = self # Closure for inside hook
     self.counter = 0
 
     class Foo(model.Model):
-      @classmethod
-      def _post_put_hook(cls, ctx, key):
-        self.counter += 1
+      def _post_put_hook(self, ctx):
+        test.counter += 1
 
     x = Foo()
     eventloop.get_event_loop().run()
@@ -2545,12 +2545,12 @@ class ModelTests(test_utils.DatastoreTest):
     self.assertEqual(self.counter, 1, 'Put hook not triggered on entity put')
 
   def testPrePutHookMulti(self):
+    test = self # Closure for inside hook
     self.counter = 0
 
     class Foo(model.Model):
-      @classmethod
-      def _pre_put_hook(cls, ctx, key):
-        self.counter +=1
+      def _pre_put_hook(self, ctx):
+        test.counter +=1
 
     entities = [Foo() for _ in range(10)]
     model.put_multi(entities)
@@ -2559,12 +2559,12 @@ class ModelTests(test_utils.DatastoreTest):
                      (10 - self.counter))
 
   def testPostPutHookMulti(self):
+    test = self # Closure for inside hook
     self.counter = 0
 
     class Foo(model.Model):
-      @classmethod
-      def _post_put_hook(cls, ctx, key):
-        self.counter +=1
+      def _post_put_hook(self, ctx):
+        test.counter +=1
 
     entities = [Foo() for _ in range(10)]
     model.put_multi(entities)
@@ -2577,13 +2577,13 @@ class ModelTests(test_utils.DatastoreTest):
                      (10 - self.counter))
 
   def testMonkeyPatchPrePutHook(self):
+    test = self # Closure for inside hook
     original_hook = model.Model._pre_put_hook
     self.flag = False
 
     class Foo(model.Model):
-      @classmethod
-      def _pre_put_hook(cls, ctx, entity):
-        self.flag = True
+      def _pre_put_hook(self, ctx):
+        test.flag = True
     model.Model._pre_put_hook = Foo._pre_put_hook
 
     try:
@@ -2594,13 +2594,13 @@ class ModelTests(test_utils.DatastoreTest):
       model.Model._pre_put_hook = original_hook
 
   def testMonkeyPatchPostPutHook(self):
+    test = self # Closure for inside hook
     original_hook = model.Model._post_put_hook
     self.flag = False
 
     class Foo(model.Model):
-      @classmethod
-      def _post_put_hook(cls, ctx, entity):
-        self.flag = True
+      def _post_put_hook(self, ctx):
+        test.flag = True
     model.Model._post_put_hook = Foo._post_put_hook
 
     try:
@@ -2613,7 +2613,6 @@ class ModelTests(test_utils.DatastoreTest):
 
   def testPrePutHookCannotCancelRPC(self):
     class Foo(model.Model):
-      @classmethod
       def _pre_put_hook(*args):
         raise tasklets.Return()
     entity = Foo()

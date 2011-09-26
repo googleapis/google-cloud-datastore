@@ -2063,14 +2063,13 @@ class Model(object):
     This is the asynchronous version of Model._put().
     """
     from . import tasklets
-    cls = self.__class__
     ctx = tasklets.get_context()
     self._prepare_for_put()
-    cls._pre_put_hook(ctx, self)
+    self._pre_put_hook(ctx)
     fut = ctx.put(self, **ctx_options)
-    post_hook = cls._post_put_hook
-    if not cls._is_default_hook(Model._default_post_put_hook, post_hook):
-      fut.add_callback(post_hook, ctx, self)
+    post_hook = self._post_put_hook
+    if not self._is_default_hook(Model._default_post_put_hook, post_hook):
+      fut.add_callback(post_hook, ctx)
     return fut
   put_async = _put_async
 
@@ -2215,13 +2214,11 @@ class Model(object):
     pass
   _default_post_get_hook = _post_get_hook
 
-  @classmethod
-  def _pre_put_hook(cls, ctx, ent):
+  def _pre_put_hook(self, ctx):
     pass
   _default_pre_put_hook = _pre_put_hook
 
-  @classmethod
-  def _post_put_hook(cls, ctx, ent):
+  def _post_put_hook(self, ctx):
     pass
   _default_post_put_hook = _post_put_hook
 
