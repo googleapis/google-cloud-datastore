@@ -662,6 +662,10 @@ class Query(object):
     """
     if ancestor is not None and not isinstance(ancestor, Binding):
       assert ancestor.id(), 'ancestor cannot be an incomplete key'
+      if app is not None:
+        assert app == ancestor.app(), 'app/ancestor mismatch'
+      if namespace is not None:
+        assert namespace == ancestor.namespace(), 'namespace/ancestor mismatch'
     if filters is not None:
       assert isinstance(filters, Node), repr(filters)
     if orders is not None:

@@ -88,7 +88,12 @@ class QueryTests(test_utils.DatastoreTest):
     # Let's not specify what it should show for filters and orders,
     # just test that it doesn't blow up.
     q1 = q.filter(Foo.rate == 1, Foo.name == 'x')
+    repr(q1)
     q2 = q1.order(-Foo.rate)
+    repr(q2)
+    # App and namespace.
+    q3 = Foo.query(app='a', namespace='ns')
+    self.assertEqual(repr(q3), "Query(kind='Foo', app='a', namespace='ns')")
 
   def testRunToQueue(self):
     qry = Foo.query()
@@ -305,6 +310,45 @@ class QueryTests(test_utils.DatastoreTest):
     self.assertEqual(res, [mgr_c])
     res = list(q.iter(limit=1))
     self.assertEqual(res, [mgr_a])
+
+  def testQueryAncestorConsistentWithAppId(self):
+    class Employee(model.Model):
+      pass
+    a = model.Key(Employee, 1)
+    self.assertEqual(a.app(), self.APP_ID)  # Just checkin'.
+    Employee.query(ancestor=a, app=a.app()).fetch()  # Shouldn't fail.
+    self.assertRaises(Exception, Employee.query, ancestor=a, app='notthisapp')
+
+  def testQueryAncestorConsistentWithNamespace(self):
+    class Employee(model.Model):
+      pass
+    a = model.Key(Employee, 1, namespace='ns')
+    self.assertEqual(a.namespace(), 'ns')  # Just checkin'.
+    Employee.query(ancestor=a, namespace='ns').fetch()
+    Employee.query(ancestor=a, namespace=None).fetch()
+    self.assertRaises(Exception,
+                      Employee.query, ancestor=a, namespace='another')
+    self.assertRaises(Exception,
+                      Employee.query, ancestor=a, namespace='')
+    # And again with the default namespace.
+    b = model.Key(Employee, 1)
+    self.assertEqual(b.namespace(), '')  # Just checkin'.
+    Employee.query(ancestor=b, namespace='')
+    Employee.query(ancestor=b, namespace=None)
+    self.assertRaises(Exception,
+                      Employee.query, ancestor=b, namespace='ns')
+    # Finally some queries with a namespace but no ancestor.
+    Employee.query(namespace='').fetch()
+    Employee.query(namespace='ns').fetch()
+
+  def testQueryWithNamespace(self):
+    class Employee(model.Model):
+      pass
+    k = model.Key(Employee, None, namespace='ns')
+    e = Employee(key=k)
+    e.put()
+    self.assertEqual(Employee.query().fetch(), [])
+    self.assertEqual(Employee.query(namespace='ns').fetch(), [e])
 
   def testMultiQuery(self):
     q1 = query.Query(kind='Foo').filter(Foo.tags == 'jill').order(Foo.name)
