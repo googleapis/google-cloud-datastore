@@ -616,29 +616,29 @@ class TaskletTests(test_utils.DatastoreTest):
     def foo():
       try:
         yield good(), bad(), 42
-      except AssertionError:  # TODO: Maybe TypeError?
+      except TypeError:
         pass
       else:
-        self.assertFalse('Should have raised AssertionError')
+        self.assertFalse('Should have raised TypeError')
     foo().check_success()
 
-  def test_issue_61(self):
+  def testMultiSingleCombinationYield(self):
     @tasklets.tasklet
     def foo():
       class Test(model.Model):
-        obj_key = model.KeyProperty()
-        obj_keys = model.KeyProperty(repeated=True)
+        k = model.KeyProperty()
+        ks = model.KeyProperty(repeated=True)
 
       t = Test()
       t.put()
 
-      t1 = Test(obj_key=t.key, obj_keys=[t.key, t.key])
+      t1 = Test(k=t.key, ks=[t.key, t.key])
       t1.put()
 
       t1 = t1.key.get()
-      obj, objs = yield t1.obj_key.get_async(), model.get_multi_async(t1.obj_keys)
-      self.assertEqual(obj.key, t1.obj_key)
-      self.assertEqual([obj.key for obj in objs], t1.obj_keys)
+      obj, objs = yield t1.k.get_async(), model.get_multi_async(t1.ks)
+      self.assertEqual(obj.key, t1.k)
+      self.assertEqual([obj.key for obj in objs], t1.ks)
 
     foo().get_result()
 

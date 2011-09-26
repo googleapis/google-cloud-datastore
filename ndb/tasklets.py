@@ -474,8 +474,8 @@ class MultiFuture(Future):
       map(mfut.add_dependent, fut)
       mfut.complete()
       fut = mfut
-    if not isinstance(fut, Future):
-      raise AssertionError('Expected Future received %r' % fut)
+    elif not isinstance(fut, Future):
+      raise TypeError('Expected Future received %r' % fut)
     assert not self._full
     self._results.append(fut)
     if fut not in self._dependents:
