@@ -622,6 +622,25 @@ class TaskletTests(test_utils.DatastoreTest):
         self.assertFalse('Should have raised AssertionError')
     foo().check_success()
 
+  def test_issue_61(self):
+    @tasklets.tasklet
+    def foo():
+      class Test(model.Model):
+        obj_key = model.KeyProperty()
+        obj_keys = model.KeyProperty(repeated=True)
+
+      t = Test()
+      t.put()
+
+      t1 = Test(obj_key=t.key, obj_keys=[t.key, t.key])
+      t1.put()
+
+      t1 = t1.key.get()
+      obj, objs = yield t1.obj_key.get_async(), model.get_multi_async(t1.obj_keys)
+      self.assertEqual(obj.key, t1.obj_key)
+      self.assertEqual([obj.key for obj in objs], t1.obj_keys)
+
+    foo().get_result()
 
 class TracebackTests(unittest.TestCase):
   """Checks that errors result in reasonable tracebacks."""
