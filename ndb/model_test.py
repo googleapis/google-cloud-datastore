@@ -755,7 +755,7 @@ class ModelTests(test_utils.DatastoreTest):
     class ClockInOut(model.Model):
       ctime = propclass(auto_now_add=True)
       mtime = propclass(auto_now=True)
-    
+
     class Person(model.Model):
       name = model.StringProperty()
       ctime = propclass(auto_now_add=True)
