@@ -1,8 +1,5 @@
 """Context class."""
 
-# TODO: Handle things like request size limits.  E.g. what if we've
-# batched up 1000 entities to put and now the memcache call fails?
-
 import logging
 import sys
 
@@ -20,10 +17,6 @@ _LOCK_TIME = 32  # Time to lock out memcache.add() after datastore.put().
 
 class ContextOptions(datastore_rpc.Configuration):
   """Configuration options that may be passed along with get/put/delete."""
-
-  # TODO: Remove this method once datastore_rpc.Configuration implements it.
-  def __hash__(self):
-    return hash(frozenset(self._values.iteritems()))
 
   @datastore_rpc.ConfigOption
   def use_cache(value):
@@ -53,13 +46,17 @@ class ContextOptions(datastore_rpc.Configuration):
         'memcache_timeout should be an integer (%r)' % (value,))
     return value
 
+  @datastore_rpc.ConfigOption
+  def max_memcache_items(value):
+    if not isinstance(value, (int, long)):
+      raise datastore_errors.BadArgumentError(
+        'max_memcache_items should be an integer (%r)' % (value,))
+    return value
 
-# For backwards compatibility, translate these option names.
+
+# options and config can be used interchangeably.
 _OPTION_TRANSLATIONS = {
   'options': 'config',
-  'ndb_should_cache': 'use_cache',
-  'ndb_should_memcache': 'use_memcache',
-  'ndb_memcache_timeout': 'memcache_timeout',
 }
 
 
@@ -91,7 +88,7 @@ def _make_ctx_options(ctx_options):
 
 class AutoBatcher(object):
 
-  def __init__(self, todo_tasklet, limit=100):
+  def __init__(self, todo_tasklet, limit):
     # todo_tasklet is a tasklet to be called with list of (future, arg) pairs
     self._todo_tasklet = todo_tasklet
     self._limit = limit  # No more than this many per callback
@@ -144,19 +141,38 @@ class AutoBatcher(object):
 class Context(object):
 
   def __init__(self, conn=None, auto_batcher_class=AutoBatcher, config=None):
+    # NOTE: If conn is not None, config is only used to get the
+    # auto-batcher limits.
     if conn is None:
       conn = model.make_connection(config)
-    else:
-      assert config is None  # It wouldn't be used.
     self._conn = conn
     self._auto_batcher_class = auto_batcher_class
-    self._get_batcher = auto_batcher_class(self._get_tasklet)
-    self._put_batcher = auto_batcher_class(self._put_tasklet)
-    self._delete_batcher = auto_batcher_class(self._delete_tasklet)
-    self._memcache_get_batcher = auto_batcher_class(self._memcache_get_tasklet)
-    self._memcache_set_batcher = auto_batcher_class(self._memcache_set_tasklet)
-    self._memcache_del_batcher = auto_batcher_class(self._memcache_del_tasklet)
-    self._memcache_off_batcher = auto_batcher_class(self._memcache_off_tasklet)
+    # Get the get/put/delete limits (defaults 1000, 500, 500).
+    max_get = (datastore_rpc.Configuration.max_get_keys(conn.config, config) or
+               datastore_rpc.Connection.MAX_GET_KEYS)
+    max_put = (datastore_rpc.Configuration.max_put_entities(conn.config,
+                                                            config) or
+               datastore_rpc.Connection.MAX_PUT_ENTITIES)
+    max_delete = (datastore_rpc.Configuration.max_delete_keys(conn.config,
+                                                              config) or
+                  datastore_rpc.Connection.MAX_DELETE_KEYS)
+    # Create the get/put/delete auto-batchers.
+    self._get_batcher = auto_batcher_class(self._get_tasklet, max_get)
+    self._put_batcher = auto_batcher_class(self._put_tasklet, max_put)
+    self._delete_batcher = auto_batcher_class(self._delete_tasklet, max_delete)
+    # We only have a single limit for memcache (default 1000).
+    max_memcache = (ContextOptions.max_memcache_items(conn.config, config) or
+                    datastore_rpc.Connection.MAX_GET_KEYS)
+    # Create the memcache auto-batchers.
+    self._memcache_get_batcher = auto_batcher_class(self._memcache_get_tasklet,
+                                                    max_memcache)
+    self._memcache_set_batcher = auto_batcher_class(self._memcache_set_tasklet,
+                                                    max_memcache)
+    self._memcache_del_batcher = auto_batcher_class(self._memcache_del_tasklet,
+                                                    max_memcache)
+    self._memcache_off_batcher = auto_batcher_class(self._memcache_off_tasklet,
+                                                    max_memcache)
+    # Create a list of batchers for flush().
     self._batchers = [self._get_batcher,
                       self._put_batcher,
                       self._delete_batcher,
@@ -988,7 +1004,7 @@ class Context(object):
   def memcache_delete(self, key, seconds=0):
     assert isinstance(key, str)
     assert isinstance(seconds, (int, long))
-    return self._memcache_del_batcher.add((key, seconds), None)
+    return self._memcache_del_batcher.add((key, seconds))
 
   def memcache_incr(self, key, delta=1, initial_value=None):
     assert isinstance(key, str)
