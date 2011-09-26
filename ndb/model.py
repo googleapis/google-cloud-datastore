@@ -1481,6 +1481,15 @@ class StructuredProperty(Property):
       values.append(subentity)
     prop._deserialize(subentity, p, depth + 1)
 
+  def _prepare_for_put(self, entity):
+    value = self._get_value(entity)
+    if value:
+      if self._repeated:
+        for subent in value:
+          subent._prepare_for_put()
+      else:
+        value._prepare_for_put()
+
 
 class LocalStructuredProperty(BlobProperty):
   """Substructure that is serialized to an opaque blob.
@@ -1523,6 +1532,15 @@ class LocalStructuredProperty(BlobProperty):
     pb = entity_pb.EntityProto()
     pb.MergePartialFromString(value)
     return self._modelclass._from_pb(pb, set_key=False)
+
+  def _prepare_for_put(self, entity):
+    value = self._get_value(entity)
+    if value:
+      if self._repeated:
+        for subent in value:
+          subent._prepare_for_put()
+      else:
+        value._prepare_for_put()
 
 
 class GenericProperty(Property):
