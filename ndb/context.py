@@ -91,11 +91,12 @@ def _make_ctx_options(ctx_options):
 
 class AutoBatcher(object):
 
-  def __init__(self, todo_tasklet):
+  def __init__(self, todo_tasklet, limit=100):
     # todo_tasklet is a tasklet to be called with list of (future, arg) pairs
     self._todo_tasklet = todo_tasklet
+    self._limit = limit  # No more than this many per callback
     self._todo = []  # List of (future, arg) pairs
-    self._running = None  # Currently running tasklet, if any
+    self._running = []  # Currently running tasklets
 
   def __repr__(self):
     return '%s(%s)' % (self.__class__.__name__, self._todo_tasklet.__name__)
@@ -107,42 +108,37 @@ class AutoBatcher(object):
       # which puts them at absolute time 0 (i.e. ASAP -- still on a
       # FIFO basis).  Callbacks explicitly scheduled with a delay of 0
       # are only run after all immediately runnable tasklets have run.
-      eventloop.queue_call(0, self._autobatcher_callback)
+      eventloop.queue_call(0, self._autobatcher_callback, self._todo)
     self._todo.append((fut, arg, options))
+    if len(self._todo) >= self._limit:
+      self._todo = []  # Schedule another callback next time
     return fut
 
-  def _autobatcher_callback(self):
-    if not self._todo:
+  def _autobatcher_callback(self, todo):
+    if not todo:  # Weird.
       return
-    if self._running is not None:
-      # Another callback may still be running.
-      if not self._running.done():
-        # Wait for it to complete first, then try again.
-        self._running.add_callback(self._autobatcher_callback)
-        return
-      self._running = None
-    # We cannot postpone the inevitable any longer.
-    todo = self._todo
-    self._todo = []  # Get ready for the next batch
+    # Detach from self, if possible.
+    if todo is self._todo:
+      self._todo = []  # Get ready for the next batch
     # TODO: Use logging_debug(), at least if len(todo) == 1.
     logging.info('AutoBatcher(%s): %d items',
                  self._todo_tasklet.__name__, len(todo))
-    self._running = self._todo_tasklet(todo)
-    # Add a callback to the Future to propagate exceptions,
-    # since this Future is not normally checked otherwise.
-    self._running.add_callback(self._running.check_success)
+    fut = self._todo_tasklet(todo)
+    self._running.append(fut)
+    # Add a callback when we're done.
+    fut.add_callback(self._finished_callback, fut)
+
+  def _finished_callback(self, fut):
+    self._running.remove(fut)
+    fut.check_success()
 
   @tasklets.tasklet
   def flush(self):
     while self._running or self._todo:
       if self._running:
-        if self._running.done():
-          self._running.check_success()
-          self._running = None
-        else:
-          yield self._running
+        yield self._running  # A list of Futures
       else:
-        self._autobatcher_callback()
+        yield tasklets.sleep(0)  # Let our callback run
 
 
 class Context(object):

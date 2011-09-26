@@ -121,6 +121,21 @@ class ContextTests(test_utils.DatastoreTest):
     self.assertEqual(name, '_memcache_del_tasklet')
     self.assertEqual(len(todo), 3)
 
+  def testContext_AutoBatcher_Limit(self):
+    @tasklets.tasklet
+    def foo():
+      es = [model.Model(key=model.Key('Foo', None)) for i in range(199)]
+      fs = [self.ctx.put(e) for e in es]
+      self.ctx.flush()
+      ks = yield fs
+      self.assertEqual(len(ks), 199)
+      self.assertTrue(all(isinstance(k, model.Key) for k in ks))
+    foo().get_result()
+    self.assertEqual(len(MyAutoBatcher._log), 2)
+    for i, (name, todo) in enumerate(MyAutoBatcher._log):
+      self.assertEqual(name, '_put_tasklet')
+      self.assertEqual(len(todo), 100 - i)
+
   def testContext_MultiRpc(self):
     # This test really tests the proper handling of MultiRpc by
     # queue_rpc() in eventloop.py.  It's easier to test from here, and
