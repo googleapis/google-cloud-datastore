@@ -106,6 +106,10 @@ IF /I "%TARGET%"=="python_raw"     GOTO pythonraw
 REM TODO: Implement zip
 IF /I "%TARGET%"=="zip"            GOTO unimplemented
 IF /I "%TARGET%"=="clean"          GOTO clean
+SET LONGLINES_TARGETS%=(long, longline, longlines)
+FOR %%A IN %LONGLINES_TARGETS% DO IF /I "%TARGET%"=="%%A" GOTO longlines
+SET TRIM_TARGETS%=(tr, trim, trim_whitespace)
+FOR %%A IN %TRIM_TARGETS% DO IF /I "%TARGET%"=="%%A" GOTO trim
 IF "%TARGET%"=="" (
 	ECHO Must specify a make target e.g. serve
 ) ELSE (
@@ -154,6 +158,14 @@ GOTO end
 :clean
 RMDIR /S /Q htmlcov .coverage
 DEL /S *.pyc *~ @* *.orig *.rej #*#
+GOTO end
+
+:trim
+CALL %PYTHON% %PYTHONFLAGS% trimwhitespace.py %FLAGS%
+GOTO end
+
+:longlines
+CALL %PYTHON% %PYTHONFLAGS% longlines.py %FLAGS%
 GOTO end
 
 :all
