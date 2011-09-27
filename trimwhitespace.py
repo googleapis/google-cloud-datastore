@@ -10,7 +10,7 @@ def scanpath(path):
       trimwhitespace(filepath)
 
 def trimwhitespace(filepath):
-  handle = open(filepath, 'r')
+  handle = open(filepath, 'rb')
   stripped = ''
   flag = False
   for line in handle.readlines():
@@ -20,10 +20,13 @@ def trimwhitespace(filepath):
     stripped += stripped_line
   handle.close()
   if flag:
+    print('FAIL: %s' % filepath)
     overwritefile(filepath, stripped)
+  else:
+    print('OK: %s' % filepath)
 
 def overwritefile(filepath, contents):
-  handle = open(filepath, 'w')
+  handle = open(filepath, 'wb')
   handle.write(contents)
   handle.close()
 
