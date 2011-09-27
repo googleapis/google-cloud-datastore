@@ -767,8 +767,8 @@ class ModelTests(test_utils.DatastoreTest):
       localstruct = model.LocalStructuredProperty(ClockInOut)
       replocalstruct = model.LocalStructuredProperty(ClockInOut, repeated=True)
 
-    p = Person(id=1, struct=ClockInOut(),      repstruct=[ClockInOut()],
-                     localstruct=ClockInOut(), replocalstruct=[ClockInOut()])
+    p = Person(id=1, struct=ClockInOut(), repstruct=[ClockInOut()],
+               localstruct=ClockInOut(), replocalstruct=[ClockInOut()])
     p.atime = t1
     p.times = [t1, t2]
     self.assertEqual(p.ctime, None)
