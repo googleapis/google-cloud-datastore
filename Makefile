@@ -83,6 +83,9 @@ python:
 python_raw:
 	PYTHONPATH=$(GAEPATH):. $(PYTHON) $(FLAGS)
 
+longlines:
+	$(PYTHON) longlines.py
+
 zip:
 	D=`pwd`; D=`basename $$D`; cd ..; rm -f $$D.zip; zip $$D.zip `hg st -c -m -a -n -X $$D/.idea $$D`
 
