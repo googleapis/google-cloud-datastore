@@ -127,6 +127,10 @@ class TaskletTests(test_utils.DatastoreTest):
     self.assertEqual(self.log, [(f,) for f in self.futs])
 
   def testSleep(self):
+    """Ensure that tasklets sleep for the specified amount of time.
+
+    NOTE: May sleep too long if processor usage is high.
+    """
     log = []
     @tasklets.tasklet
     def foo():
