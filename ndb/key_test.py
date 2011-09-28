@@ -242,126 +242,39 @@ class KeyTests(test_utils.DatastoreTest):
     # TODO: BadArgumentError
     self.assertRaises(Exception, key.Key, 42, 42)
 
-  def testPreDeleteHook(self):
-    self.counter = 0
+  def testDeleteHooksCalled(self):
+    test = self # Closure for inside hook
+    self.pre_counter = 0
+    self.post_counter = 0
 
-    class Foo(model.Model):
+    class HatStand(model.Model):
       @classmethod
       def _pre_delete_hook(cls, ctx, key):
-        self.counter += 1
-
-    x = Foo()
-    self.assertEqual(self.counter, 0,
-                     'Delete hook triggered by entity creation')
-    x.put()
-    self.assertEqual(self.counter, 0, 'Delete hook triggered by entity put')
-    x.key.delete()
-    self.assertEqual(self.counter, 1,
-                     'Delete hook not triggered on key deletion')
-
-  def testPostDeleteHook(self):
-    self.counter = 0
-
-    class Foo(model.Model):
+        test.pre_counter += 1
       @classmethod
       def _post_delete_hook(cls, ctx, key):
-        self.counter += 1
+        test.post_counter += 1
 
-    x = Foo()
+    furniture = HatStand()
+    key = furniture.put()
+    self.assertEqual(self.pre_counter, 0, 'Pre delete hook called early')
+    key.delete()
+    self.assertEqual(self.pre_counter, 1, 'Pre delete hook not called')
+    self.assertEqual(self.post_counter, 0, 'Post delete hook called early')
     eventloop.get_event_loop().run()
-    self.assertEqual(self.counter, 0,
-                     'Delete hook triggered by entity creation')
-    x.put()
-    eventloop.get_event_loop().run()
-    self.assertEqual(self.counter, 0, 'Delete hook triggered by entity put')
-    x.key.delete()
-    self.assertEqual(self.counter, 0,
-                     'Delete hook triggered by key deletion before eventloop')
-    eventloop.get_event_loop().run()
-    self.assertEqual(self.counter, 1,
-                     'Delete hook not triggered on key deletion')
+    self.assertEqual(self.post_counter, 1, 'Post delete hook not called')
 
-  def testPreDeleteHookMulti(self):
-    self.counter = 0
-
-    class Foo(model.Model):
-      @classmethod
-      def _pre_delete_hook(cls, ctx, key):
-        self.counter += 1
-
-    entities = [Foo() for _ in range(10)]
-    model.put_multi(entities)
-    keys = [entity.key for entity in entities]
+    # All counters now read 1, calling delete_multi for 10 keys makes this 11
+    new_furniture = [HatStand() for _ in range(10)]
+    keys = model.put_multi(new_furniture)
     model.delete_multi(keys)
-    self.assertEqual(self.counter, 10,
-                     '%i/10 Delete hooks not triggered on model.delete_multi' %
-                     (10 - self.counter))
-
-  def testPostDeleteHookMulti(self):
-    self.counter = 0
-
-    class Foo(model.Model):
-      @classmethod
-      def _post_delete_hook(cls, ctx, key):
-        self.counter += 1
-
-    entities = [Foo() for _ in range(10)]
-    model.put_multi(entities)
-    keys = [entity.key for entity in entities]
-    model.delete_multi(keys)
-    self.assertEqual(self.counter, 0,
-         '%i/10 Delete hooks triggered by model.delete_multi before eventloop' %
-         self.counter)
+    self.assertEqual(self.pre_counter, 11,
+                     'Pre delete hooks not called on model.delete_multi')
+    self.assertEqual(self.post_counter, 1,
+                     'Post delete hooks called early on model.delete_multi')
     eventloop.get_event_loop().run()
-    self.assertEqual(self.counter, 10,
-                     '%i/10 Delete hooks not triggered on model.delete_multi' %
-                     (10 - self.counter))
-
-  def testMonkeyPatchPreDeleteHook(self):
-    original_hook = model.Model._pre_delete_hook
-    self.flag = False
-
-    class Foo(model.Model):
-      @classmethod
-      def _pre_delete_hook(cls, ctx, key):
-        self.flag = True
-    model.Model._pre_delete_hook = Foo._pre_delete_hook
-
-    try:
-      entity = Foo()
-      entity.put()
-      entity.key.delete()
-      self.assertTrue(self.flag)
-    finally:
-      model.Model._pre_delete_hook = original_hook
-
-  def testMonkeyPatchPostDeleteHook(self):
-    original_hook = model.Model._post_delete_hook
-    self.flag = False
-
-    class Foo(model.Model):
-      @classmethod
-      def _post_delete_hook(cls, ctx, key):
-        self.flag = True
-    model.Model._post_delete_hook = Foo._post_delete_hook
-
-    try:
-      entity = Foo()
-      entity.put()
-      entity.key.delete()
-      eventloop.get_event_loop().run()
-      self.assertTrue(self.flag)
-    finally:
-      model.Model._post_delete_hook = original_hook
-
-  def testPreDeleteHookCannotCancelRPC(self):
-    class Foo(model.Model):
-      @classmethod
-      def _pre_delete_hook(*args):
-        raise tasklets.Return()
-    entity = Foo()
-    entity.put()
-    self.assertRaises(tasklets.Return, entity.key.delete)
+    self.assertEqual(self.post_counter, 11,
+                     'Post delete hooks not called on model.delete_multi')
 
   def test_issue_58_delete(self):
     ctx = tasklets.get_context()
@@ -377,123 +290,104 @@ class KeyTests(test_utils.DatastoreTest):
     self.assertEqual(ev_len, 0,
                      'Delete hook queued default no-op: %r' % ev.queue)
 
-  def testPreGetHook(self):
-    self.counter = 0
+  def testGetHooksCalled(self):
+    test = self # Closure for inside hook
+    self.pre_counter = 0
+    self.post_counter = 0
 
-    class Foo(model.Model):
+    class HatStand(model.Model):
       @classmethod
       def _pre_get_hook(cls, ctx, key):
-        self.counter += 1
-
-    x = Foo()
-    self.assertEqual(self.counter, 0, 'Get hook triggered by entity creation')
-    x.put()
-    self.assertEqual(self.counter, 0, 'Get hook triggered by entity put')
-    x.key.get()
-    self.assertEqual(self.counter, 1, 'Get hook not triggered on key get')
-
-  def testPostGetHook(self):
-    self.counter = 0
-
-    class Foo(model.Model):
+        test.pre_counter += 1
       @classmethod
       def _post_get_hook(cls, ctx, key):
-        self.counter += 1
+        test.post_counter += 1
 
-    x = Foo()
+    furniture = HatStand()
+    key = furniture.put()
+    self.assertEqual(self.pre_counter, 0, 'Pre get hook called early')
+    key.get()
+    self.assertEqual(self.pre_counter, 1, 'Pre get hook not called')
+    self.assertEqual(self.post_counter, 0, 'Post get hook called early')
     eventloop.get_event_loop().run()
-    self.assertEqual(self.counter, 0, 'Get hook triggered by entity creation')
-    x.put()
-    eventloop.get_event_loop().run()
-    self.assertEqual(self.counter, 0, 'Get hook triggered by entity put')
-    x.key.get()
-    self.assertEqual(self.counter, 0,
-                     'Get hook triggered by key get before eventloop')
-    eventloop.get_event_loop().run()
-    self.assertEqual(self.counter, 1,
-                     'Get hook not triggered on key get')
+    self.assertEqual(self.post_counter, 1, 'Post get hook not called')
 
-  def testPreGetHookMulti(self):
-    self.counter = 0
+    # All counters now read 1, calling get for 10 keys should make this 11
+    new_furniture = [HatStand() for _ in range(10)]
+    keys = model.put_multi(new_furniture)
+    model.get_multi(keys)
+    self.assertEqual(self.pre_counter, 11,
+                     'Pre get hooks not called on model.get_multi')
+    self.assertEqual(self.post_counter, 1,
+                     'Post get hooks called early on model.get_multi')
+    eventloop.get_event_loop().run()
+    self.assertEqual(self.post_counter, 11,
+                     'Post get hooks not called on model.get_multi')
 
-    class Foo(model.Model):
+  def testMonkeyPatchHooks(self):
+    hook_attr_names = ('_pre_get_hook', '_post_get_hook',
+                       '_pre_delete_hook', '_post_delete_hook')
+    original_hooks = {}
+
+    # Backup the original hooks
+    for name in hook_attr_names:
+      original_hooks[name] = getattr(model.Model, name)
+
+    self.pre_get_flag = False
+    self.post_get_flag = False
+    self.pre_delete_flag = False
+    self.post_delete_flag = False
+
+    class HatStand(model.Model):
       @classmethod
       def _pre_get_hook(cls, ctx, key):
-        self.counter += 1
-
-    entities = [Foo() for _ in range(10)]
-    model.put_multi(entities)
-    keys = [entity.key for entity in entities]
-    model.get_multi(keys)
-    self.assertEqual(self.counter, 10,
-                     '%i/10 Get hooks not triggered on model.get_multi' %
-                     (10 - self.counter))
-
-  def testPostGetHookMulti(self):
-    self.counter = 0
-
-    class Foo(model.Model):
+        self.pre_get_flag = True
       @classmethod
       def _post_get_hook(cls, ctx, key):
-        self.counter += 1
-
-    entities = [Foo() for _ in range(10)]
-    model.put_multi(entities)
-    keys = [entity.key for entity in entities]
-    model.get_multi(keys)
-    self.assertEqual(self.counter, 0,
-         '%i/10 Get hooks triggered by model.get_multi before eventloop' %
-         self.counter)
-    eventloop.get_event_loop().run()
-    self.assertEqual(self.counter, 10,
-                     '%i/10 Get hooks not triggered on model.get_multi' %
-                     (10 - self.counter))
-
-  def testMonkeyPatchPreGetHook(self):
-    original_hook = model.Model._pre_get_hook
-    self.flag = False
-
-    class Foo(model.Model):
+        self.post_get_flag = True
       @classmethod
-      def _pre_get_hook(cls, ctx, key):
-        self.flag = True
-    model.Model._pre_get_hook = Foo._pre_get_hook
+      def _pre_delete_hook(cls, ctx, key):
+        self.pre_delete_flag = True
+      @classmethod
+      def _post_delete_hook(cls, ctx, key):
+        self.post_delete_flag = True
+
+    # Monkey patch the hooks
+    for name in hook_attr_names:
+      hook = getattr(HatStand, name)
+      setattr(model.Model, name, hook)
 
     try:
-      entity = Foo()
-      entity.put()
-      entity.key.get()
-      self.assertTrue(self.flag)
-    finally:
-      model.Model._pre_get_hook = original_hook
-
-  def testMonkeyPatchPostGetHook(self):
-    original_hook = model.Model._post_get_hook
-    self.flag = False
-
-    class Foo(model.Model):
-      @classmethod
-      def _post_get_hook(cls, ctx, key):
-        self.flag = True
-    model.Model._post_get_hook = Foo._post_get_hook
-
-    try:
-      entity = Foo()
-      entity.put()
-      entity.key.get()
+      key = HatStand().put()
+      key.get()
+      self.assertTrue(self.pre_get_flag,
+                      'Pre get hook not called when model is monkey patched')
       eventloop.get_event_loop().run()
-      self.assertTrue(self.flag)
+      self.assertTrue(self.post_get_flag,
+                      'Post get hook not called when model is monkey patched')
+      key.delete()
+      self.assertTrue(self.pre_delete_flag,
+                     'Pre delete hook not called when model is monkey patched')
+      eventloop.get_event_loop().run()
+      self.assertTrue(self.post_delete_flag,
+                    'Post delete hook not called when model is monkey patched')
     finally:
-      model.Model._post_get_hook = original_hook
+      # Restore the original hooks
+      for name in hook_attr_names:
+        setattr(model.Model, name, original_hooks[name])
 
-  def testPreGetHookCannotCancelRPC(self):
+  def testPreHooksCannotCancelRPC(self):
     class Foo(model.Model):
       @classmethod
       def _pre_get_hook(*args):
         raise tasklets.Return()
+      @classmethod
+      def _pre_delete_hook(*args):
+        raise tasklets.Return()
     entity = Foo()
     entity.put()
     self.assertRaises(tasklets.Return, entity.key.get)
+    self.assertRaises(tasklets.Return, entity.key.delete)
 
   def test_issue_58_get(self):
     ctx = tasklets.get_context()

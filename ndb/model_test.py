@@ -2469,72 +2469,23 @@ class ModelTests(test_utils.DatastoreTest):
     y = Evil._from_pb(pb)
     self.assertEqual(y.x, 50)
 
-  def testPreAllocateIdsHook(self):
-    self.counter = 0
-
-    class Foo(model.Model):
+  def testAllocateIdsHooksCalled(self):
+    self.pre_counter = 0
+    self.post_counter = 0
+    class HatStand(model.Model):
       @classmethod
       def _pre_allocate_ids_hook(cls, ctx, size, max, parent):
-        self.counter += 1
-
-    Foo.allocate_ids(1)
-    self.assertEqual(self.counter, 1,
-                     'Allocate ids hook not triggered when allocating ids')
-
-  def testPostAllocateIdsHook(self):
-    self.counter = 0
-
-    class Foo(model.Model):
+        self.pre_counter += 1
       @classmethod
       def _post_allocate_ids_hook(cls, ctx, size, max, parent):
-        self.counter += 1
-
-    Foo.allocate_ids(1)
-    self.assertEqual(self.counter, 0,
-             'Allocate ids hook triggered when allocating ids before eventloop')
+        self.post_counter += 1
+    self.assertEqual(self.pre_counter, 0, 'Pre allocate ids hook called early')
+    HatStand.allocate_ids(1)
+    self.assertEqual(self.pre_counter, 1, 'Pre allocate ids hook not called')
+    self.assertEqual(self.post_counter, 0,
+                     'Post allocate ids hook called early')
     eventloop.get_event_loop().run()
-    self.assertEqual(self.counter, 1,
-                     'Allocate ids hook not triggered when allocating ids')
-
-  def testMonkeyPatchPreAllocateIdsHook(self):
-    original_hook = model.Model._pre_allocate_ids_hook
-    self.flag = False
-
-    class Foo(model.Model):
-      @classmethod
-      def _pre_allocate_ids_hook(cls, ctx, size, max, parent):
-        self.flag = True
-    model.Model._pre_allocate_ids_hook = Foo._pre_allocate_ids_hook
-
-    try:
-      Foo.allocate_ids(1)
-      self.assertTrue(self.flag)
-    finally:
-      model.Model._pre_allocate_ids_hook = original_hook
-
-  def testMonkeyPatchPostAllocateIdsHook(self):
-    original_hook = model.Model._post_allocate_ids_hook
-    self.flag = False
-
-    class Foo(model.Model):
-      @classmethod
-      def _post_allocate_ids_hook(cls, ctx, size, max, parent):
-        self.flag = True
-    model.Model._post_allocate_ids_hook = Foo._post_allocate_ids_hook
-
-    try:
-      Foo.allocate_ids(1)
-      eventloop.get_event_loop().run()
-      self.assertTrue(self.flag)
-    finally:
-      model.Model._post_allocate_ids_hook = original_hook
-
-  def testPreAllocateIdsHookCannotCancelRPC(self):
-    class Foo(model.Model):
-      @classmethod
-      def _pre_allocate_ids_hook(*args):
-        raise tasklets.Return()
-    self.assertRaises(tasklets.Return, Foo.allocate_ids, 1)
+    self.assertEqual(self.post_counter, 1, 'Post allocate ids hook not called')
 
   def test_issue_58_allocate_ids(self):
     ctx = tasklets.get_context()
@@ -2547,108 +2498,96 @@ class ModelTests(test_utils.DatastoreTest):
     self.assertEqual(ev_len, 0,
                      'Allocate ids hook queued default no-op: %r' % ev.queue)
 
-  def testPrePutHook(self):
-    test = self # Closure for inside hook
-    self.counter = 0
+  def testPutHooksCalled(self):
+    test = self # Closure for inside hooks
+    self.pre_counter = 0
+    self.post_counter = 0
 
-    class Foo(model.Model):
+    class HatStand(model.Model):
       def _pre_put_hook(self, ctx):
-        test.counter += 1
-
-    x = Foo()
-    self.assertEqual(self.counter, 0, 'Put hook triggered by entity creation')
-    x.put()
-    self.assertEqual(self.counter, 1, 'Put hook not triggered on entity put')
-
-  def testPostPutHook(self):
-    test = self # Closure for inside hook
-    self.counter = 0
-
-    class Foo(model.Model):
+        test.pre_counter += 1
       def _post_put_hook(self, ctx):
-        test.counter += 1
+        test.post_counter += 1
 
-    x = Foo()
+    furniture = HatStand()
+    self.assertEqual(self.pre_counter, 0, 'Pre put hook called early')
+    furniture.put()
+    self.assertEqual(self.pre_counter, 1, 'Pre put hook not called')
+    self.assertEqual(self.post_counter, 0, 'Post put hook called early')
     eventloop.get_event_loop().run()
-    self.assertEqual(self.counter, 0, 'Put hook triggered by entity creation')
-    x.put()
-    self.assertEqual(self.counter, 0,
-                     'Put hook triggered by entity put before eventloop')
+    self.assertEqual(self.post_counter, 1, 'Post put hook not called')
+
+    # All counters now read 1, calling put_multi for 10 entities makes this 11
+    new_furniture = [HatStand() for _ in range(10)]
+    model.put_multi(new_furniture)
+    self.assertEqual(self.pre_counter, 11,
+                     'Pre put hooks not called on model.put_multi')
+    self.assertEqual(self.post_counter, 1,
+                     'Post put hooks called early on model.put_multi')
     eventloop.get_event_loop().run()
-    self.assertEqual(self.counter, 1, 'Put hook not triggered on entity put')
+    self.assertEqual(self.post_counter, 11,
+                     'Post put hooks not called on model.put_multi')
 
-  def testPrePutHookMulti(self):
-    test = self # Closure for inside hook
-    self.counter = 0
+  def testMonkeyPatchHooks(self):
+    test = self # Closure for inside put hooks
+    hook_attr_names = ('_pre_allocate_ids_hook', '_post_allocate_ids_hook',
+                       '_pre_put_hook', '_post_put_hook')
+    original_hooks = {}
 
-    class Foo(model.Model):
+    # Backup the original hooks
+    for name in hook_attr_names:
+      original_hooks[name] = getattr(model.Model, name)
+
+    self.pre_allocate_ids_flag = False
+    self.post_allocate_ids_flag = False
+    self.pre_put_flag = False
+    self.post_put_flag = False
+
+    class HatStand(model.Model):
+      @classmethod
+      def _pre_allocate_ids_hook(cls, ctx, size, max, parent):
+        self.pre_allocate_ids_flag = True
+      @classmethod
+      def _post_allocate_ids_hook(cls, ctx, size, max, parent):
+        self.post_allocate_ids_flag = True
       def _pre_put_hook(self, ctx):
-        test.counter +=1
-
-    entities = [Foo() for _ in range(10)]
-    model.put_multi(entities)
-    self.assertEqual(self.counter, 10,
-                     '%i/10 Put hooks not triggered on model.put_multi' %
-                     (10 - self.counter))
-
-  def testPostPutHookMulti(self):
-    test = self # Closure for inside hook
-    self.counter = 0
-
-    class Foo(model.Model):
+        test.pre_put_flag = True
       def _post_put_hook(self, ctx):
-        test.counter +=1
+        test.post_put_flag = True
 
-    entities = [Foo() for _ in range(10)]
-    model.put_multi(entities)
-    self.assertEqual(self.counter, 0,
-               '%i/10 Put hooks triggered on model.put_multi before eventloop' %
-               self.counter)
-    eventloop.get_event_loop().run()
-    self.assertEqual(self.counter, 10,
-                     '%i/10 Put hooks not triggered on model.put_multi' %
-                     (10 - self.counter))
-
-  def testMonkeyPatchPrePutHook(self):
-    test = self # Closure for inside hook
-    original_hook = model.Model._pre_put_hook
-    self.flag = False
-
-    class Foo(model.Model):
-      def _pre_put_hook(self, ctx):
-        test.flag = True
-    model.Model._pre_put_hook = Foo._pre_put_hook
+    # Monkey patch the hooks
+    for name in hook_attr_names:
+      hook = getattr(HatStand, name)
+      setattr(model.Model, name, hook)
 
     try:
-      entity = Foo()
-      entity.put()
-      self.assertTrue(self.flag)
-    finally:
-      model.Model._pre_put_hook = original_hook
-
-  def testMonkeyPatchPostPutHook(self):
-    test = self # Closure for inside hook
-    original_hook = model.Model._post_put_hook
-    self.flag = False
-
-    class Foo(model.Model):
-      def _post_put_hook(self, ctx):
-        test.flag = True
-    model.Model._post_put_hook = Foo._post_put_hook
-
-    try:
-      entity = Foo()
-      entity.put()
+      HatStand.allocate_ids(1)
+      self.assertTrue(self.pre_allocate_ids_flag,
+               'Pre allocate ids hook not called when model is monkey patched')
       eventloop.get_event_loop().run()
-      self.assertTrue(self.flag)
+      self.assertTrue(self.post_allocate_ids_flag,
+              'Post allocate ids hook not called when model is monkey patched')
+      furniture = HatStand()
+      furniture.put()
+      self.assertTrue(self.pre_put_flag,
+                      'Pre put hook not called when model is monkey patched')
+      eventloop.get_event_loop().run()
+      self.assertTrue(self.post_put_flag,
+                      'Post put hook not called when model is monkey patched')
     finally:
-      model.Model._post_put_hook = original_hook
+      # Restore the original hooks
+      for name in hook_attr_names:
+        setattr(model.Model, name, original_hooks[name])
 
-  def testPrePutHookCannotCancelRPC(self):
-    class Foo(model.Model):
-      def _pre_put_hook(*args):
+  def testPreHooksCannotCancelRPC(self):
+    class HatStand(model.Model):
+      @classmethod
+      def _pre_allocate_ids_hook(cls, ctx, size, max, parent):
         raise tasklets.Return()
-    entity = Foo()
+      def _pre_put_hook(self, ctx):
+        raise tasklets.Return()
+    self.assertRaises(tasklets.Return, HatStand.allocate_ids)
+    entity = HatStand()
     self.assertRaises(tasklets.Return, entity.put)
 
   def test_issue_58_put(self):
