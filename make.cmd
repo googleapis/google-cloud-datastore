@@ -113,7 +113,11 @@ FOR %%A IN %TRIM_TARGETS% DO IF /I "%TARGET%"=="%%A" GOTO trim
 IF "%TARGET%"=="" (
 	ECHO Must specify a make target e.g. serve
 ) ELSE (
-	ECHO Invalid target %TARGET%
+	IF NOT EXIST %TARGET% (
+		ECHO Invalid target %TARGET%
+	) ELSE (
+		CALL %PYTHON% %PYTHONFLAGS% %TARGET% %FLAGS%
+	)
 )
 GOTO end
 
