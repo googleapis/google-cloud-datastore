@@ -266,7 +266,6 @@ __author__ = 'guido@google.com (Guido van Rossum)'
 
 import copy
 import datetime
-import logging
 import zlib
 
 from google.appengine.api import datastore_errors
@@ -336,7 +335,7 @@ class ModelAdapter(datastore_rpc.AbstractAdapter):
   def __enter__(self):
     self.want_pbs += 1
 
-  def __exit__(self, *args):
+  def __exit__(self, *unused_args):
     self.want_pbs -= 1
 
   def pb_to_key(self, pb):
@@ -538,7 +537,7 @@ class Property(ModelAttribute):
     values = []
     for val in value:
       if val is not None:
-        val is self._validate(val)
+        assert val is self._validate(val)
         values.append(val)
     return FilterNode(self._name, 'in', values)
   IN = _IN
@@ -646,7 +645,7 @@ class Property(ModelAttribute):
         value = self._do_validate(value)
     self._store_value(entity, value)
 
-  def _has_value(self, entity, rest=None):
+  def _has_value(self, entity, unused_rest=None):
     """Internal helper to ask if the entity has a value for this Property."""
     return self._name in entity._values
 
@@ -736,7 +735,7 @@ class Property(ModelAttribute):
       if val is not None:
         self._db_set_value(v, p, val)
 
-  def _deserialize(self, entity, p, depth=1):
+  def _deserialize(self, entity, p, unused_depth=1):
     """Internal helper to deserialize this property from a protocol buffer.
 
     Subclasses may override this method.
@@ -821,11 +820,11 @@ class BooleanProperty(Property):
                                            (value,))
     return value
 
-  def _db_set_value(self, v, p, value):
+  def _db_set_value(self, v, unused_p, value):
     assert isinstance(value, bool), (self._name)
     v.set_booleanvalue(value)
 
-  def _db_get_value(self, v, p):
+  def _db_get_value(self, v, unused_p):
     if not v.has_booleanvalue():
       return None
     # The booleanvalue field is an int32, so booleanvalue() returns an
@@ -842,11 +841,11 @@ class IntegerProperty(Property):
                                            (value,))
     return int(value)
 
-  def _db_set_value(self, v, p, value):
+  def _db_set_value(self, v, unused_p, value):
     assert isinstance(value, (bool, int, long)), (self._name)
     v.set_int64value(value)
 
-  def _db_get_value(self, v, p):
+  def _db_get_value(self, v, unused_p):
     if not v.has_int64value():
       return None
     return int(v.int64value())
@@ -864,11 +863,11 @@ class FloatProperty(Property):
                                            (value,))
     return float(value)
 
-  def _db_set_value(self, v, p, value):
+  def _db_set_value(self, v, unused_p, value):
     assert isinstance(value, (bool, int, long, float)), (self._name)
     v.set_doublevalue(float(value))
 
-  def _db_get_value(self, v, p):
+  def _db_get_value(self, v, unused_p):
     if not v.has_doublevalue():
       return None
     return v.doublevalue()
@@ -893,7 +892,7 @@ class StringProperty(Property):
     if not self._indexed:
       p.set_meaning(entity_pb.Property.TEXT)
 
-  def _db_get_value(self, v, p):
+  def _db_get_value(self, v, unused_p):
     if not v.has_stringvalue():
       return None
     raw = v.stringvalue()
@@ -1075,13 +1074,13 @@ class GeoPtProperty(Property):
                                            (value,))
     return value
 
-  def _db_set_value(self, v, p, value):
+  def _db_set_value(self, v, unused_p, value):
     assert isinstance(value, GeoPt), (self._name)
     pv = v.mutable_pointvalue()
     pv.set_x(value.lat)
     pv.set_y(value.lon)
 
-  def _db_get_value(self, v, p):
+  def _db_get_value(self, v, unused_p):
     if not v.has_pointvalue():
       return None
     pv = v.pointvalue()
@@ -1126,7 +1125,7 @@ class UserProperty(Property):
   def _db_set_value(self, v, p, value):
     datastore_types.PackUser(p.name(), value, v)
 
-  def _db_get_value(self, v, p):
+  def _db_get_value(self, v, unused_p):
     return _unpack_user(v)
 
 
@@ -1146,7 +1145,7 @@ class KeyProperty(Property):
                                            (value,))
     return value
 
-  def _db_set_value(self, v, p, value):
+  def _db_set_value(self, v, unused_p, value):
     assert isinstance(value, Key)
     # See datastore_types.PackKey
     ref = value.reference()
@@ -1157,7 +1156,7 @@ class KeyProperty(Property):
     for elem in ref.path().element_list():
       rv.add_pathelement().CopyFrom(elem)
 
-  def _db_get_value(self, v, p):
+  def _db_get_value(self, v, unused_p):
     if not v.has_referencevalue():
       return None
     ref = entity_pb.Reference()
@@ -1186,7 +1185,7 @@ class BlobKeyProperty(Property):
     p.set_meaning(entity_pb.Property.BLOBKEY)
     v.set_stringvalue(str(value))
 
-  def _db_get_value(self, v, p):
+  def _db_get_value(self, v, unused_p):
     if not v.has_stringvalue():
       return None
     return datastore_types.BlobKey(v.stringvalue())
@@ -1245,7 +1244,7 @@ class DateTimeProperty(Property):
     v.set_int64value(ival)
     p.set_meaning(entity_pb.Property.GD_WHEN)
 
-  def _db_get_value(self, v, p):
+  def _db_get_value(self, v, unused_p):
     if not v.has_int64value():
       return None
     ival = v.int64value()
@@ -1354,7 +1353,7 @@ class StructuredProperty(Property):
     self._fix_up_nested_properties()
 
   def _fix_up_nested_properties(self):
-    for name, prop in self._modelclass._properties.iteritems():
+    for prop in self._modelclass._properties.itervalues():
       prop_copy = copy.copy(prop)
       prop_copy._name = self._name + '.' + prop._name
       if isinstance(prop_copy, StructuredProperty):
@@ -1438,7 +1437,7 @@ class StructuredProperty(Property):
       values = [value]
     for value in values:
       # TODO: Avoid re-sorting for repeated values.
-      for name, prop in sorted(value._properties.iteritems()):
+      for unused_name, prop in sorted(value._properties.iteritems()):
         prop._serialize(value, pb, prefix + self._name + '.',
                         self._repeated or parent_repeated)
 
@@ -1683,7 +1682,7 @@ class ComputedProperty(GenericProperty):
     assert self._default is None, 'ComputedProperty cannot have a default'
     self._func = func
 
-  def _has_value(self, entity, rest=None):
+  def _has_value(self, unused_entity, unused_rest=None):
     return True
 
   def _store_value(self, entity, value):
@@ -1946,7 +1945,7 @@ class Model(object):
         if elem.id() or elem.name():
           group.add_element().CopyFrom(elem)
 
-    for name, prop in sorted(self._properties.iteritems()):
+    for unused_name, prop in sorted(self._properties.iteritems()):
       prop._serialize(self, pb)
 
     return pb
@@ -2083,11 +2082,11 @@ class Model(object):
     from . import tasklets
     ctx = tasklets.get_context()
     self._prepare_for_put()
-    self._pre_put_hook(ctx)
+    self._pre_put_hook()
     fut = ctx.put(self, **ctx_options)
     post_hook = self._post_put_hook
     if not self._is_default_hook(Model._default_post_put_hook, post_hook):
-      fut.add_callback(post_hook, ctx)
+      fut.add_immediate_callback(post_hook, fut)
     return fut
   put_async = _put_async
 
@@ -2154,14 +2153,13 @@ class Model(object):
     """
     from . import tasklets
     ctx = tasklets.get_context()
-    cls._pre_allocate_ids_hook(ctx, size, max, parent)
+    cls._pre_allocate_ids_hook(size, max, parent)
     key = Key(cls._get_kind(), None, parent=parent)
-    fut = tasklets.get_context().allocate_ids(key, size=size, max=max,
-                                              **ctx_options)
+    fut = ctx.allocate_ids(key, size=size, max=max, **ctx_options)
     post_hook = cls._post_allocate_ids_hook
     if not cls._is_default_hook(Model._default_post_allocate_ids_hook,
                                 post_hook):
-      fut.add_callback(post_hook, ctx, size, max, parent)
+      fut.add_immediate_callback(post_hook, size, max, parent, fut)
     return fut
   allocate_ids_async = _allocate_ids_async
 
@@ -2191,9 +2189,11 @@ class Model(object):
     return tasklets.get_context().get(key, **ctx_options)
   get_by_id_async = _get_by_id_async
 
-  # Hooks that wrap around mutations.  They are all class methods.
+  # Hooks that wrap around mutations.  Most are class methods with
+  # the notable exception of put, which is an instance method.
+
   # To use these, override them in your model class and call
-  # super(<myclass>, cls).<hook>(ctx, <ent-or-key>).
+  # super(<myclass>, cls).<hook>(*args).
 
   # Note that the pre-hooks are called before the operation is
   # scheduled.  The post-hooks are called (by the Future) after the
@@ -2203,40 +2203,40 @@ class Model(object):
   # internal use only.
 
   @classmethod
-  def _pre_allocate_ids_hook(cls, ctx, size, max, parent):
+  def _pre_allocate_ids_hook(cls, size, max, parent):
     pass
   _default_pre_allocate_ids_hook = _pre_allocate_ids_hook
 
   @classmethod
-  def _post_allocate_ids_hook(cls, ctx, size, max, parent):
+  def _post_allocate_ids_hook(cls, size, max, parent, future):
     pass
   _default_post_allocate_ids_hook = _post_allocate_ids_hook
 
   @classmethod
-  def _pre_delete_hook(cls, ctx, key):
+  def _pre_delete_hook(cls, key):
     pass
   _default_pre_delete_hook = _pre_delete_hook
 
   @classmethod
-  def _post_delete_hook(cls, ctx, key):
+  def _post_delete_hook(cls, key, future):
     pass
   _default_post_delete_hook = _post_delete_hook
 
   @classmethod
-  def _pre_get_hook(cls, ctx, key):
+  def _pre_get_hook(cls, key):
     pass
   _default_pre_get_hook = _pre_get_hook
 
   @classmethod
-  def _post_get_hook(cls, ctx, key):
+  def _post_get_hook(cls, key, future):
     pass
   _default_post_get_hook = _post_get_hook
 
-  def _pre_put_hook(self, ctx):
+  def _pre_put_hook(self):
     pass
   _default_pre_put_hook = _pre_put_hook
 
-  def _post_put_hook(self, ctx):
+  def _post_put_hook(self, future):
     pass
   _default_post_put_hook = _post_put_hook
 

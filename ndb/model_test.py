@@ -1,6 +1,5 @@
 """Tests for model.py."""
 
-import base64
 import datetime
 import difflib
 import pickle
@@ -12,9 +11,8 @@ from google.appengine.api import datastore_types
 from google.appengine.api import memcache
 from google.appengine.api import namespace_manager
 from google.appengine.api import users
-from google.appengine.datastore import entity_pb
 
-from . import model, query, tasklets, test_utils, eventloop
+from . import eventloop, key, model, query, tasklets, test_utils
 
 TESTUSER = users.User('test@example.com', 'example.com', '123')
 AMSTERDAM = model.GeoPt(52.35, 4.9166667)
@@ -1187,7 +1185,7 @@ class ModelTests(test_utils.DatastoreTest):
     class MyModel(db.Model):
       name = db.StringProperty()
     dumped = []
-    for proto in 0, 1, 2:
+    for _ in 0, 1, 2:
       x = MyModel()
       s = pickle.dumps(x)
       dumped.append(s)
@@ -1316,9 +1314,9 @@ class ModelTests(test_utils.DatastoreTest):
       structp = model.StructuredProperty(Address)
       localstructp = model.LocalStructuredProperty(Address)
       genp = model.GenericProperty()
-      compp = model.ComputedProperty(lambda e: 'x')
+      compp = model.ComputedProperty(lambda _: 'x')
     self.assertEqual(repr(MyModel.key), "ModelKey('__key__')")
-    for name, prop in MyModel._properties.iteritems():
+    for prop in MyModel._properties.itervalues():
       s = repr(prop)
       self.assertTrue(s.startswith(prop.__class__.__name__ + '('), s)
 
@@ -1793,25 +1791,25 @@ class ModelTests(test_utils.DatastoreTest):
 
     # key id
     ent1 = MyModel(key=model.Key(pairs=[(kind, 1)]))
-    key = ent1.put()
+    ent1.put()
     res = MyModel.get_by_id(1)
     self.assertEqual(res, ent1)
 
     # key name
     ent2 = MyModel(key=model.Key(pairs=[(kind, 'foo')]))
-    key = ent2.put()
+    ent2.put()
     res = MyModel.get_by_id('foo')
     self.assertEqual(res, ent2)
 
     # key id + parent
     ent3 = MyModel(key=model.Key(pairs=[(kind, 1), (kind, 2)]))
-    key = ent3.put()
+    ent3.put()
     res = MyModel.get_by_id(2, parent=model.Key(pairs=[(kind, 1)]))
     self.assertEqual(res, ent3)
 
     # key name + parent
     ent4 = MyModel(key=model.Key(pairs=[(kind, 1), (kind, 'bar')]))
-    key = ent4.put()
+    ent4.put()
     res = MyModel.get_by_id('bar', parent=ent1.key)
     self.assertEqual(res, ent4)
 
@@ -1949,7 +1947,7 @@ class ModelTests(test_utils.DatastoreTest):
         ents = yield model.delete_multi_async([key1, key2, key3])
         raise tasklets.Return(ents)
 
-    res = foo().get_result()
+    foo().get_result()
     self.assertEqual(key1.get(), None)
     self.assertEqual(key2.get(), None)
     self.assertEqual(key3.get(), None)
@@ -1967,7 +1965,7 @@ class ModelTests(test_utils.DatastoreTest):
     self.assertEqual(key2.get(), ent2)
     self.assertEqual(key3.get(), ent3)
 
-    res = model.delete_multi((key1, key2, key3))
+    model.delete_multi((key1, key2, key3))
 
     self.assertEqual(key1.get(), None)
     self.assertEqual(key2.get(), None)
@@ -2097,7 +2095,7 @@ class ModelTests(test_utils.DatastoreTest):
     self.assertEqual([e1.key, e2.key, e3.key, e4.key, e5.key],
                      [x1, x2, x3, x4, x5])
     self.assertEqual(len(memcache_args_log), 3, memcache_args_log)
-    timeouts = set(kwds['time'] for args, kwds in memcache_args_log)
+    timeouts = set(kwds['time'] for _, kwds in memcache_args_log)
     self.assertEqual(timeouts, set([0, 5, 7]))
     self.assertEqual(len(conn_args_log), 3)
     deadlines = set(args[0]._values.get('deadline')
@@ -2472,19 +2470,34 @@ class ModelTests(test_utils.DatastoreTest):
   def testAllocateIdsHooksCalled(self):
     self.pre_counter = 0
     self.post_counter = 0
+
+    self.size = 25
+    self.max = None
+    self.parent = key.Key('Foo', 'Bar')
+
     class HatStand(model.Model):
       @classmethod
-      def _pre_allocate_ids_hook(cls, ctx, size, max, parent):
+      def _pre_allocate_ids_hook(cls, size, max, parent):
         self.pre_counter += 1
+        self.assertEqual(size, self.size)
+        self.assertEqual(max, self.max)
+        self.assertEqual(parent, self.parent)
       @classmethod
-      def _post_allocate_ids_hook(cls, ctx, size, max, parent):
+      def _post_allocate_ids_hook(cls, size, max, parent, future):
         self.post_counter += 1
+        self.assertEqual(size, self.size)
+        self.assertEqual(max, self.max)
+        self.assertEqual(parent, self.parent)
+        low, high = future.get_result()
+        self.assertEqual(high - low + 1, self.size)
+
     self.assertEqual(self.pre_counter, 0, 'Pre allocate ids hook called early')
-    HatStand.allocate_ids(1)
+    future = HatStand.allocate_ids_async(size=self.size, max=self.max,
+                                         parent=self.parent)
     self.assertEqual(self.pre_counter, 1, 'Pre allocate ids hook not called')
     self.assertEqual(self.post_counter, 0,
                      'Post allocate ids hook called early')
-    eventloop.get_event_loop().run()
+    future.get_result()
     self.assertEqual(self.post_counter, 1, 'Post allocate ids hook not called')
 
   def test_issue_58_allocate_ids(self):
@@ -2504,29 +2517,33 @@ class ModelTests(test_utils.DatastoreTest):
     self.post_counter = 0
 
     class HatStand(model.Model):
-      def _pre_put_hook(self, ctx):
+      def _pre_put_hook(self):
         test.pre_counter += 1
-      def _post_put_hook(self, ctx):
+      def _post_put_hook(self, future):
         test.post_counter += 1
+        test.assertEqual(future.get_result(), test.entity.key)
 
     furniture = HatStand()
+    self.entity = furniture
     self.assertEqual(self.pre_counter, 0, 'Pre put hook called early')
-    furniture.put()
+    future = furniture.put_async()
     self.assertEqual(self.pre_counter, 1, 'Pre put hook not called')
     self.assertEqual(self.post_counter, 0, 'Post put hook called early')
-    eventloop.get_event_loop().run()
+    future.get_result()
     self.assertEqual(self.post_counter, 1, 'Post put hook not called')
 
     # All counters now read 1, calling put_multi for 10 entities makes this 11
     new_furniture = [HatStand() for _ in range(10)]
-    model.put_multi(new_furniture)
+    multi_future = model.put_multi_async(new_furniture)
     self.assertEqual(self.pre_counter, 11,
-                     'Pre put hooks not called on model.put_multi')
+                     'Pre put hooks not called on put_multi')
     self.assertEqual(self.post_counter, 1,
-                     'Post put hooks called early on model.put_multi')
-    eventloop.get_event_loop().run()
+                     'Post put hooks called early on put_multi')
+    for fut, ent in zip(multi_future, new_furniture):
+      self.entity = ent
+      fut.get_result()
     self.assertEqual(self.post_counter, 11,
-                     'Post put hooks not called on model.put_multi')
+                     'Post put hooks not called on put_multi')
 
   def testMonkeyPatchHooks(self):
     test = self # Closure for inside put hooks
@@ -2543,16 +2560,18 @@ class ModelTests(test_utils.DatastoreTest):
     self.pre_put_flag = False
     self.post_put_flag = False
 
+    # TODO: Should the unused arguments to Monkey Patched tests be tested?
     class HatStand(model.Model):
       @classmethod
-      def _pre_allocate_ids_hook(cls, ctx, size, max, parent):
+      def _pre_allocate_ids_hook(cls, unused_size, unused_max, unused_parent):
         self.pre_allocate_ids_flag = True
       @classmethod
-      def _post_allocate_ids_hook(cls, ctx, size, max, parent):
+      def _post_allocate_ids_hook(cls, unused_size, unused_max, unused_parent,
+                                  unused_future):
         self.post_allocate_ids_flag = True
-      def _pre_put_hook(self, ctx):
+      def _pre_put_hook(self):
         test.pre_put_flag = True
-      def _post_put_hook(self, ctx):
+      def _post_put_hook(self, unused_future):
         test.post_put_flag = True
 
     # Monkey patch the hooks
@@ -2564,14 +2583,12 @@ class ModelTests(test_utils.DatastoreTest):
       HatStand.allocate_ids(1)
       self.assertTrue(self.pre_allocate_ids_flag,
                'Pre allocate ids hook not called when model is monkey patched')
-      eventloop.get_event_loop().run()
       self.assertTrue(self.post_allocate_ids_flag,
               'Post allocate ids hook not called when model is monkey patched')
       furniture = HatStand()
       furniture.put()
       self.assertTrue(self.pre_put_flag,
                       'Pre put hook not called when model is monkey patched')
-      eventloop.get_event_loop().run()
       self.assertTrue(self.post_put_flag,
                       'Post put hook not called when model is monkey patched')
     finally:
@@ -2582,9 +2599,9 @@ class ModelTests(test_utils.DatastoreTest):
   def testPreHooksCannotCancelRPC(self):
     class HatStand(model.Model):
       @classmethod
-      def _pre_allocate_ids_hook(cls, ctx, size, max, parent):
+      def _pre_allocate_ids_hook(cls, unused_size, unused_max, unused_parent):
         raise tasklets.Return()
-      def _pre_put_hook(self, ctx):
+      def _pre_put_hook(self):
         raise tasklets.Return()
     self.assertRaises(tasklets.Return, HatStand.allocate_ids)
     entity = HatStand()

@@ -481,13 +481,13 @@ class Key(object):
     ctx = tasklets.get_context()
     cls = model.Model._get_kind_map().get(self.kind())
     if cls:
-      cls._pre_get_hook(ctx, self)
+      cls._pre_get_hook(self)
     fut = ctx.get(self, **ctx_options)
     if cls:
       post_hook = cls._post_get_hook
       if not cls._is_default_hook(model.Model._default_post_get_hook,
                                   post_hook):
-        fut.add_callback(post_hook, ctx, self)
+        fut.add_immediate_callback(post_hook, self, fut)
     return fut
 
   def delete(self, **ctx_options):
@@ -509,13 +509,13 @@ class Key(object):
     ctx = tasklets.get_context()
     cls = model.Model._get_kind_map().get(self.kind())
     if cls:
-      cls._pre_delete_hook(ctx, self)
+      cls._pre_delete_hook(self)
     fut = ctx.delete(self, **ctx_options)
     if cls:
       post_hook = cls._post_delete_hook
       if not cls._is_default_hook(model.Model._default_post_delete_hook,
                                   post_hook):
-        fut.add_callback(post_hook, ctx, self)
+        fut.add_immediate_callback(post_hook, self, fut)
     return fut
 
 
