@@ -125,11 +125,18 @@ class ContextTests(test_utils.DatastoreTest):
     # Check that the default limit is taken from the connection.
     self.assertEqual(self.ctx._get_batcher._limit,
                      datastore_rpc.Connection.MAX_GET_KEYS)
+    # Create a Connection with config options that will be overridden
+    # by later config options
+    conn_config = context.ContextOptions(max_put_entities=3,
+                                         max_memcache_items=7)
+    conn = model.make_connection(config=conn_config,
+                                 default_model=model.Expando)
+    real_config = context.ContextOptions(max_put_entities=25,
+                                         max_memcache_items=100)
     self.ctx = context.Context(
-        conn=model.make_connection(default_model=model.Expando),
+        conn=conn,
         auto_batcher_class=MyAutoBatcher,
-        config=context.ContextOptions(max_put_entities=25,
-                                      max_memcache_items=100))
+        config=real_config)
     @tasklets.tasklet
     def foo():
       es = [model.Model(key=model.Key('Foo', None)) for i in range(49)]

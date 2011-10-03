@@ -148,20 +148,22 @@ class Context(object):
     self._conn = conn
     self._auto_batcher_class = auto_batcher_class
     # Get the get/put/delete limits (defaults 1000, 500, 500).
-    max_get = (datastore_rpc.Configuration.max_get_keys(conn.config, config) or
+    # Note that the explicit config passed in overrides the config
+    # attached to the connection, if it was passed in.
+    max_get = (datastore_rpc.Configuration.max_get_keys(config, conn.config) or
                datastore_rpc.Connection.MAX_GET_KEYS)
-    max_put = (datastore_rpc.Configuration.max_put_entities(conn.config,
-                                                            config) or
+    max_put = (datastore_rpc.Configuration.max_put_entities(config,
+                                                            conn.config) or
                datastore_rpc.Connection.MAX_PUT_ENTITIES)
-    max_delete = (datastore_rpc.Configuration.max_delete_keys(conn.config,
-                                                              config) or
+    max_delete = (datastore_rpc.Configuration.max_delete_keys(config,
+                                                              conn.config) or
                   datastore_rpc.Connection.MAX_DELETE_KEYS)
     # Create the get/put/delete auto-batchers.
     self._get_batcher = auto_batcher_class(self._get_tasklet, max_get)
     self._put_batcher = auto_batcher_class(self._put_tasklet, max_put)
     self._delete_batcher = auto_batcher_class(self._delete_tasklet, max_delete)
     # We only have a single limit for memcache (default 1000).
-    max_memcache = (ContextOptions.max_memcache_items(conn.config, config) or
+    max_memcache = (ContextOptions.max_memcache_items(config, conn.config) or
                     datastore_rpc.Connection.MAX_GET_KEYS)
     # Create the memcache auto-batchers.
     self._memcache_get_batcher = auto_batcher_class(self._memcache_get_tasklet,
