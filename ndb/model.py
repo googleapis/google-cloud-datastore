@@ -280,6 +280,7 @@ from . import utils
 # NOTE: 'key' is a common local variable name.
 from . import key as key_module
 Key = key_module.Key  # For export.
+_MAX_LONG = key_module._MAX_LONG
 
 # NOTE: Property and Error classes are added later.
 __all__ = ['Key', 'ModelAdapter', 'ModelAttribute',
@@ -1609,7 +1610,7 @@ class GenericProperty(Property):
     elif isinstance(value, bool):  # Must test before int!
       v.set_booleanvalue(value)
     elif isinstance(value, (int, long)):
-      assert -2**63 <= value < 2**63
+      assert -_MAX_LONG <= value < _MAX_LONG
       v.set_int64value(value)
     elif isinstance(value, float):
       v.set_doublevalue(value)
