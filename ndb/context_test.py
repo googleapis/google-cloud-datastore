@@ -44,17 +44,10 @@ class ContextTests(test_utils.DatastoreTest):
 
   def setUp(self):
     super(ContextTests, self).setUp()
-    self.set_up_eventloop()
     MyAutoBatcher.reset_log()
     self.ctx = context.Context(
         conn=model.make_connection(default_model=model.Expando),
         auto_batcher_class=MyAutoBatcher)
-
-  def set_up_eventloop(self):
-    if eventloop._EVENT_LOOP_KEY in os.environ:
-      del os.environ[eventloop._EVENT_LOOP_KEY]
-    self.ev = eventloop.get_event_loop()
-    self.log = []
 
   def testContext_AutoBatcher_Get(self):
     @tasklets.tasklet
