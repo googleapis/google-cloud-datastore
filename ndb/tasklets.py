@@ -160,6 +160,7 @@ class Future(object):
     self._exception = None
     self._traceback = None
     self._callbacks = []
+    self._immediate_callbacks = []
     _state.add_pending(self)
     self._next = None  # Links suspended Futures together in a stack.
 
@@ -204,12 +205,20 @@ class Future(object):
     else:
       self._callbacks.append((callback, args, kwds))
 
+  def add_immediate_callback(self, callback, *args, **kwds):
+    if self._done:
+      callback(*args, **kwds)
+    else:
+      self._immediate_callbacks.append((callback, args, kwds))
+
   def set_result(self, result):
     assert not self._done
     self._result = result
     self._done = True
     _state.remove_pending(self)
-    for callback, args, kwds  in self._callbacks:
+    for callback, args, kwds in self._immediate_callbacks:
+      callback(*args, **kwds)
+    for callback, args, kwds in self._callbacks:
       eventloop.queue_call(None, callback, *args, **kwds)
 
   def set_exception(self, exc, tb=None):
@@ -219,6 +228,8 @@ class Future(object):
     self._traceback = tb
     self._done = True
     _state.remove_pending(self, status='fail')
+    for callback, args, kwds in self._immediate_callbacks:
+      callback(*args, **kwds)
     for callback, args, kwds in self._callbacks:
       eventloop.queue_call(None, callback, *args, **kwds)
 

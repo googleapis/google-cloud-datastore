@@ -12,7 +12,7 @@ REM  - PYTHON: path to a specific python.exe to use
 REM  - PYTHON25, PYTHON26, PYTHON27: same as PYTHON but for individual versions
 REM  - PYTHONFLAGS: flags to pass python, defaults to -Wignore
 REM  - PYTHONFLAGS25, PYTHONFLAGS26, PYTHONFLAGS27: same as PYTHONFLAGS but for
-REM													individual versions
+REM                                                 individual versions
 REM  - GAE: path to the google_appengine directory
 REM  - FLAGS: flags to pass either python.exe or dev_appserver.py/appcfg.py
 REM  - PORT: port number for development server to use
@@ -25,21 +25,21 @@ SET SUPPORTED_VERSIONS=(25 26 27)
 
 :processarguments
 IF NOT "%3"=="" (
-	ECHO Invalid argument %3
-	GOTO end
+  ECHO Invalid argument %3
+  GOTO end
 )
 SET MAKE=%0
 SET VERSION=%2
 FOR /F "TOKENS=1,2,3 DELIMS=_" %%A IN ("%1") DO SET T1=%%A&SET T2=%%B&SET T3=%%C
 SET TARGET=%T1%
 IF NOT "%T3%"=="" (
-	SET TARGET=%TARGET%_%T2%
-	SET T2=%T3%
+  SET TARGET=%TARGET%_%T2%
+  SET T2=%T3%
 )
 IF /I "%T2%"=="all" (
-	IF "%VERSION%"=="" GOTO all
-	ECHO Cannot specify Python version %VERSION% if using an all target
-	GOTO end
+  IF "%VERSION%"=="" GOTO all
+  ECHO Cannot specify Python version %VERSION% if using an all target
+  GOTO end
 )
 IF NOT "%T2%"=="" SET TARGET=%TARGET%_%T2%
 
@@ -51,21 +51,21 @@ ECHO Will not work with Python version %VERSION%
 GOTO end
 
 :python25
-IF NOT "%PYTHON25%"==""      SET PYTHON=%PYTHON25%
+IF NOT "%PYTHON25%"=="" SET PYTHON=%PYTHON25%
 IF NOT "%PYTHONFLAGS25%"=="" SET PYTHONFLAGS=%PYTHONFLAGS25%
-IF NOT "%PORT25%"==""        SET PORT=%PORT25%
+IF NOT "%PORT25%"=="" SET PORT=%PORT25%
 GOTO findpython
 
 :python26
-IF NOT "%PYTHON26%"==""      SET PYTHON=%PYTHON26%
+IF NOT "%PYTHON26%"=="" SET PYTHON=%PYTHON26%
 IF NOT "%PYTHONFLAGS26%"=="" SET PYTHONFLAGS=%PYTHONFLAGS26%
-IF NOT "%PORT26%"==""        SET PORT=%PORT26%
+IF NOT "%PORT26%"=="" SET PORT=%PORT26%
 GOTO findpython
 
 :python27
-IF NOT "%PYTHON27%"==""      SET PYTHON=%PYTHON27%
+IF NOT "%PYTHON27%"=="" SET PYTHON=%PYTHON27%
 IF NOT "%PYTHONFLAGS27%"=="" SET PYTHONFLAGS=%PYTHONFLAGS27%
-IF NOT "%PORT27%"==""        SET PORT=%PORT27%
+IF NOT "%PORT27%"=="" SET PORT=%PORT27%
 GOTO findpython
 
 :findpython
@@ -89,45 +89,50 @@ SET DEV_APPSERVER="%GAE%\dev_appserver.py"
 IF "%PORT%"=="" SET PORT=8080
 IF "%ADDRESS%"=="" SET ADDRESS=localhost
 
-:maketarget
+:findtarget
 SET TEST_TARGETS=(key, model, query, rpc, eventloop, tasklets, context, thread)
 FOR %%A IN %TEST_TARGETS% DO IF /I "%TARGET%"=="%%A_test" GOTO runtest
-IF /I "%TARGET%"=="runtests" GOTO runtests
+SET RUNTESTS_TARGETS=(test, runtest, runtests)
+FOR %%A IN %RUNTESTS_TARGETS% DO IF /I "%TARGET%"=="%%A" GOTO runtests
 REM TODO: Implement coverage
 SET COVERAGE_TARGETS%=(c, cov, cove, cover, coverage)
 FOR %%A IN %COVERAGE_TARGETS% DO IF /I "%TARGET%"=="%%A" GOTO unimplemented
-IF /I "%TARGET%"=="serve"          GOTO serve
-IF /I "%TARGET%"=="debug"          GOTO debug
-IF /I "%TARGET%"=="deploy"         GOTO deploy
+IF /I "%TARGET%"=="serve" GOTO serve
+IF /I "%TARGET%"=="debug" GOTO debug
+IF /I "%TARGET%"=="deploy" GOTO deploy
 SET BENCH_TARGETS%=(bench, keybench)
 FOR %%A IN %BENCH_TARGETS% DO IF /I "%TARGET%"=="%%A" GOTO bench
-IF /I "%TARGET%"=="python"         GOTO python
-IF /I "%TARGET%"=="python_raw"     GOTO pythonraw
+IF /I "%TARGET%"=="python" GOTO python
+IF /I "%TARGET%"=="python_raw" GOTO pythonraw
 REM TODO: Implement zip
-IF /I "%TARGET%"=="zip"            GOTO unimplemented
-IF /I "%TARGET%"=="clean"          GOTO clean
+IF /I "%TARGET%"=="zip" GOTO unimplemented
+IF /I "%TARGET%"=="clean" GOTO clean
 SET LONGLINES_TARGETS%=(long, longline, longlines)
 FOR %%A IN %LONGLINES_TARGETS% DO IF /I "%TARGET%"=="%%A" GOTO longlines
 SET TRIM_TARGETS%=(tr, trim, trim_whitespace)
 FOR %%A IN %TRIM_TARGETS% DO IF /I "%TARGET%"=="%%A" GOTO trim
 IF "%TARGET%"=="" (
-	ECHO Must specify a make target e.g. serve
+  ECHO Must specify a make target e.g. serve
 ) ELSE (
-	ECHO Invalid target %TARGET%
+  IF NOT EXIST %TARGET% (
+    ECHO Invalid target %TARGET%
+  ) ELSE (
+    CALL %PYTHON% %PYTHONFLAGS% %TARGET% %FLAGS%
+  )
 )
 GOTO end
 
 :runtest
 IF "%VERSION%"=="25" (
-	ECHO %TARGET% only supports Python 2.6 or above due to relative imports
-	ECHO Note that the runtests target can perform this test using Python 2.5
+  ECHO %TARGET% only supports Python 2.6 or above due to relative imports
+  ECHO Note that the runtests target can perform this test using Python 2.5
 ) ELSE (
-	CALL %PYTHON% %PYTHONFLAGS% -m ndb.%TARGET% %FLAGS%
+  CALL %PYTHON% %PYTHONFLAGS% -m ndb.%TARGET% %FLAGS%
 )
 GOTO end
 
 :runtests
-CALL %PYTHON% %PYTHONFLAGS% %TARGET%.py %FLAGS%
+CALL %PYTHON% %PYTHONFLAGS% runtests.py %FLAGS%
 GOTO end
 
 :debug
@@ -156,8 +161,8 @@ CALL %PYTHON% %PYTHONFLAGS% %FLAGS%
 GOTO end
 
 :clean
-RMDIR /S /Q htmlcov .coverage
-DEL /S *.pyc *~ @* *.orig *.rej #*#
+RMDIR /S /Q htmlcov .coverage > NUL 2>&1
+DEL /S *.pyc *~ @* *.orig *.rej #*# > NUL 2>&1
 GOTO end
 
 :trim
