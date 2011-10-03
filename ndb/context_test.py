@@ -695,6 +695,33 @@ class ContextTests(test_utils.DatastoreTest):
 
     foo().get_result()
 
+  def testGetFutureCachingOn(self):
+    # See issue 62
+    self.ctx.set_cache_policy(False)
+    class EmptyModel(model.Model):
+      pass
+    key = EmptyModel().put()
+    self.ctx.set_cache_policy(True)
+    f1, f2 = self.ctx.get(key), self.ctx.get(key)
+    self.assertFalse(f1 is f2,
+              'Context get futures are being cached, instead of get_tasklets.')
+    e1, e2 = f1.get_result(), f2.get_result()
+    self.assertTrue(e1 is e2,
+         'Results of concurrent gets are not the same with future caching on.')
+
+  def testGetFutureCachingOff(self):
+    # See issue 62
+    self.ctx.set_cache_policy(False)
+    class EmptyModel(model.Model):
+      pass
+    key = EmptyModel().put()
+    f1, f2 = self.ctx.get(key), self.ctx.get(key)
+    self.assertFalse(f1 is f2,
+              'Context get futures are being cached, instead of get_tasklets.')
+    e1, e2 = f1.get_result(), f2.get_result()
+    self.assertTrue(e1 is not e2,
+            'Results of concurrent gets are the same with future caching off.')
+
 
 def main():
   ##logging.basicConfig(level=logging.INFO)

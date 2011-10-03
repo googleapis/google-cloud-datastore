@@ -186,6 +186,11 @@ class Context(object):
     self._cache = {}
     self._memcache = memcache.Client()
 
+    # Cache of get_tasklet futures. When use_cache is True, keys are only
+    # requested from datastore and memcache once per RPC. Helpful if multiple
+    # gets happen on the same key before an existing RPC can complete.
+    self._get_future_cache = {}
+
   # TODO: Set proper namespace for memcache.
 
   _memcache_prefix = 'NDB:'  # TODO: Might make this configurable.
@@ -658,12 +663,23 @@ class Context(object):
     """
     options = _make_ctx_options(ctx_options)
     use_cache = self._use_cache(key, options)
-    if use_cache and key in self._cache:
-      entity = self._cache[key]  # May be None, meaning "doesn't exist".
-      if entity is None or entity._key == key:
-        # If entity's key didn't change later, it is ok. See issue #13.
-        raise tasklets.Return(entity)
-    entity = yield self._get_batcher.add(key, options)
+    if use_cache:
+      if key in self._cache:
+        entity = self._cache[key]  # May be None, meaning "doesn't exist".
+        if entity is None or entity._key == key:
+          # If entity's key didn't change later, it is ok. See issue #13.
+          raise tasklets.Return(entity)
+
+      future = self._get_future_cache.get(key)  # Use an existing get future
+      if future is None:
+        future = self._get_batcher.add(key, options)
+        self._get_future_cache[key] = future
+        # Once the future has set_result (finished), remove it from the cache.
+        future.add_immediate_callback(self._get_future_cache.__delitem__, key)
+    else:
+      future = self._get_batcher.add(key, options)
+
+    entity = yield future
     if use_cache:
       self._cache[key] = entity
     raise tasklets.Return(entity)
@@ -835,6 +851,7 @@ class Context(object):
     NOTE: This does not affect memcache.
     """
     self._cache.clear()
+    self._get_queue.clear()
 
   @tasklets.tasklet
   def _clear_memcache(self, keys):
