@@ -269,7 +269,7 @@ class Context(object):
           timeout = self._get_memcache_timeout(key, options)
           keystr = self._memcache_prefix + ent._key.urlsafe()
           # Use add, not set.  This is a no-op within _LOCK_TIME
-          # seconds of the delete done by the most recent write.
+          # seconds of the set(_LOCKED) done by the most recent write.
           fut = self.memcache_add(keystr, pb, time=timeout)
           add_futures.append(fut)
 
