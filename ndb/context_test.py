@@ -632,6 +632,31 @@ class ContextTests(test_utils.DatastoreTest):
     e1 = f1.get_result()
     e2 = f2.get_result()
 
+  def testMemcacheDeleteThenGet(self):
+    # Test that memcache is written synchronously when datastore policy is off.
+    self.ctx.set_cache_policy(False)
+    self.ctx.set_datastore_policy(False)
+    self.ctx.set_memcache_policy(True)
+
+    class EmptyModel(model.Model):
+      pass
+    key = model.Key(EmptyModel, 1)
+    keystr = self.ctx._memcache_prefix + key.urlsafe()
+
+    # Delete the key (just to be sure).
+    del_fut = self.ctx.memcache_delete(keystr, seconds=context._LOCK_TIME)
+    sts = del_fut.get_result()
+
+    # Create and store a new model instance using the key we just deleted.
+    # Because datastore policy is off, this writes it to memcache.
+    EmptyModel(key=key).put()
+
+    # Verify that it is now in memcache.
+    get_fut = self.ctx.memcache_get(keystr)
+    ent = get_fut.get_result()
+    self.assertTrue(ent is None,
+                    'Memcache delete did block memcache set %r' % ent)
+
   def testMemcacheAPI(self):
     @tasklets.tasklet
     def foo():
