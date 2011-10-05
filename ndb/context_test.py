@@ -111,7 +111,7 @@ class ContextTests(test_utils.DatastoreTest):
     self.assertEqual(name, '_delete_tasklet')
     self.assertEqual(len(todo), 3)
     name, todo = MyAutoBatcher._log[1]
-    self.assertEqual(name, '_memcache_del_tasklet')
+    self.assertEqual(name, '_memcache_set_tasklet')
     self.assertEqual(len(todo), 3)
 
   def testContext_AutoBatcher_Limit(self):
@@ -225,7 +225,9 @@ class ContextTests(test_utils.DatastoreTest):
       key2 = model.Key(flat=('Foo', 2))
       ent1 = model.Expando(key=key1, foo=42, bar='hello')
       ent2 = model.Expando(key=key2, foo=1, bar='world')
+      self.ctx.set_memcache_policy(False)  # Disable writing _LOCKED
       k1, k2 = yield self.ctx.put(ent1), self.ctx.put(ent2)
+      self.ctx.set_memcache_policy(True)
       self.assertEqual(k1, key1)
       self.assertEqual(k2, key2)
       # Write to memcache.
@@ -722,9 +724,33 @@ class ContextTests(test_utils.DatastoreTest):
     self.assertTrue(e1 is not e2,
             'Results of concurrent gets are the same with future caching off.')
 
+  def testMemcacheLocking(self):
+    # See issue 66.
+    self.ctx.set_cache_policy(False)
+
+    # Prepare: write some entity using Context.put().
+    class EmptyModel(model.Model):
+      pass
+    key = model.Key(EmptyModel, 1)
+    ent = EmptyModel(key=key)
+    self.ctx.put(ent).check_success()
+
+    # Whitebox test: verify that memcache now contains the special
+    # _LOCKED value.
+    fut = self.ctx.memcache_get(self.ctx._memcache_prefix + key.urlsafe())
+    val = fut.get_result()
+    self.assertEqual(val, context._LOCKED)
+
+    # Retrieve using COntext.get().
+    ent = self.ctx.get(key).get_result()
+
+    # Whitebox test: verify that the memcache *still* contains _LOCKED.
+    fut = self.ctx.memcache_get(self.ctx._memcache_prefix + key.urlsafe())
+    val = fut.get_result()
+    self.assertEqual(val, context._LOCKED)
+
 
 def main():
-  ##logging.basicConfig(level=logging.INFO)
   unittest.main()
 
 
