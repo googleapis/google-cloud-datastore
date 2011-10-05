@@ -1981,7 +1981,7 @@ class ModelTests(test_utils.DatastoreTest):
       name = model.StringProperty()
     key = model.Key(MyModel, 'yo')
     ent = MyModel(key=key, name='yo')
-    ent.put()
+    ent.put(use_memcache=False)  # Don't lock memcache.
     key.get(use_cache=False)  # Write to memcache.
     eventloop.run()  # Wait for async memcache request to complete.
     # Verify that it is in both caches.
