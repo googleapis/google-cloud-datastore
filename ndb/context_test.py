@@ -766,7 +766,7 @@ class ContextTests(test_utils.DatastoreTest):
     val = fut.get_result()
     self.assertEqual(val, context._LOCKED)
 
-    # Retrieve using COntext.get().
+    # Retrieve using Context.get().
     ent = self.ctx.get(key).get_result()
 
     # Whitebox test: verify that the memcache *still* contains _LOCKED.
