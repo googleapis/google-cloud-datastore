@@ -95,3 +95,6 @@ zip:
 clean:
 	rm -rf htmlcov .coverage
 	rm -f `find . -name \*.pyc -o -name \*~ -o -name @\* -o -name \*.orig -o -name \*.rej -o -name \#*\#`
+
+gettaskletrace:
+	PYTHONPATH=$(GAEPATH):. $(PYTHON) gettaskletrace.py $(FLAGS)

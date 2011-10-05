@@ -100,8 +100,8 @@ FOR %%A IN %COVERAGE_TARGETS% DO IF /I "%TARGET%"=="%%A" GOTO unimplemented
 IF /I "%TARGET%"=="serve" GOTO serve
 IF /I "%TARGET%"=="debug" GOTO debug
 IF /I "%TARGET%"=="deploy" GOTO deploy
-SET BENCH_TARGETS%=(bench, keybench)
-FOR %%A IN %BENCH_TARGETS% DO IF /I "%TARGET%"=="%%A" GOTO bench
+SET ONEOFF_TARGETS%=(bench, gettaskletrace, keybench)
+FOR %%A IN %ONEOFF_TARGETS% DO IF /I "%TARGET%"=="%%A" GOTO oneoff
 IF /I "%TARGET%"=="python" GOTO python
 IF /I "%TARGET%"=="python_raw" GOTO pythonraw
 REM TODO: Implement zip
@@ -149,7 +149,7 @@ IF EXIST %APPCFG% CALL %PYTHON% %PYTHONFLAGS% %APPCFG% update . %FLAGS%
 IF NOT EXIST %APPCFG% ECHO Could not find appcfg.py in %GAE%
 GOTO end
 
-:bench
+:oneoff
 CALL %PYTHON% %PYTHONFLAGS% %TARGET%.py %FLAGS%
 GOTO end
 

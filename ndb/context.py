@@ -255,7 +255,6 @@ class Context(object):
     for rpc, options, datastore_futures, datastore_keys in rpcs_etc:
       entities = yield rpc
       for ent, fut, key in zip(entities, datastore_futures, datastore_keys):
-        fut.set_result(ent)
         if (not in_transaction and
             ent is not None and
             self._use_memcache(key, options)):
@@ -264,8 +263,11 @@ class Context(object):
           keystr = self._memcache_prefix + ent._key.urlsafe()
           # Use add, not set.  This is a no-op within _LOCK_TIME
           # seconds of the delete done by the most recent write.
-          fut = self.memcache_add(keystr, pb, time=timeout)
-          add_futures.append(fut)
+          mc_fut = self.memcache_add(keystr, pb, time=timeout)
+          add_futures.append(mc_fut)
+          mc_fut.add_callback(fut.set_result, ent)
+        else:
+          fut.set_result(ent)
 
     # Wait for the memcache add() calls.
     for fut in add_futures:
