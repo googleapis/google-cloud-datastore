@@ -100,8 +100,9 @@ FOR %%A IN %COVERAGE_TARGETS% DO IF /I "%TARGET%"=="%%A" GOTO unimplemented
 IF /I "%TARGET%"=="serve" GOTO serve
 IF /I "%TARGET%"=="debug" GOTO debug
 IF /I "%TARGET%"=="deploy" GOTO deploy
+IF /I "%TARGET%"=="g" SET TARGET=gettaskletrace
 SET ONEOFF_TARGETS%=(bench, gettaskletrace, keybench)
-FOR %%A IN %BENCH_TARGETS% DO IF /I "%TARGET%"=="%%A" GOTO oneoff
+FOR %%A IN %ONEOFF_TARGETS% DO IF /I "%TARGET%"=="%%A" GOTO oneoff
 IF /I "%TARGET%"=="python" GOTO python
 IF /I "%TARGET%"=="python_raw" GOTO pythonraw
 REM TODO: Implement zip
