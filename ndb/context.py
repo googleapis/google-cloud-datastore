@@ -12,7 +12,8 @@ from google.appengine.datastore import datastore_rpc
 from . import key as key_module
 from . import model, tasklets, eventloop, utils
 
-_LOCK_TIME = 32  # Time to lock out memcache.add() after datastore.put().
+_LOCK_TIME = 32  # Time to lock out memcache.add() after datastore updates.
+_LOCKED = 0  # Special value to store in memcache indicating locked value.
 
 
 class ContextOptions(datastore_rpc.Configuration):
@@ -209,6 +210,7 @@ class Context(object):
     if not in_transaction:
       leftover = []
       mfut_etc = []
+      locked = set()
       for fut, key, options in todo:
         if self._use_memcache(key, options):
           keystr = self._memcache_prefix + key.urlsafe()
@@ -218,6 +220,9 @@ class Context(object):
       for mfut, fut, key, options in mfut_etc:
         mval = yield mfut
         if mval is None:
+          leftover.append((fut, key, options))
+        elif mval == _LOCKED:
+          locked.add(key)
           leftover.append((fut, key, options))
         else:
           ent = self._conn.adapter.pb_to_entity(mval)
@@ -258,7 +263,8 @@ class Context(object):
         fut.set_result(ent)
         if (not in_transaction and
             ent is not None and
-            self._use_memcache(key, options)):
+            self._use_memcache(key, options) and
+            key not in locked):
           pb = self._conn.adapter.entity_to_pb(ent)
           timeout = self._get_memcache_timeout(key, options)
           keystr = self._memcache_prefix + ent._key.urlsafe()
@@ -283,7 +289,7 @@ class Context(object):
         if self._use_memcache(ent._key, options):
           keystr = self._memcache_prefix + ent._key.urlsafe()
           if self._use_datastore(ent._key, options):
-            mfut = self.memcache_delete(keystr, seconds=_LOCK_TIME)
+            mfut = self.memcache_set(keystr, _LOCKED, time=_LOCK_TIME)
           else:
             pb = self._conn.adapter.entity_to_pb(ent)
             timeout = self._get_memcache_timeout(ent._key, options)
@@ -345,7 +351,8 @@ class Context(object):
     for fut, key, options in todo:
       if self._use_memcache(key, options):
         keystr = self._memcache_prefix + key.urlsafe()
-        delete_futures.append(self.memcache_delete(keystr, seconds=_LOCK_TIME))
+        dfut = self.memcache_set(keystr, _LOCKED, time=_LOCK_TIME)
+        delete_futures.append(dfut)
       if options in by_options:
         futures, keys = by_options[options]
       else:
@@ -859,7 +866,8 @@ class Context(object):
     futures = []
     for key in keys:
       keystr = self._memcache_prefix + key.urlsafe()
-      futures.append(self.memcache_delete(keystr, seconds=_LOCK_TIME))
+      fut = self.memcache_set(keystr, _LOCKED, time=_LOCK_TIME)
+      futures.append(fut)
     yield futures
 
   @tasklets.tasklet
