@@ -10,11 +10,11 @@ import logging
 import unittest
 
 from google.appengine.api import apiproxy_stub_map
+from google.appengine.api import datastore_file_stub
 from google.appengine.api import memcache
 from google.appengine.api.memcache import memcache_stub
 from google.appengine.api import taskqueue
 from google.appengine.api.taskqueue import taskqueue_stub
-from google.appengine.datastore import datastore_sqlite_stub
 
 from . import model
 from . import tasklets
@@ -33,7 +33,7 @@ def set_up_basic_stubs(app_id):
     Dictionary mapping stub name to stub.
   """
   apiproxy_stub_map.apiproxy = apiproxy_stub_map.APIProxyStubMap()
-  ds_stub = datastore_sqlite_stub.DatastoreSqliteStub(app_id, None)
+  ds_stub = datastore_file_stub.DatastoreFileStub(app_id, None)
   apiproxy_stub_map.apiproxy.RegisterStub('datastore_v3', ds_stub)
   mc_stub = memcache_stub.MemcacheServiceStub()
   apiproxy_stub_map.apiproxy.RegisterStub('memcache', mc_stub)
@@ -66,7 +66,7 @@ class DatastoreTest(unittest.TestCase):
     connection.
     """
     os.environ['APPLICATION_ID'] = self.APP_ID
-    # Set the default AUTH_DOMAIN, otherwise the datastore stub
+    # Set the default AUTH_DOMAIN, otherwise the datastore_file_stub.py
     # can't compare User objects.
     os.environ['AUTH_DOMAIN'] = 'example.com'
 

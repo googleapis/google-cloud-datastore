@@ -31,32 +31,27 @@ def workload(id, run):
 
   time.sleep(random.random() / 10)
 
-  @tasklets.tasklet
   def tx1():
     new_key = yield ent.put_async()
-    assert key == new_key, (key, new_key)
+    assert key == new_key, (id, run)
 
-  @tasklets.tasklet
   def tx2():
     new_ent = yield key.get_async()
-    assert ent == new_ent, (ent, new_ent)
+    assert ent == new_ent, (id, run)
 
-  @tasklets.tasklet
   def tx3():
-    ents = [EmptyModel(id=i+id) for i in range(10)]
+    ents = [EmptyModel() for _ in range(10)]
     futs = [e.put_async() for e in ents]
     keys.extend((yield futs))
-    for k, e in zip(keys, ents):
-      assert e == k.get()
+    for key, ent in zip(keys, ents):
+      assert ent == key.get()
 
-  @tasklets.tasklet
   def tx4():
     yield key.delete_async()
-    for k in keys:
-      assert (yield k.get_async) is None
+    for key in keys:
+      assert (yield key.get_async) is None
 
-  yield tx1(), tx3()
-  yield tx2(), tx4()
+  yield [model.transaction_async(tx, xg=True) for tx in tx1, tx2, tx3, tx4]
 
 
 class Stress(threading.Thread):
