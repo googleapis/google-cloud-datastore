@@ -2309,16 +2309,11 @@ class Expando(Model):
 
 
 @datastore_rpc._positional(1)
-def transaction(callback, retry=None, entity_group=None, **ctx_options):
+def transaction(callback, **ctx_options):
   """Run a callback in a transaction.
 
   Args:
     callback: A function or tasklet to be called.
-    retry: Optional retry count (keyword only; default set by
-      ndb.context.Context.transaction()).
-    entity_group: Optional root key to use as transaction entity group
-      (keyword only; defaults to the root part of the first key used
-      in the transaction).
     **ctx_options: Context options.
 
   Returns:
@@ -2334,22 +2329,17 @@ def transaction(callback, retry=None, entity_group=None, **ctx_options):
         ...
       transaction(lambda: my_callback(Key(...), 1))
   """
-  fut = transaction_async(callback, retry=retry, entity_group=entity_group,
-                          **ctx_options)
+  fut = transaction_async(callback, **ctx_options)
   return fut.get_result()
 
 
 @datastore_rpc._positional(1)
-def transaction_async(callback, retry=None, entity_group=None, **kwds):
+def transaction_async(callback, **kwds):
   """Run a callback in a transaction.
 
   This is the asynchronous version of transaction().
   """
   from . import tasklets
-  if retry is not None:
-    kwds['retry'] = retry
-  if entity_group is not None:
-    kwds['entity_group'] = entity_group
   return tasklets.get_context().transaction(callback, **kwds)
 
 
@@ -2365,9 +2355,9 @@ def transactional(func):
 
   If we're already in a transaction this is a no-op.
 
-  Note: If you need to override the retry count or the entity group,
-  or if you want some kind of async behavior, or pass Context options,
-  use the transaction() function above.
+  Note: If you need to override the retry count, or want some kind of
+  async behavior, or pass Context options, use the transaction()
+  function above.
   """
   @utils.wrapping(func)
   def transactional_wrapper(*args, **kwds):

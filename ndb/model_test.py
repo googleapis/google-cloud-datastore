@@ -1874,7 +1874,7 @@ class ModelTests(test_utils.DatastoreTest):
 
     key = model.Key(MyModel, 'bababaz')
     self.assertEqual(key.get(), None)
-    c = model.transaction(callback, retry=0, entity_group=key)
+    c = model.transaction(callback, retries=0)
     self.assertNotEqual(c, None)
     self.assertEqual(c.text, 'baz')
     self.assertEqual(key.get(), c)

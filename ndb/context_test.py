@@ -11,6 +11,7 @@ from google.appengine.api import datastore_errors
 from google.appengine.api import memcache
 from google.appengine.api import taskqueue
 from google.appengine.datastore import datastore_rpc
+from google.appengine.datastore import datastore_stub_util
 
 from . import context
 from . import eventloop
@@ -516,6 +517,27 @@ class ContextTests(test_utils.DatastoreTest):
         taskqueue.add(url='/', transactional=True)
       yield self.ctx.transaction(callback)
     foo().check_success()
+
+  def testContext_TransactionXG(self):
+    # The XG option only works on the HRD datastore
+    self.datastore_stub.SetConsistencyPolicy(
+      datastore_stub_util.BaseHighReplicationConsistencyPolicy())
+
+    key1 = model.Key('Foo', 1)
+    key2 = model.Key('Foo', 2)
+    @tasklets.tasklet
+    def tx():
+      ctx = tasklets.get_context()
+      ent1 = model.Expando(key=key1, foo=1)
+      ent2 = model.Expando(key=key2, bar=2)
+      yield ctx.put(ent1), ctx.put(ent2)
+      raise tasklets.Return(42)
+    self.assertRaises(datastore_errors.BadRequestError,
+                      self.ctx.transaction(tx).check_success)
+    if hasattr(datastore_rpc.TransactionOptions, 'xg'):
+      # In 1.5.4, XG transactions are not supported
+      res = self.ctx.transaction(tx, xg=True).get_result()
+      self.assertEqual(res, 42)
 
   def testContext_GetOrInsert(self):
     # This also tests Context.transaction()

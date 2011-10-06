@@ -16,7 +16,7 @@ _LOCK_TIME = 32  # Time to lock out memcache.add() after datastore updates.
 _LOCKED = 0  # Special value to store in memcache indicating locked value.
 
 
-class ContextOptions(datastore_rpc.Configuration):
+class ContextOptions(datastore_rpc.TransactionOptions):
   """Configuration options that may be passed along with get/put/delete."""
 
   @datastore_rpc.ConfigOption
@@ -790,23 +790,23 @@ class Context(object):
                           merge_future=tasklets.SerialQueueFuture())
 
   @tasklets.tasklet
-  def transaction(self, callback, retry=3, entity_group=None, **ctx_options):
+  def transaction(self, callback, **ctx_options):
     # Will invoke callback() one or more times with the default
     # context set to a new, transactional Context.  Returns a Future.
     # Callback may be a tasklet.
     options = _make_ctx_options(ctx_options)
-    if entity_group is not None:
-      app = entity_group.app()
-    else:
-      app = key_module._DefaultAppId()
+    app = ContextOptions.app(options) or key_module._DefaultAppId()
+    # Note: zero retries means try it once.
+    retries = ContextOptions.retries(options)
+    if retries is None:
+      retries = 3
     yield self.flush()
-    for i in range(1 + max(0, retry)):
+    for i in xrange(1 + max(0, retries)):
       transaction = yield self._conn.async_begin_transaction(options, app)
       tconn = datastore_rpc.TransactionalConnection(
         adapter=self._conn.adapter,
         config=self._conn.config,
-        transaction=transaction,
-        entity_group=entity_group)
+        transaction=transaction)
       tctx = self.__class__(conn=tconn,
                             auto_batcher_class=self._auto_batcher_class)
       # Copy memcache policies.  Note that get() will never use
