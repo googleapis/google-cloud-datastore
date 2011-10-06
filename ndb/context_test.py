@@ -41,7 +41,7 @@ class MyAutoBatcher(context.AutoBatcher):
     super(MyAutoBatcher, self).__init__(wrap, limit)
 
 
-class ContextTests(test_utils.DatastoreTest):
+class ContextTests(test_utils.NDBTest):
 
   def setUp(self):
     super(ContextTests, self).setUp()
@@ -520,8 +520,9 @@ class ContextTests(test_utils.DatastoreTest):
 
   def testContext_TransactionXG(self):
     # The XG option only works on the HRD datastore
-    self.datastore_stub.SetConsistencyPolicy(
-      datastore_stub_util.BaseHighReplicationConsistencyPolicy())
+    ds_stub = self.testbed.get_stub('datastore_v3')
+    hrd_policy = datastore_stub_util.BaseHighReplicationConsistencyPolicy()
+    ds_stub.SetConsistencyPolicy(hrd_policy)
 
     key1 = model.Key('Foo', 1)
     key2 = model.Key('Foo', 2)

@@ -8,7 +8,7 @@ from google.appengine.datastore import entity_pb
 from google.appengine.datastore import datastore_rpc
 from . import key, model, test_utils
 
-class PendingTests(test_utils.DatastoreTest):
+class PendingTests(test_utils.NDBTest):
   """Tests for the 'pending RPC' management."""
 
   def testBasicSetup1(self):

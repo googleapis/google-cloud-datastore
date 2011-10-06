@@ -9,7 +9,7 @@ from google.appengine.datastore import datastore_rpc
 
 from . import eventloop, test_utils
 
-class EventLoopTests(test_utils.DatastoreTest):
+class EventLoopTests(test_utils.NDBTest):
 
   def setUp(self):
     super(EventLoopTests, self).setUp()

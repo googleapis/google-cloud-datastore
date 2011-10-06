@@ -17,7 +17,7 @@ from . import tasklets
 from . import test_utils
 
 
-class QueryTests(test_utils.DatastoreTest):
+class QueryTests(test_utils.NDBTest):
 
   def setUp(self):
     super(QueryTests, self).setUp()

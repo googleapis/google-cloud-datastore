@@ -9,7 +9,7 @@ from google.appengine.datastore import entity_pb
 
 from . import eventloop, key, model, tasklets, test_utils
 
-class KeyTests(test_utils.DatastoreTest):
+class KeyTests(test_utils.NDBTest):
 
   def testShort(self):
     k0 = key.Key('Kind', None)

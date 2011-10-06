@@ -403,7 +403,7 @@ property <
 """
 
 
-class ModelTests(test_utils.DatastoreTest):
+class ModelTests(test_utils.NDBTest):
 
   def tearDown(self):
     self.assertTrue(model.Model._properties == {})
@@ -2621,7 +2621,7 @@ class ModelTests(test_utils.DatastoreTest):
                      'Put hook queued default no-op: %r' % ev.queue)
 
 
-class CacheTests(test_utils.DatastoreTest):
+class CacheTests(test_utils.NDBTest):
 
   def SetupContextCache(self):
     """Set up the context cache.

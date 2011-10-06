@@ -16,7 +16,7 @@ from . import tasklets
 from .tasklets import Future, tasklet
 
 
-class TaskletTests(test_utils.DatastoreTest):
+class TaskletTests(test_utils.NDBTest):
 
   def setUp(self):
     super(TaskletTests, self).setUp()
