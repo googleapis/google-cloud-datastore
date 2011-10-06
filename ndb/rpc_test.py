@@ -3,7 +3,6 @@
 import unittest
 
 from google.appengine.api import apiproxy_stub_map
-from google.appengine.api import datastore_file_stub
 from google.appengine.datastore import entity_pb
 
 from google.appengine.datastore import datastore_rpc

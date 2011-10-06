@@ -7,9 +7,6 @@ import sys
 import time
 import unittest
 
-from google.appengine.api import apiproxy_stub_map
-from google.appengine.api import datastore_file_stub
-
 from google.appengine.datastore import datastore_rpc
 
 from . import eventloop

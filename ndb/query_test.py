@@ -6,10 +6,7 @@ import sys
 import time
 import unittest
 
-from google.appengine.api import apiproxy_stub_map
 from google.appengine.api import datastore_errors
-from google.appengine.api import datastore_file_stub
-from google.appengine.api.memcache import memcache_stub
 from google.appengine.datastore import datastore_rpc
 from google.appengine.datastore import datastore_query
 
