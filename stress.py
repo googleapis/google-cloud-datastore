@@ -6,10 +6,11 @@ import threading
 import time
 
 from google.appengine.api import apiproxy_stub_map
-from google.appengine.api import datastore_errors
 from google.appengine.datastore import datastore_stub_util
 
-from ndb import model, tasklets, test_utils
+from google.appengine.ext import testbed
+
+from ndb import model, tasklets
 
 
 INSTANCES = 4
@@ -86,7 +87,11 @@ def main():
         logger.info('c: %i mc: %i ds: %i', cache_policy, memcache_policy,
                     datastore_policy)
 
-        test_utils.set_up_basic_stubs('_')
+        tb = testbed.Testbed()
+        tb.activate()
+        tb.init_datastore_v3_stub()
+        tb.init_memcache_stub()
+        tb.init_taskqueue_stub()
         datastore_stub = apiproxy_stub_map.apiproxy.GetStub('datastore_v3')
         datastore_stub.SetConsistencyPolicy(
           datastore_stub_util.BaseHighReplicationConsistencyPolicy())
@@ -99,6 +104,8 @@ def main():
 
         for t in threads:
           t.join()
+
+        tb.deactivate()
 
 if __name__ == '__main__':
   main()
