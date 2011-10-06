@@ -744,6 +744,51 @@ class ContextTests(test_utils.DatastoreTest):
 
     foo().get_result()
 
+  def testMemcacheNamespaces(self):
+    @tasklets.tasklet
+    def foo():
+      k1 = 'k1'
+      k2 = 'k2'
+      ns = 'ns'
+
+      # Write two values in the namespace
+      s1, s2 = yield (self.ctx.memcache_set(k1, 42, namespace=ns),
+                      self.ctx.memcache_add(k2, 100, namespace=ns))
+      self.assertEqual(s1, STORED)
+      self.assertEqual(s2, STORED)
+
+      # Check that they aren't in the default namespace
+      v1n, v2n = yield (self.ctx.memcache_get(k1),
+                        self.ctx.memcache_get(k2))
+      self.assertEqual(v1n, None)
+      self.assertEqual(v2n, None)
+
+      # Read them back using get and gets
+      v1, v2 = yield (self.ctx.memcache_get(k1, namespace=ns),
+                      self.ctx.memcache_gets(k2, namespace=ns))
+      self.assertEqual(v1, 42)
+      self.assertEqual(v2, 100)
+
+      # Write v1+1 back using replace, v2+1 using cas
+      s1, s2 = yield (self.ctx.memcache_replace(k1, v1+1, namespace=ns),
+                      self.ctx.memcache_cas(k2, v2+1, namespace=ns))
+      self.assertEqual(s1, STORED)
+      self.assertEqual(s2, STORED)
+
+      # Apply incr/decr to both
+      v1, v2 = yield (self.ctx.memcache_incr(k1, delta=10, namespace=ns),
+                      self.ctx.memcache_decr(k2, delta=10, namespace=ns))
+      self.assertEqual(v1, 53)  # 42 + 1 + 10
+      self.assertEqual(v2, 91)  # 100 + 1 - 100
+
+      # Delete both
+      s1, s2 = yield (self.ctx.memcache_delete(k1, namespace=ns),
+                      self.ctx.memcache_delete(k2, namespace=ns))
+      self.assertEqual(s1, memcache.DELETE_SUCCESSFUL)
+      self.assertEqual(s2, memcache.DELETE_SUCCESSFUL)
+
+    foo().check_success()
+
   def testGetFutureCachingOn(self):
     # See issue 62
     self.ctx.set_cache_policy(False)

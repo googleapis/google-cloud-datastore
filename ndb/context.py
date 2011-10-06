@@ -896,104 +896,111 @@ class Context(object):
   @tasklets.tasklet
   def _memcache_get_tasklet(self, todo):
     assert todo
-    cas_keys = set()
-    keys = set()
-    for fut, (key, for_cas), options in todo:
-      if for_cas:
-        cas_keys.add(key)
-      else:
-        keys.add(key)
+    groups = {}  # {(for_cas, namespace) -> set of Keys}
+    for fut, (key, for_cas, namespace), options in todo:
+      gkey = (for_cas, namespace)
+      if gkey not in groups:
+        groups[gkey] = set()
+      groups[gkey].add(key)
     all_results = {}
-    if keys:
-      results = yield self._memcache.get_multi_async(keys)
-      if results:
-        all_results.update(results)
-    if cas_keys:
-      results = yield self._memcache.get_multi_async(cas_keys, for_cas=True)
-      if results:
-        all_results.update(results)
-    for fut, (key, for_cas), options in todo:
-      fut.set_result(all_results.get(key))
+    # TODO: do the RPCs concurrently
+    for (for_cas, namespace), keys in groups.iteritems():
+      results = yield self._memcache.get_multi_async(keys,
+                                                     for_cas=for_cas,
+                                                     namespace=namespace)
+      for key, result in results.iteritems():
+        all_results[for_cas, namespace, key] = result
+    for fut, (key, for_cas, namespace), options in todo:
+      fut.set_result(all_results.get((for_cas, namespace, key)))
 
   @tasklets.tasklet
   def _memcache_set_tasklet(self, todo):
     assert todo
     mappings = {}  # {(opname, timeout): {key: value, ...}, ...}
     all_results = {}
-    for fut, (opname, key, value, time), options in todo:
-      mapping = mappings.get((opname, time))
+    for fut, (opname, key, value, time, namespace), options in todo:
+      mapping = mappings.get((opname, time, namespace))
       if mapping is None:
-        mapping = mappings[opname, time] = {}
+        mapping = mappings[opname, time, namespace] = {}
       mapping[key] = value
     # TODO: do the RPCs concurrently
-    for (opname, time), mapping in mappings.iteritems():
+    for (opname, time, namespace), mapping in mappings.iteritems():
       methodname = opname + '_multi_async'
       method = getattr(self._memcache, methodname)
-      results = yield method(mapping, time=time)
+      results = yield method(mapping, time=time, namespace=namespace)
       if results:
-        all_results.update(results)
-    for fut, (opname, key, value, time), options in todo:
-      status = all_results.get(key)
+        for key, status in results.iteritems():
+          all_results[opname, time, namespace, key] = status
+    for fut, (opname, key, value, time, namespace), options in todo:
+      status = all_results.get((opname, time, namespace, key))
       fut.set_result(status == memcache.MemcacheSetResponse.STORED)
 
   @tasklets.tasklet
   def _memcache_del_tasklet(self, todo):
     assert todo
-    # Segregate by value of seconds.
-    by_seconds = {}
-    for fut, (key, seconds), options in todo:
-      keys = by_seconds.get(seconds)
+    # Segregate by value of seconds and namespace.
+    groups = {}
+    for fut, (key, seconds, namespace), options in todo:
+      gkey = (seconds, namespace)
+      keys = groups.get(gkey)
       if keys is None:
-        keys = by_seconds[seconds] = set()
+        keys = groups[gkey] = set()
       keys.add(key)
     # Start all the RPCs.
     rpcs_etc = []
-    for seconds, keys in by_seconds.iteritems():
+    for (seconds, namespace), keys in groups.iteritems():
       keys = list(keys)
-      rpc = self._memcache.delete_multi_async(keys, seconds)
-      rpcs_etc.append((rpc, keys))
+      rpc = self._memcache.delete_multi_async(keys,
+                                              seconds=seconds,
+                                              namespace=namespace)
+      rpcs_etc.append((namespace, rpc, keys))
     # Wait for all the RPCs.
     all_results = {}
-    for rpc, keys in rpcs_etc:
+    for namespace, rpc, keys in rpcs_etc:
       statuses = yield rpc
       if statuses:
         for key, status in zip(keys, statuses):
-          all_results[key] = status
-      else:
-        for key in keys:
-          all_results[key] = None
+          all_results[namespace, key] = status
     # Transfer results to original Futures.
     # TODO: Do this as results become available instead of at the end.
-    for fut, (key, seconds), options in todo:
-      fut.set_result(all_results.get(key))
+    for fut, (key, seconds, namespace), options in todo:
+      fut.set_result(all_results.get((namespace, key)))
 
   @tasklets.tasklet
   def _memcache_off_tasklet(self, todo):
     assert todo
     mappings = {}  # {initial_value: {key: delta, ...}, ...}
-    for fut, (key, delta, initial_value), options in todo:
-      mapping = mappings.get(initial_value)
+    for fut, (key, delta, initial_value, namespace), options in todo:
+      mkey = (initial_value, namespace)
+      mapping = mappings.get(mkey)
       if mapping is None:
-        mapping = mappings[initial_value] = {}
+        mapping = mappings[mkey] = {}
       mapping[key] = delta
     # TODO: do the RPCs concurrently
     all_results = {}
-    for initial_value, mapping in mappings.iteritems():
+    for (initial_value, namespace), mapping in mappings.iteritems():
       fut = self._memcache.offset_multi_async(mapping,
-                                              initial_value=initial_value)
+                                              initial_value=initial_value,
+                                              namespace=namespace)
       results = yield fut
       if results:
-        all_results.update(results)
-    for fut, (key, delta, initial_value), options in todo:
-      result = all_results.get(key)
+        for key, value in results.iteritems():
+          all_results[namespace, key] = value
+    for fut, (key, delta, initial_value, namespace), options in todo:
+      result = all_results.get((namespace, key))
+      if isinstance(result, basestring):
+        # See http://code.google.com/p/googleappengine/issues/detail?id=2012
+        # We can fix this witout waiting for App Engine to fix it.
+        result = int(result)
       fut.set_result(result)
 
-  def memcache_get(self, key, for_cas=False):
+  def memcache_get(self, key, for_cas=False, namespace=None):
     """An auto-batching wrapper for memcache.get() or .get_multi().
 
     Args:
       key: Key to set.  This must be a string; no prefix is applied.
       for_cas: If True, request and store CAS ids on the Context.
+      namespace: Optional namespace.
 
     Returns:
       A Future (!) whose return value is the value retrieved from
@@ -1001,49 +1008,52 @@ class Context(object):
     """
     assert isinstance(key, str)
     assert isinstance(for_cas, bool)
-    return self._memcache_get_batcher.add((key, for_cas))
+    return self._memcache_get_batcher.add((key, for_cas, namespace))
 
   # XXX: Docstrings below.
 
-  def memcache_gets(self, key):
-    return self.memcache_get(key, for_cas=True)
+  def memcache_gets(self, key, namespace=None):
+    return self.memcache_get(key, for_cas=True, namespace=namespace)
 
-  def memcache_set(self, key, value, time=0):
+  def memcache_set(self, key, value, time=0, namespace=None):
     assert isinstance(key, str)
     assert isinstance(time, (int, long))
-    return self._memcache_set_batcher.add(('set', key, value, time))
+    return self._memcache_set_batcher.add(('set', key, value, time, namespace))
 
-  def memcache_add(self, key, value, time=0):
+  def memcache_add(self, key, value, time=0, namespace=None):
     assert isinstance(key, str)
     assert isinstance(time, (int, long))
-    return self._memcache_set_batcher.add(('add', key, value, time))
+    return self._memcache_set_batcher.add(('add', key, value, time, namespace))
 
-  def memcache_replace(self, key, value, time=0):
+  def memcache_replace(self, key, value, time=0, namespace=None):
     assert isinstance(key, str)
     assert isinstance(time, (int, long))
-    return self._memcache_set_batcher.add(('replace', key, value, time))
+    return self._memcache_set_batcher.add(('replace', key, value, time,
+                                           namespace))
 
-  def memcache_cas(self, key, value, time=0):
+  def memcache_cas(self, key, value, time=0, namespace=None):
     assert isinstance(key, str)
     assert isinstance(time, (int, long))
-    return self._memcache_set_batcher.add(('cas', key, value, time))
+    return self._memcache_set_batcher.add(('cas', key, value, time, namespace))
 
-  def memcache_delete(self, key, seconds=0):
+  def memcache_delete(self, key, seconds=0, namespace=None):
     assert isinstance(key, str)
     assert isinstance(seconds, (int, long))
-    return self._memcache_del_batcher.add((key, seconds))
+    return self._memcache_del_batcher.add((key, seconds, namespace))
 
-  def memcache_incr(self, key, delta=1, initial_value=None):
+  def memcache_incr(self, key, delta=1, initial_value=None, namespace=None):
     assert isinstance(key, str)
     assert isinstance(delta, (int, long))
     assert initial_value is None or isinstance(initial_value, (int, long))
-    return self._memcache_off_batcher.add((key, delta, initial_value))
+    return self._memcache_off_batcher.add((key, delta, initial_value,
+                                           namespace))
 
-  def memcache_decr(self, key, delta=1, initial_value=None):
+  def memcache_decr(self, key, delta=1, initial_value=None, namespace=None):
     assert isinstance(key, str)
     assert isinstance(delta, (int, long))
     assert initial_value is None or isinstance(initial_value, (int, long))
-    return self._memcache_off_batcher.add((key, -delta, initial_value))
+    return self._memcache_off_batcher.add((key, -delta, initial_value,
+                                           namespace))
 
 
 def toplevel(func):
