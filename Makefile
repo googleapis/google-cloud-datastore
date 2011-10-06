@@ -98,3 +98,6 @@ clean:
 
 g gettaskletrace:
 	PYTHONPATH=$(GAEPATH):. $(PYTHON) gettaskletrace.py $(FLAGS)
+
+s stress:
+	PYTHONPATH=$(GAEPATH):. $(PYTHON) stress.py $(FLAGS)

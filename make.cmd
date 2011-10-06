@@ -101,7 +101,7 @@ IF /I "%TARGET%"=="serve" GOTO serve
 IF /I "%TARGET%"=="debug" GOTO debug
 IF /I "%TARGET%"=="deploy" GOTO deploy
 IF /I "%TARGET%"=="g" SET TARGET=gettaskletrace
-SET ONEOFF_TARGETS%=(bench, gettaskletrace, keybench)
+SET ONEOFF_TARGETS%=(bench, gettaskletrace, keybench, stress)
 FOR %%A IN %ONEOFF_TARGETS% DO IF /I "%TARGET%"=="%%A" GOTO oneoff
 IF /I "%TARGET%"=="python" GOTO python
 IF /I "%TARGET%"=="python_raw" GOTO pythonraw
@@ -151,7 +151,11 @@ IF NOT EXIST %APPCFG% ECHO Could not find appcfg.py in %GAE%
 GOTO end
 
 :oneoff
-CALL %PYTHON% %PYTHONFLAGS% %TARGET%.py %FLAGS%
+IF "%VERSION%"=="27" (
+  CALL %PYTHON% %PYTHONFLAGS% %TARGET%.py %FLAGS%
+) ELSE (
+  ECHO %TARGET% only supports Python 2.7 or above due its use of threads.
+)
 GOTO end
 
 :python
