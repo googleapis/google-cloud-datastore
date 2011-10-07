@@ -723,11 +723,16 @@ class ModelTests(test_utils.NDBTest):
       return value
     class MyModel(model.Model):
       a = model.StringProperty(validator=my_validator)
+      foos = model.StringProperty(validator=my_validator, repeated=True)
     m = MyModel()
     m.a = 'ABC'
     self.assertEqual(m.a, 'abc')
     self.assertRaises(datastore_errors.BadValueError,
                       setattr, m, 'a', 'def')
+    m.foos = ['ABC', 'ABC', 'ABC']
+    self.assertEqual(m.foos, ['abc', 'abc', 'abc'])
+    self.assertRaises(datastore_errors.BadValueError,
+                      setattr, m, 'foos', ['def'])
 
   def testUnindexedProperty(self):
     class MyModel(model.Model):

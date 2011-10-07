@@ -637,10 +637,7 @@ class Property(ModelAttribute):
       if not isinstance(value, (list, tuple)):
         raise datastore_errors.BadValueError('Expected list or tuple, got %r' %
                                              (value,))
-      values = []
-      for val in value:
-        val = self._do_validate(val)
-        values.append(val)
+      value = [self._do_validate(v) for v in value]
     else:
       if value is not None:
         value = self._do_validate(value)
