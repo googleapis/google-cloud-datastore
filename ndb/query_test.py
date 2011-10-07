@@ -1,16 +1,9 @@
 """Tests for query.py."""
 
-import os
-import re
-import sys
-import time
 import unittest
 
 from google.appengine.api import datastore_errors
-from google.appengine.datastore import datastore_rpc
-from google.appengine.datastore import datastore_query
 
-from . import context
 from . import model
 from . import query
 from . import tasklets
@@ -483,7 +476,7 @@ class QueryTests(test_utils.NDBTest):
     for pagesize in [1, 2, 3, 4]:
       it = q.iter(produce_cursors=True, limit=pagesize+1, batch_size=pagesize)
       todo = pagesize
-      for ent in it:
+      for _ in it:
         todo -= 1
         if todo <= 0:
           break
@@ -728,7 +721,7 @@ class QueryTests(test_utils.NDBTest):
     self.assertEqual(filters, expected)
 
   def testGqlMinimal(self):
-    qry, options, bindings = query.parse_gql('SELECT * FROM Kind')
+    qry, unused_options, bindings = query.parse_gql('SELECT * FROM Kind')
     self.assertEqual(qry.kind, 'Kind')
     self.assertEqual(qry.ancestor, None)
     self.assertEqual(qry.filters, None)
@@ -736,7 +729,7 @@ class QueryTests(test_utils.NDBTest):
     self.assertEqual(bindings, {})
 
   def testGqlAncestorWithBinding(self):
-    qry, options, bindings = query.parse_gql(
+    qry, unused_options, bindings = query.parse_gql(
       'SELECT * FROM Kind WHERE ANCESTOR IS :1')
     self.assertEqual(qry.kind, 'Kind')
     self.assertEqual(qry.ancestor, query.Binding(None, 1))
@@ -746,7 +739,7 @@ class QueryTests(test_utils.NDBTest):
 
   def testGqlAncestor(self):
     key = model.Key('Foo', 42)
-    qry, options, bindings = query.parse_gql(
+    qry, unused_options, bindings = query.parse_gql(
       "SELECT * FROM Kind WHERE ANCESTOR IS KEY('%s')" % key.urlsafe())
     self.assertEqual(qry.kind, 'Kind')
     self.assertEqual(qry.ancestor, key)
@@ -755,7 +748,7 @@ class QueryTests(test_utils.NDBTest):
     self.assertEqual(bindings, {})
 
   def testGqlFilter(self):
-    qry, options, bindings = query.parse_gql(
+    qry, unused_options, bindings = query.parse_gql(
       "SELECT * FROM Kind WHERE prop1 = 1 AND prop2 = 'a'")
     self.assertEqual(qry.kind, 'Kind')
     self.assertEqual(qry.ancestor, None)
@@ -767,23 +760,23 @@ class QueryTests(test_utils.NDBTest):
     self.assertEqual(bindings, {})
 
   def testGqlOrder(self):
-    qry, options, bindings = query.parse_gql(
+    qry, unused_options, unused_bindings = query.parse_gql(
       'SELECT * FROM Kind ORDER BY prop1')
     self.assertEqual(query._orders_to_orderings(qry.orders),
                      [('prop1', query._ASC)])
 
   def testGqlOffset(self):
-    qry, options, bindings = query.parse_gql(
+    unused_qry, options, unused_bindings = query.parse_gql(
       'SELECT * FROM Kind OFFSET 2')
     self.assertEqual(options.offset, 2)
 
   def testGqlLimit(self):
-    qry, options, bindings = query.parse_gql(
+    unused_qry, options, unused_bindings = query.parse_gql(
       'SELECT * FROM Kind LIMIT 2')
     self.assertEqual(options.limit, 2)
 
   def testGqlBindings(self):
-    qry, options, bindings = query.parse_gql(
+    qry, unused_options, bindings = query.parse_gql(
       'SELECT * FROM Kind WHERE prop1 = :1 AND prop2 = :foo')
     self.assertEqual(qry.kind, 'Kind')
     self.assertEqual(qry.ancestor, None)
@@ -798,7 +791,7 @@ class QueryTests(test_utils.NDBTest):
                                 'foo': query.Binding(None, 'foo')})
 
   def testResolveBindings(self):
-    qry, options, bindings = query.parse_gql(
+    qry, unused_options, bindings = query.parse_gql(
       'SELECT * FROM Foo WHERE name = :1')
     bindings[1].value = 'joe'
     self.assertEqual(list(qry), [self.joe])

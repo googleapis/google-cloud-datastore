@@ -112,14 +112,14 @@ class _State(threading.local):
       logging_debug('all_pending: clear no-op')
 
   def dump_all_pending(self, verbose=False):
-    all = []
+    pending = []
     for fut in self.all_pending:
       if verbose:
         line = fut.dump() + ('\n' + '-'*40)
       else:
         line = fut.dump_stack()
-      all.append(line)
-    return '\n'.join(all)
+      pending.append(line)
+    return '\n'.join(pending)
 
 
 _state = _State()
@@ -212,7 +212,8 @@ class Future(object):
       self._immediate_callbacks.append((callback, args, kwds))
 
   def set_result(self, result):
-    assert not self._done
+    if self._done:
+      raise RuntimeError('Result cannot be set twice.')
     self._result = result
     self._done = True
     _state.remove_pending(self)
@@ -222,8 +223,10 @@ class Future(object):
       eventloop.queue_call(None, callback, *args, **kwds)
 
   def set_exception(self, exc, tb=None):
-    assert isinstance(exc, BaseException)
-    assert not self._done
+    if not isinstance(exc, BaseException):
+      raise TypeError('exc must be an Exception; received %r' % exc)
+    if self._done:
+      raise RuntimeError('Exception cannot be set twice.')
     self._exception = exc
     self._traceback = tb
     self._done = True
@@ -278,10 +281,10 @@ class Future(object):
   @classmethod
   def wait_any(cls, futures):
     # TODO: Flatten MultiRpcs.
-    all = set(futures)
+    waiting_on = set(futures)
     ev = eventloop.get_event_loop()
-    while all:
-      for f in all:
+    while waiting_on:
+      for f in waiting_on:
         if f.state == cls.FINISHING:
           return f
       ev.run1()
@@ -291,10 +294,10 @@ class Future(object):
   @classmethod
   def wait_all(cls, futures):
     # TODO: Flatten MultiRpcs.
-    all = set(futures)
+    waiting_on = set(futures)
     ev = eventloop.get_event_loop()
-    while all:
-      all = set(f for f in all if f.state == cls.RUNNING)
+    while waiting_on:
+      waiting_on = set(f for f in waiting_on if f.state == cls.RUNNING)
       ev.run1()
 
   def _help_tasklet_along(self, gen, val=None, exc=None, tb=None):
@@ -338,7 +341,9 @@ class Future(object):
         return
       if isinstance(value, Future):
         # TODO: Tail recursion if the Future is already done.
-        assert not self._next, self._next
+        if self._next:
+          raise RuntimeError('Future has already completed yet next is %r' %
+                             self._next)
         self._next = value
         self._geninfo = utils.gen_info(gen)
         logging_debug('%s is now blocked waiting for %s', self, value)
@@ -701,7 +706,8 @@ class SerialQueueFuture(Future):
     self.add_dependent(fut)
 
   def add_dependent(self, fut):
-    assert isinstance(fut, Future)
+    if not isinstance(fut, Future):
+      raise TypeError('fut must be a Future instance; received %r' % fut)
     assert not self._full
     if self._waiting:
       waiter = self._waiting.popleft()
@@ -718,7 +724,8 @@ class SerialQueueFuture(Future):
     else:
       fut = Future()
       if self._full:
-        assert self._done  # Else, self._queue should be non-empty.
+        if not self._done:
+          raise RuntimeError('self._queue should be non-empty.')
         err = None
         err = self.get_exception()
         if err is not None:
@@ -792,13 +799,15 @@ class ReducingFuture(Future):
     self._internal_add_dependent(fut)
 
   def _internal_add_dependent(self, fut):
-    assert isinstance(fut, Future)
+    if not isinstance(fut, Future):
+      raise TypeError('fut must be a Future; received %r' % fut)
     if fut not in self._dependents:
       self._dependents.add(fut)
       fut.add_callback(self._signal_dependent_done, fut)
 
   def _signal_dependent_done(self, fut):
-    assert fut.done()
+    if not fut.done():
+      raise RuntimeError('Future not done before signalling dependant done.')
     self._dependents.remove(fut)
     if self._done:
       return  # Already done.

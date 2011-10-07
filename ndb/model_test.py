@@ -1089,7 +1089,7 @@ class ModelTests(test_utils.NDBTest):
     m2 = Person._from_pb(pb)
     self.assertEqual(m2, m)
 
-  def testMultipleStructuredProperty(self):
+  def testMultipleStructuredPropertyProtocolBuffers(self):
     class Address(model.Model):
       label = model.StringProperty()
       text = model.StringProperty()
@@ -1121,7 +1121,7 @@ class ModelTests(test_utils.NDBTest):
     class Address(model.Model):
       street = model.StringProperty()
       city = model.StringProperty()
-      zip = model.IntegerProperty()
+      zipcode = model.IntegerProperty()
     class Person(model.Model):
       address = model.StructuredProperty(Address)
       age = model.IntegerProperty()
@@ -1149,7 +1149,7 @@ class ModelTests(test_utils.NDBTest):
     class Address(model.Model):
       line = model.StringProperty(repeated=True)
       city = model.StringProperty()
-      zip = model.IntegerProperty()
+      zipcode = model.IntegerProperty()
       tags = model.StructuredProperty(Tag)
     class Person(model.Model):
       address = model.StructuredProperty(Address)
@@ -1160,7 +1160,7 @@ class ModelTests(test_utils.NDBTest):
     p = Person(name='White House', k=k, age=[210, 211],
                address=Address(line=['1600 Pennsylvania', 'Washington, DC'],
                                tags=Tag(names=['a', 'b'], ratings=[1, 2]),
-                               zip=20500))
+                               zipcode=20500))
     p.key = k
     pb = p._to_pb()
     q = model.Model._from_pb(pb)
@@ -1699,7 +1699,7 @@ class ModelTests(test_utils.NDBTest):
 
       def _compute_hash(self):
         return hash(self.name)
-      hash = model.ComputedProperty(_compute_hash, name='hashcode')
+      computed_hash = model.ComputedProperty(_compute_hash, name='hashcode')
 
     m = ComputedTest(name='Foobar')
     pb = m._to_pb()
@@ -1715,7 +1715,7 @@ class ModelTests(test_utils.NDBTest):
     self.assertEqual(m.name, 'Foobar')
     self.assertEqual(m.name_lower, 'foobar')
     self.assertEqual(m.length, 6)
-    self.assertEqual(m.hash, hash('Foobar'))
+    self.assertEqual(m.computed_hash, hash('Foobar'))
 
   def testLargeValues(self):
     class Demo(model.Model):
@@ -1728,7 +1728,7 @@ class ModelTests(test_utils.NDBTest):
     self.assertTrue(isinstance(y.bytes, str))
     self.assertTrue(isinstance(y.text, unicode))
 
-  def testMultipleStructuredProperty(self):
+  def testMultipleStructuredPropertyDatastore(self):
     class Address(model.Model):
       label = model.StringProperty()
       text = model.StringProperty()

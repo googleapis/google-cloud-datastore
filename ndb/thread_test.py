@@ -22,8 +22,8 @@ def main():
 
 
 @context.toplevel
-def one_thread(i, num):
-  x = yield fibonacci(num)
+def one_thread(_, num):
+  yield fibonacci(num)
   ##sys.stdout.write('%d: %d --> %d\n' % (i, num, x))
 
 

@@ -23,8 +23,8 @@ def get_stack(limit=10):
   frame = sys._getframe(1)  # Always skip get_stack() itself.
   lines = []
   while len(lines) < limit and frame is not None:
-    locals = frame.f_locals
-    ndb_debug = locals.get('__ndb_debug__')
+    f_locals = frame.f_locals
+    ndb_debug = f_locals.get('__ndb_debug__')
     if ndb_debug != 'SKIP':
       line = frame_info(frame)
       if ndb_debug is not None:

@@ -665,8 +665,9 @@ def _ReferenceFromReference(reference):
 
 def _ReferenceFromSerialized(serialized):
   """Construct a Reference from a serialized Reference."""
-  assert isinstance(serialized, basestring)
-  if isinstance(serialized, unicode):
+  if not isinstance(serialized, basestring):
+    raise TypeError('serialized must be a string; received %r' % serialized)
+  elif isinstance(serialized, unicode):
     serialized = serialized.encode('utf8')
   return entity_pb.Reference(serialized)
 
@@ -676,7 +677,8 @@ def _DecodeUrlSafe(urlsafe):
 
   This returns the decoded string.
   """
-  assert isinstance(urlsafe, basestring)
+  if not isinstance(urlsafe, basestring):
+    raise TypeError('urlsafe must be a string; received %r' % urlsafe)
   if isinstance(urlsafe, unicode):
     urlsafe = urlsafe.encode('utf8')
   mod = len(urlsafe) % 4

@@ -18,12 +18,12 @@ class EventLoopTests(test_utils.NDBTest):
     self.ev = eventloop.get_event_loop()
 
   def testQueueTasklet(self):
-    def f(number, string, a, b): return 1
-    def g(number, string): return 2
-    def h(c, d): return 3
+    def f(unused_number, unused_string, unused_a, unused_b): return 1
+    def g(unused_number, unused_string): return 2
+    def h(unused_c, unused_d): return 3
     t_before = time.time()
-    eventloop.queue_call(1, f, 42, 'hello', a=1, b=2)
-    eventloop.queue_call(3, h, c=3, d=4)
+    eventloop.queue_call(1, f, 42, 'hello', unused_a=1, unused_b=2)
+    eventloop.queue_call(3, h, unused_c=3, unused_d=4)
     eventloop.queue_call(2, g, 100, 'abc')
     t_after = time.time()
     self.assertEqual(len(self.ev.queue), 3)
@@ -39,9 +39,9 @@ class EventLoopTests(test_utils.NDBTest):
     self.assertEqual(a1, (42, 'hello'))
     self.assertEqual(a2, (100, 'abc'))
     self.assertEqual(a3, ())
-    self.assertEqual(k1, {'a': 1, 'b': 2})
+    self.assertEqual(k1, {'unused_a': 1, 'unused_b': 2})
     self.assertEqual(k2, {})
-    self.assertEqual(k3, {'c': 3, 'd': 4})
+    self.assertEqual(k3, {'unused_c': 3, 'unused_d': 4})
     # Delete queued events (they would fail or take a long time).
     ev = eventloop.get_event_loop()
     ev.queue = []
@@ -55,7 +55,7 @@ class EventLoopTests(test_utils.NDBTest):
     eventloop.queue_call(None, foo, 1)
 
     self.assertEqual(len(self.ev.queue), 2)
-    [(t1, f1, a1, k1), (t2, f2, a2, k2)] = self.ev.queue
+    [(_t1, _f1, a1, _k1), (_t2, _f2, a2, _k2)] = self.ev.queue
     self.assertEqual(a1, (2,))  # first event should has arg = 2
     self.assertEqual(a2, (1,))  # second event should  has arg = 1
 
