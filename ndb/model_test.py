@@ -1190,15 +1190,15 @@ class ModelTests(test_utils.NDBTest):
     class MyModel(db.Model):
       name = db.StringProperty()
     dumped = []
-    for _ in 0, 1, 2:
+    for proto in 0, 1, 2:
       x = MyModel()
-      s = pickle.dumps(x)
+      s = pickle.dumps(x, proto)
       dumped.append(s)
       x.name = 'joe'
-      s = pickle.dumps(x)
+      s = pickle.dumps(x, proto)
       dumped.append(s)
       db.put(x)
-      s = pickle.dumps(x)
+      s = pickle.dumps(x, proto)
       dumped.append(s)
     class MyModel(model.Model):
       name = model.StringProperty()
