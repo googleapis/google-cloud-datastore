@@ -421,7 +421,8 @@ class Property(ModelAttribute):
     if name is not None:
       if isinstance(name, unicode):
         name = name.encode('utf-8')
-      assert '.' not in name  # The '.' is used elsewhere.
+      if '.' in name:
+        raise ValueError('name cannot contain period characters' % name)
       self._name = name
     if indexed is not None:
       self._indexed = indexed
@@ -431,12 +432,15 @@ class Property(ModelAttribute):
       self._required = required
     if default is not None:
       self._default = default
-    assert (bool(self._repeated) +
-            bool(self._required) +
-            (self._default is not None)) <= 1  # Allow at most one of these
+    if (bool(self._repeated) +
+        bool(self._required) +
+        (self._default is not None)) > 1:
+      raise ValueError('repeated, required and default are mutally exclusive.')
     if choices is not None:
-      assert isinstance(choices, (tuple, list))
-      self._choices = tuple(choices)
+      if not isinstance(choices, (list, tuple, set, frozenset)):
+        raise TypeError('choices must be a list, tuple or set; received %r' %
+                        choices)
+      self._choices = frozenset(choices)
     if validator is not None:
       # The validator is called as follows:
       #   value = validator(prop, value)
@@ -445,7 +449,9 @@ class Property(ModelAttribute):
       # not further modify the value.  So a validator that returns e.g.
       # value.lower() or value.strip() is fine, but one that returns
       # value + '$' is not.
-      assert callable(validator)
+      if not hasattr(validator, '__call__'):
+        raise TypeError('validator must be callable or None; received %r'
+                        % validator)
       self._validator = validator
 
   def __repr__(self):
@@ -538,7 +544,9 @@ class Property(ModelAttribute):
     values = []
     for val in value:
       if val is not None:
-        assert val is self._validate(val)
+        if val is not self._validate(val):
+          raise ValueError('Argument provided to %s IN filter is not valid %r' %
+                           (self._name, val))
         values.append(val)
     return FilterNode(self._name, 'in', values)
   IN = _IN
@@ -717,7 +725,9 @@ class Property(ModelAttribute):
       value = [value]
     elif value is None:
       value = []
-    assert isinstance(value, list)
+    elif not isinstance(value, list):
+      raise TypeError('value of %s must be a list; found %r' %
+                      (self._name, value))
     for val in value:
       if self._repeated:
         # Re-validate repeated values, since the user could have
@@ -819,7 +829,9 @@ class BooleanProperty(Property):
     return value
 
   def _db_set_value(self, v, unused_p, value):
-    assert isinstance(value, bool), (self._name)
+    if not isinstance(value, bool):
+      raise TypeError('BooleanProperty %s can only be set to bool values; '
+                      'received %r' % (self._name, value))
     v.set_booleanvalue(value)
 
   def _db_get_value(self, v, unused_p):
@@ -840,7 +852,9 @@ class IntegerProperty(Property):
     return int(value)
 
   def _db_set_value(self, v, unused_p, value):
-    assert isinstance(value, (bool, int, long)), (self._name)
+    if not isinstance(value, (bool, int, long)):
+      raise TypeError('IntegerProperty %s can only be set to integer values; '
+                      'received %r' % (self._name, value))
     v.set_int64value(value)
 
   def _db_get_value(self, v, unused_p):
@@ -862,7 +876,9 @@ class FloatProperty(Property):
     return float(value)
 
   def _db_set_value(self, v, unused_p, value):
-    assert isinstance(value, (bool, int, long, float)), (self._name)
+    if not isinstance(value, (bool, int, long, float)):
+      raise TypeError('FloatProperty %s can only be set to integer or float '
+                      'values; received %r' % (self._name, value))
     v.set_doublevalue(float(value))
 
   def _db_get_value(self, v, unused_p):
@@ -883,7 +899,9 @@ class StringProperty(Property):
     return value
 
   def _db_set_value(self, v, p, value):
-    assert isinstance(value, basestring)
+    if not isinstance(value, basestring):
+      raise TypeError('StringProperty %s can only be set to string values; '
+                      'received %r' % (self._name, value))
     if isinstance(value, unicode):
       value = value.encode('utf-8')
     v.set_stringvalue(value)
@@ -948,7 +966,9 @@ class CompressedPropertyMixin(object):
         value = zlib.compress(self._serialize_value(value))
     else:
       value = self._serialize_value(value)
-    assert isinstance(value, str)
+    if not isinstance(value, str):
+      raise RuntimeError('Compressed value of %s is not a string %r' %
+                         (self._name, value))
     v.set_stringvalue(value)
 
   def _db_get_value(self, v, p):
@@ -1002,7 +1022,9 @@ class TextProperty(CompressedPropertyMixin, StringProperty):
   @datastore_rpc._positional(1 + _positional)
   def __init__(self, compressed=False, **kwds):
     super(TextProperty, self).__init__(**kwds)
-    assert not self._indexed
+    if self._indexed:
+      raise NotImplementedError('TextProperty %s cannot be indexed.' %
+                                self._name)
     self._compressed = compressed
 
   def _validate(self, value):
@@ -1020,7 +1042,9 @@ class TextProperty(CompressedPropertyMixin, StringProperty):
     self._db_set_compressed_value(v, p, value)
 
   def _serialize_value(self, value):
-    assert isinstance(value, basestring)
+    if not isinstance(value, basestring):
+      raise TypeError('TextProperty %s can only be serialized to string values;'
+                      ' received %r' % (self._name, value))
     if isinstance(value, unicode):
       return value.encode('utf-8')
     return value
@@ -1046,7 +1070,9 @@ class BlobProperty(CompressedPropertyMixin, Property):
   def __init__(self, name=None, compressed=False, **kwds):
     super(BlobProperty, self).__init__(name=name, **kwds)
     self._compressed = compressed
-    assert not (compressed and self._indexed)
+    if compressed and self._indexed:
+      raise NotImplementedError('BlobProperty %s cannot be compressed and '
+                                'indexed at the same time.' % self._name)
 
   def _validate(self, value):
     if self._compressed and isinstance(value, _CompressedValue):
@@ -1059,7 +1085,9 @@ class BlobProperty(CompressedPropertyMixin, Property):
   def _datastore_type(self, value):
     # Since this is only used for queries, and queries imply an
     # indexed property, check that, and always use ByteString.
-    assert self._indexed
+    if not self._indexed:
+      raise RuntimeError('datastore_type should not be queried on non-indexed '
+                         'BlobProperty %s' % self._name)
     return datastore_types.ByteString(value)
 
 
@@ -1073,7 +1101,9 @@ class GeoPtProperty(Property):
     return value
 
   def _db_set_value(self, v, unused_p, value):
-    assert isinstance(value, GeoPt), (self._name)
+    if not isinstance(value, GeoPt):
+      raise TypeError('GeoPtProperty %s can only be set to GeoPt values; '
+                      'received %r' % (self._name, value))
     pv = v.mutable_pointvalue()
     pv.set_x(value.lat)
     pv.set_y(value.lon)
@@ -1238,7 +1268,7 @@ class DateTimeProperty(Property):
     assert isinstance(value, datetime.datetime)
     assert value.tzinfo is None
     dt = value - _EPOCH
-    ival = dt.microseconds + 1000000 * (dt.seconds + 24*3600 * dt.days)
+    ival = dt.microseconds + 1000000 * (dt.seconds + 24 * 3600 * dt.days)
     v.set_int64value(ival)
     p.set_meaning(entity_pb.Property.GD_WHEN)
 
@@ -1456,7 +1486,7 @@ class StructuredProperty(Property):
     parts = name.split('.')
     assert len(parts) > depth, (depth, name, parts)
     next = parts[depth]
-    rest = parts[depth+1:]
+    rest = parts[depth + 1:]
     prop = self._modelclass._properties.get(next)
     assert prop is not None  # QED
 
@@ -1469,7 +1499,8 @@ class StructuredProperty(Property):
     # Find the first subentity that doesn't have a value for this
     # property yet.
     for sub in values:
-      assert isinstance(sub, self._modelclass)
+      if not isinstance(sub, self._modelclass):
+        raise TypeError('sub-entities must be instances of their Model class.')
       if not prop._has_value(sub, rest):
         subentity = sub
         break
@@ -1623,7 +1654,7 @@ class GenericProperty(Property):
     elif isinstance(value, datetime.datetime):
       assert value.tzinfo is None
       dt = value - _EPOCH
-      ival = dt.microseconds + 1000000 * (dt.seconds + 24*3600 * dt.days)
+      ival = dt.microseconds + 1000000 * (dt.seconds + 24 * 3600 * dt.days)
       v.set_int64value(ival)
       p.set_meaning(entity_pb.Property.GD_WHEN)
     elif isinstance(value, GeoPt):
@@ -1815,7 +1846,8 @@ class Model(object):
     cls = self.__class__
     for name, value in kwds.iteritems():
       prop = getattr(cls, name)  # Raises AttributeError for unknown properties.
-      assert isinstance(prop, Property)
+      if not isinstance(prop, Property):
+        raise TypeError('Cannot set non-property %s' % name)
       prop._set_value(self, value)
 
   def _find_uninitialized(self):
@@ -1951,7 +1983,8 @@ class Model(object):
   @classmethod
   def _from_pb(cls, pb, set_key=True, ent=None):
     """Internal helper to create an entity from an EntityProto protobuf."""
-    assert isinstance(pb, entity_pb.EntityProto)
+    if not isinstance(pb, entity_pb.EntityProto):
+      raise TypeError('pb must be a EntityProto; received %r' % pb)
     if ent is None:
       ent = cls()
 
@@ -2299,7 +2332,9 @@ class Expando(Model):
         isinstance(getattr(self.__class__, name, None), (Property, property))):
       return super(Expando, self).__delattr__(name)
     prop = self._properties.get(name)
-    assert prop is not None
+    if not isinstance(prop, Property):
+      raise TypeError('Model properties must be Property instances; not %r' %
+                      prop)
     prop._delete_value(self)
     assert prop not in self.__class__._properties
     del self._properties[name]

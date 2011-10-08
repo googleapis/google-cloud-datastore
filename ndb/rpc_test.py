@@ -3,10 +3,10 @@
 import unittest
 
 from google.appengine.api import apiproxy_stub_map
-from google.appengine.datastore import entity_pb
-
 from google.appengine.datastore import datastore_rpc
-from . import key, model, test_utils
+
+from . import model
+from . import test_utils
 
 class PendingTests(test_utils.NDBTest):
   """Tests for the 'pending RPC' management."""
@@ -46,6 +46,7 @@ class PendingTests(test_utils.NDBTest):
     self.assertEqual(len(self.pre_args), 1)
     self.assertEqual(self.post_args, [])
     [ent] = rpc.get_result()
+    self.assertTrue(ent is None)
     self.assertEqual(len(self.pre_args), 1)
     self.assertEqual(len(self.post_args), 1)
     self.assertEqual(self.pre_args[0][:2], ('datastore_v3', 'Get'))
@@ -62,15 +63,15 @@ class PendingTests(test_utils.NDBTest):
     self.assertEqual(self.conn.get_pending_rpcs(), set())
 
   def NastyCallback(self, rpc):
-    [ent] = rpc.get_result()
+    rpc.get_result()
     key = model.Key(flat=['Expando', 1])
-    newrpc = self.conn.async_get(None, [key])
+    self.conn.async_get(None, [key])
 
   def testCallHooks_Pending_CallbackAddsMore(self):
     self.SetUpCallHooks()
     conf = datastore_rpc.Configuration(on_completion=self.NastyCallback)
     key = model.Key(flat=['Expando', 1])
-    rpc = self.conn.async_get(conf, [key])
+    self.conn.async_get(conf, [key])
     self.conn.wait_for_all_pending_rpcs()
     self.assertEqual(self.conn.get_pending_rpcs(), set())
 

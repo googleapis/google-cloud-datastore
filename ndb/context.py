@@ -10,7 +10,10 @@ from google.appengine.api import memcache
 from google.appengine.datastore import datastore_rpc
 
 from . import key as key_module
-from . import model, tasklets, eventloop, utils
+from . import model
+from . import tasklets
+from . import eventloop
+from . import utils
 
 _LOCK_TIME = 32  # Time to lock out memcache.add() after datastore updates.
 _LOCKED = 0  # Special value to store in memcache indicating locked value.
@@ -79,7 +82,9 @@ def _make_ctx_options(ctx_options):
   for key in list(ctx_options):
     translation = _OPTION_TRANSLATIONS.get(key)
     if translation:
-      assert translation not in ctx_options, (key, translation)
+      if translation in ctx_options:
+        raise ValueError('Cannot specify %s and %s at the same time' %
+                         (key, translation))
       if key.startswith('ndb_'):
         logging.warning('Context option %s is deprecated; use %s instead',
                         key, translation)
@@ -202,7 +207,8 @@ class Context(object):
 
   @tasklets.tasklet
   def _get_tasklet(self, todo):
-    assert todo
+    if not todo:
+      raise RuntimeError('Nothing to do.')
     in_transaction = isinstance(self._conn,
                                 datastore_rpc.TransactionalConnection)
 
@@ -279,7 +285,8 @@ class Context(object):
 
   @tasklets.tasklet
   def _put_tasklet(self, todo):
-    assert todo
+    if not todo:
+      raise RuntimeError('Nothing to do.')
     # TODO: What if the same entity is being put twice?
     # TODO: What if two entities with the same key are being put?
     by_options = {}
@@ -345,7 +352,8 @@ class Context(object):
 
   @tasklets.tasklet
   def _delete_tasklet(self, todo):
-    assert todo
+    if not todo:
+      raise RuntimeError('Nothing to do.')
     by_options = {}
     delete_futures = []  # For memcache.delete_multi()
     for fut, key, options in todo:
@@ -435,7 +443,7 @@ class Context(object):
     if func is None:
       func = self.default_cache_policy
     elif isinstance(func, bool):
-      func = lambda key, flag=func: flag
+      func = lambda unused_key, flag=func: flag
     self._cache_policy = func
 
   def _use_cache(self, key, options=None):
@@ -502,7 +510,7 @@ class Context(object):
     if func is None:
       func = self.default_memcache_policy
     elif isinstance(func, bool):
-      func = lambda key, flag=func: flag
+      func = lambda unused_key, flag=func: flag
     self._memcache_policy = func
 
   def _use_memcache(self, key, options=None):
@@ -569,7 +577,7 @@ class Context(object):
     if func is None:
       func = self.default_datastore_policy
     elif isinstance(func, bool):
-      func = lambda key, flag=func: flag
+      func = lambda unused_key, flag=func: flag
     self._datastore_policy = func
 
   def _use_datastore(self, key, options=None):
@@ -629,7 +637,7 @@ class Context(object):
     if func is None:
       func = self.default_memcache_timeout_policy
     elif isinstance(func, (int, long)):
-      func = lambda key, flag=func: flag
+      func = lambda unused_key, flag=func: flag
     self._memcache_timeout_policy = func
 
   def get_memcache_timeout_policy(self):
@@ -801,7 +809,7 @@ class Context(object):
     if retries is None:
       retries = 3
     yield self.flush()
-    for i in xrange(1 + max(0, retries)):
+    for _ in xrange(1 + max(0, retries)):
       transaction = yield self._conn.async_begin_transaction(options, app)
       tconn = datastore_rpc.TransactionalConnection(
         adapter=self._conn.adapter,
@@ -827,7 +835,7 @@ class Context(object):
               result = yield result
           finally:
             yield tctx.flush()
-        except Exception, err:
+        except Exception:
           t, e, tb = sys.exc_info()
           yield tconn.async_rollback(options)  # TODO: Don't block???
           if issubclass(t, datastore_errors.Rollback):
@@ -876,7 +884,10 @@ class Context(object):
                     context_options=None,
                     **kwds):
     # TODO: Test the heck out of this, in all sorts of evil scenarios.
-    assert isinstance(name, basestring) and name
+    if not isinstance(name, basestring):
+      raise TypeError('name must be a string; received %r' % name)
+    elif not name:
+      raise ValueError('name cannot be an empty string.')
     key = model.Key(model_class, name,
                     app=app, namespace=namespace, parent=parent)
     # TODO: Can (and should) the cache be trusted here?
@@ -895,9 +906,10 @@ class Context(object):
 
   @tasklets.tasklet
   def _memcache_get_tasklet(self, todo):
-    assert todo
+    if not todo:
+      raise RuntimeError('Nothing to do.')
     groups = {}  # {(for_cas, namespace) -> set of Keys}
-    for fut, (key, for_cas, namespace), options in todo:
+    for fut, (key, for_cas, namespace), unused_options in todo:
       gkey = (for_cas, namespace)
       if gkey not in groups:
         groups[gkey] = set()
@@ -910,15 +922,16 @@ class Context(object):
                                                      namespace=namespace)
       for key, result in results.iteritems():
         all_results[for_cas, namespace, key] = result
-    for fut, (key, for_cas, namespace), options in todo:
+    for fut, (key, for_cas, namespace), unused_options in todo:
       fut.set_result(all_results.get((for_cas, namespace, key)))
 
   @tasklets.tasklet
   def _memcache_set_tasklet(self, todo):
-    assert todo
+    if not todo:
+      raise RuntimeError('Nothing to do.')
     mappings = {}  # {(opname, timeout): {key: value, ...}, ...}
     all_results = {}
-    for fut, (opname, key, value, time, namespace), options in todo:
+    for fut, (opname, key, value, time, namespace), unused_options in todo:
       mapping = mappings.get((opname, time, namespace))
       if mapping is None:
         mapping = mappings[opname, time, namespace] = {}
@@ -931,16 +944,17 @@ class Context(object):
       if results:
         for key, status in results.iteritems():
           all_results[opname, time, namespace, key] = status
-    for fut, (opname, key, value, time, namespace), options in todo:
+    for fut, (opname, key, value, time, namespace), unused_options in todo:
       status = all_results.get((opname, time, namespace, key))
       fut.set_result(status == memcache.MemcacheSetResponse.STORED)
 
   @tasklets.tasklet
   def _memcache_del_tasklet(self, todo):
-    assert todo
+    if not todo:
+      raise RuntimeError('Nothing to do.')
     # Segregate by value of seconds and namespace.
     groups = {}
-    for fut, (key, seconds, namespace), options in todo:
+    for fut, (key, seconds, namespace), unused_options in todo:
       gkey = (seconds, namespace)
       keys = groups.get(gkey)
       if keys is None:
@@ -963,14 +977,15 @@ class Context(object):
           all_results[namespace, key] = status
     # Transfer results to original Futures.
     # TODO: Do this as results become available instead of at the end.
-    for fut, (key, seconds, namespace), options in todo:
+    for fut, (key, seconds, namespace), unused_options in todo:
       fut.set_result(all_results.get((namespace, key)))
 
   @tasklets.tasklet
   def _memcache_off_tasklet(self, todo):
-    assert todo
+    if not todo:
+      raise RuntimeError('Nothing to do.')
     mappings = {}  # {initial_value: {key: delta, ...}, ...}
-    for fut, (key, delta, initial_value, namespace), options in todo:
+    for fut, (key, delta, initial_value, namespace), unused_options in todo:
       mkey = (initial_value, namespace)
       mapping = mappings.get(mkey)
       if mapping is None:
@@ -986,7 +1001,7 @@ class Context(object):
       if results:
         for key, value in results.iteritems():
           all_results[namespace, key] = value
-    for fut, (key, delta, initial_value, namespace), options in todo:
+    for fut, (key, delta, initial_value, namespace), unused_options in todo:
       result = all_results.get((namespace, key))
       if isinstance(result, basestring):
         # See http://code.google.com/p/googleappengine/issues/detail?id=2012
@@ -1006,8 +1021,10 @@ class Context(object):
       A Future (!) whose return value is the value retrieved from
       memcache, or None.
     """
-    assert isinstance(key, str)
-    assert isinstance(for_cas, bool)
+    if not isinstance(key, str):
+      raise TypeError('key must be a string; received %r' % key)
+    if not isinstance(for_cas, bool):
+      raise ValueError('for_cas must be a bool; received %r' % for_cas)
     return self._memcache_get_batcher.add((key, for_cas, namespace))
 
   # XXX: Docstrings below.
@@ -1016,42 +1033,63 @@ class Context(object):
     return self.memcache_get(key, for_cas=True, namespace=namespace)
 
   def memcache_set(self, key, value, time=0, namespace=None):
-    assert isinstance(key, str)
-    assert isinstance(time, (int, long))
-    return self._memcache_set_batcher.add(('set', key, value, time, namespace))
+    if not isinstance(key, str):
+      raise TypeError('key must be a string; received %r' % key)
+    if not isinstance(time, (int, long)):
+      raise ValueError('time must be a number; received %r' % time)
+    return self._memcache_set_batcher.add(('set', key, value, time,
+                                           namespace))
 
   def memcache_add(self, key, value, time=0, namespace=None):
-    assert isinstance(key, str)
-    assert isinstance(time, (int, long))
-    return self._memcache_set_batcher.add(('add', key, value, time, namespace))
+    if not isinstance(key, str):
+      raise TypeError('key must be a string; received %r' % key)
+    if not isinstance(time, (int, long)):
+      raise ValueError('time must be a number; received %r' % time)
+    return self._memcache_set_batcher.add(('add', key, value, time,
+                                           namespace))
 
   def memcache_replace(self, key, value, time=0, namespace=None):
-    assert isinstance(key, str)
-    assert isinstance(time, (int, long))
+    if not isinstance(key, str):
+      raise TypeError('key must be a string; received %r' % key)
+    if not isinstance(time, (int, long)):
+      raise ValueError('time must be a number; received %r' % time)
     return self._memcache_set_batcher.add(('replace', key, value, time,
                                            namespace))
 
   def memcache_cas(self, key, value, time=0, namespace=None):
-    assert isinstance(key, str)
-    assert isinstance(time, (int, long))
-    return self._memcache_set_batcher.add(('cas', key, value, time, namespace))
+    if not isinstance(key, str):
+      raise TypeError('key must be a string; received %r' % key)
+    if not isinstance(time, (int, long)):
+      raise ValueError('time must be a number; received %r' % time)
+    return self._memcache_set_batcher.add(('cas', key, value, time,
+                                           namespace))
 
   def memcache_delete(self, key, seconds=0, namespace=None):
-    assert isinstance(key, str)
-    assert isinstance(seconds, (int, long))
+    if not isinstance(key, str):
+      raise TypeError('key must be a string; received %r' % key)
+    if not isinstance(seconds, (int, long)):
+      raise ValueError('seconds must be a number; received %r' % seconds)
     return self._memcache_del_batcher.add((key, seconds, namespace))
 
   def memcache_incr(self, key, delta=1, initial_value=None, namespace=None):
-    assert isinstance(key, str)
-    assert isinstance(delta, (int, long))
-    assert initial_value is None or isinstance(initial_value, (int, long))
+    if not isinstance(key, str):
+      raise TypeError('key must be a string; received %r' % key)
+    if not isinstance(delta, (int, long)):
+      raise ValueError('delta must be a number; received %r' % delta)
+    if initial_value is not None and not isinstance(initial_value, (int, long)):
+      raise ValueError('initial_value must be a number or None; received %r' %
+                       initial_value)
     return self._memcache_off_batcher.add((key, delta, initial_value,
                                            namespace))
 
   def memcache_decr(self, key, delta=1, initial_value=None, namespace=None):
-    assert isinstance(key, str)
-    assert isinstance(delta, (int, long))
-    assert initial_value is None or isinstance(initial_value, (int, long))
+    if not isinstance(key, str):
+      raise TypeError('key must be a string; received %r' % key)
+    if not isinstance(delta, (int, long)):
+      raise ValueError('delta must be a number; received %r' % delta)
+    if initial_value is not None and not isinstance(initial_value, (int, long)):
+      raise ValueError('initial_value must be a number or None; received %r' %
+                       initial_value)
     return self._memcache_off_batcher.add((key, -delta, initial_value,
                                            namespace))
 
@@ -1069,7 +1107,6 @@ def toplevel(func):
     # Reset context; a new one will be created on the first call to
     # get_context().
     tasklets.set_context(None)
-    ctx = tasklets.get_context()
     try:
       return tasklets.synctasklet(func)(*args, **kwds)
     finally:

@@ -474,7 +474,7 @@ class QueryTests(test_utils.NDBTest):
     cursors = {}
     mores = {}
     for pagesize in [1, 2, 3, 4]:
-      it = q.iter(produce_cursors=True, limit=pagesize+1, batch_size=pagesize)
+      it = q.iter(produce_cursors=True, limit=pagesize + 1, batch_size=pagesize)
       todo = pagesize
       for _ in it:
         todo -= 1

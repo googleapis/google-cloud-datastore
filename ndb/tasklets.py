@@ -70,7 +70,9 @@ from google.appengine.api.apiproxy_stub_map import UserRPC
 from google.appengine.api.apiproxy_rpc import RPC
 
 from google.appengine.datastore import datastore_rpc
-from . import eventloop, utils
+
+from . import eventloop
+from . import utils
 
 logging_debug = utils.logging_debug
 
@@ -467,7 +469,8 @@ class MultiFuture(Future):
   def _finish(self):
     assert self._full
     assert not self._dependents
-    assert not self._done
+    if self._done:
+      raise RuntimeError('MultiFuture done before finishing.')
     try:
       result = [r.get_result() for r in self._results]
     except Exception, err:
@@ -558,14 +561,16 @@ class QueueFuture(Future):
     self.add_dependent(fut)
 
   def add_dependent(self, fut):
-    assert isinstance(fut, Future)
+    if not isinstance(fut, Future):
+      raise TypeError('fut must be a Future instance; received %r' % fut)
     assert not self._full
     if fut not in self._dependents:
       self._dependents.add(fut)
       fut.add_callback(self._signal_dependent_done, fut)
 
   def _signal_dependent_done(self, fut):
-    assert fut.done()
+    if not fut.done():
+      raise RuntimeError('Future not done before signalling dependant done.')
     self._dependents.remove(fut)
     exc = fut.get_exception()
     tb = fut.get_traceback()
@@ -582,7 +587,8 @@ class QueueFuture(Future):
       self._mark_finished()
 
   def _mark_finished(self):
-    assert self._done
+    if not self.done():
+      raise RuntimeError('Future not done before marking as finished.')
     while self._waiting:
       waiter = self._waiting.popleft()
       self._pass_eof(waiter)

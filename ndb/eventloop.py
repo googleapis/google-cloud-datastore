@@ -59,7 +59,7 @@ class EventLoop(object):
     self.queue.insert(lo, event)
 
   # TODO: Rename to queue_callback?
-  def queue_call(self, delay, callable, *args, **kwds):
+  def queue_call(self, delay, callback, *args, **kwds):
     """Schedule a function call at a specific time in the future."""
     if delay is None:
       when = 0
@@ -68,9 +68,9 @@ class EventLoop(object):
     else:
       # Times over a billion seconds are assumed to be absolute.
       when = delay
-    self.insort_event_right((when, callable, args, kwds))
+    self.insort_event_right((when, callback, args, kwds))
 
-  def queue_rpc(self, rpc, callable=None, *args, **kwds):
+  def queue_rpc(self, rpc, callback=None, *args, **kwds):
     """Schedule an RPC with an optional callback.
 
     The caller must have previously sent the call to the service.
@@ -81,22 +81,23 @@ class EventLoop(object):
     """
     if rpc is None:
       return
-    assert rpc.state in (RUNNING, FINISHING), rpc.state
+    if rpc.state not in (RUNNING, FINISHING):
+      raise RuntimeError('Unexpected RPC state: %i' % rpc.state)
     if isinstance(rpc, datastore_rpc.MultiRpc):
       rpcs = rpc.rpcs
       if len(rpcs) > 1:
         # Don't call the callback until all sub-rpcs have completed.
-        def help_multi_rpc_along(r=rpc, c=callable, a=args, k=kwds):
+        def help_multi_rpc_along(r=rpc, c=callback, a=args, k=kwds):
           if r.state == FINISHING:
             c(*a, **k)
             # TODO: And again, what about exceptions?
-        callable = help_multi_rpc_along
+        callback = help_multi_rpc_along
         args = ()
         kwds = {}
     else:
       rpcs = [rpc]
     for rpc in rpcs:
-      self.rpcs[rpc] = (callable, args, kwds)
+      self.rpcs[rpc] = (callback, args, kwds)
 
   # TODO: A way to add a datastore Connection
 
@@ -111,9 +112,9 @@ class EventLoop(object):
     if self.queue:
       delay = self.queue[0][0] - time.time()
       if delay is None or delay <= 0:
-        when, callable, args, kwds = self.queue.pop(0)
-        logging_debug('event: %s', callable.__name__)
-        callable(*args, **kwds)
+        _, callback, args, kwds = self.queue.pop(0)
+        logging_debug('event: %s', callback.__name__)
+        callback(*args, **kwds)
         # TODO: What if it raises an exception?
         return 0
     if self.rpcs:
@@ -122,11 +123,13 @@ class EventLoop(object):
         logging.info('rpc: %s.%s', rpc.service, rpc.method)  # XXX debug
         # Yes, wait_any() may return None even for a non-empty argument.
         # But no, it won't ever return an RPC not in its argument.
-        assert rpc in self.rpcs, (rpc, self.rpcs)
-        callable, args, kwds = self.rpcs[rpc]
+        if rpc not in self.rpcs:
+          raise RuntimeError('rpc %r was not given to wait_any as a choice %r' %
+                             (rpc, self.rpcs))
+        callback, args, kwds = self.rpcs[rpc]
         del self.rpcs[rpc]
-        if callable is not None:
-          callable(*args, **kwds)
+        if callback is not None:
+          callback(*args, **kwds)
           # TODO: Again, what about exceptions?
       return 0
     return delay
@@ -183,9 +186,9 @@ def queue_call(*args, **kwds):
   ev.queue_call(*args, **kwds)
 
 
-def queue_rpc(rpc, callable=None, *args, **kwds):
+def queue_rpc(rpc, callback=None, *args, **kwds):
   ev = get_event_loop()
-  ev.queue_rpc(rpc, callable, *args, **kwds)
+  ev.queue_rpc(rpc, callback, *args, **kwds)
 
 
 def run():

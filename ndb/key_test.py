@@ -5,9 +5,14 @@ import pickle
 import unittest
 
 from google.appengine.api import datastore_errors
+
 from google.appengine.datastore import entity_pb
 
-from . import eventloop, key, model, tasklets, test_utils
+from . import eventloop
+from . import key
+from . import model
+from . import tasklets
+from . import test_utils
 
 class KeyTests(test_utils.NDBTest):
 
@@ -21,7 +26,7 @@ class KeyTests(test_utils.NDBTest):
 
   def testFlat(self):
     flat = ('Kind', 1)
-    pairs = tuple((flat[i], flat[i+1]) for i in xrange(0, len(flat), 2))
+    pairs = tuple((flat[i], flat[i + 1]) for i in xrange(0, len(flat), 2))
     k = key.Key(flat=flat)
     self.assertEqual(k.pairs(), pairs)
     self.assertEqual(k.flat(), flat)
@@ -29,7 +34,7 @@ class KeyTests(test_utils.NDBTest):
 
   def testFlatLong(self):
     flat = ('Kind', 1, 'Subkind', 'foobar')
-    pairs = tuple((flat[i], flat[i+1]) for i in xrange(0, len(flat), 2))
+    pairs = tuple((flat[i], flat[i + 1]) for i in xrange(0, len(flat), 2))
     k = key.Key(flat=flat)
     self.assertEqual(k.pairs(), pairs)
     self.assertEqual(k.flat(), flat)
@@ -184,7 +189,7 @@ class KeyTests(test_utils.NDBTest):
     flat_input = (u'Kind\u1234', 1, 'Subkind', u'foobar\u4321')
     flat = (flat_input[0].encode('utf8'), flat_input[1],
             flat_input[2], flat_input[3].encode('utf8'))
-    pairs = tuple((flat[i], flat[i+1]) for i in xrange(0, len(flat), 2))
+    pairs = tuple((flat[i], flat[i + 1]) for i in xrange(0, len(flat), 2))
     k = key.Key(flat=flat_input)
     self.assertEqual(k.pairs(), pairs)
     self.assertEqual(k.flat(), flat)
@@ -206,7 +211,7 @@ class KeyTests(test_utils.NDBTest):
 
   def testHash(self):
     flat = ['Kind', 1, 'Subkind', 'foobar']
-    pairs = [(flat[i], flat[i+1]) for i in xrange(0, len(flat), 2)]
+    pairs = [(flat[i], flat[i + 1]) for i in xrange(0, len(flat), 2)]
     k = key.Key(flat=flat)
     self.assertEqual(hash(k), hash(tuple(pairs)))
 

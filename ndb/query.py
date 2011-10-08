@@ -132,12 +132,12 @@ import sys
 
 from google.appengine.api import datastore_errors
 from google.appengine.api import datastore_types
-from google.appengine.datastore import datastore_pb
+
 from google.appengine.datastore import datastore_query
 from google.appengine.datastore import datastore_rpc
+
 from google.appengine.ext import gql
 
-from . import context
 from . import model
 from . import tasklets
 
@@ -158,7 +158,7 @@ _KEY = datastore_types._KEY_SPECIAL_PROPERTY
 _OPS = frozenset(['=', '!=', '<', '<=', '>', '>=', 'in'])
 
 # Default limit value.  (Yes, the datastore uses int32!)
-_MAX_LIMIT = 2**31 - 1
+_MAX_LIMIT = 2 ** 31 - 1
 
 
 # TODO: Once CL/21689469 is submitted, get rid of this and its callers.
@@ -336,7 +336,7 @@ class FalseNode(Node):
       return NotImplemented
     return True
 
-  def _to_filter(self, bindings, post=False):
+  def _to_filter(self, unused_bindings, post=False):
     if post:
       return None
     # Because there's no point submitting a query that will never
@@ -427,7 +427,7 @@ class PostFilterNode(Node):
       return NotImplemented
     return self is other
 
-  def _to_filter(self, bindings, post=False):
+  def _to_filter(self, unused_bindings, post=False):
     if post:
       return self.predicate
     else:
@@ -730,10 +730,7 @@ class Query(object):
 
       if dsquery is None:
         dsquery = self._get_query(conn)
-      orig_options = options
       rpc = dsquery.run_async(conn, options)
-      skipped = 0
-      count = 0
       while rpc is not None:
         batch = yield rpc
         rpc = batch.next_batch_async(options)
@@ -743,7 +740,7 @@ class Query(object):
 
     except Exception:
       if not queue.done():
-        t, e, tb = sys.exc_info()
+        _, e, tb = sys.exc_info()
         queue.set_exception(e, tb)
       raise
 
@@ -1037,7 +1034,7 @@ class Query(object):
     """
     q_options.setdefault('batch_size', page_size)
     q_options.setdefault('produce_cursors', True)
-    it = self.iter(limit=page_size+1, **q_options)
+    it = self.iter(limit=page_size + 1, **q_options)
     results = []
     while (yield it.has_next_async()):
       results.append(it.next())

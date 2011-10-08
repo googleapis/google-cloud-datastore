@@ -1,10 +1,6 @@
 """Tests for context.py."""
 
 import logging
-import os
-import re
-import sys
-import time
 import unittest
 
 from google.appengine.api import datastore_errors
@@ -133,7 +129,7 @@ class ContextTests(test_utils.NDBTest):
         config=real_config)
     @tasklets.tasklet
     def foo():
-      es = [model.Model(key=model.Key('Foo', None)) for i in range(49)]
+      es = [model.Model(key=model.Key('Foo', None)) for _ in range(49)]
       fs = [self.ctx.put(e) for e in es]
       self.ctx.flush()
       ks = yield fs
@@ -153,7 +149,7 @@ class ContextTests(test_utils.NDBTest):
     self.ctx._conn = model.make_connection(config, default_model=model.Expando)
     @tasklets.tasklet
     def foo():
-      ents = [model.Expando() for i in range(10)]
+      ents = [model.Expando() for _ in range(10)]
       futs = [self.ctx.put(ent) for ent in ents]
       keys = yield futs
       futs = [self.ctx.get(key) for key in keys]
@@ -180,7 +176,7 @@ class ContextTests(test_utils.NDBTest):
     foo().check_success()
 
   def testContext_CachePolicy(self):
-    def should_cache(key):
+    def should_cache(unused_key):
       return False
     @tasklets.tasklet
     def foo():
@@ -202,7 +198,7 @@ class ContextTests(test_utils.NDBTest):
     # If the cache is disabled after an entity is stored in the cache,
     # further get() attempts *must not* return the result stored in cache.
 
-    self.ctx.set_cache_policy(lambda key: True)
+    self.ctx.set_cache_policy(lambda unused_key: True)
     key1 = model.Key(flat=('Foo', 1))
     ent1 = model.Expando(key=key1)
     self.ctx.put(ent1).get_result()
@@ -216,7 +212,7 @@ class ContextTests(test_utils.NDBTest):
     self.assertEqual(self.ctx.get(key1).get_result(), None)
 
     # get() doesn't use cache
-    self.ctx.set_cache_policy(lambda key: False)
+    self.ctx.set_cache_policy(lambda unused_key: False)
     self.assertEqual(self.ctx.get(key1).get_result(), ent1)
 
   def testContext_Memcache(self):
@@ -283,7 +279,7 @@ class ContextTests(test_utils.NDBTest):
       yield self.ctx._memcache.flush_all_async()
 
       track = []
-      self.ctx.set_memcache_policy(lambda key: False)
+      self.ctx.set_memcache_policy(lambda unused_key: False)
       foo().check_success()
       self.assertEqual(len(track), 0)
       yield self.ctx._memcache.flush_all_async()
@@ -298,7 +294,7 @@ class ContextTests(test_utils.NDBTest):
       yield self.ctx._memcache.flush_all_async()
 
       track = []
-      self.ctx.set_memcache_policy(lambda key: True)
+      self.ctx.set_memcache_policy(lambda unused_key: True)
       self.ctx.set_memcache_timeout_policy(lambda key: key.id())
       foo().check_success()
       self.assertEqual(len(track), 2)
@@ -312,7 +308,7 @@ class ContextTests(test_utils.NDBTest):
 
       track = []
       badkeys = [key2.urlsafe()]
-      self.ctx.set_memcache_timeout_policy(lambda key: 0)
+      self.ctx.set_memcache_timeout_policy(lambda unused_key: 0)
       foo().check_success()
       self.assertEqual(len(track), 1)
       self.assertEqual(track[0][2], badkeys)
@@ -327,7 +323,7 @@ class ContextTests(test_utils.NDBTest):
       key2 = model.Key(flat=('Foo', 2))
       ent1 = model.Expando(key=key1, foo=42, bar='hello')
       ent2 = model.Expando(key=key2, foo=1, bar='world')
-      key1a, key2a = yield self.ctx.put(ent1),  self.ctx.put(ent2)
+      key1a, key2a = yield self.ctx.put(ent1), self.ctx.put(ent2)
       self.assertTrue(key1 in self.ctx._cache)  # Whitebox.
       self.assertTrue(key2 in self.ctx._cache)  # Whitebox.
       self.assertEqual(key1, key1a)
@@ -376,7 +372,7 @@ class ContextTests(test_utils.NDBTest):
     self.assertEqual(len(res), 3)
     for i, ent in enumerate(res):
       self.assertTrue(isinstance(ent, model.Model))
-      self.assertEqual(ent.key.flat(), ('Foo', i+1))
+      self.assertEqual(ent.key.flat(), ('Foo', i + 1))
 
   def testContext_MapQuery_NonTaskletCallback(self):
     def callback(ent):
@@ -402,7 +398,7 @@ class ContextTests(test_utils.NDBTest):
       res = yield self.ctx.map_query(qry, callback, merge_future=mfut)
       self.assertEqual(res, None)
       vals = set()
-      for i in range(3):
+      for _ in range(3):
         val = yield mfut.getq()
         vals.add(val)
       fail = mfut.getq()
@@ -428,7 +424,7 @@ class ContextTests(test_utils.NDBTest):
   def testContext_MapQuery_Cursors(self):
     qo = query.QueryOptions(produce_cursors=True)
     @tasklets.tasklet
-    def callback(batch, i, ent):
+    def callback(unused_batch, _, ent):
       return ent.key.pairs()[-1]
     @tasklets.tasklet
     def foo():
@@ -457,7 +453,7 @@ class ContextTests(test_utils.NDBTest):
     self.assertEqual(len(res), 3)
     for i, ent in enumerate(res):
       self.assertTrue(isinstance(ent, model.Model))
-      self.assertEqual(ent.key.flat(), ('Foo', i+1))
+      self.assertEqual(ent.key.flat(), ('Foo', i + 1))
 
   def testContext_TransactionFailed(self):
     @tasklets.tasklet
@@ -484,7 +480,6 @@ class ContextTests(test_utils.NDBTest):
       ent = model.Expando(key=key, bar=1)
       @tasklets.tasklet
       def callback():
-        ctx = tasklets.get_context()
         key = yield ent.put_async()
         raise Exception('foo')
       yield self.ctx.transaction(callback)
@@ -498,7 +493,6 @@ class ContextTests(test_utils.NDBTest):
       ent = model.Expando(key=key, bar=1)
       @tasklets.tasklet
       def callback():
-        ctx = tasklets.get_context()
         key = yield ent.put_async()
         raise model.Rollback()
       yield self.ctx.transaction(callback)
@@ -547,9 +541,9 @@ class ContextTests(test_utils.NDBTest):
     @tasklets.tasklet
     def foo():
       ent = yield self.ctx.get_or_insert(Mod, 'a', data='hello')
-      assert isinstance(ent, Mod)
+      self.assertTrue(isinstance(ent, Mod))
       ent2 = yield self.ctx.get_or_insert(Mod, 'a', data='hello')
-      assert ent2 == ent
+      self.assertEqual(ent2, ent)
     foo().check_success()
 
   def testContext_GetOrInsertWithParent(self):
@@ -560,9 +554,9 @@ class ContextTests(test_utils.NDBTest):
     def foo():
       parent = model.Key(flat=('Foo', 1))
       ent = yield self.ctx.get_or_insert(Mod, 'a', parent=parent, data='hello')
-      assert isinstance(ent, Mod)
+      self.assertTrue(isinstance(ent, Mod))
       ent2 = yield self.ctx.get_or_insert(Mod, 'a', parent=parent, data='hello')
-      assert ent2 == ent
+      self.assertEqual(ent2, ent)
     foo().check_success()
 
   def testAddContextDecorator(self):
@@ -633,17 +627,17 @@ class ContextTests(test_utils.NDBTest):
     # If the cache is enabled, attempts to retrieve the object we just put will
     # be satisfied from the cache, so the adapter we're testing will never get
     # called.
-    ctx.set_cache_policy(lambda key: False)
+    ctx.set_cache_policy(lambda unused_key: False)
     @tasklets.tasklet
     def foo():
       # Foo class is declared in query_test, so let's get a unusual class name.
       key1 = model.Key(flat=('ThisModelClassDoesntExist', 1))
       ent1 = model.Expando(key=key1, foo=42, bar='hello')
-      key = yield ctx.put(ent1)
-      a = yield ctx.get(key1)
+      yield ctx.put(ent1)
+      yield ctx.get(key1)
     self.assertRaises(model.KindError, foo().check_success)
 
-  def testMemachePolicy(self):
+  def testMemcachePolicy(self):
     # Bug reported by Jack Hebert.
     class P(model.Model): pass
     class Q(model.Model): pass
@@ -654,8 +648,8 @@ class ContextTests(test_utils.NDBTest):
     k2 = model.Key(Q, 1)
     f1 = self.ctx.get(k1)
     f2 = self.ctx.get(k2)
-    e1 = f1.get_result()
-    e2 = f2.get_result()
+    self.assertTrue(f1.get_result() is None)
+    self.assertTrue(f2.get_result() is None)
 
   def testMemcacheDeleteThenGet(self):
     # Test that memcache is written synchronously when datastore policy is off.
@@ -670,7 +664,7 @@ class ContextTests(test_utils.NDBTest):
 
     # Delete the key (just to be sure).
     del_fut = self.ctx.memcache_delete(keystr, seconds=context._LOCK_TIME)
-    sts = del_fut.get_result()
+    self.assertEqual(del_fut.get_result(), memcache.DELETE_ITEM_MISSING)
 
     # Create and store a new model instance using the key we just deleted.
     # Because datastore policy is off, this writes it to memcache.
@@ -771,8 +765,8 @@ class ContextTests(test_utils.NDBTest):
       self.assertEqual(v2, 100)
 
       # Write v1+1 back using replace, v2+1 using cas
-      s1, s2 = yield (self.ctx.memcache_replace(k1, v1+1, namespace=ns),
-                      self.ctx.memcache_cas(k2, v2+1, namespace=ns))
+      s1, s2 = yield (self.ctx.memcache_replace(k1, v1 + 1, namespace=ns),
+                      self.ctx.memcache_cas(k2, v2 + 1, namespace=ns))
       self.assertEqual(s1, STORED)
       self.assertEqual(s2, STORED)
 

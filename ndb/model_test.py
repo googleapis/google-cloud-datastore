@@ -12,7 +12,12 @@ from google.appengine.api import memcache
 from google.appengine.api import namespace_manager
 from google.appengine.api import users
 
-from . import eventloop, key, model, query, tasklets, test_utils
+from . import eventloop
+from . import key
+from . import model
+from . import query
+from . import tasklets
+from . import test_utils
 
 TESTUSER = users.User('test@example.com', 'example.com', '123')
 AMSTERDAM = model.GeoPt(52.35, 4.9166667)
@@ -764,7 +769,7 @@ class ModelTests(test_utils.NDBTest):
       ctime = propclass(auto_now_add=True)
       mtime = propclass(auto_now=True)
       atime = propclass()
-      times =  propclass(repeated=True)
+      times = propclass(repeated=True)
       struct = model.StructuredProperty(ClockInOut)
       repstruct = model.StructuredProperty(ClockInOut, repeated=True)
       localstruct = model.LocalStructuredProperty(ClockInOut)
@@ -1610,7 +1615,7 @@ class ModelTests(test_utils.NDBTest):
       name = model.StringProperty('Name')
       city = model.StringProperty('City')
     p = Person(name='Guido', zip='00000')
-    p.city= 'SF'
+    p.city = 'SF'
     self.assertEqual(repr(p),
                      "Person(city='SF', name='Guido', zip='00000')")
     # White box confirmation.
@@ -1684,7 +1689,7 @@ class ModelTests(test_utils.NDBTest):
     self.assertFalse(a._properties['baz']._indexed)
     Mine._default_indexed = False
     b = Mine(foo=1)
-    b.bar=['a', 'b']
+    b.bar = ['a', 'b']
     self.assertFalse(b._properties['foo']._indexed)
     self.assertFalse(b._properties['bar']._indexed)
 
@@ -2447,7 +2452,7 @@ class ModelTests(test_utils.NDBTest):
       b = model.BlobProperty(compressed=True)
       t = model.TextProperty(compressed=True)
       l = model.LocalStructuredProperty(Foo, compressed=True)
-    x = M(b='b'*100, t=u't'*100, l=Foo(name='joe'))
+    x = M(b='b' * 100, t=u't' * 100, l=Foo(name='joe'))
     x.put()
     y = x.key.get()
     self.assertFalse(x is y)
