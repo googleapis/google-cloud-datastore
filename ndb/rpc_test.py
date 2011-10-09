@@ -8,6 +8,7 @@ from google.appengine.datastore import datastore_rpc
 from . import model
 from . import test_utils
 
+
 class PendingTests(test_utils.NDBTest):
   """Tests for the 'pending RPC' management."""
 

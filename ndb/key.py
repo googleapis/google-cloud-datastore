@@ -57,6 +57,7 @@ Other constraints:
 
 - Kinds and string ids must not be empty and must be at most 500 bytes
   long (after UTF-8 encoding, if given as Python unicode objects).
+  NOTE: This is defined as a module level constant _MAX_KEYPART_BYTES.
 
 - Integer ids must be at least 1 and less than 2**63.
 
@@ -81,7 +82,8 @@ from google.appengine.datastore import entity_pb
 
 __all__ = ['Key']
 
-_MAX_LONG = 2L**63  # Use 2L, see issue 65
+_MAX_LONG = 2L ** 63  # Use 2L, see issue 65
+_MAX_KEYPART_BYTES = 500
 
 
 class Key(object):
@@ -192,12 +194,14 @@ class Key(object):
     """Constructor.  See the class docstring for arguments."""
     if _args:
       if len(_args) == 1 and isinstance(_args[0], dict):
-        # For pickling only: one positional argument is allowed,
-        # giving a dict specifying the keyword arguments.
-        assert not kwargs
+        if kwargs:
+          raise TypeError('Key() takes no keyword arguments when a dict is the '
+                          'the first and only non-keyword argument (for '
+                          'unpickling).')
         kwargs = _args[0]
       else:
-        assert 'flat' not in kwargs
+        if 'flat' in kwargs:
+          raise TypeError('Key() cannot accept flat as a keyword argument.')
         kwargs['flat'] = _args
     self = super(Key, cls).__new__(cls)
     # Either __reference or (__pairs, __app, __namespace) must be set.
@@ -209,32 +213,46 @@ class Key(object):
       self.__app = None
       self.__namespace = None
     elif 'pairs' in kwargs or 'flat' in kwargs:
-      self._build_from_args(**kwargs)
+      self.__reference = None
+      (self.__pairs,
+       self.__app,
+       self.__namespace) = self._parse_from_args(**kwargs)
+    else:
+      raise TypeError('Key() cannot create a Key instance without arguments.')
     return self
 
-  def _build_from_args(self, pairs=None, flat=None,
-                       app=None, namespace=None, parent=None):
+  @staticmethod
+  def _parse_from_args(pairs=None, flat=None, app=None, namespace=None,
+                       parent=None):
     if flat:
-      assert not pairs
-      assert len(flat) % 2 == 0
-      pairs = [(flat[i], flat[i+1]) for i in xrange(0, len(flat), 2)]
+      if pairs is not None:
+        raise TypeError('Key() cannot accept both flat and pairs arguments.')
+      if len(flat) % 2 != 0:
+        raise ValueError('Key() must have an even number of positional '
+                         'arguments.')
+      pairs = [(flat[i], flat[i + 1]) for i in xrange(0, len(flat), 2)]
     else:
       pairs = list(pairs)
-    assert pairs
+    if not pairs:
+      raise TypeError('Key must consist of at least one pair.')
     for i, (kind, id) in enumerate(pairs):
       if isinstance(id, unicode):
         id = id.encode('utf8')
       elif id is None:
-        if i+1 < len(pairs):
+        if i + 1 < len(pairs):
           raise datastore_errors.BadArgumentError(
             'Incomplete Key entry must be last')
       else:
-        assert isinstance(id, (int, long, str))
+        if not isinstance(id, (int, long, str)):
+          raise TypeError('Key id must be a string or a number; received %r' %
+                          id)
       if isinstance(kind, type):
         kind = kind._get_kind()
       if isinstance(kind, unicode):
         kind = kind.encode('utf8')
-      assert isinstance(kind, str), repr(kind)
+      if not isinstance(kind, str):
+          raise TypeError('Key kind must be a string or Model class; '
+                          'received %r' % kind)
       pairs[i] = (kind, id)
     if parent is not None:
       if not isinstance(parent, Key):
@@ -245,22 +263,24 @@ class Key(object):
           'Parent cannot have incomplete key')
       pairs[:0] = parent.pairs()
       if app:
-        assert app == parent.app(), (app, parent.app())
+        if app != parent.app():
+          raise ValueError('Cannot specify a different app %r '
+                           'than the parent app %r' %
+                           (app, parent.app()))
       else:
         app = parent.app()
       if namespace is not None:
-        assert namespace == parent.namespace(), (namespace,
-                                                 parent.namespace())
+        if namespace != parent.namespace():
+          raise ValueError('Cannot specify a different namespace %r '
+                           'than the parent namespace %r' %
+                           (namespace, parent.namespace()))
       else:
         namespace = parent.namespace()
     if not app:
       app = _DefaultAppId()
     if namespace is None:
       namespace = _DefaultNamespace()
-    self.__pairs = tuple(pairs)
-    self.__app = app
-    self.__namespace = namespace
-    self.__reference = None
+    return tuple(pairs), app, namespace
 
   def __repr__(self):
     """String representation, used by str() and repr().
@@ -274,7 +294,8 @@ class Key(object):
       if not item:
         args.append('None')
       elif isinstance(item, basestring):
-        assert isinstance(item, str)  # No unicode should make it here.
+        if not isinstance(item, str):
+          raise TypeError('Key item is not an 8-bit string %r' % item)
         args.append(repr(item))
       else:
         args.append(str(item))
@@ -316,9 +337,13 @@ class Key(object):
 
   def __setstate__(self, state):
     """Private API used for pickling."""
-    assert len(state) == 1
+    if len(state) != 1:
+      raise TypeError('Invalid state length, expected 1; received %i' %
+                      len(state))
     kwargs = state[0]
-    assert isinstance(kwargs, dict)
+    if not isinstance(kwargs, dict):
+      raise TypeError('Key accepts a dict of keyword arguments as state; '
+                      'received %r' % kwargs)
     self.__reference = None
     self.__pairs = kwargs['pairs']
     self.__app = kwargs['app']
@@ -528,52 +553,71 @@ def _ConstructReference(cls, pairs=None, flat=None,
                         reference=None, serialized=None, urlsafe=None,
                         app=None, namespace=None, parent=None):
   """Construct a Reference; the signature is the same as for Key."""
-  assert cls is Key
-  howmany = (bool(pairs) + bool(flat) +
-             bool(reference) + bool(serialized) + bool(urlsafe))
-  assert howmany == 1
+  if cls is not Key:
+    raise TypeError('Cannot construct Key reference on non-Key class; '
+                    'received %r' % cls)
+  if (bool(pairs) + bool(flat) + bool(reference) + bool(serialized) +
+      bool(urlsafe)) != 1:
+    raise TypeError('Cannot construct Key reference from incompatible keyword '
+                    'arguments.')
   if flat or pairs:
     if flat:
-      assert len(flat) % 2 == 0
-      pairs = [(flat[i], flat[i+1]) for i in xrange(0, len(flat), 2)]
+      if len(flat) % 2 != 0:
+        raise TypeError('_ConstructReference() must have an even number of '
+                        'positional arguments.')
+      pairs = [(flat[i], flat[i + 1]) for i in xrange(0, len(flat), 2)]
     elif parent is not None:
       pairs = list(pairs)
-    assert pairs
+    if not pairs:
+      raise TypeError('Key references must consist of at least one pair.')
     if parent is not None:
       if not isinstance(parent, Key):
         raise datastore_errors.BadValueError(
             'Expected Key instance, got %r' % parent)
       pairs[:0] = parent.pairs()
       if app:
-        assert app == parent.app(), (app, parent.app())
+        if app != parent.app():
+          raise ValueError('Cannot specify a different app %r '
+                           'than the parent app %r' %
+                           (app, parent.app()))
       else:
         app = parent.app()
       if namespace is not None:
-        assert namespace == parent.namespace(), (namespace,
-                                                 parent.namespace())
+        if namespace != parent.namespace():
+          raise ValueError('Cannot specify a different namespace %r '
+                           'than the parent namespace %r' %
+                           (namespace, parent.namespace()))
       else:
         namespace = parent.namespace()
     reference = _ReferenceFromPairs(pairs, app=app, namespace=namespace)
   else:
-    # You can't combine parent= with reference=, serialized= or urlsafe=.
-    assert parent is None
+    if parent is not None:
+      raise TypeError('Key reference cannot be constructed when the parent '
+                      'argument is combined with either reference, serialized '
+                      'or urlsafe arguments.')
     if urlsafe:
       serialized = _DecodeUrlSafe(urlsafe)
     if serialized:
       reference = _ReferenceFromSerialized(serialized)
-    assert reference.path().element_size(), (urlsafe, serialized,
-                                             str(reference))
-    # TODO: assert that each element has a type and either an id or a name
+    if not reference.path().element_size():
+      raise RuntimeError('Key reference path has no element size (%r, %r, %r).'
+                         % (urlsafe, serialized, str(reference)))
+    # TODO: ensure that each element has a type and either an id or a name
     if not serialized:
       reference = _ReferenceFromReference(reference)
     # You needn't specify app= or namespace= together with reference=,
     # serialized= or urlsafe=, but if you do, their values must match
     # what is already in the reference.
     if app is not None:
-      assert app == reference.app(), (app, reference.app())
+      if app != reference.app():
+        raise RuntimeError('Key reference constructed uses a different app %r '
+                           'than the one specified %r' %
+                           (reference.app(), app))
     if namespace is not None:
-      assert namespace == reference.name_space(), (namespace,
-                                                   reference.name_space())
+      if namespace != reference.name_space():
+        raise RuntimeError('Key reference constructed uses a different '
+                           'namespace %r than the one specified %r' %
+                           (reference.name_space(), namespace))
   return reference
 
 
@@ -602,7 +646,9 @@ def _ReferenceFromPairs(pairs, reference=None, app=None, namespace=None):
         # Late import to avoid cycles.
         from .model import Model
         modelclass = kind
-        assert issubclass(modelclass, Model), repr(modelclass)
+        if not issubclass(modelclass, Model):
+          raise TypeError('Key kind must be either a string or subclass of '
+                          'Model; received %r' % modelclass)
         kind = modelclass._get_kind()
         t = type(kind)
       if t is str:
@@ -614,34 +660,49 @@ def _ReferenceFromPairs(pairs, reference=None, app=None, namespace=None):
       elif issubclass(t, unicode):
         kind = kind.encode('utf8')
       else:
-        assert False, repr(kind)
-    assert 1 <= len(kind) <= 500
+        raise TypeError('Key kind must be either a string or subclass of Model;'
+                        ' received %r' % kind)
+    if not (1 <= len(kind) <= _MAX_KEYPART_BYTES):
+      raise ValueError('Key kind string must be a non-empty string up to %i'
+                       'bytes; received %s' %
+                       (_MAX_KEYPART_BYTES, kind))
     elem = path.add_element()
     elem.set_type(kind)
     t = type(idorname)
     if t is int or t is long:
-      assert 1 <= idorname < _MAX_LONG
+      if not (1 <= idorname < _MAX_LONG):
+        raise ValueError('Key id number is too long; received %i' % idorname)
       elem.set_id(idorname)
     elif t is str:
-      assert 1 <= len(idorname) <= 500
+      if not (1 <= len(idorname) <= _MAX_KEYPART_BYTES):
+        raise ValueError('Key name strings must be non-empty strings up to %i '
+                         'bytes; received %s' %
+                         (_MAX_KEYPART_BYTES, idorname))
       elem.set_name(idorname)
     elif t is unicode:
       idorname = idorname.encode('utf8')
-      assert 1 <= len(idorname) <= 500
+      if not (1 <= len(idorname) <= _MAX_KEYPART_BYTES):
+        raise ValueError('Key name unicode strings must be non-empty strings up'
+                         ' to %i bytes; received %s' %
+                         (_MAX_KEYPART_BYTES, idorname))
       elem.set_name(idorname)
     elif idorname is None:
       elem.set_id(0)
       last = True
     elif issubclass(t, (int, long)):
-      assert 1 <= idorname < _MAX_LONG
+      if not (1 <= idorname < _MAX_LONG):
+        raise ValueError('Key id number is too long; received %i' % idorname)
       elem.set_id(idorname)
     elif issubclass(t, basestring):
       if issubclass(t, unicode):
         idorname = idorname.encode('utf8')
-      assert 1 <= len(idorname) <= 500
+      if not (1 <= len(idorname) <= _MAX_KEYPART_BYTES):
+        raise ValueError('Key name strings must be non-empty strings up to %i '
+                         'bytes; received %s' % (_MAX_KEYPART_BYTES, idorname))
       elem.set_name(idorname)
     else:
-      assert False, 'bad idorname (%r)' % (idorname,)
+      raise TypeError('id must be either a numeric id or a string name; '
+                      'received %r' % idorname)
   # An empty app id means to use the default app id.
   if not app:
     app = _DefaultAppId()

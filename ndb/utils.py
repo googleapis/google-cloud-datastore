@@ -4,6 +4,7 @@ import sys
 
 DEBUG = True  # Set to False for some speedups
 
+
 def wrapping(wrapped):
   # A decorator to decorate a decorator's wrapper.  Following the lead
   # of Twisted and Monocle, this is supposed to make debugging heavily

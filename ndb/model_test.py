@@ -1119,7 +1119,7 @@ class ModelTests(test_utils.NDBTest):
   def testCannotMultipleInMultiple(self):
     class Inner(model.Model):
       innerval = model.StringProperty(repeated=True)
-    self.assertRaises(AssertionError,
+    self.assertRaises(TypeError,
                       model.StructuredProperty, Inner, repeated=True)
 
   def testNullProperties(self):

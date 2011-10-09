@@ -5,7 +5,6 @@ import pickle
 import unittest
 
 from google.appengine.api import datastore_errors
-
 from google.appengine.datastore import entity_pb
 
 from . import eventloop
@@ -13,6 +12,7 @@ from . import key
 from . import model
 from . import tasklets
 from . import test_utils
+
 
 class KeyTests(test_utils.NDBTest):
 
@@ -227,7 +227,7 @@ class KeyTests(test_utils.NDBTest):
     key.Key(flat=['Kind', None])
     self.assertRaises(datastore_errors.BadArgumentError,
                       key.Key, flat=['Kind', None, 'Subkind', 1])
-    self.assertRaises(AssertionError, key.Key, flat=['Kind', ()])
+    self.assertRaises(TypeError, key.Key, flat=['Kind', ()])
 
   def testKindFromModel(self):
     class M(model.Model):

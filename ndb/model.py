@@ -22,7 +22,7 @@ The return value from put() is a Key (see the documentation for
 ndb/key.py), which can be used to retrieve the same entity later:
 
   p2 = k.get()
-  assert p2 == p
+  p2 == p  # Returns True
 
 To update an entity, simple change its attributes and write it back
 (note that this doesn't change the key):
@@ -1174,7 +1174,9 @@ class KeyProperty(Property):
     return value
 
   def _db_set_value(self, v, unused_p, value):
-    assert isinstance(value, Key)
+    if not isinstance(value, Key):
+      raise TypeError('KeyProperty %s can only be set to Key values; '
+                      'received %r' % (self._name, value))
     # See datastore_types.PackKey
     ref = value.reference()
     rv = v.mutable_referencevalue()  # A Reference
@@ -1209,7 +1211,9 @@ class BlobKeyProperty(Property):
     return value
 
   def _db_set_value(self, v, p, value):
-    assert isinstance(value, datastore_types.BlobKey)
+    if not isinstance(value, datastore_types.BlobKey):
+      raise TypeError('BlobKeyProperty %s can only be set to BlobKey values; '
+                      'received %r' % (self._name, value))
     p.set_meaning(entity_pb.Property.BLOBKEY)
     v.set_stringvalue(str(value))
 
@@ -1244,8 +1248,12 @@ class DateTimeProperty(Property):
   def __init__(self, name=None, auto_now=False, auto_now_add=False, **kwds):
     super(DateTimeProperty, self).__init__(name=name, **kwds)
     if self._repeated:
-      assert not auto_now
-      assert not auto_now_add
+      if auto_now:
+        raise ValueError('DateTimeProperty %s could use auto_now and be '
+                         'repeated, but there would be no point.' % self._name)
+      elif auto_now_add:
+        raise ValueError('DateTimeProperty %s could use auto_now_add and be '
+                         'repeated, but there would be no point.' % self._name)
     self._auto_now = auto_now
     self._auto_now_add = auto_now_add
 
@@ -1265,8 +1273,13 @@ class DateTimeProperty(Property):
       self._store_value(entity, value)
 
   def _db_set_value(self, v, p, value):
-    assert isinstance(value, datetime.datetime)
-    assert value.tzinfo is None
+    if not isinstance(value, datetime.datetime):
+      raise TypeError('DatetimeProperty %s can only be set to datetime values; '
+                      'received %r' % (self._name, value))
+    if value.tzinfo is not None:
+      raise NotImplementedError('DatetimeProperty %s can only support UTC. '
+                                'Please derive a new Property to support '
+                                'alternative timezones.' % self._name)
     dt = value - _EPOCH
     ival = dt.microseconds + 1000000 * (dt.seconds + 24 * 3600 * dt.days)
     v.set_int64value(ival)
@@ -1288,7 +1301,9 @@ def _date_to_datetime(value):
   Returns:
     A datetime object with time set to 0:00.
   """
-  assert isinstance(value, datetime.date)
+  if not isinstance(value, datetime.date):
+    raise TypeError('Cannot convert to datetime expected date value; '
+                    'received %s' % value)
   return datetime.datetime(value.year, value.month, value.day)
 
 
@@ -1301,7 +1316,9 @@ def _time_to_datetime(value):
   Returns:
     A datetime object with date set to 1970-01-01.
   """
-  assert isinstance(value, datetime.time)
+  if not isinstance(value, datetime.time):
+    raise TypeError('Cannot convert to datetime expected time value; '
+                    'received %s' % value)
   return datetime.datetime(1970, 1, 1,
                            value.hour, value.minute, value.second,
                            value.microsecond)
@@ -1373,7 +1390,9 @@ class StructuredProperty(Property):
   def __init__(self, modelclass, name=None, **kwds):
     super(StructuredProperty, self).__init__(name=name, **kwds)
     if self._repeated:
-      assert not modelclass._has_repeated
+      if modelclass._has_repeated:
+        raise TypeError('Cannot repeat StructuredProperty %s that has repeated '
+                        'properties of its own.' % self._name)
     self._modelclass = modelclass
 
   def _fix_up(self, cls, code_name):
@@ -1441,7 +1460,9 @@ class StructuredProperty(Property):
     ok = super(StructuredProperty, self)._has_value(entity)
     if ok and rest:
       subent = self._get_value(entity)
-      assert subent is not None
+      if subent is None:
+        raise RuntimeError('Failed to retrieve sub-entity of StructuredProperty'
+                           ' %s' % self._name)
       subprop = subent._properties.get(rest[0])
       if subprop is None:
         ok = False
@@ -1458,10 +1479,15 @@ class StructuredProperty(Property):
       return
     cls = self._modelclass
     if self._repeated:
-      assert isinstance(value, list)
+      if not isinstance(value, list):
+        raise RuntimeError('Cannot serialize repeated StructuredProperty %s; '
+                           'value retrieved not list %s' % (self._name, value))
       values = value
     else:
-      assert isinstance(value, cls)
+      if not isinstance(value, cls):
+        raise RuntimeError('Cannot serialize StructuredProperty %s; value '
+                           'retrieved not a %s instance %r' %
+                           (self._name, cls.__name__, value))
       values = [value]
     for value in values:
       # TODO: Avoid re-sorting for repeated values.
@@ -1475,7 +1501,11 @@ class StructuredProperty(Property):
       if subentity is None:
         subentity = self._modelclass()
         self._store_value(entity, subentity)
-      assert isinstance(subentity, self._modelclass)
+      cls = self._modelclass
+      if not isinstance(subentity, cls):
+        raise RuntimeError('Cannot deserialize StructuredProperty %s; value '
+                           'retrieved not a %s instance %r' %
+                           (self._name, cls.__name__, subentity))
       prop = subentity._get_property_for(p, depth=depth)
       prop._deserialize(subentity, p, depth + 1)
       return
@@ -1484,11 +1514,16 @@ class StructuredProperty(Property):
     # TODO: Prove we won't get here for orphans.
     name = p.name()
     parts = name.split('.')
-    assert len(parts) > depth, (depth, name, parts)
+    if len(parts) <= depth:
+      raise RuntimeError('StructuredProperty %s expected to find properties '
+                         'seperated by periods at a depth of %i; received %r' %
+                         (self._name, depth))
     next = parts[depth]
     rest = parts[depth + 1:]
     prop = self._modelclass._properties.get(next)
-    assert prop is not None  # QED
+    if prop is None:
+      raise RuntimeError('Unable to find property %s of StructuredProperty %s.'
+                         % (next, self._name))
 
     values = self._retrieve_value(entity)
     if values is None:
@@ -1541,7 +1576,9 @@ class LocalStructuredProperty(BlobProperty):
     super(LocalStructuredProperty, self).__init__(name=name,
                                                   compressed=compressed,
                                                   **kwds)
-    assert not self._indexed
+    if self._indexed:
+      raise NotImplementedError('Cannot index LocalStructuredProperty %s.' %
+                                self._name)
     self._modelclass = modelclass
 
   def _validate(self, value):
@@ -1638,7 +1675,9 @@ class GenericProperty(Property):
     elif isinstance(value, bool):  # Must test before int!
       v.set_booleanvalue(value)
     elif isinstance(value, (int, long)):
-      assert -_MAX_LONG <= value < _MAX_LONG
+      if not (-_MAX_LONG <= value < _MAX_LONG):
+        raise TypeError('Property %s can only accept 64-bit integers; '
+                        'received %s' % value)
       v.set_int64value(value)
     elif isinstance(value, float):
       v.set_doublevalue(value)
@@ -1652,7 +1691,10 @@ class GenericProperty(Property):
       for elem in ref.path().element_list():
         rv.add_pathelement().CopyFrom(elem)
     elif isinstance(value, datetime.datetime):
-      assert value.tzinfo is None
+      if value.tzinfo is not None:
+        raise NotImplementedError('Property %s can only support the UTC. '
+                                  'Please derive a new Property to support '
+                                  'alternative timezones.' % self._name)
       dt = value - _EPOCH
       ival = dt.microseconds + 1000000 * (dt.seconds + 24 * 3600 * dt.days)
       v.set_int64value(ival)
@@ -1665,7 +1707,8 @@ class GenericProperty(Property):
       datastore_types.PackUser(p.name(), value, v)
     else:
       # TODO: BlobKey.
-      assert False, type(value)
+      raise NotImplementedError('Property %s does not support %s types.' %
+                                (self._name, type(value)))
 
 
 class ComputedProperty(GenericProperty):
@@ -1706,9 +1749,13 @@ class ComputedProperty(GenericProperty):
             a calculated value.
     """
     super(ComputedProperty, self).__init__(*args, **kwargs)
-    assert not self._required, 'ComputedProperty cannot be required'
-    assert not self._repeated, 'ComputedProperty cannot be repeated'
-    assert self._default is None, 'ComputedProperty cannot have a default'
+    if self._required:
+      raise TypeError('ComputedProperty %s cannot be required.' % self._name)
+    if self._repeated:
+      raise TypeError('ComputedProperty %s can be repeated. But there would be '
+                      'no point.' % self._name)
+    if self._default is not None:
+      raise TypeError('ComputedProperty %s cannot have a default.' % self._name)
     self._func = func
 
   def _has_value(self, unused_entity, unused_rest=None):
@@ -1929,7 +1976,10 @@ class Model(object):
 
   def _equivalent(self, other):
     """Compare two entities of the same class, excluding keys."""
-    assert other.__class__ is self.__class__  # TODO: What about subclasses?
+    if other.__class__ is not self.__class__:  # TODO: What about subclasses?
+      raise NotImplementedError('Cannot compare different model classes. '
+                                '%s is not %s' % (self.__class__.__name__,
+                                                  other.__class_.__name__))
     # It's all about determining inequality early.
     if len(self._properties) != len(other._properties):
       return False  # Can only happen for Expandos.
@@ -2007,7 +2057,10 @@ class Model(object):
     """Internal helper to get the Property for a protobuf-level property."""
     name = p.name()
     parts = name.split('.')
-    assert len(parts) > depth, (p.name(), parts, depth)
+    if len(parts) <= depth:
+      raise RuntimeError('Model %s expected to find property %s seperated by '
+                         'periods at a depth of %i; received %r' %
+                         (self.__class__.__name__, name, depth))
     next = parts[depth]
     prop = self._properties.get(next)
     if prop is None:
@@ -2058,7 +2111,10 @@ class Model(object):
     for name in set(dir(cls)):
       attr = getattr(cls, name, None)
       if isinstance(attr, ModelAttribute):
-        assert not name.startswith('_')
+        if name.startswith('_'):
+          raise TypeError('ModelAttribute %s cannot begin with an underscore '
+                          'character. _ prefixed attributes are reserved for '
+                          'temporary Model instance values.' % name)
         attr._fix_up(cls, name)
         if isinstance(attr, Property):
           if attr._repeated:
@@ -2336,7 +2392,9 @@ class Expando(Model):
       raise TypeError('Model properties must be Property instances; not %r' %
                       prop)
     prop._delete_value(self)
-    assert prop not in self.__class__._properties
+    if prop in self.__class__._properties:
+      raise RuntimeError('Property %s still in the list of properties for the '
+                         'base class.' % name)
     del self._properties[name]
 
 

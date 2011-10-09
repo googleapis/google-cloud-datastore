@@ -1,8 +1,8 @@
 """Tests for tasklets.py."""
 
 import os
-import re
 import random
+import re
 import sys
 import time
 import unittest

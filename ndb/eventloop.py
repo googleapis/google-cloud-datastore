@@ -16,7 +16,6 @@ import threading
 import time
 
 from google.appengine.api.apiproxy_rpc import RPC
-
 from google.appengine.datastore import datastore_rpc
 
 from . import utils
