@@ -70,8 +70,6 @@ namespace=''.
 
 __author__ = 'guido@google.com (Guido van Rossum)'
 
-# TODO: Change asserts to better exceptions.
-
 import base64
 import os
 

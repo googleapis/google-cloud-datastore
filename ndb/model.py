@@ -261,7 +261,6 @@ And finally these (without async variants):
 
 __author__ = 'guido@google.com (Guido van Rossum)'
 
-# TODO: Change asserts to better exceptions.
 # TODO: Add PolyModel.
 
 import copy
