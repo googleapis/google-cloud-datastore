@@ -5,6 +5,7 @@ import unittest
 
 from google.appengine.api import datastore_errors
 from google.appengine.api import memcache
+from google.appengine.api import namespace_manager
 from google.appengine.api import taskqueue
 from google.appengine.datastore import datastore_rpc
 from google.appengine.datastore import datastore_stub_util
@@ -214,6 +215,125 @@ class ContextTests(test_utils.NDBTest):
     # get() doesn't use cache
     self.ctx.set_cache_policy(lambda unused_key: False)
     self.assertEqual(self.ctx.get(key1).get_result(), ent1)
+
+  def assertNone(self, expr):
+    self.assertTrue(expr is None)
+
+  def testContext_NamespaceBonanza(self):
+    # Test that memcache ops issued for datastore caching use the
+    # correct namespace.
+    class Foo(model.Model):
+      pass
+    k1 = model.Key(Foo, 1, namespace='a')
+    k2 = model.Key(Foo, 2, namespace='b')
+    mk1 = self.ctx._memcache_prefix + k1.urlsafe()
+    mk2 = self.ctx._memcache_prefix + k2.urlsafe()
+    e1 = Foo(key=k1)
+    e2 = Foo(key=k2)
+    self.ctx.set_cache_policy(False)
+    self.ctx.set_memcache_policy(True)
+
+    self.ctx.set_datastore_policy(False)  # This will vary in subtests
+
+    # Test put with datastore policy off
+    k1 = self.ctx.put(e1).get_result()
+    k2 = self.ctx.put(e2).get_result()
+    # Nothing should be in the empty namespace
+    self.assertNone(self.ctx.memcache_get(mk1, namespace='').get_result())
+    self.assertNone(self.ctx.memcache_get(mk2, namespace='').get_result())
+    # Only k1 is found in namespace 'a'
+    self.assertEqual(self.ctx.memcache_get(mk1, namespace='a').get_result(),
+                     e1._to_pb())
+    self.assertNone(self.ctx.memcache_get(mk2, namespace='a').get_result())
+    # Only k2 is found in namespace 'b'
+    self.assertNone(self.ctx.memcache_get(mk1, namespace='b').get_result())
+    self.assertEqual(self.ctx.memcache_get(mk2, namespace='b').get_result(),
+                     e2._to_pb())
+
+    memcache.flush_all()
+    self.ctx.set_datastore_policy(True)
+
+    # Test put with datastore policy off
+    k1 = self.ctx.put(e1).get_result()
+    k2 = self.ctx.put(e2).get_result()
+    # Nothing should be in the empty namespace
+    self.assertNone(self.ctx.memcache_get(mk1, namespace='').get_result())
+    self.assertNone(self.ctx.memcache_get(mk2, namespace='').get_result())
+    # Only k1 is found in namespace 'a', as _LOCKED
+    self.assertEqual(self.ctx.memcache_get(mk1, namespace='a').get_result(),
+                     context._LOCKED)
+    self.assertNone(self.ctx.memcache_get(mk2, namespace='a').get_result())
+    # Only k2 is found in namespace 'b', as _LOCKED
+    self.assertNone(self.ctx.memcache_get(mk1, namespace='b').get_result())
+    self.assertEqual(self.ctx.memcache_get(mk2, namespace='b').get_result(),
+                     context._LOCKED)
+
+    memcache.flush_all()
+
+    # Test get with cold cache
+    e1 = self.ctx.get(k1).get_result()
+    e2 = self.ctx.get(k2).get_result()
+    eventloop.run()  # Wait for memcache RPCs to run
+    # Neither is found in the empty namespace
+    self.assertNone(self.ctx.memcache_get(mk1, namespace='').get_result())
+    self.assertNone(self.ctx.memcache_get(mk2, namespace='').get_result())
+    # Only k1 is found in namespace 'a'
+    self.assertEqual(self.ctx.memcache_get(mk1, namespace='a').get_result(),
+                     e1._to_pb())
+    self.assertNone(self.ctx.memcache_get(mk2, namespace='a').get_result())
+    # Only k2 is found in namespace 'b'
+    self.assertNone(self.ctx.memcache_get(mk1, namespace='b').get_result())
+    self.assertEqual(self.ctx.memcache_get(mk2, namespace='b').get_result(),
+                     e2._to_pb())
+
+    self.ctx.set_datastore_policy(False)
+
+    # Test get with warm cache
+    e1 = self.ctx.get(k1).get_result()
+    e2 = self.ctx.get(k2).get_result()
+    eventloop.run()  # Wait for memcache RPCs to run
+    # Neither is found in the empty namespace
+    self.assertNone(self.ctx.memcache_get(mk1, namespace='').get_result())
+    self.assertNone(self.ctx.memcache_get(mk2, namespace='').get_result())
+    # Only k1 is found in namespace 'a'
+    self.assertTrue(self.ctx.memcache_get(mk1, namespace='a').get_result())
+    self.assertNone(self.ctx.memcache_get(mk2, namespace='a').get_result())
+    # Only k2 is found in namespace 'b'
+    self.assertNone(self.ctx.memcache_get(mk1, namespace='b').get_result())
+    self.assertTrue(self.ctx.memcache_get(mk2, namespace='b').get_result())
+
+    self.ctx.set_datastore_policy(True)
+
+    # Test delete
+    self.ctx.delete(k1).check_success()
+    self.ctx.delete(k2).check_success()
+    # Nothing should be in the empty namespace
+    self.assertNone(self.ctx.memcache_get(mk1, namespace='').get_result())
+    self.assertNone(self.ctx.memcache_get(mk2, namespace='').get_result())
+    # Only k1 is found in namespace 'a', as _LOCKED
+    self.assertEqual(self.ctx.memcache_get(mk1, namespace='a').get_result(),
+                     context._LOCKED)
+    self.assertNone(self.ctx.memcache_get(mk2, namespace='a').get_result())
+    # Only k2 is found in namespace 'b', as _LOCKED
+    self.assertNone(self.ctx.memcache_get(mk1, namespace='b').get_result())
+    self.assertEqual(self.ctx.memcache_get(mk2, namespace='b').get_result(),
+                     context._LOCKED)
+
+    memcache.flush_all()
+
+    # Test _clear_memcache (it doesn't delete, it locks, like put)
+    self.ctx._clear_memcache([k1, k2]).check_success()
+    # Nothing should be in the empty namespace
+    self.assertNone(self.ctx.memcache_get(mk1, namespace='').get_result())
+    self.assertNone(self.ctx.memcache_get(mk2, namespace='').get_result())
+    # Only k1 is found in namespace 'a', as _LOCKED
+    self.assertEqual(self.ctx.memcache_get(mk1, namespace='a').get_result(),
+                     context._LOCKED)
+    self.assertNone(self.ctx.memcache_get(mk2, namespace='a').get_result())
+    # Only k2 is found in namespace 'b', as _LOCKED
+    self.assertNone(self.ctx.memcache_get(mk1, namespace='b').get_result())
+    self.assertEqual(self.ctx.memcache_get(mk2, namespace='b').get_result(),
+                     context._LOCKED)
 
   def testContext_Memcache(self):
     @tasklets.tasklet

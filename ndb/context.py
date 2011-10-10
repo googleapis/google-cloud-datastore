@@ -219,7 +219,8 @@ class Context(object):
       for fut, key, options in todo:
         if self._use_memcache(key, options):
           keystr = self._memcache_prefix + key.urlsafe()
-          mfut_etc.append((self.memcache_get(keystr), fut, key, options))
+          mfut = self.memcache_get(keystr, namespace=key.namespace())
+          mfut_etc.append((mfut, fut, key, options))
         else:
           leftover.append((fut, key, options))
       for mfut, fut, key, options in mfut_etc:
@@ -275,7 +276,8 @@ class Context(object):
           keystr = self._memcache_prefix + ent._key.urlsafe()
           # Use add, not set.  This is a no-op within _LOCK_TIME
           # seconds of the set(_LOCKED) done by the most recent write.
-          fut = self.memcache_add(keystr, pb, time=timeout)
+          fut = self.memcache_add(keystr, pb, time=timeout,
+                                  namespace=ent._key.namespace())
           add_futures.append(fut)
 
     # Wait for the memcache add() calls.
@@ -295,11 +297,13 @@ class Context(object):
         if self._use_memcache(ent._key, options):
           keystr = self._memcache_prefix + ent._key.urlsafe()
           if self._use_datastore(ent._key, options):
-            mfut = self.memcache_set(keystr, _LOCKED, time=_LOCK_TIME)
+            mfut = self.memcache_set(keystr, _LOCKED, time=_LOCK_TIME,
+                                     namespace=ent._key.namespace())
           else:
             pb = self._conn.adapter.entity_to_pb(ent)
             timeout = self._get_memcache_timeout(ent._key, options)
-            mfut = self.memcache_add(keystr, pb, timeout)
+            mfut = self.memcache_add(keystr, pb, time=timeout,
+                                     namespace=ent._key.namespace())
           memcache_futures.append(mfut)
       else:
         key = ent._key
@@ -358,7 +362,8 @@ class Context(object):
     for fut, key, options in todo:
       if self._use_memcache(key, options):
         keystr = self._memcache_prefix + key.urlsafe()
-        dfut = self.memcache_set(keystr, _LOCKED, time=_LOCK_TIME)
+        dfut = self.memcache_set(keystr, _LOCKED, time=_LOCK_TIME,
+                                 namespace=key.namespace())
         delete_futures.append(dfut)
       if options in by_options:
         futures, keys = by_options[options]
@@ -869,11 +874,13 @@ class Context(object):
 
   @tasklets.tasklet
   def _clear_memcache(self, keys):
+    # Note: This doesn't teachnically *clear* the keys; it locks them.
     keys = set(key for key in keys if self._use_memcache(key))
     futures = []
     for key in keys:
       keystr = self._memcache_prefix + key.urlsafe()
-      fut = self.memcache_set(keystr, _LOCKED, time=_LOCK_TIME)
+      fut = self.memcache_set(keystr, _LOCKED, time=_LOCK_TIME,
+                              namespace=key.namespace())
       futures.append(fut)
     yield futures
 
