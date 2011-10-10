@@ -874,7 +874,7 @@ class Context(object):
 
   @tasklets.tasklet
   def _clear_memcache(self, keys):
-    # Note: This doesn't teachnically *clear* the keys; it locks them.
+    # Note: This doesn't technically *clear* the keys; it locks them.
     keys = set(key for key in keys if self._use_memcache(key))
     futures = []
     for key in keys:
@@ -1011,7 +1011,7 @@ class Context(object):
       result = all_results.get((namespace, key))
       if isinstance(result, basestring):
         # See http://code.google.com/p/googleappengine/issues/detail?id=2012
-        # We can fix this witout waiting for App Engine to fix it.
+        # We can fix this without waiting for App Engine to fix it.
         result = int(result)
       fut.set_result(result)
 
