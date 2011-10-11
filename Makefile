@@ -101,3 +101,6 @@ g gettaskletrace:
 
 s stress:
 	PYTHONPATH=$(GAEPATH):. $(PYTHON) stress.py $(FLAGS)
+
+custom:
+	PYTHONPATH=$(GAEPATH):. $(PYTHON) custom.py $(FLAGS)

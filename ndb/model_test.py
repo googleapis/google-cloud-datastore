@@ -524,6 +524,63 @@ class ModelTests(test_utils.NDBTest):
     q2 = MyModel.query().filter(MyModel.p >= 0)
     self.assertEqual(q.filters, q2.filters)
 
+  def testQueryForNone(self):
+    class MyModel(model.Model):
+      b = model.BooleanProperty()
+      bb = model.BlobProperty(indexed=True)
+      d = model.DateProperty()
+      f = model.FloatProperty()
+      i = model.IntegerProperty()
+      k = model.KeyProperty()
+      s = model.StringProperty()
+      t = model.TimeProperty()
+      u = model.UserProperty()
+      xy = model.GeoPtProperty()
+    m1 = MyModel()
+    m1.put()
+    m2 = MyModel(
+      b=True,
+      bb='z',
+      d=datetime.date.today(),
+      f=3.14,
+      i=1,
+      k=m1.key,
+      s='a',
+      t=datetime.time(),
+      u=TESTUSER,
+      xy=AMSTERDAM,
+      )
+    m2.put()
+    q = MyModel.query(
+      MyModel.b == None,
+      MyModel.bb == None,
+      MyModel.d == None,
+      MyModel.f == None,
+      MyModel.i == None,
+      MyModel.k == None,
+      MyModel.s == None,
+      MyModel.t == None,
+      MyModel.u == None,
+      MyModel.xy == None,
+      )
+    r = q.fetch()
+    self.assertEqual(r, [m1])
+    qq = [
+      MyModel.query(MyModel.b != None),
+      MyModel.query(MyModel.bb != None),
+      MyModel.query(MyModel.d != None),
+      MyModel.query(MyModel.f != None),
+      MyModel.query(MyModel.i != None),
+      MyModel.query(MyModel.k != None),
+      MyModel.query(MyModel.s != None),
+      MyModel.query(MyModel.t != None),
+      MyModel.query(MyModel.u != None),
+      MyModel.query(MyModel.xy != None),
+      ]
+    for q in qq:
+      r = q.fetch()
+      self.assertEqual(r, [m2], str(q))
+
   def testProperty(self):
     class MyModel(model.Model):
       b = model.BooleanProperty()

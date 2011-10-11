@@ -1087,6 +1087,8 @@ class BlobProperty(CompressedPropertyMixin, Property):
     if not self._indexed:
       raise RuntimeError('datastore_type should not be queried on non-indexed '
                          'BlobProperty %s' % self._name)
+    if value is None:
+      return None
     return datastore_types.ByteString(value)
 
 
@@ -1153,6 +1155,8 @@ class UserProperty(Property):
     datastore_types.PackUser(p.name(), value, v)
 
   def _db_get_value(self, v, unused_p):
+    if not v.has_uservalue():
+      return None
     return _unpack_user(v)
 
 
@@ -1161,6 +1165,8 @@ class KeyProperty(Property):
   # TODO: optionally check the kind (or maybe require this?)
 
   def _datastore_type(self, value):
+    if value is None:
+      return None
     return datastore_types.Key(value.urlsafe())
 
   def _validate(self, value):
@@ -1327,6 +1333,8 @@ class DateProperty(DateTimeProperty):
   """A Property whose value is a date object."""
 
   def _datastore_type(self, value):
+    if value is None:
+      return None
     return _date_to_datetime(value)
 
   def _validate(self, value):
@@ -1345,13 +1353,17 @@ class DateProperty(DateTimeProperty):
 
   def _db_get_value(self, v, p):
     value = super(DateProperty, self)._db_get_value(v, p)
-    return value.date()
+    if value is not None:
+      value = value.date()
+    return value
 
 
 class TimeProperty(DateTimeProperty):
   """A Property whose value is a time object."""
 
   def _datastore_type(self, value):
+    if value is None:
+      return None
     return _time_to_datetime(value)
 
   def _validate(self, value):
@@ -1369,7 +1381,9 @@ class TimeProperty(DateTimeProperty):
 
   def _db_get_value(self, v, p):
     value = super(TimeProperty, self)._db_get_value(v, p)
-    return value.time()
+    if value is not None:
+      value = value.time()
+    return value
 
 
 class StructuredProperty(Property):
