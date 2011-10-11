@@ -1,7 +1,7 @@
 """An event loop.
 
 This event loop should handle both asynchronous App Engine RPC objects
-(specifically urlfetch and datastore RPC objects) and arbitrary
+(specifically urlfetch, memcache and datastore RPC objects) and arbitrary
 callback functions with an optional time delay.
 
 Normally, event loops are singleton objects, though there is no
@@ -81,7 +81,7 @@ class EventLoop(object):
     if rpc is None:
       return
     if rpc.state not in (RUNNING, FINISHING):
-      raise RuntimeError('Unexpected RPC state: %i' % rpc.state)
+      raise RuntimeError('rpc must be sent to service before queueing')
     if isinstance(rpc, datastore_rpc.MultiRpc):
       rpcs = rpc.rpcs
       if len(rpcs) > 1:
@@ -97,8 +97,6 @@ class EventLoop(object):
       rpcs = [rpc]
     for rpc in rpcs:
       self.rpcs[rpc] = (callback, args, kwds)
-
-  # TODO: A way to add a datastore Connection
 
   def run0(self):
     """Run one item (a callback or an RPC wait_any).
@@ -170,6 +168,7 @@ def get_event_loop():
   that we're in a new request by inspecting os.environ, which is reset
   at the start of each request.  Also, each thread gets its own loop.
   """
+  # TODO: Make sure this works with the multithreaded Python 2.7 runtime.
   ev = None
   if os.getenv(_EVENT_LOOP_KEY):
     ev = _state.event_loop
