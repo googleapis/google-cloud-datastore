@@ -2515,11 +2515,10 @@ class ModelTests(test_utils.NDBTest):
     self.assertFalse(x is y)
     self.assertEqual(
       repr(y),
-      'M(key=Key(\'M\', 1), '
-      'b=_CompressedValue(\'x\\x9cKJ\\xa2=\\x00\\x00\\x8e\\x01&I\'), '
-      'l=_CompressedValue(\'x\\x9c+\\xe2\\x97b\\xc9K\\xccMU`\\xd0b'
-      '\\x95b\\xce\\xcaO\\x05\\x00"\\x87\\x03\\xeb\'), '
-      't=_CompressedValue(\'x\\x9c+)\\xa1=\\x00\\x00\\xf1$-Q\'))')
+      'M(key=Key(\'M\', 1), ' +
+      'b=%r, ' % ('b' * 100) +
+      'l=%r, ' % Foo(name=u'joe') +
+      't=%r)' % (u't' * 100))
 
   def testCorruption(self):
     # Thanks to Ricardo Banffy

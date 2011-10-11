@@ -454,7 +454,7 @@ class Property(ModelAttribute):
       self._validator = validator
 
   def __repr__(self):
-    """Return a compact unambiguous string representation."""
+    """Return a compact unambiguous string representation of a property."""
     args = []
     cls = self.__class__
     for i, attr in enumerate(self._attributes):
@@ -1937,7 +1937,7 @@ class Model(object):
     done = set()
     for prop in self._properties.itervalues():
       if prop._has_value(self):
-        args.append('%s=%r' % (prop._code_name, prop._retrieve_value(self)))
+        args.append('%s=%r' % (prop._code_name, prop._get_value(self)))
         done.add(prop._name)
     args.sort()
     if self._key is not None:
