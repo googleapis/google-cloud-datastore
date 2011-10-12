@@ -97,5 +97,5 @@ def tweak_logging():
     global DEBUG
     DEBUG = False
 
-if sys.argv[0].endswith('_test.py'):
+if 'test' in os.path.basename(sys.argv[0]):
   tweak_logging()
