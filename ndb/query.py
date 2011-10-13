@@ -638,7 +638,7 @@ def parse_gql(query_string):
   else:
     filters = None
   orders = _orderings_to_orders(gql_qry.orderings())
-  qry = Query(kind=gql_qry._entity,
+  qry = Query(kind=gql_qry._kind,
               ancestor=ancestor,
               filters=filters,
               orders=orders)
