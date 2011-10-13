@@ -25,17 +25,12 @@ def suite():
 
 
 def main():
-  v = 0
-  q = 0
+  v = 1
   for arg in sys.argv[1:]:
     if arg.startswith('-v'):
       v += arg.count('v')
     elif arg == '-q':
-      q += 1
-  if q:
-    v = 0
-  else:
-    v = max(v, 1)
+      v = 0
   unittest.TextTestRunner(verbosity=v).run(suite())
 
 
