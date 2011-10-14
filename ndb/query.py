@@ -788,6 +788,11 @@ class Query(object):
     return self.__kind
 
   @property
+  def namespace(self):
+    """Accessor for the namespace (a string or None)."""
+    return self.__namespace
+
+  @property
   def ancestor(self):
     """Accessor for the ancestor (a Key or None)."""
     return self.__ancestor
@@ -821,7 +826,8 @@ class Query(object):
     else:
       pred = ConjunctionNode(*preds)
     return self.__class__(kind=self.kind, ancestor=self.ancestor,
-                          orders=self.orders, filters=pred)
+                          orders=self.orders, filters=pred,
+                          namespace=self.namespace)
 
   def order(self, *args):
     """Return a new Query with additional sort order(s) applied."""
@@ -847,7 +853,8 @@ class Query(object):
     else:
       orders = datastore_query.CompositeOrder(orders)
     return self.__class__(kind=self.kind, ancestor=self.ancestor,
-                          filters=self.filters, orders=orders)
+                          filters=self.filters, orders=orders,
+                          namespace=self.namespace)
 
   # Datastore API using the default context.
 

@@ -340,6 +340,16 @@ class QueryTests(test_utils.NDBTest):
     self.assertEqual(Employee.query().fetch(), [])
     self.assertEqual(Employee.query(namespace='ns').fetch(), [e])
 
+  def testQueryFilterAndOrderPreserveNamespace(self):
+    class Employee(model.Model):
+      name = model.StringProperty()
+    q1 = Employee.query(namespace='ns')
+    q2 = q1.filter(Employee.name == 'Joe')
+    self.assertEqual(q2.namespace, 'ns')
+    # Ditto for order()
+    q3 = q2.order(Employee.name)
+    self.assertEqual(q3.namespace, 'ns')
+
   def testMultiQuery(self):
     q1 = query.Query(kind='Foo').filter(Foo.tags == 'jill').order(Foo.name)
     q2 = query.Query(kind='Foo').filter(Foo.tags == 'joe').order(Foo.name)
