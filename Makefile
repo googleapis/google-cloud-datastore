@@ -1,9 +1,9 @@
 # Convenience to run tests and coverage.
 
-# You must have installed the App Engine SDK toolkit, version 1.4.0 or
-# later, and it must be installed in /usr/local/google_appengine.
+# You must have installed the App Engine SDK toolkit in
+# /usr/local/google_appengine.  For the required version see README.
 
-# This probably won't work on Windows.
+# For Windows users, the "make.cmd" script has similar functionality.
 
 FLAGS=
 GAE=	/usr/local/google_appengine
