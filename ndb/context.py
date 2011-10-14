@@ -97,7 +97,7 @@ class AutoBatcher(object):
     # todo_tasklet is a tasklet to be called with list of (future, arg) pairs
     self._todo_tasklet = todo_tasklet
     self._limit = limit  # No more than this many per callback
-    self._todo = []  # List of (future, arg) pairs
+    self._todo = []  # List of (future, arg, options) tuples
     self._running = []  # Currently running tasklets
 
   def __repr__(self):
@@ -105,23 +105,15 @@ class AutoBatcher(object):
 
   def add(self, arg, options=None):
     fut = tasklets.Future('%s.add(%s, %s)' % (self, arg, options))
-    if not self._todo:  # Schedule the callback
-      # We use the fact that regular tasklets are queued at time None,
-      # which puts them at absolute time 0 (i.e. ASAP -- still on a
-      # FIFO basis).  Callbacks explicitly scheduled with a delay of 0
-      # are only run after all immediately runnable tasklets have run.
-      eventloop.queue_call(0, self._autobatcher_callback, self._todo)
     self._todo.append((fut, arg, options))
     if len(self._todo) >= self._limit:
-      self._todo = []  # Schedule another callback next time
+      self.action()
     return fut
 
-  def _autobatcher_callback(self, todo):
-    if not todo:  # Weird.
-      return
-    # Detach from self, if possible.
-    if todo is self._todo:
-      self._todo = []  # Get ready for the next batch
+  def action(self):
+    todo = self._todo
+    if not todo:
+      return False
     # TODO: Use logging_debug(), at least if len(todo) == 1.
     logging.info('AutoBatcher(%s): %d items',
                  self._todo_tasklet.__name__, len(todo))
@@ -129,6 +121,8 @@ class AutoBatcher(object):
     self._running.append(fut)
     # Add a callback when we're done.
     fut.add_callback(self._finished_callback, fut)
+    self._todo = []  # The callback owns the old todo now
+    return True
 
   def _finished_callback(self, fut):
     self._running.remove(fut)
@@ -137,10 +131,9 @@ class AutoBatcher(object):
   @tasklets.tasklet
   def flush(self):
     while self._running or self._todo:
+      self.action()
       if self._running:
         yield self._running  # A list of Futures
-      else:
-        yield tasklets.sleep(0)  # Let our callback run
 
 
 class Context(object):
@@ -196,9 +189,33 @@ class Context(object):
     # gets happen on the same key before an existing RPC can complete.
     self._get_future_cache = {}
 
-  # TODO: Set proper namespace for memcache.
+    eventloop.add_idle(self._on_idle)
+
+  _closed = False  # All Contexts start life in opened state
+
+  def close(self):
+    # Initiate flushes for all batchers.  Note that this doesn't wait
+    # for the flushes to complete; it just queues them up.  It is
+    # possible that the completion of these or other queued events
+    # will cause more actions to be added to the batchers.  The safest
+    # thing to do would be to call eventloop.run() before closing a
+    # Context.  If you can't do that, at least yield ctx.flush().
+    for batcher in self._batchers:
+      batcher.action()
+    self._closed = True
 
   _memcache_prefix = 'NDB:'  # TODO: Might make this configurable.
+
+  def _on_idle(self):
+    for batcher in self._batchers:
+      if batcher.action():
+        return True
+    if self._closed:
+      # It is theoretically possible that more activity will appear when
+      # some queued event runs.  See note in close().
+      logging.info('_on_idle: Context is closed and has no more activity')
+      return None  # Remove idle callback
+    return False
 
   @tasklets.tasklet
   def flush(self):
@@ -819,18 +836,18 @@ class Context(object):
         adapter=self._conn.adapter,
         config=self._conn.config,
         transaction=transaction)
+      old_ds_conn = datastore._GetConnection()
       tctx = self.__class__(conn=tconn,
                             auto_batcher_class=self._auto_batcher_class)
-      # Copy memcache policies.  Note that get() will never use
-      # memcache in a transaction, but put and delete should do their
-      # memcache thing (which is to mark the key as deleted for
-      # _LOCK_TIME seconds).  Also note that the in-process cache and
-      # datastore policies keep their default (on) state.
-      tctx.set_memcache_policy(self.get_memcache_policy())
-      tctx.set_memcache_timeout_policy(self.get_memcache_timeout_policy())
-      tasklets.set_context(tctx)
-      old_ds_conn = datastore._GetConnection()
       try:
+        # Copy memcache policies.  Note that get() will never use
+        # memcache in a transaction, but put and delete should do their
+        # memcache thing (which is to mark the key as deleted for
+        # _LOCK_TIME seconds).  Also note that the in-process cache and
+        # datastore policies keep their default (on) state.
+        tctx.set_memcache_policy(self.get_memcache_policy())
+        tctx.set_memcache_timeout_policy(self.get_memcache_timeout_policy())
+        tasklets.set_context(tctx)
         datastore._SetConnection(tconn)  # For taskqueue coordination
         try:
           try:
@@ -855,6 +872,7 @@ class Context(object):
             raise tasklets.Return(result)
       finally:
         datastore._SetConnection(old_ds_conn)
+        tctx.close()
 
     # Out of retries
     raise datastore_errors.TransactionFailedError(
@@ -1110,11 +1128,13 @@ def toplevel(func):
   def add_context_wrapper(*args, **kwds):
     __ndb_debug__ = utils.func_info(func)
     tasklets._state.clear_all_pending()
-    # Reset context; a new one will be created on the first call to
-    # get_context().
-    tasklets.set_context(None)
+    # Create and install a new context.
+    ctx = tasklets.make_default_context()
     try:
+      tasklets.set_context(ctx)
       return tasklets.synctasklet(func)(*args, **kwds)
     finally:
+      tasklets.set_context(None)
       eventloop.run()  # Ensure writes are flushed, etc.
+      ctx.close()
   return add_context_wrapper

@@ -1,5 +1,6 @@
 """Tests for eventloop.py."""
 
+import logging
 import os
 import time
 import unittest
@@ -54,15 +55,19 @@ class EventLoopTests(test_utils.NDBTest):
 
     eventloop.queue_call(None, foo, 2)
     eventloop.queue_call(None, foo, 1)
+    eventloop.queue_call(0, foo, 0)
 
-    self.assertEqual(len(self.ev.queue), 2)
-    [(_t1, _f1, a1, _k1), (_t2, _f2, a2, _k2)] = self.ev.queue
-    self.assertEqual(a1, (2,))  # first event should has arg = 2
-    self.assertEqual(a2, (1,))  # second event should  has arg = 1
+    self.assertEqual(len(self.ev.current), 2)
+    self.assertEqual(len(self.ev.queue), 1)
+    [(_f1, a1, _k1), (_f2, a2, _k2)] = self.ev.current
+    self.assertEqual(a1, (2,))  # first event should have arg = 2
+    self.assertEqual(a2, (1,))  # second event should have arg = 1
+    (_t, _f, a, _k) = self.ev.queue[0]
+    self.assertEqual(a, (0,))  # third event should have arg = 0
 
     eventloop.run()
     # test that events are executed in FIFO order, not sort order
-    self.assertEqual(order, [2, 1])
+    self.assertEqual(order, [2, 1, 0])
 
   def testRun(self):
     record = []
@@ -87,6 +92,28 @@ class EventLoopTests(test_utils.NDBTest):
     eventloop.run()
     self.assertEqual(record, [rpc, 42])
     self.assertEqual(rpc.state, 2)  # TODO: Use apiproxy_rpc.RPC.FINISHING.
+
+  def testIdle(self):
+    counters = [0, 0, 0]
+    def idler1():
+      logging.info('idler1 running')
+      counters[0] += 1
+      return False
+    def idler2(a, b=None):
+      logging.info('idler2 running: a=%s, b=%s', a, b)
+      counters[1] += 1
+      return False
+    def idler3(k=None):
+      logging.info('idler3 running: k=%s', k)
+      counters[2] += 1
+      return None
+    self.ev.add_idle(idler1)
+    self.ev.add_idle(idler2, 10, 20)
+    eventloop.add_idle(idler3, k=42)
+    self.ev.run()
+    self.assertEqual(counters, [1, 1, 1])
+    self.ev.run()
+    self.assertEqual(counters, [2, 2, 1])
 
 def main():
   unittest.main()

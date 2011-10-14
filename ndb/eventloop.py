@@ -10,6 +10,7 @@ enforcement of this requirement.
 The API here is inspired by Monocle.
 """
 
+import collections
 import logging
 import os
 import threading
@@ -30,12 +31,13 @@ FINISHING = RPC.FINISHING
 class EventLoop(object):
   """An event loop."""
 
-  # TODO: Use a separate queue for tasklets with delay=None.
-
   def __init__(self):
     """Constructor."""
-    self.queue = []
-    self.rpcs = {}
+    self.current = collections.deque()  # FIFO list of (callback, args, kwds)
+    self.idlers = collections.deque()  # Cyclic list of (callback, args, kwds)
+    self.inactive = 0  # How many idlers in a row were no-ops
+    self.queue = []  # Sorted list of (time, callback, args, kwds)
+    self.rpcs = {}  # Map of rpc -> (callback, args, kwds)
 
   def insort_event_right(self, event, lo=0, hi=None):
     """Insert event in queue, and keep it sorted assuming queue is sorted.
@@ -61,8 +63,9 @@ class EventLoop(object):
   def queue_call(self, delay, callback, *args, **kwds):
     """Schedule a function call at a specific time in the future."""
     if delay is None:
-      when = 0
-    elif delay < 1e9:
+      self.current.append((callback, args, kwds))
+      return
+    if delay < 1e9:
       when = delay + time.time()
     else:
       # Times over a billion seconds are assumed to be absolute.
@@ -98,6 +101,43 @@ class EventLoop(object):
     for rpc in rpcs:
       self.rpcs[rpc] = (callback, args, kwds)
 
+  def add_idle(self, callback, *args, **kwds):
+    """Add an idle callback.
+
+    An idle callback can return True, False or None.  These mean:
+
+    - None: remove the callback (don't reschedule)
+    - False: the callback did no work; reschedule later
+    - True: the callback did some work; reschedule soon
+
+    If the callback raises an exception, the traceback is logged and
+    the callback is removed.
+    """
+    self.idlers.append((callback, args, kwds))
+
+  def run_idle(self):
+    """Run one of the idle callbacks.
+
+    Returns:
+      True if one was called, False if no idle callback was called.
+    """
+    if not self.idlers or self.inactive >= len(self.idlers):
+      return False
+    idler = self.idlers.popleft()
+    callback, args, kwds = idler
+    logging_debug('idler: %s', callback.__name__)
+    res = callback(*args, **kwds)
+    # See add_idle() for the meaning of the callback return value.
+    if res is not None:
+      if res:
+        self.inactive = 0
+      else:
+        self.inactive += 1
+      self.idlers.append(idler)
+    else:
+      logging.info('idler %s removed', callback.__name__)
+    return True
+
   def run0(self):
     """Run one item (a callback or an RPC wait_any).
 
@@ -105,16 +145,26 @@ class EventLoop(object):
       A time to sleep if something happened (may be 0);
       None if all queues are empty.
     """
+    if self.current:
+      self.inactive = 0
+      callback, args, kwds = self.current.popleft()
+      logging_debug('nowevent: %s', callback.__name__)
+      callback(*args, **kwds)
+      return 0
+    if self.run_idle():
+      return 0
     delay = None
     if self.queue:
       delay = self.queue[0][0] - time.time()
-      if delay is None or delay <= 0:
+      if delay <= 0:
+        self.inactive = 0
         _, callback, args, kwds = self.queue.pop(0)
         logging_debug('event: %s', callback.__name__)
         callback(*args, **kwds)
         # TODO: What if it raises an exception?
         return 0
     if self.rpcs:
+      self.inactive = 0
       rpc = datastore_rpc.MultiRpc.wait_any(self.rpcs)
       if rpc is not None:
         logging.info('rpc: %s.%s', rpc.service, rpc.method)  # XXX debug
@@ -147,6 +197,7 @@ class EventLoop(object):
   def run(self):
     """Run until there's nothing left to do."""
     # TODO: A way to stop running before the queue is empty.
+    self.inactive = 0
     while True:
       if not self.run1():
         break
@@ -187,6 +238,11 @@ def queue_call(*args, **kwds):
 def queue_rpc(rpc, callback=None, *args, **kwds):
   ev = get_event_loop()
   ev.queue_rpc(rpc, callback, *args, **kwds)
+
+
+def add_idle(callback, *args, **kwds):
+  ev = get_event_loop()
+  ev.add_idle(callback, *args, **kwds)
 
 
 def run():
