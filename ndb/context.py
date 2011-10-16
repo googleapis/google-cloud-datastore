@@ -233,7 +233,7 @@ class Context(object):
     # TODO: What if the same entity is being put twice?
     # TODO: What if two entities with the same key are being put?
     datastore_entities = []
-    for fut, ent in todo:
+    for unused_fut, ent in todo:
       datastore_entities.append(ent)
     # Wait for datastore RPC(s).
     keys = yield self._conn.async_put(options, datastore_entities)
@@ -833,7 +833,7 @@ class Context(object):
       raise RuntimeError('Nothing to do.')
     for_cas, namespace = options
     keys = set()
-    for fut, key in todo:
+    for unused_fut, key in todo:
       keys.add(key)
     results = yield self._memcache.get_multi_async(keys, for_cas=for_cas,
                                                    namespace=namespace)
@@ -848,10 +848,10 @@ class Context(object):
     methodname = opname + '_multi_async'
     method = getattr(self._memcache, methodname)
     mapping = {}
-    for fut, (key, value) in todo:
+    for unused_fut, (key, value) in todo:
       mapping[key] = value
     results = yield method(mapping, time=time, namespace=namespace)
-    for fut, (key, value) in todo:
+    for fut, (key, unused_value) in todo:
       status = results.get(key)
       fut.set_result(status == memcache.MemcacheSetResponse.STORED)
 
@@ -861,7 +861,7 @@ class Context(object):
       raise RuntimeError('Nothing to do.')
     seconds, namespace = options
     keys = set()
-    for fut, key in todo:
+    for unused_fut, key in todo:
       keys.add(key)
     statuses = yield self._memcache.delete_multi_async(keys, seconds=seconds,
                                                        namespace=namespace)
@@ -877,11 +877,11 @@ class Context(object):
       raise RuntimeError('Nothing to do.')
     initial_value, namespace = options
     mapping = {}  # {key: delta}
-    for fut, (key, delta) in todo:
+    for unused_fut, (key, delta) in todo:
       mapping[key] = delta
     results = yield self._memcache.offset_multi_async(mapping,
                                initial_value=initial_value, namespace=namespace)
-    for fut, (key, delta) in todo:
+    for fut, (key, unused_delta) in todo:
       result = results.get(key)
       if isinstance(result, basestring):
         # See http://code.google.com/p/googleappengine/issues/detail?id=2012
