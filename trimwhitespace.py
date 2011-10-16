@@ -10,6 +10,8 @@ def scanpath(path):
       trimwhitespace(filepath)
 
 def trimwhitespace(filepath):
+  if filepath.endswith('.pyc') or filepath.endswith('~'):
+    return
   handle = open(filepath, 'rb')
   stripped = ''
   flag = False
@@ -20,7 +22,7 @@ def trimwhitespace(filepath):
     stripped += stripped_line
   handle.close()
   if flag:
-    print('FAIL: %s' % filepath)
+    print('FIX: %s' % filepath)
     overwritefile(filepath, stripped)
   else:
     print('OK: %s' % filepath)
