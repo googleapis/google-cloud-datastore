@@ -293,12 +293,9 @@ class KeyTests(test_utils.NDBTest):
       pass
     entity = EmptyModel()
     entity.put()
-    entity.key.delete()
-    ev = eventloop.get_event_loop()
-    ev.run0() # Trigger check_success
-    ev_len = len(ev.queue)
-    self.assertEqual(ev_len, 0,
-                     'Delete hook queued default no-op: %r' % ev.queue)
+    fut = entity.key.delete_async()
+    self.assertFalse(fut._immediate_callbacks,
+                     'Delete hook queued default no-op.')
 
   def testGetHooksCalled(self):
     test = self # Closure for inside hook
@@ -414,12 +411,8 @@ class KeyTests(test_utils.NDBTest):
       pass
     entity = EmptyModel()
     entity.put()
-    entity.key.get()
-    ev = eventloop.get_event_loop()
-    ev.run0() # Trigger check_success
-    ev_len = len(ev.queue)
-    self.assertEqual(ev_len, 0,
-                     'Get hook queued default no-op: %r' % ev.queue)
+    fut = entity.key.get_async()
+    self.assertFalse(fut._immediate_callbacks, 'Get hook queued default no-op.')
 
 
 def main():

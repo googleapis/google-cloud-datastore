@@ -2571,11 +2571,9 @@ class ModelTests(test_utils.NDBTest):
     ctx.set_cache_policy(False)
     class EmptyModel(model.Model):
       pass
-    EmptyModel.allocate_ids(1)
-    ev = eventloop.get_event_loop()
-    ev_len = len(ev.queue)
-    self.assertEqual(ev_len, 0,
-                     'Allocate ids hook queued default no-op: %r' % ev.queue)
+    fut = EmptyModel.allocate_ids_async(1)
+    self.assertFalse(fut._immediate_callbacks,
+                     'Allocate ids hook queued default no-op.')
 
   def testPutHooksCalled(self):
     test = self # Closure for inside hooks
@@ -2679,12 +2677,8 @@ class ModelTests(test_utils.NDBTest):
     class EmptyModel(model.Model):
       pass
     entity = EmptyModel()
-    entity.put()
-    ev = eventloop.get_event_loop()
-    ev.run0() # Trigger check_success
-    ev_len = len(ev.queue)
-    self.assertEqual(ev_len, 0,
-                     'Put hook queued default no-op: %r' % ev.queue)
+    fut = entity.put_async()
+    self.assertFalse(fut._immediate_callbacks, 'Put hook queued default no-op.')
 
 
 class CacheTests(test_utils.NDBTest):
