@@ -5,7 +5,6 @@ import unittest
 
 from google.appengine.api import datastore_errors
 from google.appengine.api import memcache
-from google.appengine.api import namespace_manager
 from google.appengine.api import taskqueue
 from google.appengine.datastore import datastore_rpc
 from google.appengine.datastore import datastore_stub_util
@@ -32,9 +31,9 @@ class MyAutoBatcher(context.AutoBatcher):
     cls._log = []
 
   def __init__(self, todo_tasklet, limit):
-    def wrap(todo):
+    def wrap(todo, options):
       self.__class__._log.append((todo_tasklet.__name__, todo))
-      return todo_tasklet(todo)
+      return todo_tasklet(todo, options)
     super(MyAutoBatcher, self).__init__(wrap, limit)
 
 
@@ -46,6 +45,7 @@ class ContextTests(test_utils.NDBTest):
     self.ctx = context.Context(
         conn=model.make_connection(default_model=model.Expando),
         auto_batcher_class=MyAutoBatcher)
+    tasklets.set_context(self.ctx)
 
   def testContext_AutoBatcher_Get(self):
     @tasklets.tasklet
@@ -65,10 +65,10 @@ class ContextTests(test_utils.NDBTest):
     log = MyAutoBatcher._log
     self.assertEqual(len(log), 2)
     name, todo = log[0]
-    self.assertEqual(name, '_get_tasklet')
+    self.assertEqual(name, '_memcache_get_tasklet')
     self.assertEqual(len(todo), 3)
     name, todo = log[1]
-    self.assertEqual(name, '_memcache_get_tasklet')
+    self.assertEqual(name, '_get_tasklet')
     self.assertEqual(len(todo), 3)
 
   @tasklets.tasklet
@@ -106,10 +106,10 @@ class ContextTests(test_utils.NDBTest):
     foo().check_success()
     self.assertEqual(len(MyAutoBatcher._log), 2)
     name, todo = MyAutoBatcher._log[0]
-    self.assertEqual(name, '_delete_tasklet')
+    self.assertEqual(name, '_memcache_set_tasklet')
     self.assertEqual(len(todo), 3)
     name, todo = MyAutoBatcher._log[1]
-    self.assertEqual(name, '_memcache_set_tasklet')
+    self.assertEqual(name, '_delete_tasklet')
     self.assertEqual(len(todo), 3)
 
   def testContext_AutoBatcher_Limit(self):
@@ -773,18 +773,17 @@ class ContextTests(test_utils.NDBTest):
     class EmptyModel(model.Model):
       pass
     key = model.Key(EmptyModel, 1)
-    keystr = self.ctx._memcache_prefix + key.urlsafe()
 
     # Delete the key (just to be sure).
-    del_fut = self.ctx.memcache_delete(keystr, seconds=context._LOCK_TIME)
-    self.assertEqual(del_fut.get_result(), memcache.DELETE_ITEM_MISSING)
+    del_fut = self.ctx.delete(key)
+    del_fut.get_result()
 
     # Create and store a new model instance using the key we just deleted.
-    # Because datastore policy is off, this writes it to memcache.
+    # Because datastore policy is off, this attempts to write it to memcache.
     EmptyModel(key=key).put()
 
     # Verify that it is now in memcache.
-    get_fut = self.ctx.memcache_get(keystr)
+    get_fut = self.ctx.get(key)
     ent = get_fut.get_result()
     self.assertTrue(ent is None,
                     'Memcache delete did block memcache set %r' % ent)
@@ -897,33 +896,6 @@ class ContextTests(test_utils.NDBTest):
 
     foo().check_success()
 
-  def testGetFutureCachingOn(self):
-    # See issue 62
-    self.ctx.set_cache_policy(False)
-    class EmptyModel(model.Model):
-      pass
-    key = EmptyModel().put()
-    self.ctx.set_cache_policy(True)
-    f1, f2 = self.ctx.get(key), self.ctx.get(key)
-    self.assertFalse(f1 is f2,
-              'Context get futures are being cached, instead of get_tasklets.')
-    e1, e2 = f1.get_result(), f2.get_result()
-    self.assertTrue(e1 is e2,
-         'Results of concurrent gets are not the same with future caching on.')
-
-  def testGetFutureCachingOff(self):
-    # See issue 62
-    self.ctx.set_cache_policy(False)
-    class EmptyModel(model.Model):
-      pass
-    key = EmptyModel().put()
-    f1, f2 = self.ctx.get(key), self.ctx.get(key)
-    self.assertFalse(f1 is f2,
-              'Context get futures are being cached, instead of get_tasklets.')
-    e1, e2 = f1.get_result(), f2.get_result()
-    self.assertTrue(e1 is not e2,
-            'Results of concurrent gets are the same with future caching off.')
-
   def testMemcacheLocking(self):
     # See issue 66.
     self.ctx.set_cache_policy(False)
@@ -948,6 +920,64 @@ class ContextTests(test_utils.NDBTest):
     fut = self.ctx.memcache_get(self.ctx._memcache_prefix + key.urlsafe())
     val = fut.get_result()
     self.assertEqual(val, context._LOCKED)
+
+
+class ContextFutureCachingTests(test_utils.NDBTest):
+  # See issue 62
+
+  def setUp(self):
+    super(ContextFutureCachingTests, self).setUp()
+    MyAutoBatcher.reset_log()
+    config = context.ContextOptions(max_get_keys=1, max_memcache_items=1)
+    self.ctx = context.Context(
+        conn=model.make_connection(default_model=model.Expando),
+        auto_batcher_class=MyAutoBatcher, config=config)
+    self.ctx.set_cache_policy(False)
+    tasklets.set_context(self.ctx)
+
+  def testGetFutureCachingOn(self):
+    self.ctx.set_memcache_policy(False)
+    class EmptyModel(model.Model):
+      pass
+    key = EmptyModel().put()
+    MyAutoBatcher.reset_log()  # TODO Find out why put calls get_tasklet
+    self.ctx.set_cache_policy(True)
+    f1, f2 = self.ctx.get(key), self.ctx.get(key)
+    self.assertFalse(f1 is f2, 'Context get futures are being cached, '
+                               'instead of tasklets.')
+    e1, e2 = f1.get_result(), f2.get_result()
+    self.assertTrue(e1 is e2, 'Results of concurrent gets are not the same '
+                              'with future caching on.')
+    self.assertEqual(len(self.ctx._get_batcher._log), 1)
+    self.assertFalse(f1 is self.ctx.get(key), 'Future cache persisted.')
+
+  def testGetFutureCachingOff(self):
+    self.ctx.set_memcache_policy(False)
+    class EmptyModel(model.Model):
+      pass
+    key = EmptyModel().put()
+    MyAutoBatcher.reset_log()  # TODO Find out why put calls get_tasklet
+    f1, f2 = self.ctx.get(key), self.ctx.get(key)
+    self.assertFalse(f1 is f2, 'Context get futures are being cached '
+                               'with future caching off.')
+    e1, e2 = f1.get_result(), f2.get_result()
+    self.assertTrue(e1 is not e2, 'Results of concurrent gets are the same '
+                                  'with future caching off.')
+    self.assertEqual(len(self.ctx._get_batcher._log), 2)
+
+  def testMemcacheGetFutureCaching(self):
+    self.ctx.set_datastore_policy(False)
+    class EmptyModel(model.Model):
+      pass
+    key = EmptyModel().put()
+    f1, f2 = self.ctx.get(key), self.ctx.get(key)
+    self.assertFalse(f1 is f2, 'Context get futures are being cached, '
+                               'instead of tasklets.')
+    e1, e2 = f1.get_result(), f2.get_result()
+    self.assertTrue(e1 is e2, 'Results of concurrent gets are not the same.')
+    self.assertEqual(len(self.ctx._memcache_get_batcher._log), 1,
+                     'Memcache get future not cached.')
+    self.assertFalse(f1 is self.ctx.get(key), 'Future cache persisted.')
 
 
 def main():
