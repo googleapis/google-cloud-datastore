@@ -921,6 +921,15 @@ class ContextTests(test_utils.NDBTest):
     val = fut.get_result()
     self.assertEqual(val, context._LOCKED)
 
+  def testMemcacheDefaultNamespaceBatching(self):
+    self.ctx.set_datastore_policy(False)
+    key = model.Key('Foo', 1)
+    keyfut = key.get_async()
+    mfut = self.ctx.memcache_get('bar')
+    keyfut.check_success()
+    mfut.check_success()
+    self.assertEqual(len(MyAutoBatcher._log), 1)
+
 
 class ContextFutureCachingTests(test_utils.NDBTest):
   # See issue 62

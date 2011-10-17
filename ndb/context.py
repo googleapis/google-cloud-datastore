@@ -566,11 +566,10 @@ class Context(object):
     use_memcache = self._use_memcache(key, options)
     using_tconn = isinstance(self._conn, datastore_rpc.TransactionalConnection)
     in_transaction = (use_datastore and using_tconn)
-    timeout = self._get_memcache_timeout(key, options)
+    ns = key.namespace()
 
     if use_memcache and not in_transaction:
       mkey = self._memcache_prefix + key.urlsafe()
-      ns = key.namespace()
       mvalue = yield self.memcache_get(mkey, namespace=ns)
       if mvalue not in (_LOCKED, None):
         entity = self._conn.adapter.pb_to_entity(mvalue)
@@ -586,6 +585,7 @@ class Context(object):
     if entity is not None:
       if not in_transaction and use_memcache and mvalue != _LOCKED:
         pb = self._conn.adapter.entity_to_pb(entity)
+        timeout = self._get_memcache_timeout(key, options)
         # Don't yield -- this can run in the background.
         self.memcache_add(mkey, pb, time=timeout, namespace=ns)
       if use_cache:
