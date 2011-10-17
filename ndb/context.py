@@ -6,6 +6,7 @@ import sys
 from google.appengine.api import datastore  # For taskqueue coordination
 from google.appengine.api import datastore_errors
 from google.appengine.api import memcache
+from google.appengine.api import namespace_manager
 from google.appengine.datastore import datastore_rpc
 
 from . import key as key_module
@@ -122,6 +123,8 @@ class AutoBatcher(object):
     fut = tasklets.Future('%s.add(%s, %s)' % (self, arg, options))
     todo = self._queues.get(options)
     if todo is None:
+      logging.info('AutoBatcher(%s): creating new queue for %r',
+                   self._todo_tasklet.__name__, options)
       if not self._queues:
         eventloop.add_idle(self._on_idle)
       todo = self._queues[options] = []
@@ -584,7 +587,7 @@ class Context(object):
       if not in_transaction and use_memcache and mvalue != _LOCKED:
         pb = self._conn.adapter.entity_to_pb(entity)
         # Don't yield -- this can run in the background.
-        self.memcache_add(mkey, pb, time=timeout, namespace=key.namespace())
+        self.memcache_add(mkey, pb, time=timeout, namespace=ns)
       if use_cache:
         self._cache[key] = entity
     raise tasklets.Return(entity)
@@ -796,8 +799,8 @@ class Context(object):
     futures = []
     for key in keys:
       keystr = self._memcache_prefix + key.urlsafe()
-      fut = self.memcache_set(keystr, _LOCKED, time=_LOCK_TIME,
-                              namespace=key.namespace())
+      ns = key.namespace()
+      fut = self.memcache_set(keystr, _LOCKED, time=_LOCK_TIME, namespace=ns)
       futures.append(fut)
     yield futures
 
@@ -905,6 +908,8 @@ class Context(object):
       raise TypeError('key must be a string; received %r' % key)
     if not isinstance(for_cas, bool):
       raise ValueError('for_cas must be a bool; received %r' % for_cas)
+    if namespace is None:
+      namespace = namespace_manager.get_namespace()
     return self._memcache_get_batcher.add_once(key, (for_cas, namespace))
 
   # XXX: Docstrings below.
@@ -917,6 +922,8 @@ class Context(object):
       raise TypeError('key must be a string; received %r' % key)
     if not isinstance(time, (int, long)):
       raise ValueError('time must be a number; received %r' % time)
+    if namespace is None:
+      namespace = namespace_manager.get_namespace()
     return self._memcache_set_batcher.add((key, value),
                                           ('set', time, namespace))
 
@@ -925,6 +932,8 @@ class Context(object):
       raise TypeError('key must be a string; received %r' % key)
     if not isinstance(time, (int, long)):
       raise ValueError('time must be a number; received %r' % time)
+    if namespace is None:
+      namespace = namespace_manager.get_namespace()
     return self._memcache_set_batcher.add((key, value),
                                           ('add', time, namespace))
 
@@ -933,6 +942,8 @@ class Context(object):
       raise TypeError('key must be a string; received %r' % key)
     if not isinstance(time, (int, long)):
       raise ValueError('time must be a number; received %r' % time)
+    if namespace is None:
+      namespace = namespace_manager.get_namespace()
     return self._memcache_set_batcher.add((key, value),
                                           ('replace', time, namespace))
 
@@ -941,6 +952,8 @@ class Context(object):
       raise TypeError('key must be a string; received %r' % key)
     if not isinstance(time, (int, long)):
       raise ValueError('time must be a number; received %r' % time)
+    if namespace is None:
+      namespace = namespace_manager.get_namespace()
     return self._memcache_set_batcher.add((key, value),
                                           ('cas', time, namespace))
 
@@ -949,6 +962,8 @@ class Context(object):
       raise TypeError('key must be a string; received %r' % key)
     if not isinstance(seconds, (int, long)):
       raise ValueError('seconds must be a number; received %r' % seconds)
+    if namespace is None:
+      namespace = namespace_manager.get_namespace()
     return self._memcache_del_batcher.add(key, (seconds, namespace))
 
   def memcache_incr(self, key, delta=1, initial_value=None, namespace=None):
@@ -959,6 +974,8 @@ class Context(object):
     if initial_value is not None and not isinstance(initial_value, (int, long)):
       raise ValueError('initial_value must be a number or None; received %r' %
                        initial_value)
+    if namespace is None:
+      namespace = namespace_manager.get_namespace()
     return self._memcache_off_batcher.add((key, delta),
                                           (initial_value, namespace))
 
@@ -970,6 +987,8 @@ class Context(object):
     if initial_value is not None and not isinstance(initial_value, (int, long)):
       raise ValueError('initial_value must be a number or None; received %r' %
                        initial_value)
+    if namespace is None:
+      namespace = namespace_manager.get_namespace()
     return self._memcache_off_batcher.add((key, -delta),
                                           (initial_value, namespace))
 
