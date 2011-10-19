@@ -930,6 +930,24 @@ class ContextTests(test_utils.NDBTest):
     mfut.check_success()
     self.assertEqual(len(MyAutoBatcher._log), 1)
 
+  def testAsyncInTransaction(self):
+    # See issue 81.  http://goo.gl/F097l
+    class Bar(model.Model):
+      name = model.StringProperty()
+
+    bar = Bar(id='bar', name='bar')
+    bar.put()
+
+    @tasklets.tasklet
+    def trans():
+      bar = Bar.get_by_id('bar')
+      bar.name = 'updated-bar'
+      bar.put_async() # PROBLEM IS HERE, with yield it properly works
+    model.transaction_async(trans).get_result()
+
+    bar = bar.key.get()
+    self.assertEqual(bar.name, 'updated-bar')
+
 
 class ContextFutureCachingTests(test_utils.NDBTest):
   # See issue 62

@@ -214,7 +214,15 @@ class Context(object):
 
   @tasklets.tasklet
   def flush(self):
-    yield [batcher.flush() for batcher in self._batchers]
+    # Rinse and repeat until all batchers are completely out of work.
+    more = True
+    while more:
+      yield [batcher.flush() for batcher in self._batchers]
+      more = False
+      for batcher in self._batchers:
+        if batcher._running or batcher._queues:
+          more = True
+          break
 
   @tasklets.tasklet
   def _get_tasklet(self, todo, options):
