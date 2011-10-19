@@ -63,11 +63,17 @@ class ContextTests(test_utils.NDBTest):
     ents = foo().get_result()
     self.assertEqual(ents, [None, None, None])
     log = MyAutoBatcher._log
-    self.assertEqual(len(log), 2)
+    self.assertEqual(len(log), 4)
     name, todo = log[0]
     self.assertEqual(name, '_memcache_get_tasklet')
     self.assertEqual(len(todo), 3)
     name, todo = log[1]
+    self.assertEqual(name, '_memcache_set_tasklet')
+    self.assertEqual(len(todo), 3)
+    name, todo = log[2]
+    self.assertEqual(name, '_memcache_get_tasklet')
+    self.assertEqual(len(todo), 3)
+    name, todo = log[3]
     self.assertEqual(name, '_get_tasklet')
     self.assertEqual(len(todo), 3)
 
@@ -89,7 +95,14 @@ class ContextTests(test_utils.NDBTest):
     keys = self.create_entities().get_result()
     self.assertEqual(len(keys), 3)
     self.assertTrue(None not in keys)
-    self.assertEqual(len(MyAutoBatcher._log), 1)
+    log = MyAutoBatcher._log
+    self.assertEqual(len(log), 2)
+    name, todo = log[0]
+    self.assertEqual(name, '_put_tasklet')
+    self.assertEqual(len(todo), 3)
+    name, todo = log[1]
+    self.assertEqual(name, '_memcache_del_tasklet')
+    self.assertEqual(len(todo), 3)
 
   def testContext_AutoBatcher_Delete(self):
     @tasklets.tasklet
@@ -137,8 +150,11 @@ class ContextTests(test_utils.NDBTest):
       self.assertEqual(len(ks), 49)
       self.assertTrue(all(isinstance(k, model.Key) for k in ks))
     foo().get_result()
-    self.assertEqual(len(MyAutoBatcher._log), 2)
-    for i, (name, todo) in enumerate(MyAutoBatcher._log):
+    self.assertEqual(len(MyAutoBatcher._log), 4)
+    for i, (name, todo) in enumerate(MyAutoBatcher._log[2:]):
+      self.assertEqual(name, '_memcache_del_tasklet')
+      self.assertEqual(len(todo), 24 + i)
+    for i, (name, todo) in enumerate(MyAutoBatcher._log[:2]):
       self.assertEqual(name, '_put_tasklet')
       self.assertEqual(len(todo), 25 - i)
 
@@ -220,9 +236,9 @@ class ContextTests(test_utils.NDBTest):
     # Test that memcache ops issued for datastore caching use the
     # correct namespace.
     def assertNone(expr):
-      self.assertTrue(expr is None)
+      self.assertTrue(expr is None, expr)
     def assertLocked(expr):
-      self.assertEqual(expr, context._LOCKED)
+      self.assertTrue(expr is context._LOCKED, expr)
     def assertProtobuf(expr, ent):
       self.assertEqual(expr, ent._to_pb())
     class Foo(model.Model):
@@ -255,17 +271,25 @@ class ContextTests(test_utils.NDBTest):
     self.ctx.set_datastore_policy(True)
 
     # Test put with datastore policy on
-    k1 = self.ctx.put(e1).get_result()
-    k2 = self.ctx.put(e2).get_result()
+    k1_fut = self.ctx.put(e1)
+    while not self.ctx._put_batcher._running:
+      eventloop.run0()
     # Nothing should be in the empty namespace
     assertNone(memcache.get(mk1, namespace=''))
     assertNone(memcache.get(mk2, namespace=''))
     # Only k1 is found in namespace 'a', as _LOCKED
     assertLocked(memcache.get(mk1, namespace='a'))
     assertNone(memcache.get(mk2, namespace='a'))
+    self.assertEqual(k1_fut.get_result(), k1)
+    # Have to test one at a time, otherwise _LOCKED value may not be set
+    k2_fut = self.ctx.put(e2)
+    while not self.ctx._put_batcher._running:
+      eventloop.run0()
     # Only k2 is found in namespace 'b', as _LOCKED
     assertNone(memcache.get(mk1, namespace='b'))
     assertLocked(memcache.get(mk2, namespace='b'))
+    # Keys should be identical
+    self.assertEqual(k2_fut.get_result(), k2)
 
     memcache.flush_all()
 
@@ -904,22 +928,25 @@ class ContextTests(test_utils.NDBTest):
     class EmptyModel(model.Model):
       pass
     key = model.Key(EmptyModel, 1)
+    keystr = self.ctx._memcache_prefix + key.urlsafe()
     ent = EmptyModel(key=key)
-    self.ctx.put(ent).check_success()
+    put_fut = self.ctx.put(ent)
 
-    # Whitebox test: verify that memcache now contains the special
-    # _LOCKED value.
-    fut = self.ctx.memcache_get(self.ctx._memcache_prefix + key.urlsafe())
-    val = fut.get_result()
+    eventloop.run0()
+    self.assertTrue(self.ctx._memcache_set_batcher._queues)
+    eventloop.run0()
+    self.assertTrue(self.ctx._memcache_set_batcher._running)
+    while self.ctx._memcache_set_batcher._running:
+      eventloop.run0()
+
+    # Verify that memcache now contains the special _LOCKED value.
+    val = memcache.get(keystr)
     self.assertEqual(val, context._LOCKED)
 
-    # Retrieve using Context.get().
-    ent = self.ctx.get(key).get_result()
-
-    # Whitebox test: verify that the memcache *still* contains _LOCKED.
-    fut = self.ctx.memcache_get(self.ctx._memcache_prefix + key.urlsafe())
-    val = fut.get_result()
-    self.assertEqual(val, context._LOCKED)
+    put_fut.check_success()
+    # Verify that memcache _LOCKED value has been removed..
+    val = memcache.get(keystr)
+    self.assertEqual(val, None)
 
   def testMemcacheDefaultNamespaceBatching(self):
     self.ctx.set_datastore_policy(False)
@@ -928,7 +955,8 @@ class ContextTests(test_utils.NDBTest):
     mfut = self.ctx.memcache_get('bar')
     keyfut.check_success()
     mfut.check_success()
-    self.assertEqual(len(MyAutoBatcher._log), 1)
+    log = MyAutoBatcher._log
+    self.assertEqual(len(log), 1, log)
 
   def testAsyncInTransaction(self):
     # See issue 81.  http://goo.gl/F097l
@@ -993,18 +1021,33 @@ class ContextFutureCachingTests(test_utils.NDBTest):
     self.assertEqual(len(self.ctx._get_batcher._log), 2)
 
   def testMemcacheGetFutureCaching(self):
-    self.ctx.set_datastore_policy(False)
-    class EmptyModel(model.Model):
-      pass
-    key = EmptyModel().put()
-    f1, f2 = self.ctx.get(key), self.ctx.get(key)
-    self.assertFalse(f1 is f2, 'Context get futures are being cached, '
-                               'instead of tasklets.')
-    e1, e2 = f1.get_result(), f2.get_result()
-    self.assertTrue(e1 is e2, 'Results of concurrent gets are not the same.')
-    self.assertEqual(len(self.ctx._memcache_get_batcher._log), 1,
-                     'Memcache get future not cached.')
-    self.assertFalse(f1 is self.ctx.get(key), 'Future cache persisted.')
+    key = 'foo'
+    f1 = self.ctx.memcache_get(key, use_cache=True)
+    f2 = self.ctx.memcache_get(key, use_cache=True)
+    self.assertTrue(f1 is f2,
+                    'Context memcache get futures are not cached.')
+    f3 = self.ctx.memcache_get(key)
+    self.assertFalse(f1 is f3,
+                    'Context memcache get futures are cached by default.')
+    f1.check_success()
+    f4 = self.ctx.memcache_get(key, use_cache=True)
+    self.assertFalse(f1 is f4,
+                    'Context memcache get future cached after result known.')
+
+  def testMemcacheSetFutureCaching(self):
+    key = 'foo'
+    value = 'bar'
+    f1 = self.ctx.memcache_set(key, value, use_cache=True)
+    f2 = self.ctx.memcache_set(key, value, use_cache=True)
+    self.assertTrue(f1 is f2,
+                    'Context memcache get futures are not cached.')
+    f3 = self.ctx.memcache_set(key, value)
+    self.assertFalse(f1 is f3,
+                    'Context memcache get futures are cached by default.')
+    f1.check_success()
+    f4 = self.ctx.memcache_set(key, value, use_cache=True)
+    self.assertFalse(f1 is f4,
+                    'Context memcache get future cached after result known.')
 
 
 def main():

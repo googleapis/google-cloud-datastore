@@ -578,10 +578,15 @@ class Context(object):
 
     if use_memcache and not in_transaction:
       mkey = self._memcache_prefix + key.urlsafe()
-      mvalue = yield self.memcache_get(mkey, namespace=ns)
+      mvalue = yield self.memcache_get(mkey, for_cas=use_datastore,
+                                       namespace=ns, use_cache=True)
       if mvalue not in (_LOCKED, None):
         entity = self._conn.adapter.pb_to_entity(mvalue)
         raise tasklets.Return(entity)
+      elif mvalue is None and use_datastore:
+        yield self.memcache_set(mkey, _LOCKED, time=_LOCK_TIME, namespace=ns,
+                                use_cache=True)
+        yield self.memcache_gets(mkey, namespace=ns, use_cache=True)
     if not use_datastore:
       raise tasklets.Return(None)
 
@@ -595,7 +600,7 @@ class Context(object):
         pb = self._conn.adapter.entity_to_pb(entity)
         timeout = self._get_memcache_timeout(key, options)
         # Don't yield -- this can run in the background.
-        self.memcache_add(mkey, pb, time=timeout, namespace=ns)
+        self.memcache_cas(mkey, pb, time=timeout, namespace=ns)
       if use_cache:
         self._cache[key] = entity
     raise tasklets.Return(entity)
@@ -614,11 +619,11 @@ class Context(object):
     if entity._has_complete_key():
       if self._use_memcache(key, options):
         # Wait for memcache operations before starting datastore RPCs.
-        ns = key.namespace()
         keystr = self._memcache_prefix + key.urlsafe()
+        ns = key.namespace()
         if use_datastore:
           yield self.memcache_set(keystr, _LOCKED, time=_LOCK_TIME,
-                                  namespace=ns)
+                                  namespace=ns, use_cache=True)
         else:
           pb = self._conn.adapter.entity_to_pb(entity)
           timeout = self._get_memcache_timeout(key, options)
@@ -626,6 +631,10 @@ class Context(object):
 
     if use_datastore:
       key = yield self._put_batcher.add(entity, options)
+      if self._use_memcache(key, options):
+        keystr = self._memcache_prefix + key.urlsafe()
+        ns = key.namespace()
+        yield self.memcache_delete(keystr, namespace=ns)
 
     if key is not None:
       if entity._key != key:
@@ -644,7 +653,8 @@ class Context(object):
     if self._use_memcache(key, options):
       keystr = self._memcache_prefix + key.urlsafe()
       ns = key.namespace()
-      yield self.memcache_set(keystr, _LOCKED, time=_LOCK_TIME, namespace=ns)
+      yield self.memcache_set(keystr, _LOCKED, time=_LOCK_TIME, namespace=ns,
+                              use_cache=True)
 
     if self._use_datastore(key, options):
       yield self._delete_batcher.add(key, options)
@@ -808,7 +818,8 @@ class Context(object):
     for key in keys:
       keystr = self._memcache_prefix + key.urlsafe()
       ns = key.namespace()
-      fut = self.memcache_set(keystr, _LOCKED, time=_LOCK_TIME, namespace=ns)
+      fut = self.memcache_set(keystr, _LOCKED, time=_LOCK_TIME, namespace=ns,
+                              use_cache=True)
       futures.append(fut)
     yield futures
 
@@ -900,7 +911,7 @@ class Context(object):
         result = int(result)
       fut.set_result(result)
 
-  def memcache_get(self, key, for_cas=False, namespace=None):
+  def memcache_get(self, key, for_cas=False, namespace=None, use_cache=False):
     """An auto-batching wrapper for memcache.get() or .get_multi().
 
     Args:
@@ -918,22 +929,32 @@ class Context(object):
       raise ValueError('for_cas must be a bool; received %r' % for_cas)
     if namespace is None:
       namespace = namespace_manager.get_namespace()
-    return self._memcache_get_batcher.add_once(key, (for_cas, namespace))
+    options = (for_cas, namespace)
+    batcher = self._memcache_get_batcher
+    if use_cache:
+      return batcher.add_once(key, options)
+    else:
+      return batcher.add(key, options)
 
   # XXX: Docstrings below.
 
-  def memcache_gets(self, key, namespace=None):
-    return self.memcache_get(key, for_cas=True, namespace=namespace)
+  def memcache_gets(self, key, namespace=None, use_cache=False):
+    return self.memcache_get(key, for_cas=True, namespace=namespace,
+                             use_cache=use_cache)
 
-  def memcache_set(self, key, value, time=0, namespace=None):
+  def memcache_set(self, key, value, time=0, namespace=None, use_cache=False):
     if not isinstance(key, str):
       raise TypeError('key must be a string; received %r' % key)
     if not isinstance(time, (int, long)):
       raise ValueError('time must be a number; received %r' % time)
     if namespace is None:
       namespace = namespace_manager.get_namespace()
-    return self._memcache_set_batcher.add((key, value),
-                                          ('set', time, namespace))
+    options = ('set', time, namespace)
+    batcher = self._memcache_set_batcher
+    if use_cache:
+      return batcher.add_once((key, value), options)
+    else:
+      return batcher.add((key, value), options)
 
   def memcache_add(self, key, value, time=0, namespace=None):
     if not isinstance(key, str):
