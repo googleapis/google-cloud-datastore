@@ -151,12 +151,12 @@ class ContextTests(test_utils.NDBTest):
       self.assertTrue(all(isinstance(k, model.Key) for k in ks))
     foo().get_result()
     self.assertEqual(len(MyAutoBatcher._log), 4)
-    for i, (name, todo) in enumerate(MyAutoBatcher._log[2:]):
+    for name, todo in MyAutoBatcher._log[2:]:
       self.assertEqual(name, '_memcache_del_tasklet')
-      self.assertEqual(len(todo), 24 + i)
-    for i, (name, todo) in enumerate(MyAutoBatcher._log[:2]):
+      self.assertTrue(len(todo) in (24, 25))
+    for name, todo in MyAutoBatcher._log[:2]:
       self.assertEqual(name, '_put_tasklet')
-      self.assertEqual(len(todo), 25 - i)
+      self.assertTrue(len(todo) in (24, 25))
 
   def testContext_MultiRpc(self):
     # This test really tests the proper handling of MultiRpc by
