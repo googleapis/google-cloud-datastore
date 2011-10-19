@@ -806,15 +806,16 @@ class ModelKey(Property):
     """Setter for key attribute."""
     if value is not None:
       value = _validate_key(value, entity=entity)
-    entity._key = value
+      value = entity._validate_key(value)
+    entity._entity_key = value
 
   def _get_value(self, entity):
     """Getter for key attribute."""
-    return entity._key
+    return entity._entity_key
 
   def _delete_value(self, entity):
     """Deleter for key attribute."""
-    entity._key = None
+    entity._entity_key = None
 
 
 class BooleanProperty(Property):
@@ -1834,11 +1835,12 @@ class Model(object):
   _kind_map = {}  # Dict mapping {kind: Model subclass}
 
   # Defaults for instance variables.
-  _key = None
+  _entity_key = None
   _values = None
 
   # Hardcoded pseudo-property for the key.
-  key = ModelKey()
+  _key = ModelKey()
+  key = _key
 
   @datastore_rpc._positional(1)
   def __init__(self, key=None, id=None, parent=None, **kwds):
@@ -2123,7 +2125,7 @@ class Model(object):
       return
     for name in set(dir(cls)):
       attr = getattr(cls, name, None)
-      if isinstance(attr, ModelAttribute):
+      if isinstance(attr, ModelAttribute) and not isinstance(attr, ModelKey):
         if name.startswith('_'):
           raise TypeError('ModelAttribute %s cannot begin with an underscore '
                           'character. _ prefixed attributes are reserved for '
@@ -2132,14 +2134,24 @@ class Model(object):
         if isinstance(attr, Property):
           if attr._repeated:
             cls._has_repeated = True
-          if not isinstance(attr, ModelKey):
-            cls._properties[attr._name] = attr
+          cls._properties[attr._name] = attr
     cls._kind_map[cls._get_kind()] = cls
 
   def _prepare_for_put(self):
     if self._properties:
       for prop in self._properties.itervalues():
         prop._prepare_for_put(self)
+
+  def _validate_key(self, key):
+    """Validation for _key attribute (designed to be overridden).
+
+    Args:
+      key: Proposed Key to use for entity.
+
+    Returns:
+      A valid key.
+    """
+    return key
 
   # Datastore API using the default context.
   # These use local import since otherwise they'd be recursive imports.
@@ -2182,6 +2194,8 @@ class Model(object):
     from . import tasklets
     ctx = tasklets.get_context()
     self._prepare_for_put()
+    if self._key is None:
+      self._key = Key(self._get_kind(), None)
     self._pre_put_hook()
     fut = ctx.put(self, **ctx_options)
     post_hook = self._post_put_hook

@@ -2680,6 +2680,47 @@ class ModelTests(test_utils.NDBTest):
     fut = entity.put_async()
     self.assertFalse(fut._immediate_callbacks, 'Put hook queued default no-op.')
 
+  def testKeyValidation(self):
+    # See issue 75.  http://goo.gl/k0Gfv
+    class Foo(model.Model):
+      # Override the default Model method with our own.
+      def _validate_key(self, key):
+        if key.parent() is None:
+          raise TypeError
+        elif key.parent().kind() != 'Foo':
+          raise TypeError
+        elif key.id().startswith('a'):
+          raise ValueError
+        return key
+
+    # Using no arguments
+    self.assertRaises(TypeError, Foo().put)
+
+    # Using id/parent arguments
+    rogue_parent = model.Key('Bar', 1)
+    self.assertRaises(TypeError, Foo, parent=rogue_parent, id='b')
+    parent = model.Key(Foo, 1)
+    self.assertRaises(ValueError, Foo, parent=parent, id='a')
+
+    # Using key argument
+    rogue_key = model.Key(Foo, 1, Foo, 'a')
+    self.assertRaises(ValueError, Foo, key=rogue_key)
+
+    # Using Key assignment
+    entity = Foo()
+    self.assertRaises(ValueError, setattr, entity, 'key', rogue_key)
+
+    # None assignment (including delete) should work correctly
+    entity.key = None
+    self.assertTrue(entity.key is None)
+    del entity.key
+    self.assertTrue(entity.key is None)
+
+    # Sanity check a valid key
+    key = Foo(parent=parent, id='b').put()
+    self.assertEqual(key.parent(), parent)
+    self.assertEqual(key.id(), 'b')
+    self.assertEqual(key.kind(), 'Foo')
 
 class CacheTests(test_utils.NDBTest):
 
