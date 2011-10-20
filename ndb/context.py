@@ -85,9 +85,6 @@ def _make_ctx_options(ctx_options):
       if translation in ctx_options:
         raise ValueError('Cannot specify %s and %s at the same time' %
                          (key, translation))
-      if key.startswith('ndb_'):
-        logging.warning('Context option %s is deprecated; use %s instead',
-                        key, translation)
       ctx_options[translation] = ctx_options.pop(key)
   return ContextOptions(**ctx_options)
 
