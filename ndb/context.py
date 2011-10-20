@@ -579,11 +579,11 @@ class Context(object):
       mvalue = yield self.memcache_get(mkey, for_cas=use_datastore,
                                        namespace=ns, use_cache=True)
       if mvalue not in (_LOCKED, None):
-        pb = entity_pb.EntityProto()
-        pb.MergePartialFromString(mvalue)
         cls = model.Model._kind_map.get(key.kind())
         if cls is None:
           raise TypeError('Cannot find model class for kind %s' % key.kind())
+        pb = entity_pb.EntityProto()
+        pb.MergePartialFromString(mvalue)
         entity = cls._from_pb(pb)
         # Store the key on the entity since it wasn't written to memcache.
         entity._key = key
@@ -602,6 +602,7 @@ class Context(object):
 
     if entity is not None:
       if not in_transaction and use_memcache and mvalue != _LOCKED:
+        # Don't serialize the key since it's already the memcache key.
         pbs = entity._to_pb(set_key=False).SerializePartialToString()
         timeout = self._get_memcache_timeout(key, options)
         # Don't yield -- this can run in the background.
@@ -624,22 +625,22 @@ class Context(object):
     if entity._has_complete_key():
       if self._use_memcache(key, options):
         # Wait for memcache operations before starting datastore RPCs.
-        keystr = self._memcache_prefix + key.urlsafe()
+        mkey = self._memcache_prefix + key.urlsafe()
         ns = key.namespace()
         if use_datastore:
-          yield self.memcache_set(keystr, _LOCKED, time=_LOCK_TIME,
+          yield self.memcache_set(mkey, _LOCKED, time=_LOCK_TIME,
                                   namespace=ns, use_cache=True)
         else:
           pbs = entity._to_pb(set_key=False).SerializePartialToString()
           timeout = self._get_memcache_timeout(key, options)
-          yield self.memcache_add(keystr, pbs, time=timeout, namespace=ns)
+          yield self.memcache_add(mkey, pbs, time=timeout, namespace=ns)
 
     if use_datastore:
       key = yield self._put_batcher.add(entity, options)
       if self._use_memcache(key, options):
-        keystr = self._memcache_prefix + key.urlsafe()
+        mkey = self._memcache_prefix + key.urlsafe()
         ns = key.namespace()
-        yield self.memcache_delete(keystr, namespace=ns)
+        yield self.memcache_delete(mkey, namespace=ns)
 
     if key is not None:
       if entity._key != key:
@@ -656,9 +657,9 @@ class Context(object):
   def delete(self, key, **ctx_options):
     options = _make_ctx_options(ctx_options)
     if self._use_memcache(key, options):
-      keystr = self._memcache_prefix + key.urlsafe()
+      mkey = self._memcache_prefix + key.urlsafe()
       ns = key.namespace()
-      yield self.memcache_set(keystr, _LOCKED, time=_LOCK_TIME, namespace=ns,
+      yield self.memcache_set(mkey, _LOCKED, time=_LOCK_TIME, namespace=ns,
                               use_cache=True)
 
     if self._use_datastore(key, options):
@@ -821,9 +822,9 @@ class Context(object):
     keys = set(key for key in keys if self._use_memcache(key))
     futures = []
     for key in keys:
-      keystr = self._memcache_prefix + key.urlsafe()
+      mkey = self._memcache_prefix + key.urlsafe()
       ns = key.namespace()
-      fut = self.memcache_set(keystr, _LOCKED, time=_LOCK_TIME, namespace=ns,
+      fut = self.memcache_set(mkey, _LOCKED, time=_LOCK_TIME, namespace=ns,
                               use_cache=True)
       futures.append(fut)
     yield futures
