@@ -209,6 +209,7 @@ class ContextTests(test_utils.NDBTest):
       a = yield self.ctx.get(key1)
       self.assertTrue(a is None)
     self.ctx.set_cache_policy(should_cache)
+    self.ctx.set_memcache_policy(False)
     foo().check_success()
 
   def testContext_CachePolicyDisabledLater(self):
@@ -236,11 +237,14 @@ class ContextTests(test_utils.NDBTest):
     # Test that memcache ops issued for datastore caching use the
     # correct namespace.
     def assertNone(expr):
-      self.assertTrue(expr is None, expr)
+      self.assertTrue(expr is None, repr(expr))
+    def assertNotNone(expr):
+      self.assertTrue(expr is not None, repr(expr))
     def assertLocked(expr):
-      self.assertTrue(expr is context._LOCKED, expr)
+      self.assertTrue(expr is context._LOCKED, repr(expr))
     def assertProtobuf(expr, ent):
-      self.assertEqual(expr, ent._to_pb())
+      self.assertEqual(expr,
+                       ent._to_pb(set_key=False).SerializePartialToString())
     class Foo(model.Model):
       pass
     k1 = model.Key(Foo, 1, namespace='a')
@@ -317,11 +321,11 @@ class ContextTests(test_utils.NDBTest):
     assertNone(memcache.get(mk1, namespace=''))
     assertNone(memcache.get(mk2, namespace=''))
     # Only k1 is found in namespace 'a'
-    self.assertTrue(memcache.get(mk1, namespace='a'))
+    assertNotNone(memcache.get(mk1, namespace='a'))
     assertNone(memcache.get(mk2, namespace='a'))
     # Only k2 is found in namespace 'b'
     assertNone(memcache.get(mk1, namespace='b'))
-    self.assertTrue(memcache.get(mk2, namespace='b'))
+    assertNotNone(memcache.get(mk2, namespace='b'))
 
     self.ctx.set_datastore_policy(True)
 
@@ -372,8 +376,9 @@ class ContextTests(test_utils.NDBTest):
       results = memcache.get_multi(keys, key_prefix='NDB:')
       self.assertEqual(
         results,
-        {key1.urlsafe(): self.ctx._conn.adapter.entity_to_pb(ent1),
-         key2.urlsafe(): self.ctx._conn.adapter.entity_to_pb(ent2)})
+        {key1.urlsafe(): ent1._to_pb(set_key=False).SerializePartialToString(),
+         key2.urlsafe(): ent2._to_pb(set_key=False).SerializePartialToString(),
+         })
     foo().check_success()
 
   def testContext_MemcachePolicy(self):
@@ -975,6 +980,19 @@ class ContextTests(test_utils.NDBTest):
 
     bar = bar.key.get()
     self.assertEqual(bar.name, 'updated-bar')
+
+  def testMemcacheProtobufEncoding(self):
+    # Test that when memcache is used implicitly, it stores encoded
+    # protobufs, not pickled ones.
+    class Employee(model.Model):
+      _use_cache = False
+    e = Employee()
+    k = e.put(use_memcache=False)
+    e2 = k.get(use_memcache=True)
+    eventloop.run()
+    ks = 'NDB:' + k.urlsafe()
+    v = memcache.get(ks)
+    self.assertTrue(isinstance(v, str))
 
 
 class ContextFutureCachingTests(test_utils.NDBTest):

@@ -8,6 +8,7 @@ from google.appengine.api import datastore_errors
 from google.appengine.api import memcache
 from google.appengine.api import namespace_manager
 from google.appengine.datastore import datastore_rpc
+from google.appengine.datastore import entity_pb
 
 from . import key as key_module
 from . import model
@@ -65,7 +66,7 @@ _OPTION_TRANSLATIONS = {
 
 
 def _make_ctx_options(ctx_options):
-  """Helper to construct a ContextOptions object from keyword arguents.
+  """Helper to construct a ContextOptions object from keyword arguments.
 
   Args:
     ctx_options: a dict of keyword arguments.
@@ -578,7 +579,14 @@ class Context(object):
       mvalue = yield self.memcache_get(mkey, for_cas=use_datastore,
                                        namespace=ns, use_cache=True)
       if mvalue not in (_LOCKED, None):
-        entity = self._conn.adapter.pb_to_entity(mvalue)
+        pb = entity_pb.EntityProto()
+        pb.MergePartialFromString(mvalue)
+        cls = model.Model._kind_map.get(key.kind())
+        if cls is None:
+          raise TypeError('Cannot find model class for kind %s' % key.kind())
+        entity = cls._from_pb(pb)
+        # Store the key on the entity since it wasn't written to memcache.
+        entity._key = key
         raise tasklets.Return(entity)
       elif mvalue is None and use_datastore:
         yield self.memcache_set(mkey, _LOCKED, time=_LOCK_TIME, namespace=ns,
@@ -594,10 +602,10 @@ class Context(object):
 
     if entity is not None:
       if not in_transaction and use_memcache and mvalue != _LOCKED:
-        pb = self._conn.adapter.entity_to_pb(entity)
+        pbs = entity._to_pb(set_key=False).SerializePartialToString()
         timeout = self._get_memcache_timeout(key, options)
         # Don't yield -- this can run in the background.
-        self.memcache_cas(mkey, pb, time=timeout, namespace=ns)
+        self.memcache_cas(mkey, pbs, time=timeout, namespace=ns)
       if use_cache:
         self._cache[key] = entity
     raise tasklets.Return(entity)
@@ -622,9 +630,9 @@ class Context(object):
           yield self.memcache_set(keystr, _LOCKED, time=_LOCK_TIME,
                                   namespace=ns, use_cache=True)
         else:
-          pb = self._conn.adapter.entity_to_pb(entity)
+          pbs = entity._to_pb(set_key=False).SerializePartialToString()
           timeout = self._get_memcache_timeout(key, options)
-          yield self.memcache_add(keystr, pb, time=timeout, namespace=ns)
+          yield self.memcache_add(keystr, pbs, time=timeout, namespace=ns)
 
     if use_datastore:
       key = yield self._put_batcher.add(entity, options)

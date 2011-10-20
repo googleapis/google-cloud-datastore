@@ -2054,7 +2054,7 @@ class ModelTests(test_utils.NDBTest):
     # Verify that it is in both caches.
     self.assertTrue(ctx._cache[key] is ent)
     self.assertEqual(memcache.get(ctx._memcache_prefix + key.urlsafe()),
-                     ent._to_pb())
+                     ent._to_pb(set_key=False).SerializePartialToString())
     # Get it bypassing the in-process cache.
     ent_copy = key.get(use_cache=False)
     self.assertEqual(ent_copy, ent)
@@ -2090,7 +2090,7 @@ class ModelTests(test_utils.NDBTest):
     ent6 = key.get(use_cache=False)
     self.assertEqual(ent6.name, 'yo')
     self.assertEqual(memcache.get(ctx._memcache_prefix + key.urlsafe()),
-                     ent._to_pb())
+                     ent._to_pb(set_key=False).SerializePartialToString())
     # Assure it is still in the in-memory cache.
     ent7 = key.get()
     self.assertEqual(ent7.name, 'yo')
@@ -2189,7 +2189,8 @@ class ModelTests(test_utils.NDBTest):
     c.put(use_cache=False, use_memcache=False, use_datastore=True)
 
     self.assertEqual(ctx._cache[k], a)
-    self.assertEqual(memcache.get('NDB:' + k.urlsafe()), b._to_pb())
+    self.assertEqual(memcache.get('NDB:' + k.urlsafe()),
+                     b._to_pb(set_key=False).SerializePartialToString())
     self.assertEqual(ctx._conn.get([k]), [c])
 
     self.assertEqual(k.get(), a)
@@ -2228,7 +2229,8 @@ class ModelTests(test_utils.NDBTest):
 
     self.assertFalse(a.key in ctx._cache)
     self.assertFalse(b.key in ctx._cache)
-    self.assertEqual(memcache.get('NDB:' + a.key.urlsafe()), a._to_pb())
+    self.assertEqual(memcache.get('NDB:' + a.key.urlsafe()),
+                     a._to_pb(set_key=False).SerializePartialToString())
     self.assertEqual(memcache.get('NDB:' + b.key.urlsafe()), None)
     self.assertEqual(ctx._conn.get([a.key]), [None])
     self.assertEqual(ctx._conn.get([b.key]), [b])
