@@ -257,6 +257,11 @@ And finally these (without async variants):
 
 - in_transaction() tests whether you are currently running in a transaction
 - @transactional decorates functions that should be run in a transaction
+
+There are many other interesting features.  For example, Model
+subclasses may define pre-call and post-call hooks for most operations
+(get, put, delete, allocate_ids), and Property classes may be
+subclassed to suit various needs.
 """
 
 __author__ = 'guido@google.com (Guido van Rossum)'
