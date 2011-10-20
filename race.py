@@ -120,7 +120,7 @@ def subverting_aries_fix():
   # Store an original version of the entity
   # NOTE: Do not wish to store this one value in memcache, turning it off
   ent1.put(use_memcache=False)
-  
+
   a_written_to_datastore = False
 
   a_lock1 = threading.Lock()
@@ -145,7 +145,7 @@ def subverting_aries_fix():
       a_lock3.acquire()
       fut.check_success()
       a_lock3.release()
-      
+
   class C(threading.Thread):
     def run(self):
       ctx = setup_context()
@@ -186,16 +186,16 @@ def subverting_aries_fix():
   logging.info('B: write to memcache (writes a stale value)')
   b.get_result()
   eventloop.run()  # Puts to memcache are still stuck in the eventloop
-  
+
   logging.info('C: read from memcache (sees a stale value)')
   c = C()
   c.start()
   c.join()
-  
+
   logging.info('A: delete from memcache (deletes the stale value!)')
   a_lock3.release()
   a.join()
-  
+
   pb3 = memcache.get(keystr)
   assert pb3 is not context._LOCKED, 'Received _LOCKED value'
   if pb3 is not None:
