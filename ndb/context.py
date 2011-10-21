@@ -10,6 +10,8 @@ from google.appengine.api import namespace_manager
 from google.appengine.datastore import datastore_rpc
 from google.appengine.datastore import entity_pb
 
+from google.net.proto import ProtocolBuffer
+
 from . import key as key_module
 from . import model
 from . import tasklets
@@ -208,7 +210,9 @@ class Context(object):
     self._cache = {}
     self._memcache = memcache.Client()
 
-  _memcache_prefix = 'NDB:'  # TODO: Might make this configurable.
+  # NOTE: The default memcache prefix is altered if an incompatible change is
+  # required. Remember to check release notes when using a custom prefix.
+  _memcache_prefix = 'NDB9:'  # TODO: Might make this configurable.
 
   @tasklets.tasklet
   def flush(self):
@@ -583,12 +587,20 @@ class Context(object):
         if cls is None:
           raise TypeError('Cannot find model class for kind %s' % key.kind())
         pb = entity_pb.EntityProto()
-        pb.MergePartialFromString(mvalue)
-        entity = cls._from_pb(pb)
-        # Store the key on the entity since it wasn't written to memcache.
-        entity._key = key
-        raise tasklets.Return(entity)
-      elif mvalue is None and use_datastore:
+
+        try:
+          pb.MergePartialFromString(mvalue)
+        except ProtocolBuffer.ProtocolBufferDecodeError:
+          logging.warning('Corrupt memcache entry found '
+                          'with key %s and namespace %s' % (mkey, ns))
+          mvalue = None
+        else:
+          entity = cls._from_pb(pb)
+          # Store the key on the entity since it wasn't written to memcache.
+          entity._key = key
+          raise tasklets.Return(entity)
+
+      if mvalue is None and use_datastore:
         yield self.memcache_set(mkey, _LOCKED, time=_LOCK_TIME, namespace=ns,
                                 use_cache=True)
         yield self.memcache_gets(mkey, namespace=ns, use_cache=True)

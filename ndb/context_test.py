@@ -373,7 +373,7 @@ class ContextTests(test_utils.NDBTest):
              self.ctx.get(k2, use_cache=False))
       eventloop.run()  # Let other tasklet complete.
       keys = [k1.urlsafe(), k2.urlsafe()]
-      results = memcache.get_multi(keys, key_prefix='NDB:')
+      results = memcache.get_multi(keys, key_prefix=self.ctx._memcache_prefix)
       self.assertEqual(
         results,
         {key1.urlsafe(): ent1._to_pb(set_key=False).SerializePartialToString(),
@@ -417,7 +417,8 @@ class ContextTests(test_utils.NDBTest):
       self.assertEqual(track[0][0],
                        ({key1.urlsafe(): ent1._to_pb(),
                          key2.urlsafe(): ent2._to_pb()},))
-      self.assertEqual(track[0][1], {'key_prefix': 'NDB:', 'time': 0})
+      self.assertEqual(track[0][1], {'key_prefix': self.ctx._memcache_prefix,
+                                     'time': 0})
       yield self.ctx._memcache.flush_all_async()
 
       track = []
@@ -432,7 +433,8 @@ class ContextTests(test_utils.NDBTest):
       self.assertEqual(len(track), 1)
       self.assertEqual(track[0][0],
                        ({key1.urlsafe(): ent1._to_pb()},))
-      self.assertEqual(track[0][1], {'key_prefix': 'NDB:', 'time': 0})
+      self.assertEqual(track[0][1], {'key_prefix': self.ctx._memcache_prefix,
+                                     'time': 0})
       yield self.ctx._memcache.flush_all_async()
 
       track = []
@@ -442,10 +444,12 @@ class ContextTests(test_utils.NDBTest):
       self.assertEqual(len(track), 2)
       self.assertEqual(track[0][0],
                        ({key1.urlsafe(): ent1._to_pb()},))
-      self.assertEqual(track[0][1], {'key_prefix': 'NDB:', 'time': 1})
+      self.assertEqual(track[0][1], {'key_prefix': self.ctx._memcache_prefix,
+                                     'time': 1})
       self.assertEqual(track[1][0],
                        ({key2.urlsafe(): ent2._to_pb()},))
-      self.assertEqual(track[1][1], {'key_prefix': 'NDB:', 'time': 2})
+      self.assertEqual(track[1][1], {'key_prefix': self.ctx._memcache_prefix,
+                                     'time': 2})
       yield self.ctx._memcache.flush_all_async()
 
       track = []
@@ -990,9 +994,34 @@ class ContextTests(test_utils.NDBTest):
     k = e.put(use_memcache=False)
     e2 = k.get(use_memcache=True)
     eventloop.run()
-    ks = 'NDB:' + k.urlsafe()
+    ks = self.ctx._memcache_prefix + k.urlsafe()
     v = memcache.get(ks)
     self.assertTrue(isinstance(v, str))
+
+  def testCorruptMemcache(self):
+    """Check that corrupt memcache entries silently fail."""
+    self.ctx.set_cache_policy(False)
+
+    # Create a simple entity/key
+    class EmptyModel(model.Model):
+      pass
+    ent = EmptyModel()
+    key = ent.put()
+
+    # Prime memcache
+    key.get()
+    eventloop.run()
+
+    # Sanity check that memcache is primed
+    mkey = self.ctx._memcache_prefix + key.urlsafe()
+    self.assertEqual(memcache.get(mkey),
+                     ent._to_pb(set_key=False).SerializePartialToString())
+
+    # Inject a corrupt memcache value
+    memcache.set(mkey, 'booby trap')
+
+    # Check that ndb ignores the corrupt memcache value
+    self.assertEqual(ent, key.get())
 
 
 class ContextFutureCachingTests(test_utils.NDBTest):

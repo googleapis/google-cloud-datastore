@@ -2189,7 +2189,7 @@ class ModelTests(test_utils.NDBTest):
     c.put(use_cache=False, use_memcache=False, use_datastore=True)
 
     self.assertEqual(ctx._cache[k], a)
-    self.assertEqual(memcache.get('NDB:' + k.urlsafe()),
+    self.assertEqual(memcache.get(ctx._memcache_prefix + k.urlsafe()),
                      b._to_pb(set_key=False).SerializePartialToString())
     self.assertEqual(ctx._conn.get([k]), [c])
 
@@ -2229,9 +2229,9 @@ class ModelTests(test_utils.NDBTest):
 
     self.assertFalse(a.key in ctx._cache)
     self.assertFalse(b.key in ctx._cache)
-    self.assertEqual(memcache.get('NDB:' + a.key.urlsafe()),
+    self.assertEqual(memcache.get(ctx._memcache_prefix + a.key.urlsafe()),
                      a._to_pb(set_key=False).SerializePartialToString())
-    self.assertEqual(memcache.get('NDB:' + b.key.urlsafe()), None)
+    self.assertEqual(memcache.get(ctx._memcache_prefix + b.key.urlsafe()), None)
     self.assertEqual(ctx._conn.get([a.key]), [None])
     self.assertEqual(ctx._conn.get([b.key]), [b])
 
