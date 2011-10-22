@@ -498,7 +498,8 @@ class Property(ModelAttribute):
     if value is not None:
       # TODO: Allow query.Binding instances?
       value = self._validate(value)
-    return FilterNode(self._name, op, self._datastore_type(value))
+      value = self._datastore_type(value)
+    return FilterNode(self._name, op, value)
 
   # Comparison operators on Property instances don't compare the
   # properties; instead they return FilterNode instances that can be
@@ -1093,8 +1094,6 @@ class BlobProperty(CompressedPropertyMixin, Property):
     if not self._indexed:
       raise RuntimeError('datastore_type should not be queried on non-indexed '
                          'BlobProperty %s' % self._name)
-    if value is None:
-      return None
     return datastore_types.ByteString(value)
 
 
@@ -1171,8 +1170,6 @@ class KeyProperty(Property):
   # TODO: optionally check the kind (or maybe require this?)
 
   def _datastore_type(self, value):
-    if value is None:
-      return None
     return datastore_types.Key(value.urlsafe())
 
   def _validate(self, value):
@@ -1339,8 +1336,6 @@ class DateProperty(DateTimeProperty):
   """A Property whose value is a date object."""
 
   def _datastore_type(self, value):
-    if value is None:
-      return None
     return _date_to_datetime(value)
 
   def _validate(self, value):
@@ -1368,8 +1363,6 @@ class TimeProperty(DateTimeProperty):
   """A Property whose value is a time object."""
 
   def _datastore_type(self, value):
-    if value is None:
-      return None
     return _time_to_datetime(value)
 
   def _validate(self, value):
