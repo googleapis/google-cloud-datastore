@@ -569,7 +569,8 @@ class Context(object):
       if key in self._cache:
         entity = self._cache[key]  # May be None, meaning "doesn't exist".
         if entity is None or entity._key == key:
-          # If entity's key didn't change later, it is ok. See issue #13.
+          # If entity's key didn't change later, it is ok.
+          # See issue #13.  http://goo.gl/jxjOP
           raise tasklets.Return(entity)
 
     use_datastore = self._use_datastore(key, options)
@@ -711,7 +712,8 @@ class Context(object):
               hit = self._cache[key]
               if hit is not None and hit.key != key:
                 # The cached entry has been mutated to have a different key.
-                # That's a false hit.  Get rid of it.  See issue #13.
+                # That's a false hit.  Get rid of it.
+                # See issue #13.  http://goo.gl/jxjOP
                 del self._cache[key]
             if key in self._cache:
               # Assume the cache is more up to date.

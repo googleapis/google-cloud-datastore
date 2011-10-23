@@ -698,7 +698,7 @@ class Property(ModelAttribute):
     return not self._required or (self._has_value(entity) and
                                   self._get_value(entity) is not None)
 
-  def __get__(self, entity, cls=None):
+  def __get__(self, entity, unused_cls=None):
     """Descriptor protocol: get the value from the entity."""
     if entity is None:
       return self  # __get__ called on class
@@ -792,6 +792,7 @@ class ModelKey(Property):
   """Special property to store the Model key."""
 
   def __init__(self):
+    super(ModelKey, self).__init__()
     self._name = '__key__'
 
   def _datastore_type(self, value):
@@ -1529,7 +1530,7 @@ class StructuredProperty(Property):
     if len(parts) <= depth:
       raise RuntimeError('StructuredProperty %s expected to find properties '
                          'seperated by periods at a depth of %i; received %r' %
-                         (self._name, depth))
+                         (self._name, depth, parts))
     next = parts[depth]
     rest = parts[depth + 1:]
     prop = self._modelclass._properties.get(next)
@@ -2073,7 +2074,7 @@ class Model(object):
     if len(parts) <= depth:
       raise RuntimeError('Model %s expected to find property %s seperated by '
                          'periods at a depth of %i; received %r' %
-                         (self.__class__.__name__, name, depth))
+                         (self.__class__.__name__, name, depth, parts))
     next = parts[depth]
     prop = self._properties.get(next)
     if prop is None:

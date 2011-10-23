@@ -82,7 +82,7 @@ def main():
   for cache_policy in (True, False):
     for memcache_policy in (True, False):
       for datastore_policy in (True, False):
-        if cache_policy == memcache_policy == datastore_policy == False:
+        if not (cache_policy or memcache_policy or datastore_policy):
           continue
         logger.info('c: %i mc: %i ds: %i', cache_policy, memcache_policy,
                     datastore_policy)

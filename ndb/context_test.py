@@ -314,8 +314,8 @@ class ContextTests(test_utils.NDBTest):
     self.ctx.set_datastore_policy(False)
 
     # Test get with warm cache
-    e1 = self.ctx.get(k1).get_result()
-    e2 = self.ctx.get(k2).get_result()
+    self.ctx.get(k1).get_result()
+    self.ctx.get(k2).get_result()
     eventloop.run()  # Wait for memcache RPCs to run
     # Neither is found in the empty namespace
     assertNone(memcache.get(mk1, namespace=''))
@@ -626,7 +626,7 @@ class ContextTests(test_utils.NDBTest):
       ent = model.Expando(key=key, bar=1)
       @tasklets.tasklet
       def callback():
-        key = yield ent.put_async()
+        yield ent.put_async()
         raise Exception('foo')
       yield self.ctx.transaction(callback)
     self.assertRaises(Exception, foo().check_success)
@@ -639,7 +639,7 @@ class ContextTests(test_utils.NDBTest):
       ent = model.Expando(key=key, bar=1)
       @tasklets.tasklet
       def callback():
-        key = yield ent.put_async()
+        yield ent.put_async()
         raise model.Rollback()
       yield self.ctx.transaction(callback)
     foo().check_success()
@@ -653,7 +653,7 @@ class ContextTests(test_utils.NDBTest):
       @tasklets.tasklet
       def callback():
         ctx = tasklets.get_context()
-        key = yield ctx.put(ent)
+        yield ctx.put(ent)
         taskqueue.add(url='/', transactional=True)
       yield self.ctx.transaction(callback)
     foo().check_success()
@@ -709,11 +709,11 @@ class ContextTests(test_utils.NDBTest):
     class Demo(object):
       @context.toplevel
       def method(self, arg):
-        return (tasklets.get_context(), arg)
+        return tasklets.get_context(), arg
 
       @context.toplevel
       def method2(self, **kwds):
-        return (tasklets.get_context(), kwds)
+        return tasklets.get_context(), kwds
     a = Demo()
     old_ctx = tasklets.get_context()
     ctx, arg = a.method(42)
@@ -930,14 +930,14 @@ class ContextTests(test_utils.NDBTest):
     foo().check_success()
 
   def testMemcacheLocking(self):
-    # See issue 66.
+    # See issue 66.  http://goo.gl/ANBns
     self.ctx.set_cache_policy(False)
 
     # Prepare: write some entity using Context.put().
     class EmptyModel(model.Model):
       pass
     key = model.Key(EmptyModel, 1)
-    keystr = self.ctx._memcache_prefix + key.urlsafe()
+    mkey = self.ctx._memcache_prefix + key.urlsafe()
     ent = EmptyModel(key=key)
     put_fut = self.ctx.put(ent)
 
@@ -949,12 +949,12 @@ class ContextTests(test_utils.NDBTest):
       eventloop.run0()
 
     # Verify that memcache now contains the special _LOCKED value.
-    val = memcache.get(keystr)
+    val = memcache.get(mkey)
     self.assertEqual(val, context._LOCKED)
 
     put_fut.check_success()
     # Verify that memcache _LOCKED value has been removed..
-    val = memcache.get(keystr)
+    val = memcache.get(mkey)
     self.assertEqual(val, None)
 
   def testMemcacheDefaultNamespaceBatching(self):
@@ -992,7 +992,7 @@ class ContextTests(test_utils.NDBTest):
       _use_cache = False
     e = Employee()
     k = e.put(use_memcache=False)
-    e2 = k.get(use_memcache=True)
+    k.get(use_memcache=True)
     eventloop.run()
     ks = self.ctx._memcache_prefix + k.urlsafe()
     v = memcache.get(ks)
@@ -1025,7 +1025,7 @@ class ContextTests(test_utils.NDBTest):
 
 
 class ContextFutureCachingTests(test_utils.NDBTest):
-  # See issue 62
+  # See issue 62.  http://goo.gl/5zLkK
 
   def setUp(self):
     super(ContextFutureCachingTests, self).setUp()

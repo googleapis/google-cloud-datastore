@@ -286,7 +286,8 @@ class KeyTests(test_utils.NDBTest):
     self.assertEqual(self.post_counter, 11,
                      'Post delete hooks not called on delete_multi')
 
-  def test_issue_58_delete(self):
+  def testNoDefaultDeleteCallback(self):
+    # See issue 58.  http://goo.gl/hPN6j
     ctx = tasklets.get_context()
     ctx.set_cache_policy(False)
     class EmptyModel(model.Model):
@@ -404,7 +405,8 @@ class KeyTests(test_utils.NDBTest):
     self.assertRaises(tasklets.Return, entity.key.get)
     self.assertRaises(tasklets.Return, entity.key.delete)
 
-  def test_issue_58_get(self):
+  def testNoDefaultGetCallback(self):
+    # See issue 58.  http://goo.gl/hPN6j
     ctx = tasklets.get_context()
     ctx.set_cache_policy(False)
     class EmptyModel(model.Model):

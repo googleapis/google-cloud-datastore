@@ -743,7 +743,6 @@ class SerialQueueFuture(Future):
       if self._full:
         if not self._done:
           raise RuntimeError('self._queue should be non-empty.')
-        err = None
         err = self.get_exception()
         if err is not None:
           tb = self.get_traceback()

@@ -8,7 +8,7 @@ uniquely designate a (possible) entity in the App Engine datastore:
 - a list of one or more (kind, id) pairs where kind is a string and id
   is either a string or an integer.
 
-The appication id must always be part of the key, but since most
+The application id must always be part of the key, but since most
 applications can only access their own entities, it defaults to the
 current application id and you rarely need to worry about it.  It must
 not be empty.
@@ -34,7 +34,7 @@ The id is either a string or an integer.  When the id is a string, the
 application is in control of how it assigns ids: For example, if you
 could use an email address as the id for Account entities.
 
-To use integer ids, you must let the datastore choose a uniqe id for
+To use integer ids, you must let the datastore choose a unique id for
 an entity when it is first inserted into the datastore.  You can set
 the id to None to represent the key for an entity that hasn't yet been
 inserted into the datastore.  The final key (including the assigned
@@ -45,8 +45,8 @@ A key for which the id of the last (kind, id) pair is set to None is
 called an incomplete key.  Such keys can only be used to insert
 entities into the datastore.
 
-A key with exactly one (kind, id) pair is called a toplevel key or a
-root key.  Toplevel keys are also used as entity groups, which play a
+A key with exactly one (kind, id) pair is called a top level key or a
+root key.  Top level keys are also used as entity groups, which play a
 role in transaction management.
 
 If there is more than one (kind, id) pair, all but the last pair
@@ -80,7 +80,7 @@ from google.appengine.datastore import entity_pb
 
 __all__ = ['Key']
 
-_MAX_LONG = 2L ** 63  # Use 2L, see issue 65
+_MAX_LONG = 2L ** 63  # Use 2L, see issue 65.  http://goo.gl/ELczz
 _MAX_KEYPART_BYTES = 500
 
 
@@ -120,7 +120,7 @@ class Key(object):
   If a Reference is passed (using one of reference, serialized or
   urlsafe), the args and namespace keywords must match what is already
   present in the Reference (after decoding if necessary).  The parent
-  keyword cannot be combined with a Refence in any form.
+  keyword cannot be combined with a Reference in any form.
 
 
   Keys are immutable, which means that a Key object cannot be modified
@@ -225,7 +225,7 @@ class Key(object):
     if flat:
       if pairs is not None:
         raise TypeError('Key() cannot accept both flat and pairs arguments.')
-      if len(flat) % 2 != 0:
+      if len(flat) % 2:
         raise ValueError('Key() must have an even number of positional '
                          'arguments.')
       pairs = [(flat[i], flat[i + 1]) for i in xrange(0, len(flat), 2)]
@@ -429,12 +429,12 @@ class Key(object):
       for elem in self.__reference.path().element_list():
         kind = elem.type()
         if elem.has_id():
-          idorname = elem.id()
+          id_or_name = elem.id()
         else:
-          idorname = elem.name()
-        if not idorname:
-          idorname = None
-        tup = (kind, idorname)
+          id_or_name = elem.name()
+        if not id_or_name:
+          id_or_name = None
+        tup = (kind, id_or_name)
         pairs.append(tup)
       self.__pairs = pairs = tuple(pairs)
     return pairs
@@ -560,7 +560,7 @@ def _ConstructReference(cls, pairs=None, flat=None,
                     'arguments.')
   if flat or pairs:
     if flat:
-      if len(flat) % 2 != 0:
+      if len(flat) % 2:
         raise TypeError('_ConstructReference() must have an even number of '
                         'positional arguments.')
       pairs = [(flat[i], flat[i + 1]) for i in xrange(0, len(flat), 2)]

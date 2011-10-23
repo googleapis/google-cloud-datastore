@@ -592,7 +592,6 @@ class TaskletTests(test_utils.NDBTest):
     @tasklets.tasklet
     def bad():
       raise ZeroDivisionError
-      yield tasklets.sleep(0)
     @tasklets.tasklet
     def foo():
       try:

@@ -310,7 +310,7 @@ class Node(object):
       eq = not eq
     return eq
 
-  def __unordered(self, other):
+  def __unordered(self, unused_other):
     raise TypeError('Nodes cannot be ordered')
   __le__ = __lt__ = __ge__ = __gt__ = __unordered
 
@@ -375,7 +375,7 @@ class FilterNode(Node):
     return self
 
   def _sort_key(self):
-    return (self.__name, self.__opsymbol, self.__value)
+    return self.__name, self.__opsymbol, self.__value
 
   def __repr__(self):
     return '%s(%r, %r, %r)' % (self.__class__.__name__,
@@ -1105,7 +1105,7 @@ def _make_options(q_options):
     # Move 'options' to 'config' since that is what QueryOptions() uses.
     if 'config' in q_options:
       raise TypeError('The options pertaining to a config option must be '
-                      'given independantly instead of using a config argument.')
+                      'given independently instead of using a config argument.')
     q_options['config'] = q_options.pop('options')
   return QueryOptions(**q_options)
 
@@ -1513,7 +1513,7 @@ class _MultiQuery(object):
 
 def _order_to_ordering(order):
   pb = order._to_pb()
-  return (pb.property(), pb.direction())  # TODO: What about UTF-8?
+  return pb.property(), pb.direction()  # TODO: What about UTF-8?
 
 
 def _orders_to_orderings(orders):

@@ -748,6 +748,7 @@ class ModelTests(test_utils.NDBTest):
       self.assertRaises(Exception,
                         model.StringProperty,
                         repeated=True, required=True, default='')
+    self.assertEqual('MyModel()', repr(MyModel()))
 
   def testBlobKeyProperty(self):
     class MyModel(model.Model):
@@ -2288,13 +2289,13 @@ class ModelTests(test_utils.NDBTest):
 
   def testOverrideModelKey(self):
     class MyModel(model.Model):
-      # key, overriden
+      # key, overridden
       key = model.StringProperty()
       # aha, here it is!
       real_key = model.ModelKey()
 
     class MyExpando(model.Expando):
-      # key, overriden
+      # key, overridden
       key = model.StringProperty()
       # aha, here it is!
       real_key = model.ModelKey()
@@ -2568,7 +2569,8 @@ class ModelTests(test_utils.NDBTest):
     future.get_result()
     self.assertEqual(self.post_counter, 1, 'Post allocate ids hook not called')
 
-  def test_issue_58_allocate_ids(self):
+  def testNoDefaultAllocateIdsCallback(self):
+    # See issue 58.  http://goo.gl/hPN6j
     ctx = tasklets.get_context()
     ctx.set_cache_policy(False)
     class EmptyModel(model.Model):
@@ -2673,7 +2675,8 @@ class ModelTests(test_utils.NDBTest):
     entity = HatStand()
     self.assertRaises(tasklets.Return, entity.put)
 
-  def test_issue_58_put(self):
+  def testNoDefaultPutCallback(self):
+    # See issue 58.  http://goo.gl/hPN6j
     ctx = tasklets.get_context()
     ctx.set_cache_policy(False)
     class EmptyModel(model.Model):
@@ -2738,13 +2741,14 @@ class CacheTests(test_utils.NDBTest):
     ctx.set_cache_policy(True)
     ctx.set_memcache_policy(True)
 
-  def test_issue_13(self):
+  def testCachedEntityKeyMatchesGetArg(self):
+    # See issue 13.  http://goo.gl/jxjOP
     class Employee(model.Model):
       pass
 
     e = Employee(key=model.Key(Employee, 'joe'))
     e.put()
-    e.key = model.Key(Employee, 'fred')
+    e._key = model.Key(Employee, 'fred')
 
     f = model.Key(Employee, 'joe').get()
 
@@ -2756,7 +2760,8 @@ class CacheTests(test_utils.NDBTest):
     # makes the test correct.
     self.assertEqual(f.key, model.Key(Employee, 'joe'))
 
-  def test_issue_57_cache(self):
+  def testTransactionalDeleteClearsCache(self):
+    # See issue 57.  http://goo.gl/bXkib
     class Employee(model.Model):
       pass
     ctx = tasklets.get_context()
@@ -2764,14 +2769,15 @@ class CacheTests(test_utils.NDBTest):
     ctx.set_memcache_policy(False)
     e = Employee()
     key = e.put()
-    e = key.get()  # Warm the cache
+    key.get()  # Warm the cache
     def trans():
       key.delete()
     model.transaction(trans)
     e = key.get()
     self.assertEqual(e, None)
 
-  def test_issue_57_memcache(self):
+  def testTransactionalDeleteClearsMemcache(self):
+    # See issue 57.  http://goo.gl/bXkib
     class Employee(model.Model):
       pass
     ctx = tasklets.get_context()
@@ -2779,7 +2785,7 @@ class CacheTests(test_utils.NDBTest):
     ctx.set_memcache_policy(True)
     e = Employee()
     key = e.put()
-    e = key.get()  # Warm the cache
+    key.get()  # Warm the cache
     def trans():
       key.delete()
     model.transaction(trans)

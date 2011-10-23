@@ -19,7 +19,7 @@ class MyPdb(pdb.Pdb):
       sys.stdout = save_stdout
       sys.stdin = save_stdin
 
-  def do_vars(self, arg):
+  def do_vars(self, unused_arg):
     for name, value in sorted(self.curframe.f_locals.iteritems()):
       print >>self.stdout, name, '=', repr(value)
   do_v = do_vars

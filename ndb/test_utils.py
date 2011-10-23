@@ -1,4 +1,4 @@
-"""Test utlities for writing NDB tests.
+"""Test utilities for writing NDB tests.
 
 Useful set of utilities for correctly setting up the appengine testing
 environment.  Functions and test-case base classes that configure stubs
