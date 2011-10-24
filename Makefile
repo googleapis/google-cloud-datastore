@@ -16,6 +16,8 @@ PYTHON= python -Wignore
 APPCFG= $(GAE)/appcfg.py
 DEV_APPSERVER=$(GAE)/dev_appserver.py
 
+default: runtests
+
 test:
 	for i in $(TESTS); \
 	do \
