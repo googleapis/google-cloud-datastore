@@ -1764,9 +1764,6 @@ class ComputedProperty(GenericProperty):
     super(ComputedProperty, self).__init__(*args, **kwargs)
     if self._required:
       raise TypeError('ComputedProperty %s cannot be required.' % self._name)
-    if self._repeated:
-      raise TypeError('ComputedProperty %s can be repeated. But there would be '
-                      'no point.' % self._name)
     if self._default is not None:
       raise TypeError('ComputedProperty %s cannot have a default.' % self._name)
     self._func = func

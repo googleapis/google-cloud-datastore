@@ -1780,6 +1780,23 @@ class ModelTests(test_utils.NDBTest):
     self.assertEqual(m.length, 6)
     self.assertEqual(m.computed_hash, hash('Foobar'))
 
+  def testComputedPropertyRepeated(self):
+    class StopWatch(model.Model):
+      start = model.IntegerProperty()
+      end = model.IntegerProperty()
+      int = model.ComputedProperty(lambda self: range(self.start, self.end),
+                                   repeated=True)
+    e = StopWatch(start=1, end=10)
+    self.assertEqual(e.int, [1, 2, 3, 4, 5, 6, 7, 8, 9])
+    k = e.put()
+    self.assertEqual(k.get().int, [1, 2, 3, 4, 5, 6, 7, 8, 9])
+
+    # Check that the computed property works when retrieved without cache
+    ctx = tasklets.get_context()
+    ctx.set_cache_policy(False)
+    ctx.set_memcache_policy(False)
+    self.assertEqual(k.get().int, [1, 2, 3, 4, 5, 6, 7, 8, 9])
+
   def testLargeValues(self):
     class Demo(model.Model):
       bytes = model.BlobProperty()
