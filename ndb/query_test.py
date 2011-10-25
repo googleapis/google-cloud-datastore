@@ -1,5 +1,6 @@
 """Tests for query.py."""
 
+import datetime
 import unittest
 
 from google.appengine.api import datastore_errors
@@ -190,6 +191,29 @@ class QueryTests(test_utils.NDBTest):
     for arg in ('a', 'b'), set(['a', 'b']), frozenset(['a', 'b']):
       q = Employee.query(Employee.name.IN(arg))
       self.assertEqual(list(q), [a, b])
+
+  def testInFilterWithNone(self):
+    class Employee(model.Model):
+      # Try a few different property types, to get a good mix of what
+      # used to fail.
+      name = model.StringProperty()
+      boss = model.KeyProperty()
+      age = model.IntegerProperty()
+      date = model.DateProperty()
+    a = Employee(name='a', age=42L)
+    a.put()
+    bosskey = model.Key(Employee, 'x')
+    b = Employee(boss=bosskey, date=datetime.date(1996, 1, 31))
+    b.put()
+    keys = set([a.key, b.key])
+    q1 = Employee.query(Employee.name.IN(['a', None]))
+    self.assertEqual(set(e.key for e in q1), keys)
+    q2 = Employee.query(Employee.boss.IN([bosskey, None]))
+    self.assertEqual(set(e.key for e in q2), keys)
+    q3 = Employee.query(Employee.age.IN([42, None]))
+    self.assertEqual(set(e.key for e in q3), keys)
+    q4 = Employee.query(Employee.date.IN([datetime.date(1996, 1, 31), None]))
+    self.assertEqual(set(e.key for e in q4), keys)
 
   def testQueryExceptions(self):
     q = Foo.query(Foo.name > '', Foo.rate > 0)

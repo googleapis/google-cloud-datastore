@@ -497,7 +497,7 @@ class Property(ModelAttribute):
     from .query import FilterNode  # Import late to avoid circular imports.
     if value is not None:
       # TODO: Allow query.Binding instances?
-      value = self._validate(value)
+      value = self._do_validate(value)
       value = self._datastore_type(value)
     return FilterNode(self._name, op, value)
 
@@ -549,10 +549,9 @@ class Property(ModelAttribute):
     values = []
     for val in value:
       if val is not None:
-        if val is not self._validate(val):
-          raise ValueError('Argument provided to %s IN filter is not valid %r' %
-                           (self._name, val))
-        values.append(val)
+        val = self._do_validate(val)
+        val = self._datastore_type(val)
+      values.append(val)
     return FilterNode(self._name, 'in', values)
   IN = _IN
 
@@ -1433,7 +1432,7 @@ class StructuredProperty(Property):
     # Import late to avoid circular imports.
     from .query import FilterNode, ConjunctionNode, PostFilterNode
     from .query import RepeatedStructuredPropertyPredicate
-    value = self._validate(value)  # None is not allowed!
+    value = self._do_validate(value)  # None is not allowed!
     filters = []
     match_keys = []
     # TODO: Why not just iterate over value._values?
