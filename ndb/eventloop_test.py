@@ -115,6 +115,22 @@ class EventLoopTests(test_utils.NDBTest):
     self.ev.run()
     self.assertEqual(counters, [2, 2, 1])
 
+  def testMultiRpcReadiness(self):
+    from . import key
+    k1 = key.Key('Foo', 1)
+    k2 = key.Key('Foo', 2)
+    r1 = self.conn.async_get(None, [k1])
+    r2 = self.conn.async_get(None, [k2])
+    rpc = datastore_rpc.MultiRpc([r1, r2])
+    r1.wait()
+    r2.wait()
+    calls = []
+    def callback():
+      calls.append(1)
+    eventloop.queue_rpc(rpc, callback)
+    eventloop.run()
+    self.assertEqual(calls, [1])
+
 def main():
   unittest.main()
 
