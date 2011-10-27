@@ -1765,6 +1765,7 @@ class ModelTests(test_utils.NDBTest):
       computed_hash = model.ComputedProperty(_compute_hash, name='hashcode')
 
     m = ComputedTest(name='Foobar')
+    m._prepare_for_put()
     pb = m._to_pb()
 
     for p in pb.property_list():
@@ -1796,6 +1797,18 @@ class ModelTests(test_utils.NDBTest):
     ctx.set_cache_policy(False)
     ctx.set_memcache_policy(False)
     self.assertEqual(k.get().cp, [1, 2, 3, 4, 5, 6, 7, 8, 9])
+
+  def testComputedPropertyInRepeatedStructuredProperty(self):
+    class Inner(model.Model):
+      arg = model.IntegerProperty()
+      comp1 = model.ComputedProperty(lambda ent: 1)
+      comp2 = model.ComputedProperty(lambda ent: 2)
+    class Outer(model.Model):
+      wrap = model.StructuredProperty(Inner, repeated=True)
+    orig = Outer(wrap=[Inner(arg=1), Inner(arg=2)])
+    key = orig.put()
+    copy = Outer.query().get()
+    self.assertEqual(copy, orig)
 
   def testLargeValues(self):
     class Demo(model.Model):

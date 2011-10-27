@@ -1767,20 +1767,16 @@ class ComputedProperty(GenericProperty):
       raise TypeError('ComputedProperty %s cannot have a default.' % self._name)
     self._func = func
 
-  def _has_value(self, unused_entity, unused_rest=None):
-    return True
-
-  def _store_value(self, entity, value):
+  def _set_value(self, entity, value):
     raise ComputedPropertyError("Cannot assign to a ComputedProperty")
 
-  def _delete_value(self, entity):
-    raise ComputedPropertyError("Cannot delete a ComputedProperty")
+  def _get_value(self, entity):
+    value = self._func(entity)
+    self._store_value(entity, value)
+    return value
 
-  def _retrieve_value(self, entity):
-    return self._func(entity)
-
-  def _deserialize(self, entity, p, depth=1):
-    pass
+  def _prepare_for_put(self, entity):
+    self._get_value(entity)
 
 
 class MetaModel(type):
