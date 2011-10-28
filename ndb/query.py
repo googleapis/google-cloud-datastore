@@ -489,7 +489,7 @@ class ConjunctionNode(Node):
     return iter(self.__nodes)
 
   def __repr__(self):
-    return 'OR(%s)' % (', '.join(map(str, self.__nodes)))
+    return 'AND(%s)' % (', '.join(map(str, self.__nodes)))
 
   def __eq__(self, other):
     if not isinstance(other, ConjunctionNode):
