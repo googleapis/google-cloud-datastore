@@ -1528,7 +1528,7 @@ class StructuredProperty(Property):
     parts = name.split('.')
     if len(parts) <= depth:
       raise RuntimeError('StructuredProperty %s expected to find properties '
-                         'seperated by periods at a depth of %i; received %r' %
+                         'separated by periods at a depth of %i; received %r' %
                          (self._name, depth, parts))
     next = parts[depth]
     rest = parts[depth + 1:]
@@ -2064,7 +2064,7 @@ class Model(object):
     name = p.name()
     parts = name.split('.')
     if len(parts) <= depth:
-      raise RuntimeError('Model %s expected to find property %s seperated by '
+      raise RuntimeError('Model %s expected to find property %s separated by '
                          'periods at a depth of %i; received %r' %
                          (self.__class__.__name__, name, depth, parts))
     next = parts[depth]
