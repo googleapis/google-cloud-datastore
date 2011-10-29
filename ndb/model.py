@@ -1439,6 +1439,7 @@ class StructuredProperty(Property):
     for name, prop in value._properties.iteritems():
       val = prop._retrieve_value(value)
       if val is not None:
+        val = prop._datastore_type(val)
         name = self._name + '.' + name
         filters.append(FilterNode(name, op, val))
         match_keys.append(name)

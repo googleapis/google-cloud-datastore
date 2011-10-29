@@ -325,6 +325,18 @@ class QueryTests(test_utils.NDBTest):
     res = list(q.iter(limit=1))
     self.assertEqual(res, [mgr_a])
 
+  def testQueryForWholeStructureCallsDatastoreType(self):
+    # See issue 87.  http://goo.gl/Tl5Ed
+    class Event(model.Model):
+      what = model.StringProperty()
+      when = model.DateProperty()  # Has non-trivial _datastore_type().
+    class Outer(model.Model):
+      who = model.StringProperty()
+      events = model.StructuredProperty(Event, repeated=True)
+    q = Outer.query(Outer.events == Event(what='stuff',
+                                          when=datetime.date.today()))
+    q.fetch()  # Failed before the fix.
+
   def testQueryAncestorConsistentWithAppId(self):
     class Employee(model.Model):
       pass
