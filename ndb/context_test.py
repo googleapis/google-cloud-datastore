@@ -620,6 +620,7 @@ class ContextTests(test_utils.NDBTest):
     foo().check_success()
 
   def testContext_TransactionException(self):
+    self.ExpectWarnings()
     key = model.Key('Foo', 1)
     @tasklets.tasklet
     def foo():
@@ -633,6 +634,7 @@ class ContextTests(test_utils.NDBTest):
     self.assertEqual(key.get(), None)
 
   def testContext_TransactionRollback(self):
+    self.ExpectWarnings()
     key = model.Key('Foo', 1)
     @tasklets.tasklet
     def foo():
@@ -646,6 +648,7 @@ class ContextTests(test_utils.NDBTest):
     self.assertEqual(key.get(), None)
 
   def testContext_TransactionAddTask(self):
+    self.ExpectWarnings()
     key = model.Key('Foo', 1)
     @tasklets.tasklet
     def foo():
@@ -659,6 +662,7 @@ class ContextTests(test_utils.NDBTest):
     foo().check_success()
 
   def testContext_TransactionXG(self):
+    self.ExpectWarnings()
     # The XG option only works on the HRD datastore
     ds_stub = self.testbed.get_stub('datastore_v3')
     hrd_policy = datastore_stub_util.BaseHighReplicationConsistencyPolicy()
@@ -769,6 +773,7 @@ class ContextTests(test_utils.NDBTest):
     self.assertTrue(tasklets.get_context() is old_ctx)
 
   def testKindError(self):
+    self.ExpectWarnings()
     ctx = context.Context()
     # If the cache is enabled, attempts to retrieve the object we just put will
     # be satisfied from the cache, so the adapter we're testing will never get
@@ -822,6 +827,7 @@ class ContextTests(test_utils.NDBTest):
                     'Memcache delete did block memcache set %r' % ent)
 
   def testMemcacheAPI(self):
+    self.ExpectErrors()
     @tasklets.tasklet
     def foo():
       ctx = tasklets.get_context()
@@ -999,7 +1005,8 @@ class ContextTests(test_utils.NDBTest):
     self.assertTrue(isinstance(v, str))
 
   def testCorruptMemcache(self):
-    """Check that corrupt memcache entries silently fail."""
+    # Check that corrupt memcache entries silently fail.
+    self.ExpectWarnings()
     self.ctx.set_cache_policy(False)
 
     # Create a simple entity/key

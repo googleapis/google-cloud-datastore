@@ -97,6 +97,7 @@ class QueryTests(test_utils.NDBTest):
     self.assertEqual(results[2][2], self.moe)
 
   def testRunToQueueError(self):
+    self.ExpectWarnings()
     qry = Foo.query(Foo.name > '', Foo.rate > 0)
     queue = tasklets.MultiFuture()
     fut = qry.run_to_queue(queue, self.conn)
@@ -148,6 +149,7 @@ class QueryTests(test_utils.NDBTest):
                        query.FilterNode('rank', '>', 5)))
 
   def testEmptyInFilter(self):
+    self.ExpectWarnings()
     class Employee(model.Model):
       name = model.StringProperty()
     for arg in [], (), set(), frozenset():
@@ -216,6 +218,7 @@ class QueryTests(test_utils.NDBTest):
     self.assertEqual(set(e.key for e in q4), keys)
 
   def testQueryExceptions(self):
+    self.ExpectWarnings()
     q = Foo.query(Foo.name > '', Foo.rate > 0)
     f = q.fetch_async()
     self.assertRaises(datastore_errors.BadRequestError, f.check_success)
@@ -688,7 +691,7 @@ class QueryTests(test_utils.NDBTest):
     self.assertEqual(q.count(keys_only=True), 2)
 
   def testMultiQueryCursors(self):
-    # NOTE: This test will fail with SDK 1.5.0.  Please upgrade to 1.5.1.
+    self.ExpectWarnings()
     q = Foo.query(Foo.tags.IN(['joe', 'jill']))
     self.assertRaises(datastore_errors.BadArgumentError, q.fetch_page, 1)
     q = q.order(Foo.tags)

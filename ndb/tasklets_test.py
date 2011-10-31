@@ -121,10 +121,8 @@ class TaskletTests(test_utils.NDBTest):
     self.assertEqual(self.log, [(f,) for f in self.futs])
 
   def testSleep(self):
-    """Ensure that tasklets sleep for the specified amount of time.
-
-    NOTE: May sleep too long if processor usage is high.
-    """
+    # Ensure that tasklets sleep for the specified amount of time.
+    # NOTE: May sleep too long if processor usage is high.
     log = []
     @tasklets.tasklet
     def foo():
@@ -542,6 +540,7 @@ class TaskletTests(test_utils.NDBTest):
     self.assertEqual(y, 5)
 
   def testTasklets_Raising(self):
+    self.ExpectWarnings()
     @tasklets.tasklet
     def t1():
       f = t2(True)
@@ -602,6 +601,7 @@ class TaskletTests(test_utils.NDBTest):
     foo().check_success()
 
   def testTasklet_YieldTupleTypeError(self):
+    self.ExpectWarnings()
     @tasklets.tasklet
     def good():
       yield tasklets.sleep(0)
@@ -643,6 +643,7 @@ class TracebackTests(test_utils.NDBTest):
   """Checks that errors result in reasonable tracebacks."""
 
   def testBasicError(self):
+    self.ExpectWarnings()
     frames = [sys._getframe()]
     @tasklets.tasklet
     def level3():

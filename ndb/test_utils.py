@@ -7,7 +7,6 @@ and other environment variables.
 
 import logging
 import unittest
-import sys
 
 from google.appengine.ext import testbed
 
@@ -47,8 +46,17 @@ class NDBTest(unittest.TestCase):
 
     self._logger = logging.getLogger()
     self._old_log_level = self._logger.getEffectiveLevel()
-    if not any(arg.startswith('-v') for arg in sys.argv[1:]):
+
+  def ExpectErrors(self):
+    if self.DefaultLogging():
       self._logger.setLevel(logging.CRITICAL)
+
+  def ExpectWarnings(self):
+    if self.DefaultLogging():
+      self._logger.setLevel(logging.ERROR)
+
+  def DefaultLogging(self):
+    return self._old_log_level == logging.WARNING
 
   def tearDown(self):
     """Tear down test framework."""
