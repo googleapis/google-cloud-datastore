@@ -639,7 +639,7 @@ class TaskletTests(test_utils.NDBTest):
 
     foo().get_result()
 
-class TracebackTests(unittest.TestCase):
+class TracebackTests(test_utils.NDBTest):
   """Checks that errors result in reasonable tracebacks."""
 
   def testBasicError(self):
