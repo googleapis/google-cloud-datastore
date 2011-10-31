@@ -1439,10 +1439,10 @@ class StructuredProperty(Property):
     for name, prop in value._properties.iteritems():
       val = prop._retrieve_value(value)
       if val is not None:
-        val = prop._datastore_type(val)
-        name = self._name + '.' + name
-        filters.append(FilterNode(name, op, val))
-        match_keys.append(name)
+        altprop = getattr(self, prop._code_name)
+        filt = altprop._comparison(op, val)
+        filters.append(filt)
+        match_keys.append(altprop._name)
     if not filters:
       raise datastore_errors.BadFilterError(
         'StructuredProperty filter without any values')

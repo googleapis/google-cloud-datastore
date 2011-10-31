@@ -340,6 +340,20 @@ class QueryTests(test_utils.NDBTest):
                                           when=datetime.date.today()))
     q.fetch()  # Failed before the fix.
 
+  def testQueryForWholeNestedStructure(self):
+    class A(model.Model):
+      a1 = model.StringProperty()
+      a2 = model.StringProperty()
+    class B(model.Model):
+      b1 = model.StructuredProperty(A)
+      b2 = model.StructuredProperty(A)
+    class C(model.Model):
+      c = model.StructuredProperty(B)
+    x = C(c=B(b1=A(a1='a1', a2='a2'), b2=A(a1='a3', a2='a4')))
+    x.put()
+    q = C.query(C.c == x.c)
+    self.assertEqual(q.get(), x)
+
   def testQueryAncestorConsistentWithAppId(self):
     class Employee(model.Model):
       pass
