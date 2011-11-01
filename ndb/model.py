@@ -1430,13 +1430,13 @@ class StructuredProperty(Property):
       raise datastore_errors.BadFilterError(
         'StructuredProperty filter can only use ==')
     # Import late to avoid circular imports.
-    from .query import FilterNode, ConjunctionNode, PostFilterNode
+    from .query import ConjunctionNode, PostFilterNode
     from .query import RepeatedStructuredPropertyPredicate
     value = self._do_validate(value)  # None is not allowed!
     filters = []
     match_keys = []
     # TODO: Why not just iterate over value._values?
-    for name, prop in value._properties.iteritems():
+    for prop in self._modelclass._properties.itervalues():
       val = prop._retrieve_value(value)
       if val is not None:
         altprop = getattr(self, prop._code_name)
