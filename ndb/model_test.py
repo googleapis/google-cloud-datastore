@@ -1781,6 +1781,13 @@ class ModelTests(test_utils.NDBTest):
     self.assertEqual(m.length, 6)
     self.assertEqual(m.computed_hash, hash('Foobar'))
 
+    func = lambda unused_ent: None
+    self.assertRaises(TypeError, model.ComputedProperty, func,
+                      choices=('foo', 'bar'))
+    self.assertRaises(TypeError, model.ComputedProperty, func, default='foo')
+    self.assertRaises(TypeError, model.ComputedProperty, func, required=True)
+    self.assertRaises(TypeError, model.ComputedProperty, func, validator=func)
+
   def testComputedPropertyRepeated(self):
     class StopWatch(model.Model):
       start = model.IntegerProperty()

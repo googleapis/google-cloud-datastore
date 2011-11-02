@@ -1754,18 +1754,15 @@ class ComputedProperty(GenericProperty):
   ...   hash = ComputedProperty(_compute_hash, name='sha1')
   """
 
-  def __init__(self, func, *args, **kwargs):
+  def __init__(self, func, name=None, indexed=None, repeated=None):
     """Constructor.
 
     Args:
       func: A function that takes one argument, the model instance, and returns
             a calculated value.
     """
-    super(ComputedProperty, self).__init__(*args, **kwargs)
-    if self._required:
-      raise TypeError('ComputedProperty %s cannot be required.' % self._name)
-    if self._default is not None:
-      raise TypeError('ComputedProperty %s cannot have a default.' % self._name)
+    super(ComputedProperty, self).__init__(name=name, indexed=indexed,
+                                           repeated=repeated)
     self._func = func
 
   def _set_value(self, entity, value):
