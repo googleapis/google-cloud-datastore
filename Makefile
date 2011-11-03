@@ -15,6 +15,7 @@ ADDRESS=localhost
 PYTHON= python -Wignore
 APPCFG= $(GAE)/appcfg.py
 DEV_APPSERVER=$(GAE)/dev_appserver.py
+CUSTOM=	custom
 
 default: runtests
 
@@ -107,5 +108,5 @@ s stress:
 race:
 	PYTHONPATH=$(GAEPATH):. $(PYTHON) race.py $(FLAGS)
 
-custom:
-	PYTHONPATH=$(GAEPATH):. $(PYTHON) custom.py $(FLAGS)
+$(CUSTOM):
+	PYTHONPATH=$(GAEPATH):. $(PYTHON) $(CUSTOM).py $(FLAGS)
