@@ -703,7 +703,7 @@ class ContextTests(test_utils.NDBTest):
     @tasklets.tasklet
     def foo():
       parent = model.Key(flat=('Foo', 1))
-      ent = yield self.ctx.get_or_insert(Mod, 'a', parent=parent, data='hello')
+      ent = yield self.ctx.get_or_insert(Mod, 'a', _parent=parent, data='hello')
       self.assertTrue(isinstance(ent, Mod))
       ent2 = yield self.ctx.get_or_insert(Mod, 'a', parent=parent, data='hello')
       self.assertEqual(ent2, ent)

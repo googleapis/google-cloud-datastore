@@ -2217,7 +2217,7 @@ class Model(object):
   put_async = _put_async
 
   @classmethod
-  def _get_or_insert(cls, name, parent=None, context_options=None, **kwds):
+  def _get_or_insert(*args, **kwds):
     """Transactionally retrieves an existing entity or creates a new one.
 
     Args:
@@ -2233,22 +2233,19 @@ class Model(object):
       Existing instance of Model class with the specified key name and parent
       or a new one that has just been created.
     """
-    return cls._get_or_insert_async(name=name, parent=parent,
-                                    context_options=context_options,
-                                    **kwds).get_result()
+    cls, args = args[0], args[1:]
+    return cls._get_or_insert_async(*args, **kwds).get_result()
   get_or_insert = _get_or_insert
 
   @classmethod
-  def _get_or_insert_async(cls, name, parent=None, context_options=None,
-                           **kwds):
+  def _get_or_insert_async(*args, **kwds):
     """Transactionally retrieves an existing entity or creates a new one.
 
     This is the asynchronous version of Model._get_or_insert().
     """
     from . import tasklets
     ctx = tasklets.get_context()
-    return ctx.get_or_insert(cls, name=name, parent=parent,
-                             context_options=context_options, **kwds)
+    return ctx.get_or_insert(*args, **kwds)
   get_or_insert_async = _get_or_insert_async
 
   @classmethod

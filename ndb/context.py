@@ -844,10 +844,26 @@ class Context(object):
     yield futures
 
   @tasklets.tasklet
-  def get_or_insert(self, model_class, name,
-                    app=None, namespace=None, parent=None,
-                    context_options=None,
-                    **kwds):
+  def get_or_insert(*args, **kwds):
+    # NOTE: The signature is really weird here because we want to support
+    # models with properties named e.g. 'self' or 'name'.
+    self, model_class, name = args  # These must always be positional.
+    our_kwds = {}
+    for kwd in 'app', 'namespace', 'parent', 'context_options':
+      # For each of these keyword arguments, if there is a property
+      # with the same name, the caller *must* use _foo=..., otherwise
+      # they may use either _foo=... or foo=..., but _foo=... wins.
+      alt_kwd = '_' + kwd
+      if alt_kwd in kwds:
+        our_kwds[kwd] = kwds.pop(alt_kwd)
+      elif (kwd in kwds and
+          not isinstance(getattr(model_class, kwd, None), model.Property)):
+        our_kwds[kwd] = kwds.pop(kwd)
+    app = our_kwds.get('app')
+    namespace = our_kwds.get('namespace')
+    parent = our_kwds.get('parent')
+    context_options = our_kwds.get('context_options')
+    # (End of super-special argument parsing.)
     # TODO: Test the heck out of this, in all sorts of evil scenarios.
     if not isinstance(name, basestring):
       raise TypeError('name must be a string; received %r' % name)
