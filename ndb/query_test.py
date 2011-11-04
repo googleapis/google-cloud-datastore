@@ -223,6 +223,37 @@ class QueryTests(test_utils.NDBTest):
     f = q.fetch_async()
     self.assertRaises(datastore_errors.BadRequestError, f.check_success)
 
+  def testQueryUnindexedFails(self):
+    # Shouldn't be able to query for unindexed properties
+    class SubModel(model.Model):
+      booh = model.IntegerProperty(indexed=False)
+    class Emp(model.Model):
+      name = model.StringProperty()
+      text = model.TextProperty()
+      blob = model.BlobProperty()
+      sub = model.StructuredProperty(SubModel)
+      struct = model.StructuredProperty(Foo, indexed=False)
+      local = model.LocalStructuredProperty(Foo)
+    Emp.query(Emp.name == 'a').fetch()  # Should pass
+    self.assertRaises(datastore_errors.BadFilterError,
+                      lambda: Emp.text == 'a')
+    self.assertRaises(datastore_errors.BadFilterError,
+                      lambda: Emp.text.IN(['a', 'b']))
+    self.assertRaises(datastore_errors.BadFilterError,
+                      lambda: Emp.blob == 'a')
+    self.assertRaises(datastore_errors.BadFilterError,
+                      lambda: Emp.sub == SubModel(booh=42))
+    self.assertRaises(datastore_errors.BadFilterError,
+                      lambda: Emp.sub.booh == 42)
+    self.assertRaises(datastore_errors.BadFilterError,
+                      lambda: Emp.struct == Foo(name='a'))
+    # TODO: Make this fail?  See issue 89.  http://goo.gl/K4gbY
+    # Currently StructuredProperty(..., indexed=False) has no effect.
+    ## self.assertRaises(datastore_errors.BadFilterError,
+    ##                   lambda: Emp.struct.name == 'a')
+    self.assertRaises(datastore_errors.BadFilterError,
+                      lambda: Emp.local == Foo(name='a'))
+
   def testFilterRepr(self):
     class Employee(model.Model):
       name = model.StringProperty()
@@ -265,6 +296,19 @@ class QueryTests(test_utils.NDBTest):
     self.assertEqual(q2.fetch(10), [b2, b3])
     q3 = q2.order(Bar.foo.rate, -Bar.foo.name, +Bar.foo.rate)
     self.assertEqual(q3.fetch(10), [b3, b2])
+
+  def testQueryForStructuredPropertyErrors(self):
+    class Bar(model.Model):
+      name = model.StringProperty()
+      foo = model.StructuredProperty(Foo)
+    # Can't use inequalities.
+    self.assertRaises(datastore_errors.BadFilterError,
+                      lambda: Bar.foo < Foo())
+    self.assertRaises(datastore_errors.BadFilterError,
+                      lambda: Bar.foo != Foo())
+    # Can't use an empty value.
+    self.assertRaises(datastore_errors.BadFilterError,
+                      lambda: Bar.foo == Foo())
 
   def testQueryForStructuredPropertyIn(self):
     self.ExpectWarnings()

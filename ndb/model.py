@@ -494,6 +494,9 @@ class Property(ModelAttribute):
     Returns:
       A FilterNode instance representing the requested comparison.
     """
+    if not self._indexed:
+      raise datastore_errors.BadFilterError(
+        'Cannot query for unindexed property %s' % self._name)
     from .query import FilterNode  # Import late to avoid circular imports.
     if value is not None:
       # TODO: Allow query.Binding instances?
@@ -542,6 +545,9 @@ class Property(ModelAttribute):
     as .IN(); ._IN() is provided for the case you have a
     StructuredProperty with a model that has a Property named IN.
     """
+    if not self._indexed:
+      raise datastore_errors.BadFilterError(
+        'Cannot query for unindexed property %s' % self._name)
     from .query import FilterNode  # Import late to avoid circular imports.
     if not isinstance(value, (list, tuple, set, frozenset)):
       raise datastore_errors.BadArgumentError(
@@ -1427,6 +1433,9 @@ class StructuredProperty(Property):
     if op != '=':
       raise datastore_errors.BadFilterError(
         'StructuredProperty filter can only use ==')
+    if not self._indexed:
+      raise datastore_errors.BadFilterError(
+        'Cannot query for unindexed StructuredProperty %s' % self._name)
     # Import late to avoid circular imports.
     from .query import ConjunctionNode, PostFilterNode
     from .query import RepeatedStructuredPropertyPredicate
