@@ -1425,8 +1425,6 @@ class StructuredProperty(Property):
 
   def _comparison(self, op, value):
     if op != '=':
-      # TODO: 'in' might actually work.  But maybe it's been expanded
-      # already before we get here?
       raise datastore_errors.BadFilterError(
         'StructuredProperty filter can only use ==')
     # Import late to avoid circular imports.
@@ -1454,6 +1452,22 @@ class StructuredProperty(Property):
                                                  self._name + '.')
       filters.append(PostFilterNode(pred))
     return ConjunctionNode(*filters)
+
+  def _IN(self, value):
+    if not isinstance(value, (list, tuple, set, frozenset)):
+      raise datastore_errors.BadArgumentError(
+        'Expected list, tuple or set, got %r' % (value,))
+    from .query import DisjunctionNode, FalseNode
+    # Expand to a series of == filters.
+    filters = [self._comparison('=', val) for val in value]
+    if not filters:
+      # DisjunctionNode doesn't like an empty list of filters.
+      # Running the query will still fail, but this matches the
+      # behavior of IN for regular properties.
+      return FalseNode()
+    else:
+      return DisjunctionNode(*filters)
+  IN = _IN
 
   def _validate(self, value):
     if not isinstance(value, self._modelclass):

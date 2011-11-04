@@ -266,6 +266,30 @@ class QueryTests(test_utils.NDBTest):
     q3 = q2.order(Bar.foo.rate, -Bar.foo.name, +Bar.foo.rate)
     self.assertEqual(q3.fetch(10), [b3, b2])
 
+  def testQueryForStructuredPropertyIn(self):
+    self.ExpectWarnings()
+    class Bar(model.Model):
+      name = model.StringProperty()
+      foo = model.StructuredProperty(Foo)
+    a = Bar(name='a', foo=Foo(name='a'))
+    a.put()
+    b = Bar(name='b', foo=Foo(name='b'))
+    b.put()
+    self.assertEqual(
+      Bar.query(Bar.foo.IN((Foo(name='a'), Foo(name='b')))).fetch(),
+      [a, b])
+    self.assertEqual(Bar.query(Bar.foo.IN([Foo(name='a')])).fetch(), [a])
+    # An IN query with empty argument can be constructed but not executed.
+    q = Bar.query(Bar.foo.IN(set()))
+    self.assertRaises(datastore_errors.BadQueryError, q.fetch)
+    # Passing a non-sequence argument should fail.
+    self.assertRaises(datastore_errors.BadArgumentError,
+                      Bar.foo.IN, 42)
+    self.assertRaises(datastore_errors.BadArgumentError,
+                      Bar.foo.IN, None)
+    self.assertRaises(datastore_errors.BadArgumentError,
+                      Bar.foo.IN, 'not a sequence')
+
   def testQueryForNestedStructuredProperty(self):
     class Bar(model.Model):
       name = model.StringProperty()
