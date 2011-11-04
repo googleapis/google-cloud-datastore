@@ -54,6 +54,12 @@ runtests:
 	PYTHONPATH=$(GAEPATH):. $(PYTHON) runtests.py $(FLAGS)
 
 c cov cove cover coverage:
+	PYTHONPATH=$(GAEPATH):. coverage run runtests.py $(FLAGS)
+	coverage html $(NONTESTS)
+	coverage report -m $(NONTESTS)
+	echo "open file://`pwd`/htmlcov/index.html"
+
+oldcoverage:
 	coverage erase
 	for i in $(TESTS); \
 	do \
