@@ -2467,11 +2467,15 @@ class ModelTests(test_utils.NDBTest):
         # dummy
         return value
 
-      def _serialize_value(self, value):
-        return value.__repr__()
+      def _to_bot(self, value):
+        if not isinstance(value, str):
+          value = value.__repr__()
+        return value
 
-      def _deserialize_value(self, value):
-        return eval(value)
+      def _to_top(self, value):
+        if isinstance(value, str):
+          value = eval(value)
+        return value
 
     class M(model.Model):
       p1 = ReprProperty()
