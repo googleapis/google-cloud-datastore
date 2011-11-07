@@ -1684,8 +1684,11 @@ class StructuredProperty(Property):
       subentity = self._retrieve_value(entity)
       if subentity is None:
         subentity = self._modelclass()
+        subentity = _Bottom(subentity)
         self._store_value(entity, subentity)
       cls = self._modelclass
+      if isinstance(subentity, _Bottom):
+        subentity = subentity.val
       if not isinstance(subentity, cls):
         raise RuntimeError('Cannot deserialize StructuredProperty %s; value '
                            'retrieved not a %s instance %r' %
@@ -1718,6 +1721,8 @@ class StructuredProperty(Property):
     # Find the first subentity that doesn't have a value for this
     # property yet.
     for sub in values:
+      if isinstance(sub, _Bottom):
+        sub = sub.val
       if not isinstance(sub, self._modelclass):
         raise TypeError('sub-entities must be instances of their Model class.')
       if not prop._has_value(sub, rest):
@@ -1725,7 +1730,7 @@ class StructuredProperty(Property):
         break
     else:
       subentity = self._modelclass()
-      values.append(subentity)
+      values.append(_Bottom(subentity))
     prop._deserialize(subentity, p, depth + 1)
 
   def _prepare_for_put(self, entity):
