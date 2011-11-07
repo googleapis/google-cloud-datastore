@@ -167,10 +167,8 @@ class CustomProperty(StructuredProperty):
       value = newvalue
     return value
 
-  def _validate(self, value):
-    if isinstance(value, Flexidate):
-      return value
-    return super(CustomProperty, self)._validate(value)
+  # TODO: Not sure what _validate() should do here, since we don't
+  # have a type to check for, only a 'constructor' function.
 
 
 class FlexidateProperty(CustomProperty):
@@ -188,6 +186,11 @@ class FlexidateProperty(CustomProperty):
   def __repr__(self):
     return ('FlexidateProperty(%r, %r, %r)' %
             (self._name, self._repeated, self._indexed))
+
+  def _validate(self, value):
+    if not isinstance(value, Flexidate):
+      raise TypeError('expected Flexidate, got %r' % (value,))
+    return value
 
 
 class Actor(Model):

@@ -787,17 +787,18 @@ class Property(ModelAttribute):
 
   def _call_to_bot(self, value):
     """XXX"""
-    methods = self._find_methods('_to_bot')
+    methods = self._find_methods('_validate', '_to_bot')
     call = self._apply_list(methods)
     return call(value)
 
-  def _find_methods(self, name):
+  def _find_methods(self, *names):
     """XXX"""
     methods = []
     for cls in self.__class__.__mro__:
-      method = cls.__dict__.get(name)
-      if method is not None:
-        methods.append(method)
+      for name in names:
+        method = cls.__dict__.get(name)
+        if method is not None:
+          methods.append(method)
     return methods
 
   def _apply_list(self, methods):
@@ -890,10 +891,6 @@ class Property(ModelAttribute):
       if val is not None:
         assert isinstance(val, _Bottom), repr(val)
         val = val.val
-      if self._repeated:
-        # Re-validate repeated values, since the user could have
-        # appended values to the list, bypassing validation.
-        val = self._do_validate(val)
       if self._indexed:
         p = pb.add_property()
       else:
@@ -1177,11 +1174,10 @@ class TextProperty(CompressedPropertyMixin, StringProperty):
     self._compressed = compressed
 
   def _validate(self, value):
-    if self._compressed and isinstance(value, _CompressedValue):
-      # A compressed value came from datastore and wasn't accessed, so it
-      # doesn't require validation.
-      return value
-    return super(TextProperty, self)._validate(value)
+    if not isinstance(value, basestring):
+      raise datastore_errors.BadValueError('Expected string, got %r' %
+                                           (value,))
+    return value
 
   def _db_set_value(self, v, p, value):
     if isinstance(value, _CompressedValue):
@@ -1477,12 +1473,16 @@ def _time_to_datetime(value):
 class DateProperty(DateTimeProperty):
   """A Property whose value is a date object."""
 
-  def _datastore_type(self, value):
+  def _to_top(self, value):
+    assert isinstance(value, datetime.datetime), repr(value)
+    return value.date()
+
+  def _to_bot(self, value):
+    assert isinstance(value, datetime.date), repr(value)
     return _date_to_datetime(value)
 
   def _validate(self, value):
-    if (not isinstance(value, datetime.date) or
-        isinstance(value, datetime.datetime)):
+    if not isinstance(value, datetime.date):
       raise datastore_errors.BadValueError('Expected date, got %r' %
                                            (value,))
     return value
@@ -1490,21 +1490,16 @@ class DateProperty(DateTimeProperty):
   def _now(self):
     return datetime.date.today()
 
-  def _db_set_value(self, v, p, value):
-    value = _date_to_datetime(value)
-    super(DateProperty, self)._db_set_value(v, p, value)
-
-  def _db_get_value(self, v, p):
-    value = super(DateProperty, self)._db_get_value(v, p)
-    if value is not None:
-      value = value.date()
-    return value
-
 
 class TimeProperty(DateTimeProperty):
   """A Property whose value is a time object."""
 
-  def _datastore_type(self, value):
+  def _to_top(self, value):
+    assert isinstance(value, datetime.datetime), repr(value)
+    return value.time()
+
+  def _to_bot(self, value):
+    assert isinstance(value, datetime.time), repr(value)
     return _time_to_datetime(value)
 
   def _validate(self, value):
@@ -1515,16 +1510,6 @@ class TimeProperty(DateTimeProperty):
 
   def _now(self):
     return datetime.datetime.now().time()
-
-  def _db_set_value(self, v, p, value):
-    value = _time_to_datetime(value)
-    super(TimeProperty, self)._db_set_value(v, p, value)
-
-  def _db_get_value(self, v, p):
-    value = super(TimeProperty, self)._db_get_value(v, p)
-    if value is not None:
-      value = value.time()
-    return value
 
 
 class StructuredProperty(Property):
@@ -1775,9 +1760,10 @@ class LocalStructuredProperty(BlobProperty):
     self._modelclass = modelclass
 
   def _validate(self, value):
-    if isinstance(value, self._modelclass):
-      return value
-    return super(LocalStructuredProperty, self)._validate(value)
+    if not isinstance(value, self._modelclass):
+      import pdb; pdb.set_trace()
+      raise TypeError('XXX')
+    return value
 
   def _to_top(self, value):
     if not isinstance(value, self._modelclass):
