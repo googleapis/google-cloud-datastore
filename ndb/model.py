@@ -950,8 +950,7 @@ class Property(ModelAttribute):
     if self._repeated:
       if self._has_value(entity):
         value = self._retrieve_value(entity)
-        if not isinstance(value, list):
-          value = [value]
+        assert isinstance(value, list)
         value.append(val)
       else:
         value = [val]
@@ -1619,8 +1618,7 @@ class StructuredProperty(Property):
       subentity = self._retrieve_value(entity)
       if subentity is None:
         subentity = self._modelclass()
-        subentity = _Bottom(subentity)
-        self._store_value(entity, subentity)
+        self._store_value(entity, _Bottom(subentity))
       cls = self._modelclass
       if isinstance(subentity, _Bottom):
         subentity = subentity.bot_val
