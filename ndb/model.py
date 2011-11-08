@@ -449,6 +449,7 @@ class Property(ModelAttribute):
     if required is not None:
       self._required = required
     if default is not None:
+      # TODO: Call _validate() on default?
       self._default = default
     if (bool(self._repeated) +
         bool(self._required) +
@@ -458,6 +459,7 @@ class Property(ModelAttribute):
       if not isinstance(choices, (list, tuple, set, frozenset)):
         raise TypeError('choices must be a list, tuple or set; received %r' %
                         choices)
+      # TODO: Call _validate() on each choice?
       self._choices = frozenset(choices)
     if validator is not None:
       # The validator is called as follows:
@@ -693,13 +695,14 @@ class Property(ModelAttribute):
     """Internal helper to ask if the entity has a value for this Property."""
     return self._name in entity._values
 
-  def _retrieve_value(self, entity):
+  def _retrieve_value(self, entity, default=None):
     """Internal helper to retrieve the value for this Property from an entity.
 
-    This returns None if no value is set.  For a repeated Property
-    this returns a list if a value is set, otherwise None.
+    This returns None if no value is set, or the default argument if
+    given.  For a repeated Property this returns a list if a value is
+    set, otherwise None.
     """
-    return entity._values.get(self._name, self._default)
+    return entity._values.get(self._name, default)
 
   """Temporary docs for top/bot APIs.
 
@@ -842,7 +845,7 @@ class Property(ModelAttribute):
 
   def _apply_to_values(self, entity, function):
     """XXX"""
-    value = self._retrieve_value(entity)
+    value = self._retrieve_value(entity, self._default)
     if self._repeated:
       if value is None:
         value = []
@@ -1346,6 +1349,7 @@ class DateTimeProperty(Property):
   @datastore_rpc._positional(1 + Property._positional)
   def __init__(self, name=None, auto_now=False, auto_now_add=False, **kwds):
     super(DateTimeProperty, self).__init__(name=name, **kwds)
+    # TODO: Disallow combining auto_now* and default?
     if self._repeated:
       if auto_now:
         raise ValueError('DateTimeProperty %s could use auto_now and be '
@@ -1366,7 +1370,7 @@ class DateTimeProperty(Property):
 
   def _prepare_for_put(self, entity):
     if (self._auto_now or
-        (self._auto_now_add and self._retrieve_value(entity) is None)):
+        (self._auto_now_add and not self._has_value(entity))):
       value = self._now()
       self._store_value(entity, value)
 
@@ -1648,14 +1652,16 @@ class StructuredProperty(Property):
     values = self._retrieve_value(entity)
     if values is None:
       values = []
-    elif not isinstance(values, list):
-      values = [values]
-    self._store_value(entity, values)
+      self._store_value(entity, values)
+    else:
+      assert isinstance(values, list)
     # Find the first subentity that doesn't have a value for this
     # property yet.
     for sub in values:
       if isinstance(sub, _Bottom):
         sub = sub.bot_val
+      else:
+        assert sub is None
       if not isinstance(sub, self._modelclass):
         raise TypeError('sub-entities must be instances of their Model class.')
       if not prop._has_value(sub, rest):
@@ -1889,7 +1895,7 @@ class ComputedProperty(GenericProperty):
     return value
 
   def _prepare_for_put(self, entity):
-    self._get_value(entity)
+    self._get_value(entity)  # For its side effects.
 
 
 class MetaModel(type):
