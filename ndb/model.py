@@ -1104,7 +1104,7 @@ class BlobProperty(Property):
 
   def _to_bot(self, value):
     if self._compressed:
-      return _CompressedValue(zlib.compress(value))  # Makes a copy.
+      return _CompressedValue(zlib.compress(value))
 
   def _validate(self, value):
     # TODO: Enforce size limit when indexed.
@@ -1119,31 +1119,31 @@ class BlobProperty(Property):
 
   def _db_set_value(self, v, p, value):
     if isinstance(value, _CompressedValue):
-      self._db_set_compressed_value(v, p, value)
+      self._db_set_compressed_meaning(p)
+      value = value.val
     else:
-      self._db_set_uncompressed_value(v, p, value)
+      self._db_set_uncompressed_meaning(p)
+    v.set_stringvalue(value)
 
-  def _db_set_compressed_value(self, v, p, value):
+  def _db_set_compressed_meaning(self, p):
     # Use meaning_uri because setting meaning to something else that is not
     # BLOB or BYTESTRING will cause the value to be decoded from utf-8 in
     # datastore_types.FromPropertyPb. That would break the compressed string.
     p.set_meaning_uri(_MEANING_URI_COMPRESSED)
     p.set_meaning(entity_pb.Property.BLOB)
-    v.set_stringvalue(value.val)
 
-  def _db_set_uncompressed_value(self, v, p, value):
+  def _db_set_uncompressed_meaning(self, p):
     if self._indexed:
       p.set_meaning(entity_pb.Property.BYTESTRING)
     else:
       p.set_meaning(entity_pb.Property.BLOB)
-    v.set_stringvalue(value)
 
   def _db_get_value(self, v, p):
     if not v.has_stringvalue():
       return None
     value = v.stringvalue()
     if p.meaning_uri() == _MEANING_URI_COMPRESSED:
-      value = _CompressedValue(value)  # Makes a copy.
+      value = _CompressedValue(value)
     return value
 
 
@@ -1167,10 +1167,9 @@ class TextProperty(BlobProperty):
       raise datastore_errors.BadValueError('Expected string, got %r' %
                                            (value,))
 
-  def _db_set_uncompressed_value(self, v, p, value):
+  def _db_set_uncompressed_meaning(self, p):
     if not self._indexed:
       p.set_meaning(entity_pb.Property.TEXT)
-    v.set_stringvalue(value)
 
 
 class StringProperty(TextProperty):
