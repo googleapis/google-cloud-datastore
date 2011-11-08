@@ -1070,7 +1070,16 @@ class FloatProperty(Property):
 class StringProperty(Property):
   """A Property whose value is a text string."""
 
-  # TODO: Move encode/decode calls to _to_top()/_to_bot().
+  def _to_top(self, value):
+    if isinstance(value, str):
+      try:
+        return value.decode('utf-8')
+      except UnicodeDecodeError:
+        pass
+
+  def _to_bot(self, value):
+    if isinstance(value, unicode):
+      return value.encode('utf-8')
 
   def _validate(self, value):
     # TODO: Enforce size limit when indexed.
@@ -1079,11 +1088,9 @@ class StringProperty(Property):
                                            (value,))
 
   def _db_set_value(self, v, p, value):
-    if not isinstance(value, basestring):
-      raise TypeError('StringProperty %s can only be set to string values; '
+    if not isinstance(value, str):
+      raise TypeError('StringProperty %s can only be set to str values; '
                       'received %r' % (self._name, value))
-    if isinstance(value, unicode):
-      value = value.encode('utf-8')
     v.set_stringvalue(value)
     if not self._indexed:
       p.set_meaning(entity_pb.Property.TEXT)
@@ -1091,12 +1098,7 @@ class StringProperty(Property):
   def _db_get_value(self, v, unused_p):
     if not v.has_stringvalue():
       return None
-    raw = v.stringvalue()
-    try:
-      value = raw.decode('utf-8')
-      return value
-    except UnicodeDecodeError:
-      return raw
+    return v.stringvalue()
 
 
 # A custom 'meaning' for compressed properties.
@@ -1106,11 +1108,14 @@ _MEANING_URI_COMPRESSED = 'ZLIB'
 class _CompressedValue(str):
   """Used as a flag for compressed values."""
 
+  # TODO: Make this a wrapper instead of a subclss.
+  # See issue 86.  http://goo.gl/pvYJy
+
   def __repr__(self):
     return '_CompressedValue(%s)' % super(_CompressedValue, self).__repr__()
 
 
-class CompressedPropertyMixin(object):
+class CompressedPropertyMixin(Property):
   """A mixin to store the property value compressed using zlib."""
 
   def _to_top(self, value):
@@ -1176,7 +1181,7 @@ class CompressedPropertyMixin(object):
       return value
 
 
-class TextProperty(CompressedPropertyMixin, StringProperty):
+class TextProperty(StringProperty, CompressedPropertyMixin):
   """An unindexed Property whose value is a text string of unlimited length."""
   # TODO: Maybe just use StringProperty(indexed=False)?
 
@@ -1194,22 +1199,6 @@ class TextProperty(CompressedPropertyMixin, StringProperty):
                                 self._name)
     self._compressed = compressed
 
-  def _to_top(self, value):
-    if isinstance(value, str):
-      try:
-        return value.decode('utf-8')
-      except UnicodeDecodeError:
-        pass
-
-  def _to_bot(self, value):
-    if isinstance(value, unicode):
-      return value.encode('utf-8')
-
-  def _validate(self, value):
-    if not isinstance(value, basestring):
-      raise datastore_errors.BadValueError('Expected string, got %r' %
-                                           (value,))
-
   def _db_set_value(self, v, p, value):
     if isinstance(value, _CompressedValue):
       p.set_meaning(entity_pb.Property.BLOB)
@@ -1218,7 +1207,7 @@ class TextProperty(CompressedPropertyMixin, StringProperty):
     self._db_set_compressed_value(v, p, value)
 
 
-class BlobProperty(CompressedPropertyMixin, Property):
+class BlobProperty(CompressedPropertyMixin):
   """A Property whose value is a byte string."""
   # TODO: Enforce size limit when indexed.
 
@@ -1235,11 +1224,6 @@ class BlobProperty(CompressedPropertyMixin, Property):
     if compressed and self._indexed:
       raise NotImplementedError('BlobProperty %s cannot be compressed and '
                                 'indexed at the same time.' % self._name)
-
-  def _validate(self, value):
-    if not isinstance(value, str):
-      raise datastore_errors.BadValueError('Expected 8-bit string, got %r' %
-                                           (value,))
 
   def _datastore_type(self, value):
     # Since this is only used for queries, and queries imply an
