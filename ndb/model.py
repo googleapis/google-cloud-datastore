@@ -773,7 +773,6 @@ class Property(ModelAttribute):
   - Returning the original value: if any of these return None, the
     original value is kept.  (Returning a differen value not equal to
     None will substitute the different value, of course.)
-    
   """
 
   def _top_value(self, entity):
@@ -798,8 +797,7 @@ class Property(ModelAttribute):
 
   def _call_to_top(self, value):
     """XXX"""
-    methods = self._find_methods('_to_top')
-    methods.reverse()
+    methods = self._find_methods('_to_top', reverse=True)
     call = self._apply_list(methods)
     return call(value)
 
@@ -809,14 +807,27 @@ class Property(ModelAttribute):
     call = self._apply_list(methods)
     return call(value)
 
-  def _find_methods(self, *names):
+  @classmethod
+  def _find_methods(cls, *names, **kwds):
     """XXX"""
+    reverse = kwds.pop('reverse', False)
+    assert not kwds
+    cache = cls.__dict__.get('_find_methods_cache')
+    if cache:
+      hit = cache.get(names)
+      if hit is not None:
+        return hit
+    else:
+      cls._find_methods_cache = cache = {}
     methods = []
-    for cls in self.__class__.__mro__:
+    for c in cls.__mro__:
       for name in names:
-        method = cls.__dict__.get(name)
+        method = c.__dict__.get(name)
         if method is not None:
           methods.append(method)
+    if reverse:
+      methods.reverse()
+    cache[names] = methods
     return methods
 
   def _apply_list(self, methods):
