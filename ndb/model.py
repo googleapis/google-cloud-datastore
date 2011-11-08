@@ -1118,8 +1118,13 @@ class CompressedPropertyMixin(object):
       return zlib.decompress(value)
 
   def _to_bot(self, value):
-    if self._compressed and not isinstance(value, _CompressedValue):
+    if self._compressed:
       return _CompressedValue(zlib.compress(value))
+
+  def _validate(self, value):
+    if not isinstance(value, str):
+      raise datastore_errors.BadValueError('Expected str, got %r' %
+                                           (value,))
 
   def _db_set_value(self, v, p, value):
     """Sets the property value in the protocol buffer.
@@ -1232,8 +1237,6 @@ class BlobProperty(CompressedPropertyMixin, Property):
                                 'indexed at the same time.' % self._name)
 
   def _validate(self, value):
-    if self._compressed and isinstance(value, _CompressedValue):
-      return value
     if not isinstance(value, str):
       raise datastore_errors.BadValueError('Expected 8-bit string, got %r' %
                                            (value,))
