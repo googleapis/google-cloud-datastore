@@ -730,8 +730,8 @@ class Property(ModelAttribute):
   top<-->bot conversions: the top-->bot conversion goes from more
   sophisticated to less sophisticated, while the bot-->top conversion
   goes from less sophisticated to more sophisticated (see the
-  relationship between CompressedPropertyMixin and
-  LocalStructuredProperty as an example).
+  relationship between BlobProperty, TextProperty and StringProperty
+  for an example.
 
   XXX Explain what happened to _validate() XXX
 
@@ -1067,8 +1067,88 @@ class FloatProperty(Property):
     return v.doublevalue()
 
 
-class StringProperty(Property):
-  """A Property whose value is a text string."""
+# A custom 'meaning' for compressed properties.
+_MEANING_URI_COMPRESSED = 'ZLIB'
+
+
+class _CompressedValue(str):
+  """Used as a flag for compressed values."""
+
+  def __init__(self, val):
+    """XXX"""
+    assert isinstance(val, str)
+    self.val = val
+
+
+class BlobProperty(Property):
+  """A Property whose value is a byte string.  It may be compressed."""
+
+  _indexed = False
+  _compressed = False
+
+  _attributes = Property._attributes + ['_compressed']
+  _positional = 2
+
+  @datastore_rpc._positional(1 + _positional)
+  def __init__(self, name=None, compressed=False, **kwds):
+    super(BlobProperty, self).__init__(name=name, **kwds)
+    self._compressed = compressed
+    if compressed and self._indexed:
+      # TODO: Allow this, but only allow == and IN comparisons?
+      raise NotImplementedError('BlobProperty %s cannot be compressed and '
+                                'indexed at the same time.' % self._name)
+
+  def _to_top(self, value):
+    if isinstance(value, _CompressedValue):
+      return zlib.decompress(value)
+
+  def _to_bot(self, value):
+    if self._compressed:
+      return _CompressedValue(zlib.compress(value))  # Makes a copy.
+
+  def _validate(self, value):
+    # TODO: Enforce size limit when indexed.
+    if not isinstance(value, str):
+      raise datastore_errors.BadValueError('Expected str, got %r' %
+                                           (value,))
+
+  def _datastore_type(self, value):
+    # Since this is only used for queries, and queries imply an
+    # indexed property, always use ByteString.
+    return datastore_types.ByteString(value)
+
+  def _db_set_value(self, v, p, value):
+    if isinstance(value, _CompressedValue):
+      self._db_set_compressed_value(v, p, value)
+    else:
+      self._db_set_uncompressed_value(v, p, value)
+
+  def _db_set_compressed_value(self, v, p, value):
+    # Use meaning_uri because setting meaning to something else that is not
+    # BLOB or BYTESTRING will cause the value to be decoded from utf-8 in
+    # datastore_types.FromPropertyPb. That would break the compressed string.
+    p.set_meaning_uri(_MEANING_URI_COMPRESSED)
+    p.set_meaning(entity_pb.Property.BLOB)
+    v.set_stringvalue(value.val)
+
+  def _db_set_uncompressed_value(self, v, p, value):
+    if self._indexed:
+      p.set_meaning(entity_pb.Property.BYTESTRING)
+    else:
+      p.set_meaning(entity_pb.Property.BLOB)
+    v.set_stringvalue(value)
+
+  def _db_get_value(self, v, p):
+    if not v.has_stringvalue():
+      return None
+    value = v.stringvalue()
+    if p.meaning_uri() == _MEANING_URI_COMPRESSED:
+      value = _CompressedValue(value)  # Makes a copy.
+    return value
+
+
+class TextProperty(BlobProperty):
+  """An unindexed Property whose value is a text string of unlimited length."""
 
   def _to_top(self, value):
     if isinstance(value, str):
@@ -1087,153 +1167,16 @@ class StringProperty(Property):
       raise datastore_errors.BadValueError('Expected string, got %r' %
                                            (value,))
 
-  def _db_set_value(self, v, p, value):
-    if not isinstance(value, str):
-      raise TypeError('StringProperty %s can only be set to str values; '
-                      'received %r' % (self._name, value))
-    v.set_stringvalue(value)
+  def _db_set_uncompressed_value(self, v, p, value):
     if not self._indexed:
       p.set_meaning(entity_pb.Property.TEXT)
-
-  def _db_get_value(self, v, unused_p):
-    if not v.has_stringvalue():
-      return None
-    return v.stringvalue()
-
-
-# A custom 'meaning' for compressed properties.
-_MEANING_URI_COMPRESSED = 'ZLIB'
-
-
-class _CompressedValue(str):
-  """Used as a flag for compressed values."""
-
-  # TODO: Make this a wrapper instead of a subclss.
-  # See issue 86.  http://goo.gl/pvYJy
-
-  def __repr__(self):
-    return '_CompressedValue(%s)' % super(_CompressedValue, self).__repr__()
-
-
-class CompressedPropertyMixin(Property):
-  """A mixin to store the property value compressed using zlib."""
-
-  def _to_top(self, value):
-    if isinstance(value, _CompressedValue):
-      return zlib.decompress(value)
-
-  def _to_bot(self, value):
-    if self._compressed:
-      return _CompressedValue(zlib.compress(value))  # Makes a copy.
-
-  def _validate(self, value):
-    if not isinstance(value, str):
-      raise datastore_errors.BadValueError('Expected str, got %r' %
-                                           (value,))
-
-  def _db_set_value(self, v, p, value):
-    """Sets the property value in the protocol buffer.
-
-    XXX TODO Update this docstring TODO XXX
-
-    The value stored in entity._values[self._name] can be either:
-
-    - A _CompressedValue instance to indicate that the value is
-      compressed.  This is used to lazily decompress the property when
-      it is first accessed.
-    - The uncompressed value, when it is set, when it was not stored
-      compressed or after it is lazily decompressed on first access.
-
-    Subclasses must override this if they need to set a different meaning
-    in the protocol buffer (the defaults are BYTESTRING or BLOB), and then
-    call _db_set_compressed_value() which will compress the value if needed.
-    """
-    # TODO: Simplify?  Refactor differently?
-    if self._indexed:
-      p.set_meaning(entity_pb.Property.BYTESTRING)
-    else:
-      p.set_meaning(entity_pb.Property.BLOB)
-    self._db_set_compressed_value(v, p, value)
-
-  def _db_set_compressed_value(self, v, p, value):
-    """Sets the property value in the protocol buffer, compressed if needed."""
-    if isinstance(value, _CompressedValue):
-      # Use meaning_uri because setting meaning to something else that is not
-      # BLOB or BYTESTRING will cause the value to be decoded from utf-8 in
-      # datastore_types.FromPropertyPb. That would break the compressed string.
-      p.set_meaning_uri(_MEANING_URI_COMPRESSED)
-    if not isinstance(value, str):
-      raise RuntimeError('Compressed value of %s is not a string %r' %
-                         (self._name, value))
     v.set_stringvalue(value)
 
-  def _db_get_value(self, v, p):
-    if not v.has_stringvalue():
-      return None
-    value = v.stringvalue()
-    if p.meaning_uri() == _MEANING_URI_COMPRESSED:
-      value = _CompressedValue(value)  # Makes a copy.
-    return value
 
-  def _datastore_type(self, value):
-    """XXX"""
-    if isinstance(value, _CompressedValue):
-      return datastore_types.Blob(value)  # Makes a copy.
-    else:
-      return value
+class StringProperty(TextProperty):
+  """An indexed Property whose value is a text string of limited length."""
 
-
-class TextProperty(StringProperty, CompressedPropertyMixin):
-  """An unindexed Property whose value is a text string of unlimited length."""
-  # TODO: Maybe just use StringProperty(indexed=False)?
-
-  _indexed = False
-  _compressed = False
-
-  _attributes = StringProperty._attributes + ['_compressed']
-  _positional = 1
-
-  @datastore_rpc._positional(1 + _positional)
-  def __init__(self, compressed=False, **kwds):
-    super(TextProperty, self).__init__(**kwds)
-    if self._indexed:
-      raise NotImplementedError('TextProperty %s cannot be indexed.' %
-                                self._name)
-    self._compressed = compressed
-
-  def _db_set_value(self, v, p, value):
-    if isinstance(value, _CompressedValue):
-      p.set_meaning(entity_pb.Property.BLOB)
-    else:
-      p.set_meaning(entity_pb.Property.TEXT)
-    self._db_set_compressed_value(v, p, value)
-
-
-class BlobProperty(CompressedPropertyMixin):
-  """A Property whose value is a byte string."""
-  # TODO: Enforce size limit when indexed.
-
-  _indexed = False
-  _compressed = False
-
-  _attributes = Property._attributes + ['_compressed']
-  _positional = 2
-
-  @datastore_rpc._positional(1 + _positional)
-  def __init__(self, name=None, compressed=False, **kwds):
-    super(BlobProperty, self).__init__(name=name, **kwds)
-    self._compressed = compressed
-    if compressed and self._indexed:
-      raise NotImplementedError('BlobProperty %s cannot be compressed and '
-                                'indexed at the same time.' % self._name)
-
-  def _datastore_type(self, value):
-    # Since this is only used for queries, and queries imply an
-    # indexed property, check that, and always use ByteString.
-    if not self._indexed:
-      raise RuntimeError('datastore_type should not be queried on non-indexed '
-                         'BlobProperty %s' % self._name)
-    return datastore_types.ByteString(value)
+  _indexed = True
 
 
 class GeoPtProperty(Property):
