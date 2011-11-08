@@ -814,7 +814,7 @@ class Property(ModelAttribute):
   def _find_methods(cls, *names, **kwds):
     """XXX"""
     reverse = kwds.pop('reverse', False)
-    assert not kwds
+    assert not kwds, repr(kwds)
     cache = cls.__dict__.get('_find_methods_cache')
     if cache:
       hit = cache.get(names)
@@ -953,7 +953,7 @@ class Property(ModelAttribute):
     if self._repeated:
       if self._has_value(entity):
         value = self._retrieve_value(entity)
-        assert isinstance(value, list)
+        assert isinstance(value, list), repr(value)
         value.append(val)
       else:
         value = [val]
@@ -1093,7 +1093,7 @@ class _CompressedValue(object):
 
   def __init__(self, z_val):
     """XXX"""
-    assert isinstance(z_val, str)
+    assert isinstance(z_val, str), repr(z_val)
     self.z_val = z_val
 
 
@@ -1528,7 +1528,7 @@ class StructuredProperty(Property):
           raise datastore_errors.BadFilterError(
             'Cannot query for non-empty repeated property %s' % prop._name)
       if val is not None:
-        assert isinstance(val, _Bottom)
+        assert isinstance(val, _Bottom), repr(val)
         val = val.bot_val
         altprop = getattr(self, prop._code_name)
         filt = altprop._comparison(op, val)
@@ -1654,14 +1654,14 @@ class StructuredProperty(Property):
       values = []
       self._store_value(entity, values)
     else:
-      assert isinstance(values, list)
+      assert isinstance(values, list), repr(values)
     # Find the first subentity that doesn't have a value for this
     # property yet.
     for sub in values:
       if isinstance(sub, _Bottom):
         sub = sub.bot_val
       else:
-        assert sub is None
+        assert sub is None, repr(sub)
       if not isinstance(sub, self._modelclass):
         raise TypeError('sub-entities must be instances of their Model class.')
       if not prop._has_value(sub, rest):
