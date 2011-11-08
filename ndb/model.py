@@ -390,13 +390,13 @@ class ModelAttribute(object):
 class _Bottom(object):
   """XXX"""
 
-  def __init__(self, val):
-    assert val is not None
-    assert not isinstance(val, list), repr(val)
-    self.val = val
+  def __init__(self, bot_val):
+    assert bot_val is not None
+    assert not isinstance(bot_val, list), repr(bot_val)
+    self.bot_val = bot_val
 
   def __repr__(self):
-    return '_Bottom(%r)' % (self.val,)
+    return '_Bottom(%r)' % (self.bot_val,)
 
 
 class Property(ModelAttribute):
@@ -785,7 +785,7 @@ class Property(ModelAttribute):
   def _opt_call_to_top(self, value):
     """XXX"""
     if isinstance(value, _Bottom):
-      value = self._call_to_top(value.val)
+      value = self._call_to_top(value.bot_val)
     return value
 
   def _opt_call_to_bot(self, value):
@@ -908,7 +908,7 @@ class Property(ModelAttribute):
     for val in value:
       if val is not None:
         assert isinstance(val, _Bottom), repr(val)
-        val = val.val
+        val = val.bot_val
       if self._indexed:
         p = pb.add_property()
       else:
@@ -1074,10 +1074,10 @@ _MEANING_URI_COMPRESSED = 'ZLIB'
 class _CompressedValue(str):
   """Used as a flag for compressed values."""
 
-  def __init__(self, val):
+  def __init__(self, z_val):
     """XXX"""
-    assert isinstance(val, str)
-    self.val = val
+    assert isinstance(z_val, str)
+    self.z_val = z_val
 
 
 class BlobProperty(Property):
@@ -1100,7 +1100,7 @@ class BlobProperty(Property):
 
   def _to_top(self, value):
     if isinstance(value, _CompressedValue):
-      return zlib.decompress(value)
+      return zlib.decompress(value.z_val)
 
   def _to_bot(self, value):
     if self._compressed:
@@ -1120,7 +1120,7 @@ class BlobProperty(Property):
   def _db_set_value(self, v, p, value):
     if isinstance(value, _CompressedValue):
       self._db_set_compressed_meaning(p)
-      value = value.val
+      value = value.z_val
     else:
       self._db_set_uncompressed_meaning(p)
     v.set_stringvalue(value)
@@ -1511,7 +1511,7 @@ class StructuredProperty(Property):
             'Cannot query for non-empty repeated property %s' % prop._name)
       if val is not None:
         assert isinstance(val, _Bottom)
-        val = val.val
+        val = val.bot_val
         altprop = getattr(self, prop._code_name)
         filt = altprop._comparison(op, val)
         filters.append(filt)
@@ -1594,7 +1594,7 @@ class StructuredProperty(Property):
     for value in values:
       # TODO: Avoid re-sorting for repeated values.
       assert isinstance(value, _Bottom), repr(value)
-      value = value.val
+      value = value.bot_val
       for unused_name, prop in sorted(value._properties.iteritems()):
         prop._serialize(value, pb, prefix + self._name + '.',
                         self._repeated or parent_repeated)
@@ -1608,7 +1608,7 @@ class StructuredProperty(Property):
         self._store_value(entity, subentity)
       cls = self._modelclass
       if isinstance(subentity, _Bottom):
-        subentity = subentity.val
+        subentity = subentity.bot_val
       if not isinstance(subentity, cls):
         raise RuntimeError('Cannot deserialize StructuredProperty %s; value '
                            'retrieved not a %s instance %r' %
@@ -1642,7 +1642,7 @@ class StructuredProperty(Property):
     # property yet.
     for sub in values:
       if isinstance(sub, _Bottom):
-        sub = sub.val
+        sub = sub.bot_val
       if not isinstance(sub, self._modelclass):
         raise TypeError('sub-entities must be instances of their Model class.')
       if not prop._has_value(sub, rest):
@@ -1659,11 +1659,11 @@ class StructuredProperty(Property):
       if self._repeated:
         for subent in value:
           if isinstance(subent, _Bottom):
-            subent = subent.val
+            subent = subent.bot_val
           subent._prepare_for_put()
       else:
         if isinstance(value, _Bottom):
-          value = value.val
+          value = value.bot_val
         value._prepare_for_put()
 
 
@@ -1715,11 +1715,11 @@ class LocalStructuredProperty(BlobProperty):
       if self._repeated:
         for subent in value:
           if isinstance(subent, _Bottom):
-            subent = subent.val
+            subent = subent.bot_val
           subent._prepare_for_put()
       else:
         if isinstance(value, _Bottom):
-          value = value.val
+          value = value.bot_val
         value._prepare_for_put()
 
 
