@@ -390,6 +390,8 @@ class ModelAttribute(object):
 class _Bottom(object):
   """XXX"""
 
+  __slots__ = ['bot_val']
+
   def __init__(self, bot_val):
     assert bot_val is not None
     assert not isinstance(bot_val, list), repr(bot_val)
@@ -1071,8 +1073,10 @@ class FloatProperty(Property):
 _MEANING_URI_COMPRESSED = 'ZLIB'
 
 
-class _CompressedValue(str):
+class _CompressedValue(object):
   """Used as a flag for compressed values."""
+
+  __slots__ = ['z_val']
 
   def __init__(self, z_val):
     """XXX"""
