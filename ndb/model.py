@@ -609,13 +609,19 @@ class Property(ModelAttribute):
     idempotent way, or raise an exception to indicate that the value
     is invalid.  By convention the exception raised is BadValueError.
 
+    Returning None is equivalent to returning the argument value
+    unchanged.
+
+    This should not call the super() method.
+
     Note that for a repeated Property this function should be called
     for each item in the list, not for the list as a whole.
     """
-    return value
 
   def _do_validate(self, value):
     """Call all validations on the value.
+
+    XXX This probably needs to change XXX
 
     This first calls self._validate(), then the custom validator
     function, and finally checks the choices.  It returns the value,
@@ -626,9 +632,13 @@ class Property(ModelAttribute):
     """
     if isinstance(value, _Bottom):
       return value
-    value = self._validate(value)
+    newvalue = self._validate(value)
+    if newvalue is not None:
+      value = newvalue
     if self._validator is not None:
-      value = self._validator(self, value)
+      newvalue = self._validator(self, value)
+      if newvalue is not None:
+        value = newvalue
     if self._choices is not None:
       if value not in self._choices:
         raise datastore_errors.BadValueError(
@@ -723,29 +733,26 @@ class Property(ModelAttribute):
   relationship between CompressedPropertyMixin and
   LocalStructuredProperty as an example).
 
-  You typically must override _validate() as well, to accept the top
-  type.  *** NOTE: *** If the value to be validated is not a top type,
-  call the super() method.
+  XXX Explain what happened to _validate() XXX
 
   Example/boilerplate:
 
+  XXX Maybe the order should be _validate(), _to_bot(), _to_top()?
+
   def _to_top(self, value):
     if not isinstance(value, <top type>):
-      value = <top type>(value)
-    return value
+      return <top type>(value)
 
   def _to_bot(sellf, value):
     if isinstance(value, <top type>):
-      value = <bot type>(value)
-    return value
+      return <bot type>(value)
 
   def _validate(self, value):
-    if isinstance(value, <top type>):
-      return value
-    # *** NOTE *** A super() call is required here!
-    return super(<this class>, self)._validate(value)
+    if not isinstance(value, <top type>):
+      raise TypeError(...)
 
-  Things that _to_top() and _to_bot() do *not* need to handle:
+  Things that _to_top(), _to_bot() and _validate() do *not* need to
+  handle:
 
   - None values: They will not be called with None (and they should
     not return None).
@@ -756,6 +763,15 @@ class Property(ModelAttribute):
 
   - Comparisons: The comparison operations call _to_bot() on their
     operand.
+
+  - Distinguishing between top and bottom values: we now guarantee
+    that _to_top() will be called with the appropriate bottom value,
+    and that _to_bot() will be called with the appropriate top value.
+
+  - Returning the original value: if any of these return None, the
+    original value is kept.  (Returning a differen value not equal to
+    None will substitute the different value, of course.)
+    
   """
 
   def _top_value(self, entity):
@@ -805,7 +821,9 @@ class Property(ModelAttribute):
     """XXX"""
     def call(value):
       for method in methods:
-        value = method(self, value)
+        newvalue = method(self, value)
+        if newvalue is not None:
+          value = newvalue
       return value
     return call
 
@@ -821,7 +839,7 @@ class Property(ModelAttribute):
     else:
       if value is not None:
         newvalue = function(value)
-        if newvalue is not value:
+        if newvalue is not None and newvalue is not value:
           self._store_value(entity, newvalue)
           value = newvalue
     return value
@@ -1051,14 +1069,14 @@ class FloatProperty(Property):
 
 class StringProperty(Property):
   """A Property whose value is a text string."""
-  # TODO: Enforce size limit when indexed.
+
+  # TODO: Move encode/decode calls to _to_top()/_to_bot().
 
   def _validate(self, value):
+    # TODO: Enforce size limit when indexed.
     if not isinstance(value, basestring):
       raise datastore_errors.BadValueError('Expected string, got %r' %
                                            (value,))
-    # TODO: Always convert to Unicode?  But what if it's unconvertible?
-    return value
 
   def _db_set_value(self, v, p, value):
     if not isinstance(value, basestring):
@@ -1097,13 +1115,11 @@ class CompressedPropertyMixin(object):
 
   def _to_top(self, value):
     if isinstance(value, _CompressedValue):
-      value = zlib.decompress(value)
-    return value
+      return zlib.decompress(value)
 
   def _to_bot(self, value):
     if self._compressed and not isinstance(value, _CompressedValue):
-      value = _CompressedValue(zlib.compress(value))
-    return value
+      return _CompressedValue(zlib.compress(value))
 
   def _db_set_value(self, v, p, value):
     """Sets the property value in the protocol buffer.
@@ -1173,11 +1189,21 @@ class TextProperty(CompressedPropertyMixin, StringProperty):
                                 self._name)
     self._compressed = compressed
 
+  def _to_top(self, value):
+    if isinstance(value, str):
+      try:
+        return value.decode('utf-8')
+      except UnicodeDecodeError:
+        pass
+
+  def _to_bot(self, value):
+    if isinstance(value, unicode):
+      return value.encode('utf-8')
+
   def _validate(self, value):
     if not isinstance(value, basestring):
       raise datastore_errors.BadValueError('Expected string, got %r' %
                                            (value,))
-    return value
 
   def _db_set_value(self, v, p, value):
     if isinstance(value, _CompressedValue):
@@ -1185,19 +1211,6 @@ class TextProperty(CompressedPropertyMixin, StringProperty):
     else:
       p.set_meaning(entity_pb.Property.TEXT)
     self._db_set_compressed_value(v, p, value)
-
-  def _to_top(self, value):
-    if isinstance(value, str):
-      try:
-        value = value.decode('utf-8')
-      except UnicodeDecodeError:
-        pass
-    return value
-
-  def _to_bot(self, value):
-    if isinstance(value, unicode):
-      value = value.encode('utf-8')
-    return value
 
 
 class BlobProperty(CompressedPropertyMixin, Property):
@@ -1224,7 +1237,6 @@ class BlobProperty(CompressedPropertyMixin, Property):
     if not isinstance(value, str):
       raise datastore_errors.BadValueError('Expected 8-bit string, got %r' %
                                            (value,))
-    return value
 
   def _datastore_type(self, value):
     # Since this is only used for queries, and queries imply an
@@ -1242,7 +1254,6 @@ class GeoPtProperty(Property):
     if not isinstance(value, GeoPt):
       raise datastore_errors.BadValueError('Expected GeoPt, got %r' %
                                            (value,))
-    return value
 
   def _db_set_value(self, v, unused_p, value):
     if not isinstance(value, GeoPt):
@@ -1292,7 +1303,6 @@ class UserProperty(Property):
     if not isinstance(value, users.User):
       raise datastore_errors.BadValueError('Expected User, got %r' %
                                            (value,))
-    return value
 
   def _db_set_value(self, v, p, value):
     datastore_types.PackUser(p.name(), value, v)
@@ -1317,7 +1327,6 @@ class KeyProperty(Property):
     if not value.id():
       raise datastore_errors.BadValueError('Expected complete Key, got %r' %
                                            (value,))
-    return value
 
   def _db_set_value(self, v, unused_p, value):
     if not isinstance(value, Key):
@@ -1354,7 +1363,6 @@ class BlobKeyProperty(Property):
     if not isinstance(value, datastore_types.BlobKey):
       raise datastore_errors.BadValueError('Expected BlobKey, got %r' %
                                            (value,))
-    return value
 
   def _db_set_value(self, v, p, value):
     if not isinstance(value, datastore_types.BlobKey):
@@ -1407,7 +1415,6 @@ class DateTimeProperty(Property):
     if not isinstance(value, datetime.datetime):
       raise datastore_errors.BadValueError('Expected datetime, got %r' %
                                            (value,))
-    return value
 
   def _now(self):
     return datetime.datetime.now()
@@ -1485,7 +1492,6 @@ class DateProperty(DateTimeProperty):
     if not isinstance(value, datetime.date):
       raise datastore_errors.BadValueError('Expected date, got %r' %
                                            (value,))
-    return value
 
   def _now(self):
     return datetime.date.today()
@@ -1506,7 +1512,6 @@ class TimeProperty(DateTimeProperty):
     if not isinstance(value, datetime.time):
       raise datastore_errors.BadValueError('Expected time, got %r' %
                                            (value,))
-    return value
 
   def _now(self):
     return datetime.datetime.now().time()
@@ -1612,7 +1617,6 @@ class StructuredProperty(Property):
     if not isinstance(value, self._modelclass):
       raise datastore_errors.BadValueError('Expected %s instance, got %r' %
                                            (self._modelclass.__name__, value))
-    return value
 
   def _has_value(self, entity, rest=None):
     # rest: optional list of attribute names to check in addition.
@@ -1759,24 +1763,20 @@ class LocalStructuredProperty(BlobProperty):
                                 self._name)
     self._modelclass = modelclass
 
-  def _validate(self, value):
-    if not isinstance(value, self._modelclass):
-      import pdb; pdb.set_trace()
-      raise TypeError('XXX')
-    return value
-
   def _to_top(self, value):
     if not isinstance(value, self._modelclass):
       pb = entity_pb.EntityProto()
       pb.MergePartialFromString(value)
-      value = self._modelclass._from_pb(pb, set_key=False)
-    return value
+      return self._modelclass._from_pb(pb, set_key=False)
 
   def _to_bot(self, value):
     if isinstance(value, self._modelclass):
       pb = value._to_pb(set_key=False)
-      value = pb.SerializePartialToString()
-    return value
+      return pb.SerializePartialToString()
+
+  def _validate(self, value):
+    if not isinstance(value, self._modelclass):
+      raise TypeError('XXX')
 
   def _prepare_for_put(self, entity):
     value = self._top_value(entity)
