@@ -1124,7 +1124,7 @@ class CompressedPropertyMixin(Property):
 
   def _to_bot(self, value):
     if self._compressed:
-      return _CompressedValue(zlib.compress(value))
+      return _CompressedValue(zlib.compress(value))  # Makes a copy.
 
   def _validate(self, value):
     if not isinstance(value, str):
@@ -1133,6 +1133,8 @@ class CompressedPropertyMixin(Property):
 
   def _db_set_value(self, v, p, value):
     """Sets the property value in the protocol buffer.
+
+    XXX TODO Update this docstring TODO XXX
 
     The value stored in entity._values[self._name] can be either:
 
@@ -1170,13 +1172,13 @@ class CompressedPropertyMixin(Property):
       return None
     value = v.stringvalue()
     if p.meaning_uri() == _MEANING_URI_COMPRESSED:
-      value = _CompressedValue(value)
+      value = _CompressedValue(value)  # Makes a copy.
     return value
 
   def _datastore_type(self, value):
     """XXX"""
     if isinstance(value, _CompressedValue):
-      return datastore_types.Blob(value)
+      return datastore_types.Blob(value)  # Makes a copy.
     else:
       return value
 
