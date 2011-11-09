@@ -786,6 +786,27 @@ class Property(ModelAttribute):
     """XXX"""
     return self._apply_to_values(entity, self._opt_call_to_bot)
 
+  def _bot_value_unwrapped_as_list(self, entity):
+    """XXX
+
+    Returns:
+      A new list of unwrapped bottom values.  For an unrepeated
+      property, if the value is missing or None, returns [None]; for a
+      repeated property, if the original value is missing or None or
+      empty, returns [].
+    """
+    wrapped = self._bot_value(entity)
+    if self._repeated:
+      if wrapped is None:
+        return []
+      assert isinstance(wrapped, list)
+      return [w.bot_val for w in wrapped]
+    else:
+      if wrapped is None:
+        return [None]
+      assert isinstance(wrapped, _Bottom)
+      return [wrapped.bot_val]
+
   def _opt_call_to_top(self, value):
     """XXX"""
     if isinstance(value, _Bottom):
@@ -913,18 +934,10 @@ class Property(ModelAttribute):
       parent_repeated: True if the parent (or an earlier ancestor)
         is a repeated Property.
     """
-    value = self._bot_value(entity)
-    if not self._repeated:
-      value = [value]
-    elif value is None:
-      value = []
-    elif not isinstance(value, list):
-      raise TypeError('value of %s must be a list; found %r' %
-                      (self._name, value))
-    for val in value:
-      if val is not None:
-        assert isinstance(val, _Bottom), repr(val)
-        val = val.bot_val
+    values = self._bot_value_unwrapped_as_list(entity)
+    if values is None:
+      return
+    for val in values:
       if self._indexed:
         p = pb.add_property()
       else:
@@ -1520,16 +1533,15 @@ class StructuredProperty(Property):
     match_keys = []
     # TODO: Why not just iterate over value._values?
     for prop in self._modelclass._properties.itervalues():
-      val = prop._bot_value(value)
+      vals = prop._bot_value_unwrapped_as_list(value)
       if prop._repeated:
-        if not val:
-          val = None
-        else:
+        if vals:
           raise datastore_errors.BadFilterError(
             'Cannot query for non-empty repeated property %s' % prop._name)
+        continue
+      assert isinstance(vals, list) and len(vals) == 1, repr(vals)
+      val = vals[0]
       if val is not None:
-        assert isinstance(val, _Bottom), repr(val)
-        val = val.bot_val
         altprop = getattr(self, prop._code_name)
         filt = altprop._comparison(op, val)
         filters.append(filt)
@@ -1591,31 +1603,13 @@ class StructuredProperty(Property):
 
   def _serialize(self, entity, pb, prefix='', parent_repeated=False):
     # entity -> pb; pb is an EntityProto message
-    value = self._bot_value(entity)
-    if value is None:
-      # TODO: Is this the right thing for queries?
-      # Skip structured values that are None.
-      return
-    cls = self._modelclass
-    if self._repeated:
-      if not isinstance(value, list):
-        raise RuntimeError('Cannot serialize repeated StructuredProperty %s; '
-                           'value retrieved not list %s' % (self._name, value))
-      values = value
-    else:
-      # TODO XXX XXX XXX TODO
-##       if not isinstance(value, cls):
-##         raise RuntimeError('Cannot serialize StructuredProperty %s; value '
-##                            'retrieved not a %s instance %r' %
-##                            (self._name, cls.__name__, value))
-      values = [value]
+    values = self._bot_value_unwrapped_as_list(entity)
     for value in values:
-      # TODO: Avoid re-sorting for repeated values.
-      assert isinstance(value, _Bottom), repr(value)
-      value = value.bot_val
-      for unused_name, prop in sorted(value._properties.iteritems()):
-        prop._serialize(value, pb, prefix + self._name + '.',
-                        self._repeated or parent_repeated)
+      if value is not None:
+        # TODO: Avoid re-sorting for repeated values.
+        for unused_name, prop in sorted(value._properties.iteritems()):
+          prop._serialize(value, pb, prefix + self._name + '.',
+                          self._repeated or parent_repeated)
 
   def _deserialize(self, entity, p, depth=1):
     if not self._repeated:
@@ -1625,6 +1619,7 @@ class StructuredProperty(Property):
         self._store_value(entity, _Bottom(subentity))
       cls = self._modelclass
       if isinstance(subentity, _Bottom):
+        # TODO: When is in not a Bottom?
         subentity = subentity.bot_val
       if not isinstance(subentity, cls):
         raise RuntimeError('Cannot deserialize StructuredProperty %s; value '
@@ -1673,16 +1668,9 @@ class StructuredProperty(Property):
     prop._deserialize(subentity, p, depth + 1)
 
   def _prepare_for_put(self, entity):
-    value = self._bot_value(entity)
-    if value is not None:
-      if self._repeated:
-        for subent in value:
-          if isinstance(subent, _Bottom):
-            subent = subent.bot_val
-          subent._prepare_for_put()
-      else:
-        if isinstance(value, _Bottom):
-          value = value.bot_val
+    values = self._bot_value_unwrapped_as_list(entity)
+    for value in values:
+      if value is not None:
         value._prepare_for_put()
 
 
@@ -2203,7 +2191,7 @@ class Model(object):
     self._clone_properties()
     if p.name() != next and not p.name().endswith('.' + next):
       prop = StructuredProperty(Expando, next)
-      self._values[prop._name] = Expando()
+      prop._store_value(self, _Bottom(Expando()))
     else:
       prop = GenericProperty(next,
                              repeated=p.multiple(),
