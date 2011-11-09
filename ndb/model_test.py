@@ -1233,6 +1233,20 @@ class ModelTests(test_utils.NDBTest):
     lines = difflib.unified_diff(linesp, linesq, 'Expected', 'Actual')
     self.assertEqual(pb, qb, ''.join(lines))
 
+  def testMetaModelRepr(self):
+    class MyModel(model.Model):
+      name = model.StringProperty()
+      tags = model.StringProperty(repeated=True)
+      age = model.IntegerProperty()
+      other = model.KeyProperty()
+    self.assertEqual(repr(MyModel),
+                     "MyModel<"
+                     "age=IntegerProperty('age'), "
+                     "name=StringProperty('name'), "
+                     "other=KeyProperty('other'), "
+                     "tags=StringProperty('tags', repeated=True)"
+                     ">")
+
   def testModelPickling(self):
     global MyModel
     class MyModel(model.Model):
