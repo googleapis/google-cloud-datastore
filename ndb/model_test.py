@@ -1349,6 +1349,19 @@ class ModelTests(test_utils.NDBTest):
     self.assertEqual(p._values,
                      {'foo': 'bar', 'bar': 'foo', 'baz': 'baz'})
 
+  def testExpando_Repr(self):
+    class E(model.Expando):
+      pass
+    ent = E(a=1, b=[2], c=E(x=3, y=[4]))
+    self.assertEqual(repr(ent),
+                     "E(a=1, b=[2], c=E(x=3, y=[4]))")
+    pb = ent._to_pb(set_key=False)
+    ent2 = E._from_pb(pb)
+    # NOTE: The 'E' kind name for the inner instance is not persisted,
+    # so it comes out as Expando.
+    self.assertEqual(repr(ent2),
+                     "E(a=1, b=[2], c=Expando(x=3, y=[4]))")
+
   def testPropertyRepr(self):
     p = model.Property()
     self.assertEqual(repr(p), 'Property()')
