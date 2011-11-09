@@ -1717,16 +1717,16 @@ class LocalStructuredProperty(BlobProperty):
       raise TypeError('XXX')
 
   def _prepare_for_put(self, entity):
+    # TODO: Using _top_value() here makes it impossible to subclass
+    # this class and add a _to_top().  But using _bot_value() won't
+    # work, since that would return the serialized (and possibly
+    # compressed) serialized blob.
     value = self._top_value(entity)
     if value is not None:
       if self._repeated:
         for subent in value:
-          if isinstance(subent, _Bottom):
-            subent = subent.bot_val
           subent._prepare_for_put()
       else:
-        if isinstance(value, _Bottom):
-          value = value.bot_val
         value._prepare_for_put()
 
 
