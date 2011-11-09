@@ -23,7 +23,10 @@ def make_model_class(message_type):
       prop = MessageProperty(field.type, field.name, repeated=field.repeated)
     elif isinstance(field, messages.EnumField):
       prop = EnumProperty(field.type, field.name, repeated=field.repeated)
+    elif isinstance(field, messages.BytesField):
+      prop = BlobProperty(field.name, repeated=field.repeated)
     else:
+      # IntegerField, FloatField, BooleanField, StringField.
       prop = GenericProperty(field.name, repeated=field.repeated)
     props[field.name] = prop
   return MetaModel('%s__Model' % message_type.__name__, (Model,), props)
@@ -131,7 +134,7 @@ def main():
 
   print '-'*20
 
-  note2 = Note(text='blooh', when=0)
+  note2 = Note(text=u'blooh\u1234\U00102345blooh', when=0)
   notes = Notes(notes=[note1, note2])
   print 'Before:', notes
   ent = DbNotes(danotes=notes)
