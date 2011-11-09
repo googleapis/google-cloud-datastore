@@ -1899,8 +1899,8 @@ class MetaModel(type):
 
   def __repr__(cls):
     props = []
-    for name, prop in sorted(cls._properties.iteritems()):
-      props.append('%s=%r' % (name, prop))
+    for _, prop in sorted(cls._properties.iteritems()):
+      props.append('%s=%r' % (prop._code_name, prop))
     return '%s<%s>' % (cls.__name__, ', '.join(props))
 
 
