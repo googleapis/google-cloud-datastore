@@ -1897,6 +1897,12 @@ class MetaModel(type):
     super(MetaModel, cls).__init__(name, bases, classdict)
     cls._fix_up_properties()
 
+  def __repr__(cls):
+    props = []
+    for name, prop in sorted(cls._properties.iteritems()):
+      props.append('%s=%r' % (name, prop))
+    return '%s<%s>' % (cls.__name__, ', '.join(props))
+
 
 class Model(object):
   """A class describing datastore entities.
