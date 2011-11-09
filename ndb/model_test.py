@@ -1300,6 +1300,25 @@ class ModelTests(test_utils.NDBTest):
       "Person(key=Key('Person', 42), "
       "address=Address(city='SF', street='345 Spear'), name='Google')")
 
+  def testModelReprNoSideEffects(self):
+    class Address(model.Model):
+      street = model.StringProperty()
+      city = model.StringProperty()
+    a = Address(street='345 Spear', city='SF')
+    # White box test: values are 'top values'.
+    self.assertEqual(a._values, {'street': '345 Spear', 'city': 'SF'})
+    a.put()
+    # White box test: put() has turned wrapped values in _Bottom().
+    self.assertEqual(a._values, {'street': model._Bottom('345 Spear'),
+                                 'city': model._Bottom('SF')})
+    self.assertEqual(repr(a),
+                     "Address(key=Key('Address', 1), "
+                     # (Note: Unicode literals.)
+                     "city=u'SF', street=u'345 Spear')")
+    # White box test: _values is unchanged.
+    self.assertEqual(a._values, {'street': model._Bottom('345 Spear'),
+                                 'city': model._Bottom('SF')})
+
   def testModelRepr_RenamedProperty(self):
     class Address(model.Model):
       street = model.StringProperty('Street')

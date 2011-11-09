@@ -400,6 +400,16 @@ class _Bottom(object):
   def __repr__(self):
     return '_Bottom(%r)' % (self.bot_val,)
 
+  def __eq__(self, other):
+    if not isinstance(other, _Bottom):
+      return NotImplementedError
+    return self.bot_val == other.bot_val
+
+  def __ne__(self, other):
+    if not isinstance(other, _Bottom):
+      return NotImplementedError
+    return self.bot_val != other.bot_val
+
 
 class Property(ModelAttribute):
   """A class describing a typed, persisted attribute of a datastore entity.
@@ -2036,11 +2046,17 @@ class Model(object):
   def __repr__(self):
     """Return an unambiguous string representation of an entity."""
     args = []
-    done = set()
     for prop in self._properties.itervalues():
       if prop._has_value(self):
-        args.append('%s=%r' % (prop._code_name, prop._get_value(self)))
-        done.add(prop._name)
+        val = prop._retrieve_value(self)
+        # Manually apply _to_top() so as not to have a side effect on
+        # what's contained in the entity.  Printing a value should not
+        # change it!
+        if prop._repeated:
+          val = [prop._opt_call_to_top(v) for v in val]
+        elif val is not None:
+          val = prop._opt_call_to_top(val)
+        args.append('%s=%r' % (prop._code_name, val))
     args.sort()
     if self._key is not None:
       args.insert(0, 'key=%r' % self._key)
