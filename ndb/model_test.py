@@ -1237,11 +1237,11 @@ class ModelTests(test_utils.NDBTest):
     class MyModel(model.Model):
       name = model.StringProperty()
       tags = model.StringProperty(repeated=True)
-      age = model.IntegerProperty()
+      age = model.IntegerProperty(name='a')
       other = model.KeyProperty()
     self.assertEqual(repr(MyModel),
                      "MyModel<"
-                     "age=IntegerProperty('age'), "
+                     "age=IntegerProperty('a'), "
                      "name=StringProperty('name'), "
                      "other=KeyProperty('other'), "
                      "tags=StringProperty('tags', repeated=True)"
