@@ -2208,6 +2208,7 @@ class Model(object):
       prop = GenericProperty(next,
                              repeated=p.multiple(),
                              indexed=indexed)
+    prop._code_name = next
     self._properties[prop._name] = prop
     return prop
 
@@ -2506,12 +2507,14 @@ class Expando(Model):
     if (name.startswith('_') or
         isinstance(getattr(self.__class__, name, None), (Property, property))):
       return super(Expando, self).__setattr__(name, value)
+    # TODO: Refactor this to share code with _fake_property().
     self._clone_properties()
     if isinstance(value, Model):
       prop = StructuredProperty(Model, name)
     else:
       repeated = isinstance(value, list)
       indexed = self._default_indexed
+      # TODO: What if it's a list of Model instances?
       prop = GenericProperty(name, repeated=repeated, indexed=indexed)
     prop._code_name = name
     self._properties[name] = prop
