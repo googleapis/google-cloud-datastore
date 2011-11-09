@@ -1619,7 +1619,8 @@ class StructuredProperty(Property):
         self._store_value(entity, _Bottom(subentity))
       cls = self._modelclass
       if isinstance(subentity, _Bottom):
-        # TODO: When is in not a Bottom?
+        # NOTE: It may not be a _Bottom when we're deserializing a
+        # repeated structured property.
         subentity = subentity.bot_val
       if not isinstance(subentity, cls):
         raise RuntimeError('Cannot deserialize StructuredProperty %s; value '
@@ -1644,26 +1645,21 @@ class StructuredProperty(Property):
       raise RuntimeError('Unable to find property %s of StructuredProperty %s.'
                          % (next, self._name))
 
-    values = self._retrieve_value(entity)
-    if values is None:
-      values = []
-      self._store_value(entity, values)
-    else:
-      assert isinstance(values, list), repr(values)
+    values = self._bot_value_unwrapped_as_list(entity)
     # Find the first subentity that doesn't have a value for this
     # property yet.
     for sub in values:
-      if isinstance(sub, _Bottom):
-        sub = sub.bot_val
-      else:
-        assert sub is None, repr(sub)
       if not isinstance(sub, self._modelclass):
         raise TypeError('sub-entities must be instances of their Model class.')
       if not prop._has_value(sub, rest):
         subentity = sub
         break
     else:
+      # We didn't find one.  Add a new one to the underlying list of
+      # values (the list returned by _bot_value_unwrapped_as_list() is
+      # a copy so we can't append to it).
       subentity = self._modelclass()
+      values = self._retrieve_value(entity)
       values.append(_Bottom(subentity))
     prop._deserialize(subentity, p, depth + 1)
 
@@ -1717,16 +1713,16 @@ class LocalStructuredProperty(BlobProperty):
       raise TypeError('XXX')
 
   def _prepare_for_put(self, entity):
+    # TODO: Using _top_value() here makes it impossible to subclass
+    # this class and add a _to_top().  But using _bot_value() won't
+    # work, since that would return the serialized (and possibly
+    # compressed) serialized blob.
     value = self._top_value(entity)
     if value is not None:
       if self._repeated:
         for subent in value:
-          if isinstance(subent, _Bottom):
-            subent = subent.bot_val
           subent._prepare_for_put()
       else:
-        if isinstance(value, _Bottom):
-          value = value.bot_val
         value._prepare_for_put()
 
 
