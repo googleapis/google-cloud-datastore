@@ -350,17 +350,15 @@ class ModelAdapter(datastore_rpc.AbstractAdapter):
     return key.reference()
 
   def pb_to_entity(self, pb):
+    key = None
     kind = None
     if pb.has_key():
-      # TODO: Fix the inefficiency here: we extract the key just so we
-      # can get the kind just so we can find the intended model class,
-      # but the key is extracted again and stored in the entity by _from_pb().
       key = Key(reference=pb.key())
       kind = key.kind()
     modelclass = Model._kind_map.get(kind, self.default_model)
     if modelclass is None:
       raise KindError("No implementation found for kind '%s'" % kind)
-    entity = modelclass._from_pb(pb)
+    entity = modelclass._from_pb(pb, key=key, set_key=False)
     if self.want_pbs:
       entity._orig_pb = pb
     return entity
@@ -2068,18 +2066,19 @@ class Model(object):
         group.add_element().CopyFrom(elem)
 
   @classmethod
-  def _from_pb(cls, pb, set_key=True, ent=None):
+  def _from_pb(cls, pb, set_key=True, ent=None, key=None):
     """Internal helper to create an entity from an EntityProto protobuf."""
     if not isinstance(pb, entity_pb.EntityProto):
       raise TypeError('pb must be a EntityProto; received %r' % pb)
     if ent is None:
       ent = cls()
 
-    if pb.has_key():
+    # A key passed in overrides a key in the pb.
+    if key is None and pb.has_key():
       key = Key(reference=pb.key())
-      # If set_key is not set, skip a trivial incomplete key.
-      if set_key or key.id() or key.parent():
-        ent._key = key
+    # If set_key is not set, skip a trivial incomplete key.
+    if key is not None and (set_key or key.id() or key.parent()):
+      ent._key = key
 
     indexed_properties = pb.property_list()
     unindexed_properties = pb.raw_property_list()
