@@ -494,6 +494,26 @@ class ModelTests(test_utils.NDBTest):
     self.assertRaises(datastore_errors.BadArgumentError, model.Model, key=k,
                       id='bar', parent=p)
 
+  def testAdapter(self):
+    class Foo(model.Model):
+      name = model.StringProperty()
+    ad = model.ModelAdapter()
+    foo1 = Foo(name='abc')
+    pb1 = ad.entity_to_pb(foo1)
+    foo2 = ad.pb_to_entity(pb1)
+    self.assertEqual(foo1, foo2)
+    self.assertTrue(foo2.key is None)
+    pb2 = foo2._to_pb(set_key=False)
+    self.assertRaises(model.KindError, ad.pb_to_entity, pb2)
+    ad = model.ModelAdapter(Foo)
+    foo3 = ad.pb_to_entity(pb2)
+    self.assertEqual(foo3, foo2)
+
+    key1 = model.Key(Foo, 1)
+    pbk1 = ad.key_to_pb(key1)
+    key2 = ad.pb_to_key(pbk1)
+    self.assertEqual(key1, key2)
+
   def testQuery(self):
     class MyModel(model.Model):
       p = model.IntegerProperty()

@@ -336,6 +336,7 @@ class ModelAdapter(datastore_rpc.AbstractAdapter):
     self.want_pbs = 0
 
   # Make this a context manager to request setting _orig_pb.
+  # Used in query.py by _MultiQuery.run_to_queue().
 
   def __enter__(self):
     self.want_pbs += 1
