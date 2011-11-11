@@ -14,7 +14,6 @@ import datetime
 
 from google.appengine.ext import testbed
 
-from ndb import model
 from ndb.model import *
 
 
