@@ -944,8 +944,6 @@ class Property(ModelAttribute):
         is a repeated Property.
     """
     values = self._bot_value_unwrapped_as_list(entity)
-    if values is None:
-      return
     for val in values:
       if self._indexed:
         p = pb.add_property()
