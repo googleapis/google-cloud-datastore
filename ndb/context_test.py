@@ -823,7 +823,7 @@ class ContextTests(test_utils.NDBTest):
     # Verify that it is now in memcache.
     get_fut = self.ctx.get(key)
     ent = get_fut.get_result()
-    self.assertTrue(ent is None,
+    self.assertTrue(ent is not None,
                     'Memcache delete did block memcache set %r' % ent)
 
   def testMemcacheAPI(self):

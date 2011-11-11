@@ -646,7 +646,7 @@ class Context(object):
         else:
           pbs = entity._to_pb(set_key=False).SerializePartialToString()
           timeout = self._get_memcache_timeout(key, options)
-          yield self.memcache_add(mkey, pbs, time=timeout, namespace=ns)
+          yield self.memcache_set(mkey, pbs, time=timeout, namespace=ns)
 
     if use_datastore:
       key = yield self._put_batcher.add(entity, options)
