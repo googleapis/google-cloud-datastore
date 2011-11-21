@@ -910,7 +910,10 @@ class Context(object):
       mapping[key] = value
     results = yield method(mapping, time=time, namespace=namespace)
     for fut, (key, unused_value) in todo:
-      status = results.get(key)
+      if results is None:
+        status = memcache.MemcacheSetResponse.STORED
+      else:
+        status = results.get(key)
       fut.set_result(status == memcache.MemcacheSetResponse.STORED)
 
   @tasklets.tasklet
