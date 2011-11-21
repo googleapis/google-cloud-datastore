@@ -924,8 +924,9 @@ class Context(object):
     statuses = yield self._memcache.delete_multi_async(keys, seconds=seconds,
                                                        namespace=namespace)
     status_key_mapping = {}
-    for key, status in zip(keys, statuses):
-      status_key_mapping[key] = status
+    if statuses:  # On network error, statuses is None.
+      for key, status in zip(keys, statuses):
+        status_key_mapping[key] = status
     for fut, key in todo:
       fut.set_result(status_key_mapping.get(key))
 
