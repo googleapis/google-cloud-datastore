@@ -1,0 +1,79 @@
+Release 0.9.2
+
+This release contains several bugfixes and minor improvements:
+
+- Reject queries for unindexed properties.
+- Fix issue 91: with use_datastore=False, .put() would not overwrite
+  an existing value in memcache.
+- Fix issue 19: more robust get_or_insert() signature.
+- Fix issue 87: bug in whole-structure property queries.
+- Fix repr() of AND node to actually say AND(...).  (It said OR(...)!)
+- Support whole-structure matching for nested structures.
+- The repr() of a model class now shows the list of properties.
+- Fix the repr() of an Expando read back from the datastore.
+- Optimization: when reading an entity, don't read the key twice.
+- Add some new tests; test-related Makefile changes.
+- Various minor cleanups and refactorings, typo fixes, etc.
+- Fix ndb.__version__.
+
+----------------------------------------
+
+Release 0.9.1
+
+This release contains two bugfixes for release 0.9:
+
+- issue 83: ComputedProperty inside repeated StructuredProperty blows up
+- issue 85: Python 2.7 runtime raises incorrect "RuntimeError: Result cannot be set twice"
+
+----------------------------------------
+
+Release 0.9
+
+NOTE: When switching from 0.8 (or back), you must clear memcache!
+
+Most important changes since 0.8:
+
+- Improved consistency in memcache integration
+- Improved behavior of auto-batching through idle callbacks
+- Reduced size of entities written by memcache integration
+
+Bugs fixed:
+- Issue 73: use namespace from key for caching
+- Issue 77: support querying for prop==None, prop!=None
+- Issue 76: fix corner case in repr(entity)
+- Issue 78: preserve namespace in .filter() and .order()
+- Issue 81: make Context.flush() more effective
+- Issue 75: optional validation for model keys
+- Fixed IN operator for KeyProperty, None and more
+
+Other changes:
+- A ComputedProperty can now be marked repeated=True;
+  the function must return a list in this case
+- Replaced asserts with better exceptions
+- General code cleanup
+- Added ndb.__version__ variable (set to '0.9')
+- Improved test runners etc.
+NOTE: When switching from 0.8 (or back), you must clear memcache!
+
+Most important changes since 0.8:
+
+- Improved consistency in memcache integration
+- Improved behavior of auto-batching through idle callbacks
+- Reduced size of entities written by memcache integration
+
+Bugs fixed:
+- Issue 73: use namespace from key for caching
+- Issue 77: support querying for prop==None, prop!=None
+- Issue 76: fix corner case in repr(entity)
+- Issue 78: preserve namespace in .filter() and .order()
+- Issue 81: make Context.flush() more effective
+- Issue 75: optional validation for model keys
+- Fixed IN operator for KeyProperty, None and more
+
+Other changes:
+- A ComputedProperty can now be marked repeated=True;
+  the function must return a list in this case
+- Replaced asserts with better exceptions
+- General code cleanup
+- Added ndb.__version__ variable (set to '0.9')
+- Improved test runners etc.

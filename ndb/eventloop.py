@@ -137,7 +137,7 @@ class EventLoop(object):
         self.inactive += 1
       self.idlers.append(idler)
     else:
-      logging.info('idler %s removed', callback.__name__)
+      logging_debug('idler %s removed', callback.__name__)
     return True
 
   def run0(self):
@@ -169,7 +169,7 @@ class EventLoop(object):
       self.inactive = 0
       rpc = datastore_rpc.MultiRpc.wait_any(self.rpcs)
       if rpc is not None:
-        logging.info('rpc: %s.%s', rpc.service, rpc.method)  # XXX debug
+        logging_debug('rpc: %s.%s', rpc.service, rpc.method)
         # Yes, wait_any() may return None even for a non-empty argument.
         # But no, it won't ever return an RPC not in its argument.
         if rpc not in self.rpcs:
