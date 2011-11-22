@@ -911,7 +911,7 @@ class Context(object):
     results = yield method(mapping, time=time, namespace=namespace)
     for fut, (key, unused_value) in todo:
       if results is None:
-        status = memcache.MemcacheSetResponse.STORED
+        status = memcache.MemcacheSetResponse.ERROR
       else:
         status = results.get(key)
       fut.set_result(status == memcache.MemcacheSetResponse.STORED)
@@ -931,7 +931,8 @@ class Context(object):
       for key, status in zip(keys, statuses):
         status_key_mapping[key] = status
     for fut, key in todo:
-      fut.set_result(status_key_mapping.get(key))
+      status = status_key_mapping.get(key, memcache.DELETE_NETWORK_FAILURE)
+      fut.set_result(status)
 
   @tasklets.tasklet
   def _memcache_off_tasklet(self, todo, options):

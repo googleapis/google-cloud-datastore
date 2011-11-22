@@ -8,6 +8,7 @@ from google.appengine.api import memcache
 from google.appengine.api import taskqueue
 from google.appengine.datastore import datastore_rpc
 from google.appengine.datastore import datastore_stub_util
+from google.appengine.runtime import apiproxy_errors
 
 from . import context
 from . import eventloop
@@ -889,6 +890,29 @@ class ContextTests(test_utils.NDBTest):
       self.assertEqual(vvvv, [STORED, STORED, NOT_STORED, NOT_STORED])
 
     foo().get_result()
+
+  def testMemcacheErrors(self):
+    # See issue 94.  http://goo.gl/E7OBH
+    # Install an error handler.
+    save_create_rpc = memcache.create_rpc
+    def fake_check_success(*args):
+      raise apiproxy_errors.Error('fake error')
+    def fake_create_rpc(*args, **kwds):
+      rpc = save_create_rpc(*args, **kwds)
+      rpc.check_success = fake_check_success
+      return rpc
+    try:
+      memcache.create_rpc = fake_create_rpc
+      val = self.ctx.memcache_get('key2').get_result()
+      self.assertEqual(val, None)
+      val = self.ctx.memcache_incr('key2').get_result()
+      self.assertEqual(val, None)
+      ok = self.ctx.memcache_set('key2', 'value2').get_result()
+      self.assertFalse(ok)
+      ok = self.ctx.memcache_delete('key2').get_result()
+      self.assertEqual(ok, memcache.DELETE_NETWORK_FAILURE)
+    finally:
+      memcache.create_rpc = save_create_rpc
 
   def testMemcacheNamespaces(self):
     @tasklets.tasklet
