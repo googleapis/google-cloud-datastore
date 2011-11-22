@@ -1,3 +1,12 @@
+Release 0.9.3
+
+Two bugfixes:
+
+- Fixes issue 94 (tracebacks when memcache returns network errors).
+- Fixes issue 92 (logging too verbose).
+
+----------------------------------------
+
 Release 0.9.2
 
 This release contains several bugfixes and minor improvements:
