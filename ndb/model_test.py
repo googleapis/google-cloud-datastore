@@ -2697,6 +2697,51 @@ class ModelTests(test_utils.NDBTest):
     self.assertEqual(self.post_counter, 11,
                      'Post put hooks not called on put_multi')
 
+  def testGetByIdHooksCalled(self):
+    # See issue 95.  http://goo.gl/QSRQH
+    # Adapted from testGetHooksCalled in key_test.py.
+    test = self # Closure for inside hook
+    self.pre_counter = 0
+    self.post_counter = 0
+
+    class HatStand(model.Model):
+      @classmethod
+      def _pre_get_hook(cls, key):
+        test.pre_counter += 1
+        if test.pre_counter == 1:  # Cannot test for key in get_multi
+          self.assertEqual(key, self.key)
+      @classmethod
+      def _post_get_hook(cls, key, future):
+        test.post_counter += 1
+        self.assertEqual(key, self.key)
+        self.assertEqual(future.get_result(), self.entity)
+
+    furniture = HatStand()
+    self.entity = furniture
+    key = furniture.put()
+    self.key = key
+    self.assertEqual(self.pre_counter, 0, 'Pre get hook called early')
+    future = HatStand.get_by_id_async(key.id())
+    self.assertEqual(self.pre_counter, 1, 'Pre get hook not called')
+    self.assertEqual(self.post_counter, 0, 'Post get hook called early')
+    future.get_result()
+    self.assertEqual(self.post_counter, 1, 'Post get hook not called')
+
+    # All counters now read 1, calling get for 10 keys should make this 11
+    new_furniture = [HatStand() for _ in range(10)]
+    keys = [furniture.put() for furniture in new_furniture]  # Sequential keys
+    multi_future = [HatStand.get_by_id_async(key.id()) for key in keys]
+    self.assertEqual(self.pre_counter, 11,
+                     'Pre get hooks not called on get_multi')
+    self.assertEqual(self.post_counter, 1,
+                     'Post get hooks called early on get_multi')
+    for fut, key, entity in zip(multi_future, keys, new_furniture):
+      self.key = key
+      self.entity = entity
+      fut.get_result()
+    self.assertEqual(self.post_counter, 11,
+                     'Post get hooks not called on get_multi')
+
   def testMonkeyPatchHooks(self):
     test = self # Closure for inside put hooks
     hook_attr_names = ('_pre_allocate_ids_hook', '_post_allocate_ids_hook',

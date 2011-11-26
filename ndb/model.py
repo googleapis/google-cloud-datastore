@@ -2301,6 +2301,8 @@ class Model(object):
   def _get_by_id(cls, id, parent=None, **ctx_options):
     """Returns a instance of Model class by ID.
 
+    This is really just a shorthand for Key(cls, id).get().
+
     Args:
       id: A string or integer key ID.
       parent: Parent key of the model to get.
@@ -2318,9 +2320,8 @@ class Model(object):
 
     This is the asynchronous version of Model._get_by_id().
     """
-    from . import tasklets
     key = Key(cls._get_kind(), id, parent=parent)
-    return tasklets.get_context().get(key, **ctx_options)
+    return key.get_async(**ctx_options)
   get_by_id_async = _get_by_id_async
 
   # Hooks that wrap around mutations.  Most are class methods with
