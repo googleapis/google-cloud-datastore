@@ -5,6 +5,7 @@ import pickle
 import unittest
 
 from google.appengine.api import datastore_errors
+from google.appengine.api import datastore_types
 from google.appengine.datastore import entity_pb
 
 from . import eventloop
@@ -415,6 +416,14 @@ class KeyTests(test_utils.NDBTest):
     entity.put()
     fut = entity.key.get_async()
     self.assertFalse(fut._immediate_callbacks, 'Get hook queued default no-op.')
+
+  def testFromOldKey(self):
+    old_key = datastore_types.Key.from_path('TestKey', 1234)
+    new_key = key.Key.from_old_key(old_key)
+    self.assertEquals(str(old_key), new_key.urlsafe())
+
+    old_key2 = new_key.to_old_key()
+    self.assertEquals(old_key, old_key2)
 
 
 def main():
