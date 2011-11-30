@@ -514,6 +514,12 @@ class ModelTests(test_utils.NDBTest):
     key2 = ad.pb_to_key(pbk1)
     self.assertEqual(key1, key2)
 
+  def testPropertyVerboseNameAttribute(self):
+    class Foo(model.Model):
+      name = model.StringProperty(verbose_name='Full name')
+    np = Foo._properties['name']
+    self.assertEqual('Full name', np._verbose_name)
+
   def testQuery(self):
     class MyModel(model.Model):
       p = model.IntegerProperty()

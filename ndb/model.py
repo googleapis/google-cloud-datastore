@@ -107,6 +107,9 @@ accept several optional keyword arguments:
   example: a validator that returns value.strip() or value.lower() is
   fine, but one that returns value + '$' is not.)
 
+- verbose_name=<value>: A human readable name for this property.  This
+  human readable name can be used for html form labels.
+
 The repeated, required and default options are mutually exclusive: a
 repeated property cannot be required nor can it specify a default
 value (the default is always an empty list and an empty list is always
@@ -412,14 +415,16 @@ class Property(ModelAttribute):
   _default = None
   _choices = None
   _validator = None
+  _verbose_name = None
 
   _attributes = ['_name', '_indexed', '_repeated', '_required', '_default',
-                 '_choices', '_validator']
+                 '_choices', '_validator', '_verbose_name']
   _positional = 1
 
   @datastore_rpc._positional(1 + _positional)
   def __init__(self, name=None, indexed=None, repeated=None,
-               required=None, default=None, choices=None, validator=None):
+               required=None, default=None, choices=None, validator=None,
+               verbose_name=None):
     """Constructor.  For arguments see the module docstring."""
     if name is not None:
       if isinstance(name, unicode):
@@ -435,6 +440,8 @@ class Property(ModelAttribute):
       self._required = required
     if default is not None:
       self._default = default
+    if verbose_name is not None:
+      self._verbose_name = verbose_name
     if (bool(self._repeated) +
         bool(self._required) +
         (self._default is not None)) > 1:
