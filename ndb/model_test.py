@@ -2748,6 +2748,46 @@ class ModelTests(test_utils.NDBTest):
     self.assertEqual(self.post_counter, 11,
                      'Post get hooks not called on get_multi')
 
+  def testGetOrInsertHooksCalled(self):
+    # See issue 98.  http://goo.gl/7ak2i
+    test = self # Closure for inside hooks
+
+    class HatStand(model.Model):
+      @classmethod
+      def _pre_get_hook(cls, key):
+        test.pre_get_counter += 1
+      @classmethod
+      def _post_get_hook(cls, key, future):
+        test.post_get_counter += 1
+      def _pre_put_hook(self):
+        test.pre_put_counter += 1
+      def _post_put_hook(self, future):
+        test.post_put_counter += 1
+
+    # First call creates it.  This calls get() twice (once outside the
+    # transaction and once inside it) and put() once (from inside the
+    # transaction).
+    self.pre_get_counter = 0
+    self.post_get_counter = 0
+    self.pre_put_counter = 0
+    self.post_put_counter = 0
+    HatStand.get_or_insert('classic')
+    self.assertEqual(self.pre_get_counter, 2)
+    self.assertEqual(self.post_get_counter, 2)
+    self.assertEqual(self.pre_put_counter, 1)
+    self.assertEqual(self.post_put_counter, 1)
+
+    # Second call gets it without needing a transaction.
+    self.pre_get_counter = 0
+    self.post_get_counter = 0
+    self.pre_put_counter = 0
+    self.post_put_counter = 0
+    HatStand.get_or_insert_async('classic').get_result()
+    self.assertEqual(self.pre_get_counter, 1)
+    self.assertEqual(self.post_get_counter, 1)
+    self.assertEqual(self.pre_put_counter, 0)
+    self.assertEqual(self.post_put_counter, 0)
+
   def testMonkeyPatchHooks(self):
     test = self # Closure for inside put hooks
     hook_attr_names = ('_pre_allocate_ids_hook', '_post_allocate_ids_hook',
