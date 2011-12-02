@@ -74,6 +74,7 @@ import base64
 import os
 
 from google.appengine.api import datastore_errors
+from google.appengine.api import datastore_types
 from google.appengine.api import namespace_manager
 from google.appengine.datastore import datastore_rpc
 from google.appengine.datastore import entity_pb
@@ -542,6 +543,13 @@ class Key(object):
                                   post_hook):
         fut.add_immediate_callback(post_hook, self, fut)
     return fut
+
+  @classmethod
+  def from_old_key(cls, old_key):
+    return cls(urlsafe=str(old_key))
+
+  def to_old_key(self):
+    return datastore_types.Key(encoded=self.urlsafe())
 
 
 # The remaining functions in this module are private.

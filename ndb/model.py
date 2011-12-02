@@ -107,6 +107,9 @@ accept several optional keyword arguments:
   example: a validator that returns value.strip() or value.lower() is
   fine, but one that returns value + '$' is not.)
 
+- verbose_name=<value>: A human readable name for this property.  This
+  human readable name can be used for html form labels.
+
 The repeated, required and default options are mutually exclusive: a
 repeated property cannot be required nor can it specify a default
 value (the default is always an empty list and an empty list is always
@@ -436,14 +439,16 @@ class Property(ModelAttribute):
   _default = None
   _choices = None
   _validator = None
+  _verbose_name = None
 
   _attributes = ['_name', '_indexed', '_repeated', '_required', '_default',
-                 '_choices', '_validator']
+                 '_choices', '_validator', '_verbose_name']
   _positional = 1
 
   @datastore_rpc._positional(1 + _positional)
   def __init__(self, name=None, indexed=None, repeated=None,
-               required=None, default=None, choices=None, validator=None):
+               required=None, default=None, choices=None, validator=None,
+               verbose_name=None):
     """Constructor.  For arguments see the module docstring."""
     if name is not None:
       if isinstance(name, unicode):
@@ -460,6 +465,8 @@ class Property(ModelAttribute):
     if default is not None:
       # TODO: Call _validate() on default?
       self._default = default
+    if verbose_name is not None:
+      self._verbose_name = verbose_name
     if (bool(self._repeated) +
         bool(self._required) +
         (self._default is not None)) > 1:
@@ -2397,6 +2404,8 @@ class Model(object):
   def _get_by_id(cls, id, parent=None, **ctx_options):
     """Returns a instance of Model class by ID.
 
+    This is really just a shorthand for Key(cls, id).get().
+
     Args:
       id: A string or integer key ID.
       parent: Parent key of the model to get.
@@ -2414,9 +2423,8 @@ class Model(object):
 
     This is the asynchronous version of Model._get_by_id().
     """
-    from . import tasklets
     key = Key(cls._get_kind(), id, parent=parent)
-    return tasklets.get_context().get(key, **ctx_options)
+    return key.get_async(**ctx_options)
   get_by_id_async = _get_by_id_async
 
   # Hooks that wrap around mutations.  Most are class methods with

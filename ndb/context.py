@@ -18,6 +18,8 @@ from . import tasklets
 from . import eventloop
 from . import utils
 
+__all__ = ['toplevel', 'Context', 'ContextOptions', 'AutoBatcher']
+
 logging_debug = utils.logging_debug
 
 _LOCK_TIME = 32  # Time to lock out memcache.add() after datastore updates.
