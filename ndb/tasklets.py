@@ -73,6 +73,12 @@ from google.appengine.datastore import datastore_rpc
 from . import eventloop
 from . import utils
 
+__all__ = ['Return', 'tasklet', 'get_context', 'set_context', 'sleep',
+           'synctasklet',
+           'Future', 'MultiFuture', 'QueueFuture', 'SerialQueueFuture',
+           'ReducingFuture',
+           ]
+
 logging_debug = utils.logging_debug
 
 
