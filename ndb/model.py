@@ -419,7 +419,7 @@ class Property(ModelAttribute):
 
   _attributes = ['_name', '_indexed', '_repeated', '_required', '_default',
                  '_choices', '_validator', '_verbose_name']
-  _positional = 1
+  _positional = 1  # Only name is a positional argument.
 
   @datastore_rpc._positional(1 + _positional)
   def __init__(self, name=None, indexed=None, repeated=None,
@@ -1035,9 +1035,8 @@ class TextProperty(CompressedPropertyMixin, StringProperty):
   _compressed = False
 
   _attributes = StringProperty._attributes + ['_compressed']
-  _positional = 1
 
-  @datastore_rpc._positional(1 + _positional)
+  @datastore_rpc._positional(1 + StringProperty._positional)
   def __init__(self, compressed=False, **kwds):
     super(TextProperty, self).__init__(**kwds)
     if self._indexed:
@@ -1082,9 +1081,8 @@ class BlobProperty(CompressedPropertyMixin, Property):
   _compressed = False
 
   _attributes = Property._attributes + ['_compressed']
-  _positional = 2
 
-  @datastore_rpc._positional(1 + _positional)
+  @datastore_rpc._positional(1 + Property._positional)
   def __init__(self, name=None, compressed=False, **kwds):
     super(BlobProperty, self).__init__(name=name, **kwds)
     self._compressed = compressed
@@ -1408,7 +1406,7 @@ class StructuredProperty(Property):
   _modelclass = None
 
   _attributes = ['_modelclass'] + Property._attributes
-  _positional = 2
+  _positional = Property._positional + 1  # Add modelclass as positional arg.
 
   @datastore_rpc._positional(1 + _positional)
   def __init__(self, modelclass, name=None, **kwds):
@@ -1611,7 +1609,7 @@ class LocalStructuredProperty(BlobProperty):
   _modelclass = None
 
   _attributes = ['_modelclass'] + BlobProperty._attributes
-  _positional = 2
+  _positional = BlobProperty._positional + 1  # Add modelclass as positional.
 
   @datastore_rpc._positional(1 + _positional)
   def __init__(self, modelclass, name=None, compressed=False, **kwds):
