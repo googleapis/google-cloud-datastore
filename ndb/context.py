@@ -848,6 +848,7 @@ class Context(object):
 
   @tasklets.tasklet
   def get_or_insert(*args, **kwds):
+    # TODO: Get rid of this and implement it in model.py instead.
     # NOTE: The signature is really weird here because we want to support
     # models with properties named e.g. 'self' or 'name'.
     self, model_class, name = args  # These must always be positional.
@@ -874,8 +875,15 @@ class Context(object):
       raise ValueError('name cannot be an empty string.')
     key = model.Key(model_class, name,
                     app=app, namespace=namespace, parent=parent)
-    # TODO: Can (and should) the cache be trusted here?
-    ent = yield self.get(key)
+    # Temporarily make self the current context, even if it isn't, so
+    # we can use key.get_async() instead of self.get() -- this is so
+    # that pre/post call hooks are invoked correctly.
+    save_context = tasklets.get_context()
+    try:
+      tasklets.set_context(self)
+      ent = yield key.get_async(options=context_options)
+    finally:
+      tasklets.set_context(save_context)
     if ent is None:
       @tasklets.tasklet
       def txn():
