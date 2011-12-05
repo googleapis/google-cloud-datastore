@@ -404,12 +404,12 @@ class _Bottom(object):
 
   def __eq__(self, other):
     if not isinstance(other, _Bottom):
-      return NotImplementedError
+      return NotImplemented
     return self.bot_val == other.bot_val
 
   def __ne__(self, other):
     if not isinstance(other, _Bottom):
-      return NotImplementedError
+      return NotImplemented
     return self.bot_val != other.bot_val
 
 
@@ -1133,7 +1133,17 @@ class _CompressedValue(object):
     self.z_val = z_val
 
   def __repr__(self):
-    return '_CompressedValue(%s)' % super(_CompressedValue, self).__repr__()
+    return '_CompressedValue(%s)' % repr(self.z_val)
+
+  def __eq__(self, other):
+    if not isinstance(other, _CompressedValue):
+      return NotImplemented
+    return self.z_val == other.z_val
+
+  def __ne__(self, other):
+    if not isinstance(other, _CompressedValue):
+      return NotImplemented
+    return self.z_val != other.z_val
 
 
 class BlobProperty(Property):

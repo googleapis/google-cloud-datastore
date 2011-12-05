@@ -607,6 +607,31 @@ class ModelTests(test_utils.NDBTest):
       r = q.fetch()
       self.assertEqual(r, [m2], str(q))
 
+  def testBottom(self):
+    a = model._Bottom(42)
+    b = model._Bottom(42)
+    c = model._Bottom('hello')
+    self.assertEqual("_Bottom(42)", repr(a))
+    self.assertEqual("_Bottom('hello')", repr(c))
+    self.assertTrue(a == b)
+    self.assertFalse(a != b)
+    self.assertTrue(b != c)
+    self.assertFalse(b == c)
+    self.assertFalse(a == 42)
+    self.assertTrue(a != 42)
+
+  def testCompressedValue(self):
+    a = model._CompressedValue('xyz')
+    b = model._CompressedValue('xyz')
+    c = model._CompressedValue('abc')
+    self.assertEqual("_CompressedValue('abc')", repr(c))
+    self.assertTrue(a == b)
+    self.assertFalse(a != b)
+    self.assertTrue(b != c)
+    self.assertFalse(b == c)
+    self.assertFalse(a == 'xyz')
+    self.assertTrue(a != 'xyz')
+
   def testProperty(self):
     class MyModel(model.Model):
       b = model.BooleanProperty()
