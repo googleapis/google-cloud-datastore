@@ -1273,6 +1273,40 @@ class ModelTests(test_utils.NDBTest):
                      "tags=StringProperty('tags', repeated=True)"
                      ">")
 
+  def testModelToDict(self):
+    class MyModel(model.Model):
+      foo = model.StringProperty(name='f')
+      bar = model.StringProperty(default='bar')
+      baz = model.StringProperty(repeated=True)
+    ent = MyModel()
+    self.assertEqual({'foo': None, 'bar': 'bar', 'baz': []},
+                     ent._to_dict())
+    self.assertEqual({'foo': None}, ent._to_dict(include=['foo']))
+    self.assertEqual({'bar': 'bar', 'baz': []},
+                     ent._to_dict(exclude=frozenset(['foo'])))
+    self.assertEqual({}, ent.to_dict(include=['foo'], exclude=['foo']))
+    self.assertRaises(TypeError, ent._to_dict, include='foo')
+    self.assertRaises(TypeError, ent._to_dict, exclude='foo')
+    ent.foo = 'x'
+    ent.bar = 'y'
+    ent.baz = ['a']
+    self.assertEqual({'foo': 'x', 'bar': 'y', 'baz': ['a']},
+                     ent.to_dict())
+
+  def testModelToDictStructures(self):
+    class MySubmodel(model.Model):
+      foo = model.StringProperty()
+      bar = model.IntegerProperty()
+    class MyModel(model.Model):
+      a = model.StructuredProperty(MySubmodel)
+      b = model.LocalStructuredProperty(MySubmodel, repeated=True)
+    x = MyModel(a=MySubmodel(foo='foo', bar=42),
+                b=[MySubmodel(foo='f'), MySubmodel(bar=4)])
+    self.assertEqual({'a': {'foo': 'foo', 'bar': 42},
+                      'b': [{'foo': 'f', 'bar': None,},
+                            {'foo': None, 'bar': 4}]},
+                     x.to_dict())
+
   def testModelPickling(self):
     global MyModel
     class MyModel(model.Model):

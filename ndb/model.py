@@ -787,6 +787,15 @@ class Property(ModelAttribute):
   def _prepare_for_put(self, entity):
     pass
 
+  def _get_for_dict(self, entity):
+    """Retrieve the value like _get_value(), processed for _to_dict().
+
+    Property subclasses can override this if they want the dictionary
+    returned by entity._to_dict() to contain a different value.  The
+    main use case is StructuredProperty and LocalStructuredProperty.
+    """
+    return self._get_value(entity)
+
 
 def _validate_key(value, entity=None):
   if not isinstance(value, Key):
@@ -948,7 +957,7 @@ class _CompressedValue(str):
     return '_CompressedValue(%s)' % super(_CompressedValue, self).__repr__()
 
 
-class CompressedPropertyMixin(object):
+class CompressedPropertyMixin(Property):
   """A mixin to store the property value compressed using zlib."""
 
   def _db_set_value(self, v, p, value):
@@ -1395,7 +1404,24 @@ class TimeProperty(DateTimeProperty):
     return value
 
 
-class StructuredProperty(Property):
+class StructuredGetForDictMixin(Property):
+  """Mixin class so *StructuredProperty can share _get_for_dict().
+
+  The behavior here is that sub-entities are converted to dictionaries
+  by calling to_dict() on them (also doing the right thing for
+  repeated properties).
+  """
+
+  def _get_for_dict(self, entity):
+    value = self._get_value(entity)
+    if self._repeated:
+      value = [v._to_dict() for v in value]
+    else:
+      value = value._to_dict()
+    return value
+
+
+class StructuredProperty(StructuredGetForDictMixin):
   """A Property whose value is itself an entity.
 
   The values of the sub-entity are indexed and can be queried.
@@ -1594,7 +1620,7 @@ class StructuredProperty(Property):
         value._prepare_for_put()
 
 
-class LocalStructuredProperty(BlobProperty):
+class LocalStructuredProperty(StructuredGetForDictMixin, BlobProperty):
   """Substructure that is serialized to an opaque blob.
 
   This looks like StructuredProperty on the Python side, but is
@@ -2128,6 +2154,32 @@ class Model(object):
     prop._code_name = next
     self._properties[prop._name] = prop
     return prop
+
+  @datastore_rpc._positional(1)
+  def _to_dict(self, include=None, exclude=None):
+    """Return a dict containing the entity's property values.
+
+    Args:
+      include: Optional set of property names to include, default all.
+      exclude: Optional set of property names to skip, default none.
+        A name contained in both include and exclude is excluded.
+    """
+    if (include is not None and
+        not isinstance(include, (list, tuple, set, frozenset))):
+      raise TypeError('include should be a list, tuple or set')
+    if (exclude is not None and
+        not isinstance(exclude, (list, tuple, set, frozenset))):
+      raise TypeError('exclude should be a list, tuple or set')
+    values = {}
+    for prop in self._properties.itervalues():
+      name = prop._code_name
+      if include is not None and name not in include:
+        continue
+      if exclude is not None and name in exclude:
+        continue
+      values[name] = prop._get_for_dict(self)
+    return values
+  to_dict = _to_dict
 
   @classmethod
   def _fix_up_properties(cls):
