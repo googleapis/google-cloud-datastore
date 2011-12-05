@@ -390,11 +390,18 @@ class ModelAttribute(object):
 
 
 class _Bottom(object):
-  """XXX"""
+  """A marker object wrapping a 'bottom' value.
+
+  This is used to be able to tell whether ent._values[name] is a 'top'
+  value (i.e. a value of the type that the Python code understands) or
+  a 'bottom' value (i.e. a value of the type that the serialization
+  code understands).
+  """
 
   __slots__ = ['bot_val']
 
   def __init__(self, bot_val):
+    """Constructor.  Argument is the 'bottom' value to be wrapped."""
     assert bot_val is not None
     assert not isinstance(bot_val, list), repr(bot_val)
     self.bot_val = bot_val
@@ -1123,12 +1130,12 @@ _MEANING_URI_COMPRESSED = 'ZLIB'
 
 
 class _CompressedValue(object):
-  """Used as a flag for compressed values."""
+  """A marker object wrapping compressed values."""
 
   __slots__ = ['z_val']
 
   def __init__(self, z_val):
-    """XXX"""
+    """Constructor.  Argument is a string returned by zlib.compress()."""
     assert isinstance(z_val, str), repr(z_val)
     self.z_val = z_val
 
