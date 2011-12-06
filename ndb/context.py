@@ -831,7 +831,6 @@ class Context(object):
     NOTE: This does not affect memcache.
     """
     self._cache.clear()
-    self._get_queue.clear()
 
   @tasklets.tasklet
   def _clear_memcache(self, keys):
