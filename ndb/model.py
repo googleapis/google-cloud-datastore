@@ -800,21 +800,34 @@ class Property(ModelAttribute):
 
     This returns None if no value is set, or the default argument if
     given.  For a repeated Property this returns a list if a value is
-    set, otherwise None.
+    set, otherwise None.  No additional transformations are applied.
     """
     return entity._values.get(self._name, default)
 
   def _get_user_value(self, entity):
-    """XXX"""
+    """Return the user value for this property of the given entity.
+
+    This implies removing the _Serializable() wrapper if present, and
+    if it is, calling all _from_serializable() methods, in the reverse
+    method resolution order of the property's class.  It also handles
+    default values and repeated properties.
+    """
     return self._apply_to_values(entity, self._opt_call_from_serializable)
 
   def _get_serializable_value(self, entity):
-    """XXX"""
+    """Return the serializable value for this property of the given entity.
+
+    This implies calling all _to_serializable() methods, in the method
+    resolution order of the property's class, and adding a
+    _Serializable() wrapper, if one is not already present.  (If one
+    is present, no work is done.)  It also handles default values and
+    repeated properties.
+    """
     return self._apply_to_values(entity, self._opt_call_to_serializable)
 
-  # XXX Invent a shorter name for this.
+  # TODO: Invent a shorter name for this.
   def _get_serializable_value_unwrapped_as_list(self, entity):
-    """XXX
+    """Like _get_serializable_value(), but always returns a list.
 
     Returns:
       A new list of unwrapped serializable values.  For an unrepeated
@@ -835,31 +848,68 @@ class Property(ModelAttribute):
       return [wrapped.ser_val]
 
   def _opt_call_from_serializable(self, value):
-    """XXX"""
+    """Call _from_serializable() if necessary.
+
+    If the value is a _Serializable instance, unwrap it and call all
+    _from_serializable() methods.  Otherwise, return the value
+    unchanged.
+    """
     if isinstance(value, _Serializable):
       value = self._call_from_serializable(value.ser_val)
     return value
 
   def _opt_call_to_serializable(self, value):
-    """XXX"""
+    """Call _to_serializable() if necessary.
+
+    If the value is a _Serializable instance, return it unchanged.
+    Otherwise, call all _validate() and _to_serializable() methods and
+    wrap it in a _Serializable instance.
+    """
     if not isinstance(value, _Serializable):
       value = _Serializable(self._call_to_serializable(value))
     return value
 
   def _call_from_serializable(self, value):
-    """XXX"""
+    """Call all _from_serializable() methods on the value.
+
+    This calls the methods in the reverse method resolution order of
+    the property's class.
+    """
     methods = self._find_methods('_from_serializable', reverse=True)
     call = self._apply_list(methods)
     return call(value)
 
   def _call_to_serializable(self, value):
-    """XXX"""
+    """Call all _validate() and _to_serializable() methods on the value.
+
+    This calls the methods in the method resolution order of the
+    property's class.
+    """
     methods = self._find_methods('_validate', '_to_serializable')
     call = self._apply_list(methods)
     return call(value)
 
   def _call_shallow_validation(self, value):
-    """XXX"""
+    """Call the initial set of _validate() methods.
+
+    This is similar to _call_to_serializable() except it only calls
+    those _validate() methods that can be called without needing to
+    call _to_serializable().
+
+    An example: suppose the class hierarchy is A -> B -> C ->
+    Property, and suppose A defines _validate() only, but B and C
+    define _validate() and _to_serializable().  The full list of
+    methods called by _call_to_serializable() is:
+
+      A._validate()
+      B._validate()
+      B._to_serializable()
+      C._validate()
+      C._to-serializable()
+
+    This method will call A._validate() and B._validate() but not the
+    others.
+    """
     methods = []
     for method in self._find_methods('_validate', '_to_serializable'):
       if method.__name__ != '_validate':
@@ -870,7 +920,20 @@ class Property(ModelAttribute):
 
   @classmethod
   def _find_methods(cls, *names, **kwds):
-    """XXX"""
+    """Compute a list of composable methods.
+
+    Because this is a common operation and the class hierarchy is
+    static, the outcome is cached (assuming that for a particular list
+    of names the reversed flag is either always on, or always off).
+
+    Args:
+      *names: One or more method names.
+      reverse: Optional flag, default False; if True, the list is
+        reversed.
+
+    Returns:
+      A list of callable class method objects.
+    """
     reverse = kwds.pop('reverse', False)
     assert not kwds, repr(kwds)
     cache = cls.__dict__.get('_find_methods_cache')
@@ -892,7 +955,12 @@ class Property(ModelAttribute):
     return methods
 
   def _apply_list(self, methods):
-    """XXX"""
+    """Return a single callable that applies a list of methods to a value.
+
+    If a method returns None, the last value is kept; if it returns
+    some other value, that replaces the last value.  Exceptions are
+    not caught.
+    """
     def call(value):
       for method in methods:
         newvalue = method(self, value)
@@ -902,7 +970,14 @@ class Property(ModelAttribute):
     return call
 
   def _apply_to_values(self, entity, function):
-    """XXX"""
+    """Apply a function to the property value/values of a given entity.
+
+    This retrieves the property value, applies the function, and then
+    stores the value back.  For a repeated property, the function is
+    applied separately to each of the values in the list.  The
+    resulting value or list of values is both stored back in the
+    entity and returned from this method.
+    """
     value = self._retrieve_value(entity, self._default)
     if self._repeated:
       if value is None:
