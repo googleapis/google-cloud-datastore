@@ -608,11 +608,11 @@ class ModelTests(test_utils.NDBTest):
       self.assertEqual(r, [m2], str(q))
 
   def testBottom(self):
-    a = model._Bottom(42)
-    b = model._Bottom(42)
-    c = model._Bottom('hello')
-    self.assertEqual("_Bottom(42)", repr(a))
-    self.assertEqual("_Bottom('hello')", repr(c))
+    a = model._Serializable(42)
+    b = model._Serializable(42)
+    c = model._Serializable('hello')
+    self.assertEqual("_Serializable(42)", repr(a))
+    self.assertEqual("_Serializable('hello')", repr(c))
     self.assertTrue(a == b)
     self.assertFalse(a != b)
     self.assertTrue(b != c)
@@ -1393,16 +1393,16 @@ class ModelTests(test_utils.NDBTest):
     # White box test: values are 'top values'.
     self.assertEqual(a._values, {'street': '345 Spear', 'city': 'SF'})
     a.put()
-    # White box test: put() has turned wrapped values in _Bottom().
-    self.assertEqual(a._values, {'street': model._Bottom('345 Spear'),
-                                 'city': model._Bottom('SF')})
+    # White box test: put() has turned wrapped values in _Serializable().
+    self.assertEqual(a._values, {'street': model._Serializable('345 Spear'),
+                                 'city': model._Serializable('SF')})
     self.assertEqual(repr(a),
                      "Address(key=Key('Address', 1), "
                      # (Note: Unicode literals.)
                      "city=u'SF', street=u'345 Spear')")
     # White box test: _values is unchanged.
-    self.assertEqual(a._values, {'street': model._Bottom('345 Spear'),
-                                 'city': model._Bottom('SF')})
+    self.assertEqual(a._values, {'street': model._Serializable('345 Spear'),
+                                 'city': model._Serializable('SF')})
 
   def testModelRepr_RenamedProperty(self):
     class Address(model.Model):
@@ -2598,12 +2598,12 @@ class ModelTests(test_utils.NDBTest):
         # dummy
         return value
 
-      def _to_bot(self, value):
+      def _to_serializable(self, value):
         if not isinstance(value, str):
           value = value.__repr__()
         return value
 
-      def _to_top(self, value):
+      def _from_serializable(self, value):
         if isinstance(value, str):
           value = eval(value)
         return value

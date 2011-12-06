@@ -389,35 +389,36 @@ class ModelAttribute(object):
     pass
 
 
-class _Bottom(object):
-  """A marker object wrapping a 'bottom' value.
+class _Serializable(object):
+  """A marker object wrapping a 'serializable' value.
 
-  This is used to be able to tell whether ent._values[name] is a 'top'
-  value (i.e. a value of the type that the Python code understands) or
-  a 'bottom' value (i.e. a value of the type that the serialization
-  code understands).
+  This is used to be able to tell whether ent._values[name] is a
+  user value (i.e. of a type that the Python code understands) or a
+  serializable value (i.e of a type that serialization understands).
+  User values are unwrapped; serializable values are wrapped in a
+  _Serializable instance.
   """
 
-  __slots__ = ['bot_val']
+  __slots__ = ['ser_val']
 
-  def __init__(self, bot_val):
-    """Constructor.  Argument is the 'bottom' value to be wrapped."""
-    assert bot_val is not None
-    assert not isinstance(bot_val, list), repr(bot_val)
-    self.bot_val = bot_val
+  def __init__(self, ser_val):
+    """Constructor.  Argument is the serializable value to be wrapped."""
+    assert ser_val is not None
+    assert not isinstance(ser_val, list), repr(ser_val)
+    self.ser_val = ser_val
 
   def __repr__(self):
-    return '_Bottom(%r)' % (self.bot_val,)
+    return '_Serializable(%r)' % (self.ser_val,)
 
   def __eq__(self, other):
-    if not isinstance(other, _Bottom):
+    if not isinstance(other, _Serializable):
       return NotImplemented
-    return self.bot_val == other.bot_val
+    return self.ser_val == other.ser_val
 
   def __ne__(self, other):
-    if not isinstance(other, _Bottom):
+    if not isinstance(other, _Serializable):
       return NotImplemented
-    return self.bot_val != other.bot_val
+    return self.ser_val != other.ser_val
 
 
 class Property(ModelAttribute):
@@ -540,7 +541,7 @@ class Property(ModelAttribute):
     if value is not None:
       # TODO: Allow query.Binding instances?
       value = self._do_validate(value)
-      value = self._call_to_bot(value)
+      value = self._call_to_serializable(value)
       value = self._datastore_type(value)
     return FilterNode(self._name, op, value)
 
@@ -571,7 +572,6 @@ class Property(ModelAttribute):
 
   def __ge__(self, value):
     """Return a FilterNode instance representing the '>=' comparison."""
-    return self._comparison('>=', value)
 
   def _IN(self, value):
     """Comparison operator for the 'in' comparison operator.
@@ -596,7 +596,7 @@ class Property(ModelAttribute):
     for val in value:
       if val is not None:
         val = self._do_validate(val)
-        val = self._call_to_bot(val)
+        val = self._call_to_serializable(val)
         val = self._datastore_type(val)
       values.append(val)
     return FilterNode(self._name, 'in', values)
@@ -623,45 +623,27 @@ class Property(ModelAttribute):
     """
     return datastore_query.PropertyOrder(self._name)
 
-  # TODO: Explain somewhere that None is never validated.
-  # TODO: What if a custom validator returns None?
-  # TODO: What if a custom validator wants to coerce a type that the
-  # built-in validator for a given class does not allow?
-
-  def _validate(self, value):
-    """Template method to validate and possibly modify the value.
-
-    This is intended to be overridden by Property subclasses.  It
-    should return the value either unchanged or modified in an
-    idempotent way, or raise an exception to indicate that the value
-    is invalid.  By convention the exception raised is BadValueError.
-
-    Returning None is equivalent to returning the argument value
-    unchanged.
-
-    This should not call the super() method.
-
-    Note that for a repeated Property this function should be called
-    for each item in the list, not for the list as a whole.
-    """
-
   def _do_validate(self, value):
     """Call all validations on the value.
 
-    XXX This probably needs to change XXX
+    This calls the most derived _validate() method(s), then the custom
+    validator function, and then checks the choices.  It returns the
+    value, possibly modified in an idempotent way, or raises an
+    exception.
 
-    This first calls self._validate(), then the custom validator
-    function, and finally checks the choices.  It returns the value,
-    possibly modified in an idempotent way, or raises an exception.
+    Note that this does not call all composable _validate() methods.
+    It only calls _validate() methods up to but not including the
+    first _to_serializable() method, when the MRO is traversed looking
+    for _validate() and _to_serializable() methods.  (IOW if a class
+    defines both _validate() and _to_serializable(), its _validate()
+    is called and then the search is aborted.)
 
     Note that for a repeated Property this function should be called
     for each item in the list, not for the list as a whole.
     """
-    if isinstance(value, _Bottom):
+    if isinstance(value, _Serializable):
       return value
-    newvalue = self._validate(value)
-    if newvalue is not None:
-      value = newvalue
+    value = self._call_shallow_validation(value)
     if self._validator is not None:
       newvalue = self._validator(self, value)
       if newvalue is not None:
@@ -727,130 +709,146 @@ class Property(ModelAttribute):
     """
     return entity._values.get(self._name, default)
 
-  """Temporary docs for top/bot APIs.
+  """Temporary docs for composable validation and serialization APIs.
 
-  Disclaimer: the top/bot terminology is likely to change.
-
-  A 'top' value is a value such as would be set and accessed by the
+  A 'user value' is a value such as would be set and accessed by the
   application code using standard attributes on the entity.
 
-  A 'bot' value is a value such as would be serialized to and
+  A 'serializable value' is a value such as would be serialized to and
   deserialized from the datastore.
 
   The values stored in ent._values[name] and accessed by
-  _store_value() and _retrieve_value() can be either top or bot
-  values.  To retrieve top values, use _top_value().  To retrieve bot
-  values, use _bot_value().  In particular, _get_value() calls
-  _top_value(), and _serialize() calls _bot_value().
+  _store_value() and _retrieve_value() can be either user values or
+  serializable values.  To retrieve user values, use
+  _get_user_value().  To retrieve serializable values, use
+  _get_serializable_value().  In particular, _get_value() calls
+  _get_user_value(), and _serialize() calls _get_serializable_value().
 
-  # TODO: Other calls to _retrieve_value() or _get_value() should
-  # probably be fixed.
+  # XXX: Other calls to _retrieve_value() or _get_value() should be
+  # fixed.
 
-  To store either top values or bot values, just call _store_value().
+  To store a user value, just call _store_value().  To store a
+  serializable value, wrap the value in a _Serializable() and then
+  call _store_value().
 
   A Property subclass that wants to implement a specific
-  transformation between top and bot values should implement two
-  methods, _to_top() and _to_bot().  These should *NOT* call their
-  super() method; super calls are taken care of by _call_to_top()
-  and _call_to_bot().
+  transformation between user and serialiazble values should implement
+  two methods, _to_serializable() and _from_serializable().  These
+  should *NOT* call their super() method; super calls are taken care
+  of by _call_to_serializable() and _call_from_serializable().
 
   The API supports 'stacking' classes with ever more sophisticated
-  top<-->bot conversions: the top-->bot conversion goes from more
-  sophisticated to less sophisticated, while the bot-->top conversion
-  goes from less sophisticated to more sophisticated (see the
-  relationship between BlobProperty, TextProperty and StringProperty
-  for an example.
+  user<-->serializable conversions: the user-->serializable conversion
+  goes from more sophisticated to less sophisticated, while the
+  serializable-->user conversion goes from less sophisticated to more
+  sophisticated.  For example, see the relationship between BlobProperty,
+  TextProperty and StringProperty.
 
-  XXX Explain what happened to _validate() XXX
+  XXX Explain stackable/composable _validate(), and lax/strict user
+  values. XXX
 
   Example/boilerplate:
 
-  XXX Maybe the order should be _validate(), _to_bot(), _to_top()?
-
-  def _to_top(self, value):
+  def _validate(self, value):
+    'Lax user value to strict user value.'
     if not isinstance(value, <top type>):
-      return <top type>(value)
+      raise TypeError(...)  # Or datastore_errors.BadValueError(...).
 
-  def _to_bot(sellf, value):
+  def _to_serializable(sellf, value):
+    '(Strict) user value to serializable value.'
     if isinstance(value, <top type>):
       return <bot type>(value)
 
-  def _validate(self, value):
+  def _from_serializable(self, value):
+    'Serializable value to (strict) user value.'
     if not isinstance(value, <top type>):
-      raise TypeError(...)
+      return <top type>(value)
 
-  Things that _to_top(), _to_bot() and _validate() do *not* need to
-  handle:
+  Things that _validate(), _to_serializable() and _from_serializable()
+  do *not* need to handle:
 
   - None values: They will not be called with None (and they should
     not return None).
 
-  - Repeated values: The infrastructure (_top_value() and
-    _bot_value()) takes care of calling _to_top() or _to_bot() for
-    each list item in a repeated value.
+  - Repeated values: The infrastructure (_get_user_value() and
+    _get_serializable_value()) takes care of calling
+    _from_serializable() or _to_serializable() for each list item in a
+    repeated value.
 
-  - Comparisons: The comparison operations call _to_bot() on their
-    operand.
+  - Comparisons: The comparison operations call _to_serializable() on
+    their operand.
 
-  - Distinguishing between top and bottom values: we now guarantee
-    that _to_top() will be called with the appropriate bottom value,
-    and that _to_bot() will be called with the appropriate top value.
+  - Distinguishing between user and serializable values: we now
+    guarantee that _from_serializable() will be called with the
+    appropriate serializable value, and that _to_serializable() will
+    be called with the appropriate user value.
 
   - Returning the original value: if any of these return None, the
     original value is kept.  (Returning a differen value not equal to
-    None will substitute the different value, of course.)
+    None will substitute the different value.)
   """
 
-  def _top_value(self, entity):
+  def _get_user_value(self, entity):
     """XXX"""
-    return self._apply_to_values(entity, self._opt_call_to_top)
+    return self._apply_to_values(entity, self._opt_call_from_serializable)
 
-  def _bot_value(self, entity):
+  def _get_serializable_value(self, entity):
     """XXX"""
-    return self._apply_to_values(entity, self._opt_call_to_bot)
+    return self._apply_to_values(entity, self._opt_call_to_serializable)
 
-  def _bot_value_unwrapped_as_list(self, entity):
+  # XXX Invent a shorter name for this.
+  def _get_serializable_value_unwrapped_as_list(self, entity):
     """XXX
 
     Returns:
-      A new list of unwrapped bottom values.  For an unrepeated
+      A new list of unwrapped serializable values.  For an unrepeated
       property, if the value is missing or None, returns [None]; for a
       repeated property, if the original value is missing or None or
       empty, returns [].
     """
-    wrapped = self._bot_value(entity)
+    wrapped = self._get_serializable_value(entity)
     if self._repeated:
       if wrapped is None:
         return []
       assert isinstance(wrapped, list)
-      return [w.bot_val for w in wrapped]
+      return [w.ser_val for w in wrapped]
     else:
       if wrapped is None:
         return [None]
-      assert isinstance(wrapped, _Bottom)
-      return [wrapped.bot_val]
+      assert isinstance(wrapped, _Serializable)
+      return [wrapped.ser_val]
 
-  def _opt_call_to_top(self, value):
+  def _opt_call_from_serializable(self, value):
     """XXX"""
-    if isinstance(value, _Bottom):
-      value = self._call_to_top(value.bot_val)
+    if isinstance(value, _Serializable):
+      value = self._call_from_serializable(value.ser_val)
     return value
 
-  def _opt_call_to_bot(self, value):
+  def _opt_call_to_serializable(self, value):
     """XXX"""
-    if not isinstance(value, _Bottom):
-      value = _Bottom(self._call_to_bot(value))
+    if not isinstance(value, _Serializable):
+      value = _Serializable(self._call_to_serializable(value))
     return value
 
-  def _call_to_top(self, value):
+  def _call_from_serializable(self, value):
     """XXX"""
-    methods = self._find_methods('_to_top', reverse=True)
+    methods = self._find_methods('_from_serializable', reverse=True)
     call = self._apply_list(methods)
     return call(value)
 
-  def _call_to_bot(self, value):
+  def _call_to_serializable(self, value):
     """XXX"""
-    methods = self._find_methods('_validate', '_to_bot')
+    methods = self._find_methods('_validate', '_to_serializable')
+    call = self._apply_list(methods)
+    return call(value)
+
+  def _call_shallow_validation(self, value):
+    """XXX"""
+    methods = []
+    for method in self._find_methods('_validate', '_to_serializable'):
+      if method.__name__ != '_validate':
+        break
+      methods.append(method)
     call = self._apply_list(methods)
     return call(value)
 
@@ -910,7 +908,7 @@ class Property(ModelAttribute):
     For a repeated Property this initializes the value to an empty
     list if it is not set.
     """
-    return self._top_value(entity)
+    return self._get_user_value(entity)
 
   def _delete_value(self, entity):
     """Internal helper to delete the value for this Property from an entity.
@@ -957,7 +955,7 @@ class Property(ModelAttribute):
       parent_repeated: True if the parent (or an earlier ancestor)
         is a repeated Property.
     """
-    values = self._bot_value_unwrapped_as_list(entity)
+    values = self._get_serializable_value_unwrapped_as_list(entity)
     for val in values:
       if self._indexed:
         p = pb.add_property()
@@ -983,7 +981,7 @@ class Property(ModelAttribute):
     v = p.value()
     val = self._db_get_value(v, p)
     if val is not None:
-      val = _Bottom(val)
+      val = _Serializable(val)
     if self._repeated:
       if self._has_value(entity):
         value = self._retrieve_value(entity)
@@ -1170,19 +1168,19 @@ class BlobProperty(Property):
       raise NotImplementedError('BlobProperty %s cannot be compressed and '
                                 'indexed at the same time.' % self._name)
 
-  def _to_top(self, value):
-    if isinstance(value, _CompressedValue):
-      return zlib.decompress(value.z_val)
-
-  def _to_bot(self, value):
-    if self._compressed:
-      return _CompressedValue(zlib.compress(value))
-
   def _validate(self, value):
     # TODO: Enforce size limit when indexed.
     if not isinstance(value, str):
       raise datastore_errors.BadValueError('Expected str, got %r' %
                                            (value,))
+
+  def _to_serializable(self, value):
+    if self._compressed:
+      return _CompressedValue(zlib.compress(value))
+
+  def _from_serializable(self, value):
+    if isinstance(value, _CompressedValue):
+      return zlib.decompress(value.z_val)
 
   def _datastore_type(self, value):
     # Since this is only used for queries, and queries imply an
@@ -1222,22 +1220,22 @@ class BlobProperty(Property):
 class TextProperty(BlobProperty):
   """An unindexed Property whose value is a text string of unlimited length."""
 
-  def _to_top(self, value):
-    if isinstance(value, str):
-      try:
-        return value.decode('utf-8')
-      except UnicodeDecodeError:
-        pass
-
-  def _to_bot(self, value):
-    if isinstance(value, unicode):
-      return value.encode('utf-8')
-
   def _validate(self, value):
     # TODO: Enforce size limit when indexed.
     if not isinstance(value, basestring):
       raise datastore_errors.BadValueError('Expected string, got %r' %
                                            (value,))
+
+  def _to_serializable(self, value):
+    if isinstance(value, unicode):
+      return value.encode('utf-8')
+
+  def _from_serializable(self, value):
+    if isinstance(value, str):
+      try:
+        return value.decode('utf-8')
+      except UnicodeDecodeError:
+        pass
 
   def _db_set_uncompressed_meaning(self, p):
     if not self._indexed:
@@ -1484,18 +1482,18 @@ def _time_to_datetime(value):
 class DateProperty(DateTimeProperty):
   """A Property whose value is a date object."""
 
-  def _to_top(self, value):
-    assert isinstance(value, datetime.datetime), repr(value)
-    return value.date()
-
-  def _to_bot(self, value):
-    assert isinstance(value, datetime.date), repr(value)
-    return _date_to_datetime(value)
-
   def _validate(self, value):
     if not isinstance(value, datetime.date):
       raise datastore_errors.BadValueError('Expected date, got %r' %
                                            (value,))
+
+  def _to_serializable(self, value):
+    assert isinstance(value, datetime.date), repr(value)
+    return _date_to_datetime(value)
+
+  def _from_serializable(self, value):
+    assert isinstance(value, datetime.datetime), repr(value)
+    return value.date()
 
   def _now(self):
     return datetime.date.today()
@@ -1504,18 +1502,18 @@ class DateProperty(DateTimeProperty):
 class TimeProperty(DateTimeProperty):
   """A Property whose value is a time object."""
 
-  def _to_top(self, value):
-    assert isinstance(value, datetime.datetime), repr(value)
-    return value.time()
-
-  def _to_bot(self, value):
-    assert isinstance(value, datetime.time), repr(value)
-    return _time_to_datetime(value)
-
   def _validate(self, value):
     if not isinstance(value, datetime.time):
       raise datastore_errors.BadValueError('Expected time, got %r' %
                                            (value,))
+
+  def _to_serializable(self, value):
+    assert isinstance(value, datetime.time), repr(value)
+    return _time_to_datetime(value)
+
+  def _from_serializable(self, value):
+    assert isinstance(value, datetime.datetime), repr(value)
+    return value.time()
 
   def _now(self):
     return datetime.datetime.now().time()
@@ -1587,12 +1585,12 @@ class StructuredProperty(StructuredGetForDictMixin):
     from .query import ConjunctionNode, PostFilterNode
     from .query import RepeatedStructuredPropertyPredicate
     value = self._do_validate(value)  # None is not allowed!
-    value = self._call_to_bot(value)
+    value = self._call_to_serializable(value)
     filters = []
     match_keys = []
     # TODO: Why not just iterate over value._values?
     for prop in self._modelclass._properties.itervalues():
-      vals = prop._bot_value_unwrapped_as_list(value)
+      vals = prop._get_serializable_value_unwrapped_as_list(value)
       if prop._repeated:
         if vals:
           raise datastore_errors.BadFilterError(
@@ -1662,7 +1660,7 @@ class StructuredProperty(StructuredGetForDictMixin):
 
   def _serialize(self, entity, pb, prefix='', parent_repeated=False):
     # entity -> pb; pb is an EntityProto message
-    values = self._bot_value_unwrapped_as_list(entity)
+    values = self._get_serializable_value_unwrapped_as_list(entity)
     for value in values:
       if value is not None:
         # TODO: Avoid re-sorting for repeated values.
@@ -1675,12 +1673,12 @@ class StructuredProperty(StructuredGetForDictMixin):
       subentity = self._retrieve_value(entity)
       if subentity is None:
         subentity = self._modelclass()
-        self._store_value(entity, _Bottom(subentity))
+        self._store_value(entity, _Serializable(subentity))
       cls = self._modelclass
-      if isinstance(subentity, _Bottom):
-        # NOTE: It may not be a _Bottom when we're deserializing a
+      if isinstance(subentity, _Serializable):
+        # NOTE: It may not be a _Serializable when we're deserializing a
         # repeated structured property.
-        subentity = subentity.bot_val
+        subentity = subentity.ser_val
       if not isinstance(subentity, cls):
         raise RuntimeError('Cannot deserialize StructuredProperty %s; value '
                            'retrieved not a %s instance %r' %
@@ -1704,7 +1702,7 @@ class StructuredProperty(StructuredGetForDictMixin):
       raise RuntimeError('Unable to find property %s of StructuredProperty %s.'
                          % (next, self._name))
 
-    values = self._bot_value_unwrapped_as_list(entity)
+    values = self._get_serializable_value_unwrapped_as_list(entity)
     # Find the first subentity that doesn't have a value for this
     # property yet.
     for sub in values:
@@ -1715,15 +1713,16 @@ class StructuredProperty(StructuredGetForDictMixin):
         break
     else:
       # We didn't find one.  Add a new one to the underlying list of
-      # values (the list returned by _bot_value_unwrapped_as_list() is
-      # a copy so we can't append to it).
+      # values (the list returned by
+      # _get_serializable_value_unwrapped_as_list() is a copy so we
+      # can't append to it).
       subentity = self._modelclass()
       values = self._retrieve_value(entity)
-      values.append(_Bottom(subentity))
+      values.append(_Serializable(subentity))
     prop._deserialize(subentity, p, depth + 1)
 
   def _prepare_for_put(self, entity):
-    values = self._bot_value_unwrapped_as_list(entity)
+    values = self._get_serializable_value_unwrapped_as_list(entity)
     for value in values:
       if value is not None:
         value._prepare_for_put()
@@ -1756,27 +1755,28 @@ class LocalStructuredProperty(StructuredGetForDictMixin, BlobProperty):
                                 self._name)
     self._modelclass = modelclass
 
-  def _to_top(self, value):
+  def _validate(self, value):
+    if not isinstance(value, self._modelclass):
+      raise datastore_errors.BadValueError('Expected %s instance, got %r' %
+                                           (self._modelclass.__name__, value))
+
+  def _to_serializable(self, value):
+    if isinstance(value, self._modelclass):
+      pb = value._to_pb(set_key=False)
+      return pb.SerializePartialToString()
+
+  def _from_serializable(self, value):
     if not isinstance(value, self._modelclass):
       pb = entity_pb.EntityProto()
       pb.MergePartialFromString(value)
       return self._modelclass._from_pb(pb, set_key=False)
 
-  def _to_bot(self, value):
-    if isinstance(value, self._modelclass):
-      pb = value._to_pb(set_key=False)
-      return pb.SerializePartialToString()
-
-  def _validate(self, value):
-    if not isinstance(value, self._modelclass):
-      raise TypeError('XXX')
-
   def _prepare_for_put(self, entity):
-    # TODO: Using _top_value() here makes it impossible to subclass
-    # this class and add a _to_top().  But using _bot_value() won't
-    # work, since that would return the serialized (and possibly
-    # compressed) serialized blob.
-    value = self._top_value(entity)
+    # TODO: Using _get_user_value() here makes it impossible to
+    # subclass this class and add a _from_serializable().  But using
+    # _get_serializable_value() won't work, since that would return
+    # the serialized (and possibly compressed) serialized blob.
+    value = self._get_user_value(entity)
     if value is not None:
       if self._repeated:
         for subent in value:
@@ -2098,13 +2098,13 @@ class Model(object):
     for prop in self._properties.itervalues():
       if prop._has_value(self):
         val = prop._retrieve_value(self)
-        # Manually apply _to_top() so as not to have a side effect on
-        # what's contained in the entity.  Printing a value should not
-        # change it!
+        # Manually apply _from_serializable() so as not to have a side
+        # effect on what's contained in the entity.  Printing a value
+        # should not change it!
         if prop._repeated:
-          val = [prop._opt_call_to_top(v) for v in val]
+          val = [prop._opt_call_from_serializable(v) for v in val]
         elif val is not None:
-          val = prop._opt_call_to_top(val)
+          val = prop._opt_call_from_serializable(val)
         args.append('%s=%r' % (prop._code_name, val))
     args.sort()
     if self._key is not None:
@@ -2263,7 +2263,7 @@ class Model(object):
     self._clone_properties()
     if p.name() != next and not p.name().endswith('.' + next):
       prop = StructuredProperty(Expando, next)
-      prop._store_value(self, _Bottom(Expando()))
+      prop._store_value(self, _Serializable(Expando()))
     else:
       prop = GenericProperty(next,
                              repeated=p.multiple(),
