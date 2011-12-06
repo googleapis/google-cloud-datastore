@@ -264,7 +264,8 @@ And finally these (without async variants):
 There are many other interesting features.  For example, Model
 subclasses may define pre-call and post-call hooks for most operations
 (get, put, delete, allocate_ids), and Property classes may be
-subclassed to suit various needs.
+subclassed to suit various needs.  Documentation for writing a
+Property subclass is in the docstring for the Property class.
 """
 
 __author__ = 'guido@google.com (Guido van Rossum)'
@@ -435,6 +436,99 @@ class Property(ModelAttribute):
   uses the non-underscore attribute namespace to refer to nested
   Property names; this is essential for specifying queries on
   subproperties (see the module docstring).
+
+  The Property class and its predefined subclasses allow easy
+  subclassing using composable (or stackable) validation and
+  conversion APIs.  These require some terminology definitions:
+
+  - A 'user value' is a value such as would be set and accessed by the
+    application code using standard attributes on the entity.
+
+  - A 'serializable value' is a value such as would be serialized to
+    and deserialized from the datastore.
+
+  The values stored in ent._values[name] and accessed by
+  _store_value() and _retrieve_value() can be either user values or
+  serializable values.  To retrieve user values, use
+  _get_user_value().  To retrieve serializable values, use
+  _get_serializable_value().  In particular, _get_value() calls
+  _get_user_value(), and _serialize() effectively calls
+  _get_serializable_value().
+
+  To store a user value, just call _store_value().  To store a
+  serializable value, wrap the value in a _Serializable() and then
+  call _store_value().
+
+  A Property subclass that wants to implement a specific
+  transformation between user values and serialiazble values should
+  implement two methods, _to_serializable() and _from_serializable().
+  These should *NOT* call their super() method; super calls are taken
+  care of by _call_to_serializable() and _call_from_serializable().
+  This is what is meant by composable (or stackable) APIs.
+
+  The API supports 'stacking' classes with ever more sophisticated
+  user<-->serializable conversions: the user-->serializable conversion
+  goes from more sophisticated to less sophisticated, while the
+  serializable-->user conversion goes from less sophisticated to more
+  sophisticated.  For example, see the relationship between
+  BlobProperty, TextProperty and StringProperty.
+
+  In addition to _to_serializable() and _from_serializable(), the
+  _validate() method is also a composable API.
+
+  The validation API distinguishes between 'lax' and 'strict' user
+  values.  The set of lax values is a superset of the set of strict
+  values.  The _validate() method takes a lax value and if necessary
+  converts it to a strict value.  This means that when setting the
+  property value, lax values are accepted, while when getting the
+  property value, only strict values will be returned.  If no
+  conversion is needed, _validate() may return None.  If the argument
+  is outside the set of accepted lax values, _validate() should raise
+  an exception, preferably TypeError or
+  datastore_errors.BadValueError.
+
+  Example/boilerplate:
+
+  def _validate(self, value):
+    'Lax user value to strict user value.'
+    if not isinstance(value, <top type>):
+      raise TypeError(...)  # Or datastore_errors.BadValueError(...).
+
+  def _to_serializable(sellf, value):
+    '(Strict) user value to serializable value.'
+    if isinstance(value, <user type>):
+      return <serializable type>(value)
+
+  def _from_serializable(self, value):
+    'Serializable value to (strict) user value.'
+    if not isinstance(value, <serializable type>):
+      return <user type>(value)
+
+  Things that _validate(), _to_serializable() and _from_serializable()
+  do *not* need to handle:
+
+  - None: They will not be called with None (and if they return None,
+    this means that the value does not need conversion).
+
+  - Repeated values: The infrastructure (_get_user_value() and
+    _get_serializable_value()) takes care of calling
+    _from_serializable() or _to_serializable() for each list item in a
+    repeated value.
+
+  - Wrapping values in _Serializable(): The wrapping and unwrapping is
+    taken care of by the infrastructure that calls the composable APIs.
+
+  - Comparisons: The comparison operations call _to_serializable() on
+    their operand.
+
+  - Distinguishing between user and serializable values: the
+    infrastructure guarantees that _from_serializable() will be called
+    with an (unwrapped) serializable value, and that
+    _to_serializable() will be called with a user value.
+
+  - Returning the original value: if any of these return None, the
+    original value is kept.  (Returning a differen value not equal to
+    None will substitute the different value.)
   """
 
   # TODO: Separate 'simple' properties from base Property class
@@ -709,85 +803,6 @@ class Property(ModelAttribute):
     set, otherwise None.
     """
     return entity._values.get(self._name, default)
-
-  """Temporary docs for composable validation and serialization APIs.
-
-  A 'user value' is a value such as would be set and accessed by the
-  application code using standard attributes on the entity.
-
-  A 'serializable value' is a value such as would be serialized to and
-  deserialized from the datastore.
-
-  The values stored in ent._values[name] and accessed by
-  _store_value() and _retrieve_value() can be either user values or
-  serializable values.  To retrieve user values, use
-  _get_user_value().  To retrieve serializable values, use
-  _get_serializable_value().  In particular, _get_value() calls
-  _get_user_value(), and _serialize() calls _get_serializable_value().
-
-  # XXX: Other calls to _retrieve_value() or _get_value() should be
-  # fixed.
-
-  To store a user value, just call _store_value().  To store a
-  serializable value, wrap the value in a _Serializable() and then
-  call _store_value().
-
-  A Property subclass that wants to implement a specific
-  transformation between user and serialiazble values should implement
-  two methods, _to_serializable() and _from_serializable().  These
-  should *NOT* call their super() method; super calls are taken care
-  of by _call_to_serializable() and _call_from_serializable().
-
-  The API supports 'stacking' classes with ever more sophisticated
-  user<-->serializable conversions: the user-->serializable conversion
-  goes from more sophisticated to less sophisticated, while the
-  serializable-->user conversion goes from less sophisticated to more
-  sophisticated.  For example, see the relationship between BlobProperty,
-  TextProperty and StringProperty.
-
-  XXX Explain stackable/composable _validate(), and lax/strict user
-  values. XXX
-
-  Example/boilerplate:
-
-  def _validate(self, value):
-    'Lax user value to strict user value.'
-    if not isinstance(value, <top type>):
-      raise TypeError(...)  # Or datastore_errors.BadValueError(...).
-
-  def _to_serializable(sellf, value):
-    '(Strict) user value to serializable value.'
-    if isinstance(value, <top type>):
-      return <bot type>(value)
-
-  def _from_serializable(self, value):
-    'Serializable value to (strict) user value.'
-    if not isinstance(value, <top type>):
-      return <top type>(value)
-
-  Things that _validate(), _to_serializable() and _from_serializable()
-  do *not* need to handle:
-
-  - None values: They will not be called with None (and they should
-    not return None).
-
-  - Repeated values: The infrastructure (_get_user_value() and
-    _get_serializable_value()) takes care of calling
-    _from_serializable() or _to_serializable() for each list item in a
-    repeated value.
-
-  - Comparisons: The comparison operations call _to_serializable() on
-    their operand.
-
-  - Distinguishing between user and serializable values: we now
-    guarantee that _from_serializable() will be called with the
-    appropriate serializable value, and that _to_serializable() will
-    be called with the appropriate user value.
-
-  - Returning the original value: if any of these return None, the
-    original value is kept.  (Returning a differen value not equal to
-    None will substitute the different value.)
-  """
 
   def _get_user_value(self, entity):
     """XXX"""
