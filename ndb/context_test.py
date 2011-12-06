@@ -191,6 +191,8 @@ class ContextTests(test_utils.NDBTest):
       self.assertTrue(self.ctx._cache[key] is None)  # Whitebox.
       a = yield self.ctx.get(key1)
       self.assertTrue(a is None)
+      self.ctx.clear_cache()
+      self.assertEqual(self.ctx._cache, {})  # Whitebox.
     foo().check_success()
 
   def testContext_CachePolicy(self):
