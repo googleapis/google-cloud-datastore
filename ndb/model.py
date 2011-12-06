@@ -572,6 +572,7 @@ class Property(ModelAttribute):
 
   def __ge__(self, value):
     """Return a FilterNode instance representing the '>=' comparison."""
+    return self._comparison('>=', value)
 
   def _IN(self, value):
     """Comparison operator for the 'in' comparison operator.
