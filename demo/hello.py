@@ -3,13 +3,14 @@ import os
 from google.appengine.ext import webapp
 from google.appengine.ext.webapp import util
 
-from ndb import model
+from ndb import model, context
 
 class Greeting(model.Model):
     message = model.StringProperty()
     userid = model.IntegerProperty()  # Not used here, but later
 
 class HomePage(webapp.RequestHandler):
+    @context.toplevel
     def get(self):
         msg = Greeting.get_or_insert('hello', message='Hello world')
         self.response.out.write(msg.message)
