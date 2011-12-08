@@ -63,7 +63,6 @@ import collections
 import logging
 import os
 import sys
-import threading
 import types
 
 from google.appengine.api.apiproxy_stub_map import UserRPC
@@ -91,7 +90,7 @@ def is_generator(obj):
   return isinstance(obj, types.GeneratorType)
 
 
-class _State(threading.local):
+class _State(utils.threading_local):
   """Hold thread-local state."""
 
   current_context = None
