@@ -91,9 +91,7 @@ def account_key(userid):
 
 def get_account(userid):
   """Return a Future for an Account."""
-  f = account_key(userid).get_async()
-  f.wait()
-  return f
+  return account_key(userid).get_async()
 
 
 @tasklets.tasklet
