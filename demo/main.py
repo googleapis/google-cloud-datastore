@@ -86,12 +86,14 @@ class UrlSummary(model.Model):
 
 
 def account_key(userid):
-  return model.Key(flat=['Account', userid])
+  return model.Key(Account, userid)
 
 
 def get_account(userid):
   """Return a Future for an Account."""
-  return account_key(userid).get_async()
+  f = account_key(userid).get_async()
+  f.wait()
+  return f
 
 
 @tasklets.tasklet
@@ -246,7 +248,7 @@ urls = [
   ('/account', AccountPage),
   ]
 
-app = webapp.WSGIApplication(urls)
+app = context.toplevel(webapp.WSGIApplication(urls).__call__)
 
 
 def main():

@@ -10,13 +10,12 @@ class Greeting(model.Model):
     userid = model.IntegerProperty()  # Not used here, but later
 
 class HomePage(webapp.RequestHandler):
-    @context.toplevel
     def get(self):
         msg = Greeting.get_or_insert('hello', message='Hello world')
         self.response.out.write(msg.message)
 
 urls = [('/.*', HomePage)]
-app = webapp.WSGIApplication(urls)
+app = context.toplevel(webapp.WSGIApplication(urls).__call__)
 
 def main():
     util.run_wsgi_app(app)
