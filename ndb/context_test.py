@@ -195,6 +195,28 @@ class ContextTests(test_utils.NDBTest):
       self.assertEqual(self.ctx._cache, {})  # Whitebox.
     foo().check_success()
 
+  def testContext_CacheMemcache(self):
+    # Test that when get() finds the value in memcache, it updates
+    # _cache.
+    class Foo(model.Model):
+      pass
+    ctx = self.ctx
+    ctx.set_cache_policy(False)
+    ctx.set_memcache_policy(False)
+    ent = Foo()
+    key = ent.put()
+    mkey = ctx._memcache_prefix + key.urlsafe()
+    self.assertFalse(key in ctx._cache)
+    self.assertEqual(None, memcache.get(mkey))
+    ctx.set_memcache_policy(True)
+    key.get()
+    self.assertFalse(key in ctx._cache)
+    self.assertNotEqual(None, memcache.get(mkey))
+    eventloop.run()
+    ctx.set_cache_policy(True)
+    key.get()  # Satisfied from memcache
+    self.assertTrue(key in ctx._cache)
+
   def testContext_CachePolicy(self):
     def should_cache(unused_key):
       return False

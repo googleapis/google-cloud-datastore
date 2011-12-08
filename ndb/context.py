@@ -602,6 +602,9 @@ class Context(object):
           entity = cls._from_pb(pb)
           # Store the key on the entity since it wasn't written to memcache.
           entity._key = key
+          if use_cache:
+            # Update in-memory cache.
+            self._cache[key] = entity
           raise tasklets.Return(entity)
 
       if mvalue is None and use_datastore:
@@ -622,6 +625,7 @@ class Context(object):
         pbs = entity._to_pb(set_key=False).SerializePartialToString()
         timeout = self._get_memcache_timeout(key, options)
         # Don't yield -- this can run in the background.
+        # TODO: See issue 105 though.
         self.memcache_cas(mkey, pbs, time=timeout, namespace=ns)
       if use_cache:
         self._cache[key] = entity
