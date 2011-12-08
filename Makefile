@@ -16,6 +16,7 @@ PYTHON= python -Wignore
 APPCFG= $(GAE)/appcfg.py
 DEV_APPSERVER=$(GAE)/dev_appserver.py
 CUSTOM=	custom
+COVERAGE=coverage
 
 default: runtests
 
@@ -57,21 +58,21 @@ runtests:
 	PYTHONPATH=$(GAEPATH):. $(PYTHON) runtests.py $(FLAGS)
 
 c cov cove cover coverage:
-	PYTHONPATH=$(GAEPATH):. coverage run runtests.py $(FLAGS)
-	coverage html $(NONTESTS)
-	coverage report -m $(NONTESTS)
+	PYTHONPATH=$(GAEPATH):. $(COVERAGE) run runtests.py $(FLAGS)
+	$(COVERAGE) html $(NONTESTS)
+	$(COVERAGE) report -m $(NONTESTS)
 	echo "open file://`pwd`/htmlcov/index.html"
 
 oldcoverage:
-	coverage erase
+	$(COVERAGE) erase
 	for i in $(TESTS); \
 	do \
 	  echo $$i; \
-	  PYTHONPATH=$(GAEPATH):. coverage run -p -m ndb.`basename $$i .py`; \
+	  PYTHONPATH=$(GAEPATH):. $(COVERAGE) run -p -m ndb.`basename $$i .py`; \
 	done
-	coverage combine
-	coverage html $(NONTESTS)
-	coverage report -m $(NONTESTS)
+	$(COVERAGE) combine
+	$(COVERAGE) html $(NONTESTS)
+	$(COVERAGE) report -m $(NONTESTS)
 	echo "open file://`pwd`/htmlcov/index.html"
 
 serve:
