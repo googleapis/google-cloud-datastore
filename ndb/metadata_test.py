@@ -1,23 +1,11 @@
 """Tests for metadata.py."""
 
-##import datetime
-## import difflib
-## import pickle
-## import re
 import unittest
 
-## from google.appengine.api import datastore_errors
-## from google.appengine.api import datastore_types
-## from google.appengine.api import memcache
 from google.appengine.api import namespace_manager
-## from google.appengine.api import users
 
 from . import metadata
-## from . import eventloop
-## from . import key
 from . import model
-## from . import query
-## from . import tasklets
 from . import test_utils
 
 
