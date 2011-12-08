@@ -35,6 +35,9 @@ model_test:
 query_test:
 	PYTHONPATH=$(GAEPATH):. $(PYTHON) -m ndb.query_test $(FLAGS)
 
+metadata_test:
+	PYTHONPATH=$(GAEPATH):. $(PYTHON) -m ndb.metadata_test $(FLAGS)
+
 rpc_test:
 	PYTHONPATH=$(GAEPATH):. $(PYTHON) -m ndb.rpc_test $(FLAGS)
 

@@ -1140,10 +1140,14 @@ class ModelTests(test_utils.NDBTest):
     model.Model._reset_kind_map()
     class A1(model.Model):
       pass
-    self.assertEqual(model.Model._get_kind_map(), {'A1': A1})
+    def get_kind_map():
+      # Return the kind map with __* removed.
+      d = model.Model._get_kind_map()
+      return dict(kv for kv in d.iteritems() if not kv[0].startswith('__'))
+    self.assertEqual(get_kind_map(), {'A1': A1})
     class A2(model.Model):
       pass
-    self.assertEqual(model.Model._get_kind_map(), {'A1': A1, 'A2': A2})
+    self.assertEqual(get_kind_map(), {'A1': A1, 'A2': A2})
 
   def testMultipleProperty(self):
     class Person(model.Model):
