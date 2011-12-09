@@ -33,10 +33,10 @@ class FuzzyDateProperty(StructuredProperty):
   def _validate(self, value):
     assert isinstance(value, FuzzyDate)
 
-  def _to_serializable(self, value):
+  def _to_base_type(self, value):
     return FuzzyDateModel(first=value.first, last=value.last)
 
-  def _from_serializable(self, value):
+  def _from_base_type(self, value):
     return FuzzyDate(value.first, value.last)
 
 # Class to record historic people and events in their life.

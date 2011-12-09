@@ -146,7 +146,7 @@ class CustomProperty(StructuredProperty):
                                          # etc.
                                          )
 
-  def _to_serializable(self, value):
+  def _to_base_type(self, value):
     assert not isinstance(value, self._modelclass), repr(value)
     if not isinstance(value, self._modelclass):
       newvalue = self._modelclass()
@@ -160,7 +160,7 @@ class CustomProperty(StructuredProperty):
       value = newvalue
     return value
 
-  def _from_serializable(self, value):
+  def _from_base_type(self, value):
     assert isinstance(value, self._modelclass), repr(value)
     if isinstance(value, self._modelclass):
       value = self._construct(value)
