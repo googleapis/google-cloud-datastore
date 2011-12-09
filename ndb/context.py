@@ -602,6 +602,9 @@ class Context(object):
           entity = cls._from_pb(pb)
           # Store the key on the entity since it wasn't written to memcache.
           entity._key = key
+          if use_cache:
+            # Update in-memory cache.
+            self._cache[key] = entity
           raise tasklets.Return(entity)
 
       if mvalue is None and use_datastore:
@@ -622,6 +625,7 @@ class Context(object):
         pbs = entity._to_pb(set_key=False).SerializePartialToString()
         timeout = self._get_memcache_timeout(key, options)
         # Don't yield -- this can run in the background.
+        # TODO: See issue 105 though.
         self.memcache_cas(mkey, pbs, time=timeout, namespace=ns)
       if use_cache:
         self._cache[key] = entity
@@ -977,7 +981,7 @@ class Context(object):
     if not isinstance(key, str):
       raise TypeError('key must be a string; received %r' % key)
     if not isinstance(for_cas, bool):
-      raise ValueError('for_cas must be a bool; received %r' % for_cas)
+      raise TypeError('for_cas must be a bool; received %r' % for_cas)
     if namespace is None:
       namespace = namespace_manager.get_namespace()
     options = (for_cas, namespace)
@@ -997,7 +1001,7 @@ class Context(object):
     if not isinstance(key, str):
       raise TypeError('key must be a string; received %r' % key)
     if not isinstance(time, (int, long)):
-      raise ValueError('time must be a number; received %r' % time)
+      raise TypeError('time must be a number; received %r' % time)
     if namespace is None:
       namespace = namespace_manager.get_namespace()
     options = ('set', time, namespace)
@@ -1011,7 +1015,7 @@ class Context(object):
     if not isinstance(key, str):
       raise TypeError('key must be a string; received %r' % key)
     if not isinstance(time, (int, long)):
-      raise ValueError('time must be a number; received %r' % time)
+      raise TypeError('time must be a number; received %r' % time)
     if namespace is None:
       namespace = namespace_manager.get_namespace()
     return self._memcache_set_batcher.add((key, value),
@@ -1021,7 +1025,7 @@ class Context(object):
     if not isinstance(key, str):
       raise TypeError('key must be a string; received %r' % key)
     if not isinstance(time, (int, long)):
-      raise ValueError('time must be a number; received %r' % time)
+      raise TypeError('time must be a number; received %r' % time)
     if namespace is None:
       namespace = namespace_manager.get_namespace()
     return self._memcache_set_batcher.add((key, value),
@@ -1031,7 +1035,7 @@ class Context(object):
     if not isinstance(key, str):
       raise TypeError('key must be a string; received %r' % key)
     if not isinstance(time, (int, long)):
-      raise ValueError('time must be a number; received %r' % time)
+      raise TypeError('time must be a number; received %r' % time)
     if namespace is None:
       namespace = namespace_manager.get_namespace()
     return self._memcache_set_batcher.add((key, value),
@@ -1041,7 +1045,7 @@ class Context(object):
     if not isinstance(key, str):
       raise TypeError('key must be a string; received %r' % key)
     if not isinstance(seconds, (int, long)):
-      raise ValueError('seconds must be a number; received %r' % seconds)
+      raise TypeError('seconds must be a number; received %r' % seconds)
     if namespace is None:
       namespace = namespace_manager.get_namespace()
     return self._memcache_del_batcher.add(key, (seconds, namespace))
@@ -1050,9 +1054,9 @@ class Context(object):
     if not isinstance(key, str):
       raise TypeError('key must be a string; received %r' % key)
     if not isinstance(delta, (int, long)):
-      raise ValueError('delta must be a number; received %r' % delta)
+      raise TypeError('delta must be a number; received %r' % delta)
     if initial_value is not None and not isinstance(initial_value, (int, long)):
-      raise ValueError('initial_value must be a number or None; received %r' %
+      raise TypeError('initial_value must be a number or None; received %r' %
                        initial_value)
     if namespace is None:
       namespace = namespace_manager.get_namespace()
@@ -1063,9 +1067,9 @@ class Context(object):
     if not isinstance(key, str):
       raise TypeError('key must be a string; received %r' % key)
     if not isinstance(delta, (int, long)):
-      raise ValueError('delta must be a number; received %r' % delta)
+      raise TypeError('delta must be a number; received %r' % delta)
     if initial_value is not None and not isinstance(initial_value, (int, long)):
-      raise ValueError('initial_value must be a number or None; received %r' %
+      raise TypeError('initial_value must be a number or None; received %r' %
                        initial_value)
     if namespace is None:
       namespace = namespace_manager.get_namespace()

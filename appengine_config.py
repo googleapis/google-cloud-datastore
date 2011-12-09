@@ -1,4 +1,4 @@
-def NOT_webapp_add_wsgi_middleware(app):
+def webapp_add_wsgi_middleware(app):
   try:
     from google.appengine.ext.appstats import recording
   except ImportError, err:

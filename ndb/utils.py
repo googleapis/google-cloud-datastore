@@ -1,6 +1,14 @@
+"""Low-level utilities used internally by NDB.
+
+These are not meant for use by code outside NDB.
+"""
+
 import logging
 import os
 import sys
+import threading
+
+__all__ = []
 
 DEBUG = True  # Set to False for some speedups
 
@@ -16,6 +24,16 @@ def wrapping(wrapped):
     wrapper.__dict__.update(wrapped.__dict__)
     return wrapper
   return wrapping_wrapper
+
+
+# Define a base class for classes that need to be thread-local.
+if os.getenv('wsgi.multithread'):
+  logging.debug('Using threading.local')
+  threading_local = threading.local
+else:
+  logging.debug('Not using threading.local')
+  threading_local = object
+
 
 def get_stack(limit=10):
   # Return a list of strings showing where the current frame was called.
@@ -34,9 +52,11 @@ def get_stack(limit=10):
     frame = frame.f_back
   return lines
 
+
 def func_info(func, lineno=None):
   code = func.func_code
   return code_info(code, lineno)
+
 
 def gen_info(gen):
   frame = gen.gi_frame
@@ -56,8 +76,10 @@ def gen_info(gen):
     return prefix + code_info(code)
   return prefix + hex(id(gen))
 
+
 def frame_info(frame):
   return code_info(frame.f_code, frame.f_lineno)
+
 
 def code_info(code, lineno=None):
   funcname = code.co_name
@@ -68,11 +90,13 @@ def code_info(code, lineno=None):
     lineno = code.co_firstlineno
   return '%s(%s:%s)' % (funcname, filename, lineno)
 
+
 def logging_debug(*args):
   # NOTE: If you want to see debug messages, set the logging level
   # manually to logging.DEBUG - 1; or for tests use -v -v -v (see below).
   if DEBUG and logging.getLogger().level < logging.DEBUG:
     logging.debug(*args)
+
 
 def tweak_logging():
   # Hack for running tests with verbose logging.  If there are two or
@@ -96,6 +120,7 @@ def tweak_logging():
   if q > 0:
     global DEBUG
     DEBUG = False
+
 
 if 'test' in os.path.basename(sys.argv[0]):
   tweak_logging()

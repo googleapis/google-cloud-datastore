@@ -13,7 +13,6 @@ The API here is inspired by Monocle.
 import collections
 import logging
 import os
-import threading
 import time
 
 from google.appengine.api.apiproxy_rpc import RPC
@@ -205,7 +204,7 @@ class EventLoop(object):
         break
 
 
-class _State(threading.local):
+class _State(utils.threading_local):
   event_loop = None
 
 

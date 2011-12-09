@@ -16,6 +16,8 @@ PYTHON= python -Wignore
 APPCFG= $(GAE)/appcfg.py
 DEV_APPSERVER=$(GAE)/dev_appserver.py
 CUSTOM=	custom
+COVERAGE=coverage
+DATASTORE_PATH=/tmp/ndb-dev_appserver.datastore
 
 default: runtests
 
@@ -34,6 +36,9 @@ model_test:
 
 query_test:
 	PYTHONPATH=$(GAEPATH):. $(PYTHON) -m ndb.query_test $(FLAGS)
+
+metadata_test:
+	PYTHONPATH=$(GAEPATH):. $(PYTHON) -m ndb.metadata_test $(FLAGS)
 
 rpc_test:
 	PYTHONPATH=$(GAEPATH):. $(PYTHON) -m ndb.rpc_test $(FLAGS)
@@ -54,28 +59,28 @@ runtests:
 	PYTHONPATH=$(GAEPATH):. $(PYTHON) runtests.py $(FLAGS)
 
 c cov cove cover coverage:
-	PYTHONPATH=$(GAEPATH):. coverage run runtests.py $(FLAGS)
-	coverage html $(NONTESTS)
-	coverage report -m $(NONTESTS)
+	PYTHONPATH=$(GAEPATH):. $(COVERAGE) run runtests.py $(FLAGS)
+	$(COVERAGE) html $(NONTESTS)
+	$(COVERAGE) report -m $(NONTESTS)
 	echo "open file://`pwd`/htmlcov/index.html"
 
 oldcoverage:
-	coverage erase
+	$(COVERAGE) erase
 	for i in $(TESTS); \
 	do \
 	  echo $$i; \
-	  PYTHONPATH=$(GAEPATH):. coverage run -p -m ndb.`basename $$i .py`; \
+	  PYTHONPATH=$(GAEPATH):. $(COVERAGE) run -p -m ndb.`basename $$i .py`; \
 	done
-	coverage combine
-	coverage html $(NONTESTS)
-	coverage report -m $(NONTESTS)
+	$(COVERAGE) combine
+	$(COVERAGE) html $(NONTESTS)
+	$(COVERAGE) report -m $(NONTESTS)
 	echo "open file://`pwd`/htmlcov/index.html"
 
 serve:
-	$(DEV_APPSERVER) . --port $(PORT) --address $(ADDRESS) $(FLAGS)
+	$(DEV_APPSERVER) . --port $(PORT) --address $(ADDRESS) $(FLAGS) --datastore_path=$(DATASTORE_PATH)
 
 debug:
-	$(DEV_APPSERVER) . --port $(PORT) --address $(ADDRESS) --debug $(FLAGS)
+	$(DEV_APPSERVER) . --port $(PORT) --address $(ADDRESS) --debug $(FLAGS) --datastore_path=$(DATASTORE_PATH)
 
 deploy:
 	$(APPCFG) update . $(FLAGS)

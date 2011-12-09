@@ -3,7 +3,7 @@ import os
 from google.appengine.ext import webapp
 from google.appengine.ext.webapp import util
 
-from ndb import model
+from ndb import model, context
 
 class Greeting(model.Model):
     message = model.StringProperty()
@@ -15,7 +15,7 @@ class HomePage(webapp.RequestHandler):
         self.response.out.write(msg.message)
 
 urls = [('/.*', HomePage)]
-app = webapp.WSGIApplication(urls)
+app = context.toplevel(webapp.WSGIApplication(urls).__call__)
 
 def main():
     util.run_wsgi_app(app)

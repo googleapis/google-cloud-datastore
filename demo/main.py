@@ -86,7 +86,7 @@ class UrlSummary(model.Model):
 
 
 def account_key(userid):
-  return model.Key(flat=['Account', userid])
+  return model.Key(Account, userid)
 
 
 def get_account(userid):
@@ -246,7 +246,7 @@ urls = [
   ('/account', AccountPage),
   ]
 
-app = webapp.WSGIApplication(urls)
+app = context.toplevel(webapp.WSGIApplication(urls).__call__)
 
 
 def main():
