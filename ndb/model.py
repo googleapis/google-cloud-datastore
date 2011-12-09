@@ -390,36 +390,36 @@ class ModelAttribute(object):
     pass
 
 
-class _Serializable(object):
-  """A marker object wrapping a 'serializable' value.
+class _BaseValue(object):
+  """A marker object wrapping a 'base type' value.
 
   This is used to be able to tell whether ent._values[name] is a
   user value (i.e. of a type that the Python code understands) or a
-  serializable value (i.e of a type that serialization understands).
-  User values are unwrapped; serializable values are wrapped in a
-  _Serializable instance.
+  base value (i.e of a type that serialization understands).
+  User values are unwrapped; base values are wrapped in a
+  _BaseValue instance.
   """
 
-  __slots__ = ['ser_val']
+  __slots__ = ['b_val']
 
-  def __init__(self, ser_val):
-    """Constructor.  Argument is the serializable value to be wrapped."""
-    assert ser_val is not None
-    assert not isinstance(ser_val, list), repr(ser_val)
-    self.ser_val = ser_val
+  def __init__(self, b_val):
+    """Constructor.  Argument is the base value to be wrapped."""
+    assert b_val is not None
+    assert not isinstance(b_val, list), repr(b_val)
+    self.b_val = b_val
 
   def __repr__(self):
-    return '_Serializable(%r)' % (self.ser_val,)
+    return '_BaseValue(%r)' % (self.b_val,)
 
   def __eq__(self, other):
-    if not isinstance(other, _Serializable):
+    if not isinstance(other, _BaseValue):
       return NotImplemented
-    return self.ser_val == other.ser_val
+    return self.b_val == other.b_val
 
   def __ne__(self, other):
-    if not isinstance(other, _Serializable):
+    if not isinstance(other, _BaseValue):
       return NotImplemented
-    return self.ser_val != other.ser_val
+    return self.b_val != other.b_val
 
 
 class Property(ModelAttribute):
@@ -444,36 +444,36 @@ class Property(ModelAttribute):
   - A 'user value' is a value such as would be set and accessed by the
     application code using standard attributes on the entity.
 
-  - A 'serializable value' is a value such as would be serialized to
+  - A 'base value' is a value such as would be serialized to
     and deserialized from the datastore.
 
   The values stored in ent._values[name] and accessed by
   _store_value() and _retrieve_value() can be either user values or
-  serializable values.  To retrieve user values, use
-  _get_user_value().  To retrieve serializable values, use
-  _get_serializable_value().  In particular, _get_value() calls
+  base values.  To retrieve user values, use
+  _get_user_value().  To retrieve base values, use
+  _get_base_value().  In particular, _get_value() calls
   _get_user_value(), and _serialize() effectively calls
-  _get_serializable_value().
+  _get_base_value().
 
   To store a user value, just call _store_value().  To store a
-  serializable value, wrap the value in a _Serializable() and then
+  base value, wrap the value in a _BaseValue() and then
   call _store_value().
 
   A Property subclass that wants to implement a specific
   transformation between user values and serialiazble values should
-  implement two methods, _to_serializable() and _from_serializable().
+  implement two methods, _to_base_type() and _from_base_type().
   These should *NOT* call their super() method; super calls are taken
-  care of by _call_to_serializable() and _call_from_serializable().
+  care of by _call_to_base_type() and _call_from_base_type().
   This is what is meant by composable (or stackable) APIs.
 
   The API supports 'stacking' classes with ever more sophisticated
-  user<-->serializable conversions: the user-->serializable conversion
+  user<-->base conversions: the user-->base conversion
   goes from more sophisticated to less sophisticated, while the
-  serializable-->user conversion goes from less sophisticated to more
+  base-->user conversion goes from less sophisticated to more
   sophisticated.  For example, see the relationship between
   BlobProperty, TextProperty and StringProperty.
 
-  In addition to _to_serializable() and _from_serializable(), the
+  In addition to _to_base_type() and _from_base_type(), the
   _validate() method is also a composable API.
 
   The validation API distinguishes between 'lax' and 'strict' user
@@ -494,37 +494,37 @@ class Property(ModelAttribute):
     if not isinstance(value, <top type>):
       raise TypeError(...)  # Or datastore_errors.BadValueError(...).
 
-  def _to_serializable(sellf, value):
-    '(Strict) user value to serializable value.'
+  def _to_base_type(sellf, value):
+    '(Strict) user value to base value.'
     if isinstance(value, <user type>):
-      return <serializable type>(value)
+      return <base type>(value)
 
-  def _from_serializable(self, value):
-    'Serializable value to (strict) user value.'
-    if not isinstance(value, <serializable type>):
+  def _from_base_type(self, value):
+    'base value to (strict) user value.'
+    if not isinstance(value, <base type>):
       return <user type>(value)
 
-  Things that _validate(), _to_serializable() and _from_serializable()
+  Things that _validate(), _to_base_type() and _from_base_type()
   do *not* need to handle:
 
   - None: They will not be called with None (and if they return None,
     this means that the value does not need conversion).
 
   - Repeated values: The infrastructure (_get_user_value() and
-    _get_serializable_value()) takes care of calling
-    _from_serializable() or _to_serializable() for each list item in a
+    _get_base_value()) takes care of calling
+    _from_base_type() or _to_base_type() for each list item in a
     repeated value.
 
-  - Wrapping values in _Serializable(): The wrapping and unwrapping is
+  - Wrapping values in _BaseValue(): The wrapping and unwrapping is
     taken care of by the infrastructure that calls the composable APIs.
 
-  - Comparisons: The comparison operations call _to_serializable() on
+  - Comparisons: The comparison operations call _to_base_type() on
     their operand.
 
-  - Distinguishing between user and serializable values: the
-    infrastructure guarantees that _from_serializable() will be called
-    with an (unwrapped) serializable value, and that
-    _to_serializable() will be called with a user value.
+  - Distinguishing between user and base values: the
+    infrastructure guarantees that _from_base_type() will be called
+    with an (unwrapped) base value, and that
+    _to_base_type() will be called with a user value.
 
   - Returning the original value: if any of these return None, the
     original value is kept.  (Returning a differen value not equal to
@@ -635,7 +635,7 @@ class Property(ModelAttribute):
     if value is not None:
       # TODO: Allow query.Binding instances?
       value = self._do_validate(value)
-      value = self._call_to_serializable(value)
+      value = self._call_to_base_type(value)
       value = self._datastore_type(value)
     return FilterNode(self._name, op, value)
 
@@ -691,7 +691,7 @@ class Property(ModelAttribute):
     for val in value:
       if val is not None:
         val = self._do_validate(val)
-        val = self._call_to_serializable(val)
+        val = self._call_to_base_type(val)
         val = self._datastore_type(val)
       values.append(val)
     return FilterNode(self._name, 'in', values)
@@ -728,15 +728,15 @@ class Property(ModelAttribute):
 
     Note that this does not call all composable _validate() methods.
     It only calls _validate() methods up to but not including the
-    first _to_serializable() method, when the MRO is traversed looking
-    for _validate() and _to_serializable() methods.  (IOW if a class
-    defines both _validate() and _to_serializable(), its _validate()
+    first _to_base_type() method, when the MRO is traversed looking
+    for _validate() and _to_base_type() methods.  (IOW if a class
+    defines both _validate() and _to_base_type(), its _validate()
     is called and then the search is aborted.)
 
     Note that for a repeated Property this function should be called
     for each item in the list, not for the list as a whole.
     """
-    if isinstance(value, _Serializable):
+    if isinstance(value, _BaseValue):
       return value
     value = self._call_shallow_validation(value)
     if self._validator is not None:
@@ -807,111 +807,111 @@ class Property(ModelAttribute):
   def _get_user_value(self, entity):
     """Return the user value for this property of the given entity.
 
-    This implies removing the _Serializable() wrapper if present, and
-    if it is, calling all _from_serializable() methods, in the reverse
+    This implies removing the _BaseValue() wrapper if present, and
+    if it is, calling all _from_base_type() methods, in the reverse
     method resolution order of the property's class.  It also handles
     default values and repeated properties.
     """
-    return self._apply_to_values(entity, self._opt_call_from_serializable)
+    return self._apply_to_values(entity, self._opt_call_from_base_type)
 
-  def _get_serializable_value(self, entity):
-    """Return the serializable value for this property of the given entity.
+  def _get_base_value(self, entity):
+    """Return the base value for this property of the given entity.
 
-    This implies calling all _to_serializable() methods, in the method
+    This implies calling all _to_base_type() methods, in the method
     resolution order of the property's class, and adding a
-    _Serializable() wrapper, if one is not already present.  (If one
+    _BaseValue() wrapper, if one is not already present.  (If one
     is present, no work is done.)  It also handles default values and
     repeated properties.
     """
-    return self._apply_to_values(entity, self._opt_call_to_serializable)
+    return self._apply_to_values(entity, self._opt_call_to_base_type)
 
   # TODO: Invent a shorter name for this.
-  def _get_serializable_value_unwrapped_as_list(self, entity):
-    """Like _get_serializable_value(), but always returns a list.
+  def _get_base_value_unwrapped_as_list(self, entity):
+    """Like _get_base_value(), but always returns a list.
 
     Returns:
-      A new list of unwrapped serializable values.  For an unrepeated
+      A new list of unwrapped base values.  For an unrepeated
       property, if the value is missing or None, returns [None]; for a
       repeated property, if the original value is missing or None or
       empty, returns [].
     """
-    wrapped = self._get_serializable_value(entity)
+    wrapped = self._get_base_value(entity)
     if self._repeated:
       if wrapped is None:
         return []
       assert isinstance(wrapped, list)
-      return [w.ser_val for w in wrapped]
+      return [w.b_val for w in wrapped]
     else:
       if wrapped is None:
         return [None]
-      assert isinstance(wrapped, _Serializable)
-      return [wrapped.ser_val]
+      assert isinstance(wrapped, _BaseValue)
+      return [wrapped.b_val]
 
-  def _opt_call_from_serializable(self, value):
-    """Call _from_serializable() if necessary.
+  def _opt_call_from_base_type(self, value):
+    """Call _from_base_type() if necessary.
 
-    If the value is a _Serializable instance, unwrap it and call all
-    _from_serializable() methods.  Otherwise, return the value
+    If the value is a _BaseValue instance, unwrap it and call all
+    _from_base_type() methods.  Otherwise, return the value
     unchanged.
     """
-    if isinstance(value, _Serializable):
-      value = self._call_from_serializable(value.ser_val)
+    if isinstance(value, _BaseValue):
+      value = self._call_from_base_type(value.b_val)
     return value
 
-  def _opt_call_to_serializable(self, value):
-    """Call _to_serializable() if necessary.
+  def _opt_call_to_base_type(self, value):
+    """Call _to_base_type() if necessary.
 
-    If the value is a _Serializable instance, return it unchanged.
-    Otherwise, call all _validate() and _to_serializable() methods and
-    wrap it in a _Serializable instance.
+    If the value is a _BaseValue instance, return it unchanged.
+    Otherwise, call all _validate() and _to_base_type() methods and
+    wrap it in a _BaseValue instance.
     """
-    if not isinstance(value, _Serializable):
-      value = _Serializable(self._call_to_serializable(value))
+    if not isinstance(value, _BaseValue):
+      value = _BaseValue(self._call_to_base_type(value))
     return value
 
-  def _call_from_serializable(self, value):
-    """Call all _from_serializable() methods on the value.
+  def _call_from_base_type(self, value):
+    """Call all _from_base_type() methods on the value.
 
     This calls the methods in the reverse method resolution order of
     the property's class.
     """
-    methods = self._find_methods('_from_serializable', reverse=True)
+    methods = self._find_methods('_from_base_type', reverse=True)
     call = self._apply_list(methods)
     return call(value)
 
-  def _call_to_serializable(self, value):
-    """Call all _validate() and _to_serializable() methods on the value.
+  def _call_to_base_type(self, value):
+    """Call all _validate() and _to_base_type() methods on the value.
 
     This calls the methods in the method resolution order of the
     property's class.
     """
-    methods = self._find_methods('_validate', '_to_serializable')
+    methods = self._find_methods('_validate', '_to_base_type')
     call = self._apply_list(methods)
     return call(value)
 
   def _call_shallow_validation(self, value):
     """Call the initial set of _validate() methods.
 
-    This is similar to _call_to_serializable() except it only calls
+    This is similar to _call_to_base_type() except it only calls
     those _validate() methods that can be called without needing to
-    call _to_serializable().
+    call _to_base_type().
 
     An example: suppose the class hierarchy is A -> B -> C ->
     Property, and suppose A defines _validate() only, but B and C
-    define _validate() and _to_serializable().  The full list of
-    methods called by _call_to_serializable() is:
+    define _validate() and _to_base_type().  The full list of
+    methods called by _call_to_base_type() is:
 
       A._validate()
       B._validate()
-      B._to_serializable()
+      B._to_base_type()
       C._validate()
-      C._to-serializable()
+      C._to_base_type()
 
     This method will call A._validate() and B._validate() but not the
     others.
     """
     methods = []
-    for method in self._find_methods('_validate', '_to_serializable'):
+    for method in self._find_methods('_validate', '_to_base_type'):
       if method.__name__ != '_validate':
         break
       methods.append(method)
@@ -1046,7 +1046,7 @@ class Property(ModelAttribute):
       parent_repeated: True if the parent (or an earlier ancestor)
         is a repeated Property.
     """
-    values = self._get_serializable_value_unwrapped_as_list(entity)
+    values = self._get_base_value_unwrapped_as_list(entity)
     for val in values:
       if self._indexed:
         p = pb.add_property()
@@ -1072,7 +1072,7 @@ class Property(ModelAttribute):
     v = p.value()
     val = self._db_get_value(v, p)
     if val is not None:
-      val = _Serializable(val)
+      val = _BaseValue(val)
     if self._repeated:
       if self._has_value(entity):
         value = self._retrieve_value(entity)
@@ -1265,11 +1265,11 @@ class BlobProperty(Property):
       raise datastore_errors.BadValueError('Expected str, got %r' %
                                            (value,))
 
-  def _to_serializable(self, value):
+  def _to_base_type(self, value):
     if self._compressed:
       return _CompressedValue(zlib.compress(value))
 
-  def _from_serializable(self, value):
+  def _from_base_type(self, value):
     if isinstance(value, _CompressedValue):
       return zlib.decompress(value.z_val)
 
@@ -1317,11 +1317,11 @@ class TextProperty(BlobProperty):
       raise datastore_errors.BadValueError('Expected string, got %r' %
                                            (value,))
 
-  def _to_serializable(self, value):
+  def _to_base_type(self, value):
     if isinstance(value, unicode):
       return value.encode('utf-8')
 
-  def _from_serializable(self, value):
+  def _from_base_type(self, value):
     if isinstance(value, str):
       try:
         return value.decode('utf-8')
@@ -1578,11 +1578,11 @@ class DateProperty(DateTimeProperty):
       raise datastore_errors.BadValueError('Expected date, got %r' %
                                            (value,))
 
-  def _to_serializable(self, value):
+  def _to_base_type(self, value):
     assert isinstance(value, datetime.date), repr(value)
     return _date_to_datetime(value)
 
-  def _from_serializable(self, value):
+  def _from_base_type(self, value):
     assert isinstance(value, datetime.datetime), repr(value)
     return value.date()
 
@@ -1598,11 +1598,11 @@ class TimeProperty(DateTimeProperty):
       raise datastore_errors.BadValueError('Expected time, got %r' %
                                            (value,))
 
-  def _to_serializable(self, value):
+  def _to_base_type(self, value):
     assert isinstance(value, datetime.time), repr(value)
     return _time_to_datetime(value)
 
-  def _from_serializable(self, value):
+  def _from_base_type(self, value):
     assert isinstance(value, datetime.datetime), repr(value)
     return value.time()
 
@@ -1676,12 +1676,12 @@ class StructuredProperty(StructuredGetForDictMixin):
     from .query import ConjunctionNode, PostFilterNode
     from .query import RepeatedStructuredPropertyPredicate
     value = self._do_validate(value)  # None is not allowed!
-    value = self._call_to_serializable(value)
+    value = self._call_to_base_type(value)
     filters = []
     match_keys = []
     # TODO: Why not just iterate over value._values?
     for prop in self._modelclass._properties.itervalues():
-      vals = prop._get_serializable_value_unwrapped_as_list(value)
+      vals = prop._get_base_value_unwrapped_as_list(value)
       if prop._repeated:
         if vals:
           raise datastore_errors.BadFilterError(
@@ -1751,7 +1751,7 @@ class StructuredProperty(StructuredGetForDictMixin):
 
   def _serialize(self, entity, pb, prefix='', parent_repeated=False):
     # entity -> pb; pb is an EntityProto message
-    values = self._get_serializable_value_unwrapped_as_list(entity)
+    values = self._get_base_value_unwrapped_as_list(entity)
     for value in values:
       if value is not None:
         # TODO: Avoid re-sorting for repeated values.
@@ -1764,12 +1764,12 @@ class StructuredProperty(StructuredGetForDictMixin):
       subentity = self._retrieve_value(entity)
       if subentity is None:
         subentity = self._modelclass()
-        self._store_value(entity, _Serializable(subentity))
+        self._store_value(entity, _BaseValue(subentity))
       cls = self._modelclass
-      if isinstance(subentity, _Serializable):
-        # NOTE: It may not be a _Serializable when we're deserializing a
+      if isinstance(subentity, _BaseValue):
+        # NOTE: It may not be a _BaseValue when we're deserializing a
         # repeated structured property.
-        subentity = subentity.ser_val
+        subentity = subentity.b_val
       if not isinstance(subentity, cls):
         raise RuntimeError('Cannot deserialize StructuredProperty %s; value '
                            'retrieved not a %s instance %r' %
@@ -1793,7 +1793,7 @@ class StructuredProperty(StructuredGetForDictMixin):
       raise RuntimeError('Unable to find property %s of StructuredProperty %s.'
                          % (next, self._name))
 
-    values = self._get_serializable_value_unwrapped_as_list(entity)
+    values = self._get_base_value_unwrapped_as_list(entity)
     # Find the first subentity that doesn't have a value for this
     # property yet.
     for sub in values:
@@ -1805,15 +1805,15 @@ class StructuredProperty(StructuredGetForDictMixin):
     else:
       # We didn't find one.  Add a new one to the underlying list of
       # values (the list returned by
-      # _get_serializable_value_unwrapped_as_list() is a copy so we
+      # _get_base_value_unwrapped_as_list() is a copy so we
       # can't append to it).
       subentity = self._modelclass()
       values = self._retrieve_value(entity)
-      values.append(_Serializable(subentity))
+      values.append(_BaseValue(subentity))
     prop._deserialize(subentity, p, depth + 1)
 
   def _prepare_for_put(self, entity):
-    values = self._get_serializable_value_unwrapped_as_list(entity)
+    values = self._get_base_value_unwrapped_as_list(entity)
     for value in values:
       if value is not None:
         value._prepare_for_put()
@@ -1851,12 +1851,12 @@ class LocalStructuredProperty(StructuredGetForDictMixin, BlobProperty):
       raise datastore_errors.BadValueError('Expected %s instance, got %r' %
                                            (self._modelclass.__name__, value))
 
-  def _to_serializable(self, value):
+  def _to_base_type(self, value):
     if isinstance(value, self._modelclass):
       pb = value._to_pb(set_key=False)
       return pb.SerializePartialToString()
 
-  def _from_serializable(self, value):
+  def _from_base_type(self, value):
     if not isinstance(value, self._modelclass):
       pb = entity_pb.EntityProto()
       pb.MergePartialFromString(value)
@@ -1864,8 +1864,8 @@ class LocalStructuredProperty(StructuredGetForDictMixin, BlobProperty):
 
   def _prepare_for_put(self, entity):
     # TODO: Using _get_user_value() here makes it impossible to
-    # subclass this class and add a _from_serializable().  But using
-    # _get_serializable_value() won't work, since that would return
+    # subclass this class and add a _from_base_type().  But using
+    # _get_base_value() won't work, since that would return
     # the serialized (and possibly compressed) serialized blob.
     value = self._get_user_value(entity)
     if value is not None:
@@ -2189,13 +2189,13 @@ class Model(object):
     for prop in self._properties.itervalues():
       if prop._has_value(self):
         val = prop._retrieve_value(self)
-        # Manually apply _from_serializable() so as not to have a side
+        # Manually apply _from_base_type() so as not to have a side
         # effect on what's contained in the entity.  Printing a value
         # should not change it!
         if prop._repeated:
-          val = [prop._opt_call_from_serializable(v) for v in val]
+          val = [prop._opt_call_from_base_type(v) for v in val]
         elif val is not None:
-          val = prop._opt_call_from_serializable(val)
+          val = prop._opt_call_from_base_type(val)
         args.append('%s=%r' % (prop._code_name, val))
     args.sort()
     if self._key is not None:
@@ -2360,7 +2360,7 @@ class Model(object):
     self._clone_properties()
     if p.name() != next and not p.name().endswith('.' + next):
       prop = StructuredProperty(Expando, next)
-      prop._store_value(self, _Serializable(Expando()))
+      prop._store_value(self, _BaseValue(Expando()))
     else:
       prop = GenericProperty(next,
                              repeated=p.multiple(),
