@@ -8,7 +8,7 @@ import unittest
 
 def suite():
   mods = ['context', 'eventloop', 'key', 'model', 'query', 'metadata',
-          'tasklets', 'thread']
+          'stats', 'tasklets', 'thread']
   test_mods = ['%s_test' % name for name in mods]
   ndb = __import__('ndb', fromlist=test_mods, level=1)
 
