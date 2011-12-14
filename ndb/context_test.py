@@ -217,6 +217,23 @@ class ContextTests(test_utils.NDBTest):
     key.get()  # Satisfied from memcache
     self.assertTrue(key in ctx._cache)
 
+  def testContext_CacheMisses(self):
+    # Test that get() caches misses if use_datastore is true but not
+    # if false.  This involves whitebox checks using ctx._cache.
+    # See issue 106.  http://goo.gl/DLiij
+    ctx = self.ctx
+    key = model.Key('Foo', 42)
+    self.assertFalse(key in ctx._cache)
+    ctx.get(key, use_datastore=False).wait()
+    self.assertFalse(key in ctx._cache)
+    ctx.get(key, use_memcache=False).wait()
+    self.assertTrue(key in ctx._cache)
+    self.assertEqual(ctx._cache[key], None)
+    ctx.clear_cache()
+    ctx.get(key).wait()
+    self.assertTrue(key in ctx._cache)
+    self.assertEqual(ctx._cache[key], None)
+
   def testContext_CachePolicy(self):
     def should_cache(unused_key):
       return False
