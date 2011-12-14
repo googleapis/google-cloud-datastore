@@ -34,6 +34,9 @@ key_test:
 model_test:
 	PYTHONPATH=$(GAEPATH):. $(PYTHON) -m ndb.model_test $(FLAGS)
 
+polymodel_test:
+	PYTHONPATH=$(GAEPATH):. $(PYTHON) -m ndb.polymodel_test $(FLAGS)
+
 query_test:
 	PYTHONPATH=$(GAEPATH):. $(PYTHON) -m ndb.query_test $(FLAGS)
 

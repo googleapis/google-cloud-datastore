@@ -270,8 +270,6 @@ Property subclass is in the docstring for the Property class.
 
 __author__ = 'guido@google.com (Guido van Rossum)'
 
-# TODO: Add PolyModel.
-
 import copy
 import datetime
 import zlib
@@ -2452,6 +2450,11 @@ class Model(object):
           if attr._repeated:
             cls._has_repeated = True
           cls._properties[attr._name] = attr
+    cls._update_kind_map()
+
+  @classmethod
+  def _update_kind_map(cls):
+    """Update the kind map to include this class."""
     cls._kind_map[cls._get_kind()] = cls
 
   def _prepare_for_put(self):

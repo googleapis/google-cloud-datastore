@@ -1,4 +1,4 @@
-"""Alternate way of running the unittests, for Python 2.5 or Windows."""
+"""Run all unittests."""
 
 __author__ = 'Beech Horn'
 
@@ -7,8 +7,8 @@ import unittest
 
 
 def suite():
-  mods = ['context', 'eventloop', 'key', 'model', 'query', 'metadata',
-          'stats', 'tasklets', 'thread']
+  mods = ['context', 'eventloop', 'key', 'metadata', 'model',
+          'polymodel', 'query', 'stats', 'tasklets', 'thread']
   test_mods = ['%s_test' % name for name in mods]
   ndb = __import__('ndb', fromlist=test_mods, level=1)
 
