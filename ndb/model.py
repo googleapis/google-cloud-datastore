@@ -2241,11 +2241,6 @@ class Model(object):
     return cls.__name__
 
   @classmethod
-  def _get_kind_map(cls):
-    """Internal helper to return the kind map."""
-    return cls._kind_map
-
-  @classmethod
   def _reset_kind_map(cls):
     """Clear the kind map.  Useful for testing."""
     # Preserve "system" kinds, like __namespace__

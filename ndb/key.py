@@ -505,7 +505,7 @@ class Key(object):
     """
     from . import model, tasklets
     ctx = tasklets.get_context()
-    cls = model.Model._get_kind_map().get(self.kind())
+    cls = model.Model._kind_map.get(self.kind())
     if cls:
       cls._pre_get_hook(self)
     fut = ctx.get(self, **ctx_options)
@@ -533,7 +533,7 @@ class Key(object):
     """
     from . import tasklets, model
     ctx = tasklets.get_context()
-    cls = model.Model._get_kind_map().get(self.kind())
+    cls = model.Model._kind_map.get(self.kind())
     if cls:
       cls._pre_delete_hook(self)
     fut = ctx.delete(self, **ctx_options)

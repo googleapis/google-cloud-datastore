@@ -1225,7 +1225,7 @@ class ModelTests(test_utils.NDBTest):
       pass
     def get_kind_map():
       # Return the kind map with __* removed.
-      d = model.Model._get_kind_map()
+      d = model.Model._kind_map
       return dict(kv for kv in d.iteritems() if not kv[0].startswith('__'))
     self.assertEqual(get_kind_map(), {'A1': A1})
     class A2(model.Model):
