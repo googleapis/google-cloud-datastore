@@ -2,6 +2,7 @@
 
 import datetime
 import difflib
+import os
 import pickle
 import re
 import unittest
@@ -867,6 +868,63 @@ class ModelTests(test_utils.NDBTest):
     self.assertEqual(ent.key, k)
     self.assertEqual(MyModel.t._get_value(ent), u'Hello world\u1234')
     self.assertEqual(MyModel.b._get_value(ent), '\x00\xff')
+
+  def testUserPropertyAutoFlags(self):
+    # Can't combind auto_current_user* with repeated.
+    self.assertRaises(ValueError, model.UserProperty,
+                      repeated=True, auto_current_user_add=True)
+    self.assertRaises(ValueError, model.UserProperty,
+                      repeated=True, auto_current_user=True)
+
+    # Define a model with user properties.
+    class MyModel(model.Model):
+      u0 = model.UserProperty(auto_current_user_add=True)
+      u1 = model.UserProperty(auto_current_user=True)
+
+    # Without a current user, these remain None.
+    x = MyModel()
+    k = x.put()
+    y = k.get()
+    self.assertTrue(y.u0 is None)
+    self.assertTrue(y.u1 is None)
+
+    try:
+      # When there is a current user, it sets both.
+      os.environ['USER_EMAIL'] = 'test@example.com'
+      x = MyModel()
+      k = x.put()
+      y = k.get()
+      self.assertFalse(y.u0 is None)
+      self.assertFalse(y.u1 is None)
+      self.assertEqual(y.u0, users.User(email='test@example.com'))
+      self.assertEqual(y.u1, users.User(email='test@example.com'))
+
+      # When the current user changes, only u1 is changed.
+      os.environ['USER_EMAIL'] = 'test2@example.com'
+      x.put()
+      y = k.get()
+      self.assertEqual(y.u0, users.User(email='test@example.com'))
+      self.assertEqual(y.u1, users.User(email='test2@example.com'))
+
+      # When we delete the property values, both are reset.
+      del x.u0
+      del x.u1
+      x.put()
+      y = k.get()
+      self.assertEqual(y.u0, users.User(email='test2@example.com'))
+      self.assertEqual(y.u1, users.User(email='test2@example.com'))
+
+      # When we set them to None, u0 stays None, u1 is reset.
+      x.u0 = None
+      x.u1 = None
+      x.put()
+      y = k.get()
+      self.assertEqual(y.u0, None)
+      self.assertEqual(y.u1, users.User(email='test2@example.com'))
+
+    finally:
+      # Reset environment.
+      del os.environ['USER_EMAIL']
 
   def DateAndOrTimePropertyTest(self, propclass, t1, t2):
     class ClockInOut(model.Model):

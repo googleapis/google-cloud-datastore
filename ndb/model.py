@@ -1391,10 +1391,38 @@ class UserProperty(Property):
   user.user_id() value.
   """
 
+  _attributes = Property._attributes + ['_auto_current_user',
+                                        '_auto_current_user_add']
+
+  _auto_current_user = False
+  _auto_current_user_add = False
+
+  @datastore_rpc._positional(1 + Property._positional)
+  def __init__(self, name=None, auto_current_user=False,
+               auto_current_user_add=False, **kwds):
+    super(UserProperty, self).__init__(name=name, **kwds)
+    # TODO: Disallow combining auto_current_user* and default?
+    if self._repeated:
+      if auto_current_user:
+        raise ValueError('UserProperty could use auto_current_user and be '
+                         'repeated, but there would be no point.')
+      elif auto_current_user_add:
+        raise ValueError('UserProperty could use auto_current_user_add and be '
+                         'repeated, but there would be no point.')
+    self._auto_current_user = auto_current_user
+    self._auto_current_user_add = auto_current_user_add
+
   def _validate(self, value):
     if not isinstance(value, users.User):
       raise datastore_errors.BadValueError('Expected User, got %r' %
                                            (value,))
+
+  def _prepare_for_put(self, entity):
+    if (self._auto_current_user or
+        (self._auto_current_user_add and not self._has_value(entity))):
+      value = users.get_current_user()
+      if value is not None:
+        self._store_value(entity, value)
 
   def _db_set_value(self, v, p, value):
     datastore_types.PackUser(p.name(), value, v)
