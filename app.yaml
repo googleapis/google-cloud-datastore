@@ -6,6 +6,9 @@ api_version: 1
 
 handlers:
 
+- url: /django_middleware
+  script: demo/django_middleware_test.py
+
 - url: /intest.*
   script: demo/intest.py
 
