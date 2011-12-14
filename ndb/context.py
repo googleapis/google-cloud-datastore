@@ -611,7 +611,10 @@ class Context(object):
         yield self.memcache_set(mkey, _LOCKED, time=_LOCK_TIME, namespace=ns,
                                 use_cache=True)
         yield self.memcache_gets(mkey, namespace=ns, use_cache=True)
+
     if not use_datastore:
+      # NOTE: Do not cache this miss.  In some scenarios this would
+      # prevent an app from working properly.
       raise tasklets.Return(None)
 
     if use_cache:
@@ -627,8 +630,12 @@ class Context(object):
         # Don't yield -- this can run in the background.
         # TODO: See issue 105 though.
         self.memcache_cas(mkey, pbs, time=timeout, namespace=ns)
-      if use_cache:
-        self._cache[key] = entity
+
+    if use_cache:
+      # Cache hit or miss.  NOTE: In this case it is okay to cache a
+      # miss; the datastore is the ultimate authority.
+      self._cache[key] = entity
+
     raise tasklets.Return(entity)
 
   @tasklets.tasklet

@@ -40,6 +40,9 @@ query_test:
 metadata_test:
 	PYTHONPATH=$(GAEPATH):. $(PYTHON) -m ndb.metadata_test $(FLAGS)
 
+stats_test:
+	PYTHONPATH=$(GAEPATH):. $(PYTHON) -m ndb.stats_test $(FLAGS)
+
 rpc_test:
 	PYTHONPATH=$(GAEPATH):. $(PYTHON) -m ndb.rpc_test $(FLAGS)
 
