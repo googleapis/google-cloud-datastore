@@ -1,3 +1,38 @@
+Release 0.9.4
+
+A pretty significant release, but not 1.0 since we're still in
+experimental mode.
+
+New features:
+
+- Issue 35: Added PolyModel class.
+- Added Django middleware to automatically manage the Context.
+- Killed Model._get_kind_map(). Use Model._kind_map instead.
+- issue 110: Add auto_current_user[_add] to UserProperty.
+- Issue 113: Add datastore statistics.
+- Make _validate() composable, add _to_base_type() and _from_base_type().
+  See section "Writing Property Subclasses" in the docs.
+- Issue 93: Add metadata queries.
+- Issue 99: Add Model._to_dict().
+- Issue 102: You can now do "from ndb import *" to import Model, all
+  Property subclasses, etc.  (Also issue 109.)
+- Issue 100: Add verbose_name property attribute.
+- Issue 97: Add to_old_key() and from_old_key() Key methods.
+
+Bugs fixed:
+
+- Issue 107: Delete instead of lock memcache after transaction.
+- Issue 106: Cache datastore misses in Context cache.
+- Fix a caching bug where a memcache hit would not be cached in the
+  Context cache.
+- Raise TypeError, not ValueError, in some cases.
+- Issue 44: Only use threading.local when needed.
+- Issue 104: Fix exception in Context.clear_cache().
+- Issue 98: Make sure get_or_insert() calls hooks.
+- Issue 95: Make sure get_by_id() calls hooks.
+
+----------------------------------------
+
 Release 0.9.3
 
 Two bugfixes:
