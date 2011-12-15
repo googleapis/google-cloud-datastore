@@ -577,10 +577,11 @@ class Context(object):
           raise tasklets.Return(entity)
 
     use_datastore = self._use_datastore(key, options)
-    use_memcache = self._use_memcache(key, options)
-    if (use_memcache and use_datastore and
+    if (use_datastore and
         isinstance(self._conn, datastore_rpc.TransactionalConnection)):
       use_memcache = False
+    else:
+      use_memcache = self._use_memcache(key, options)
     ns = key.namespace()
 
     if use_memcache:
@@ -649,9 +650,11 @@ class Context(object):
       # Pass a dummy Key to _use_datastore().
       key = model.Key(entity.__class__, None)
     use_datastore = self._use_datastore(key, options)
+    use_memcache = None
 
     if entity._has_complete_key():
-      if self._use_memcache(key, options):
+      use_memcache = self._use_memcache(key, options)
+      if use_memcache:
         # Wait for memcache operations before starting datastore RPCs.
         mkey = self._memcache_prefix + key.urlsafe()
         ns = key.namespace()
@@ -665,10 +668,14 @@ class Context(object):
 
     if use_datastore:
       key = yield self._put_batcher.add(entity, options)
-      if self._use_memcache(key, options):
-        mkey = self._memcache_prefix + key.urlsafe()
-        ns = key.namespace()
-        yield self.memcache_delete(mkey, namespace=ns)
+      if not isinstance(self._conn, datastore_rpc.TransactionalConnection):
+        if use_memcache is None:
+          use_memcache = self._use_memcache(key, options)
+        if use_memcache:
+          mkey = self._memcache_prefix + key.urlsafe()
+          ns = key.namespace()
+          # TODO: Maybe don't yield here, like it get()?
+          yield self.memcache_delete(mkey, namespace=ns)
 
     if key is not None:
       if entity._key != key:
@@ -687,11 +694,13 @@ class Context(object):
     if self._use_memcache(key, options):
       mkey = self._memcache_prefix + key.urlsafe()
       ns = key.namespace()
+      # TODO: If not use_datastore, delete instead of lock?
       yield self.memcache_set(mkey, _LOCKED, time=_LOCK_TIME, namespace=ns,
                               use_cache=True)
 
     if self._use_datastore(key, options):
       yield self._delete_batcher.add(key, options)
+      # TODO: Delete from memcache here?
 
     if self._use_cache(key, options):
       self._cache[key] = None
@@ -846,14 +855,12 @@ class Context(object):
 
   @tasklets.tasklet
   def _clear_memcache(self, keys):
-    # Note: This doesn't technically *clear* the keys; it locks them.
     keys = set(key for key in keys if self._use_memcache(key))
     futures = []
     for key in keys:
       mkey = self._memcache_prefix + key.urlsafe()
       ns = key.namespace()
-      fut = self.memcache_set(mkey, _LOCKED, time=_LOCK_TIME, namespace=ns,
-                              use_cache=True)
+      fut = self.memcache_delete(mkey, namespace=ns)
       futures.append(fut)
     yield futures
 
