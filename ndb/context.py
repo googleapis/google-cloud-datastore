@@ -578,11 +578,12 @@ class Context(object):
 
     use_datastore = self._use_datastore(key, options)
     use_memcache = self._use_memcache(key, options)
-    using_tconn = isinstance(self._conn, datastore_rpc.TransactionalConnection)
-    in_transaction = (use_datastore and using_tconn)
+    if (use_memcache and use_datastore and
+        isinstance(self._conn, datastore_rpc.TransactionalConnection)):
+      use_memcache = False
     ns = key.namespace()
 
-    if use_memcache and not in_transaction:
+    if use_memcache:
       mkey = self._memcache_prefix + key.urlsafe()
       mvalue = yield self.memcache_get(mkey, for_cas=use_datastore,
                                        namespace=ns, use_cache=True)
@@ -623,7 +624,7 @@ class Context(object):
       entity = yield self._get_batcher.add(key, options)
 
     if entity is not None:
-      if not in_transaction and use_memcache and mvalue != _LOCKED:
+      if use_memcache and mvalue != _LOCKED:
         # Don't serialize the key since it's already the memcache key.
         pbs = entity._to_pb(set_key=False).SerializePartialToString()
         timeout = self._get_memcache_timeout(key, options)
