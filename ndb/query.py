@@ -678,8 +678,10 @@ class Query(object):
       namespace: Optional namespace.
     """
     if ancestor is not None and not isinstance(ancestor, Binding):
+      if not isinstance(ancestor, model.Key):
+        raise TypeError('ancestor must be a Key')
       if not ancestor.id():
-        raise TypeError('ancestor cannot be an incomplete key')
+        raise ValueError('ancestor cannot be an incomplete key')
       if app is not None:
         if app != ancestor.app():
           raise TypeError('app/ancestor mismatch')
