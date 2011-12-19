@@ -1382,13 +1382,27 @@ def _unpack_user(v):
 
 
 class PickleProperty(BlobProperty):
-  """A Property whose value is any picklable Python ovject."""
+  """A Property whose value is any picklable Python object."""
 
   def _to_base_type(self, value):
     return pickle.dumps(value, 2)
 
   def _from_base_type(self, value):
     return pickle.loads(value)
+
+
+class JsonProperty(BlobProperty):
+  """A property whose value is any Json-encodable Python object."""
+
+  # Use late import so the dependency is optional.
+
+  def _to_base_type(self, value):
+    import simplejson
+    return simplejson.dumps(value, 2)
+
+  def _from_base_type(self, value):
+    import simplejson
+    return simplejson.loads(value)
 
 
 class UserProperty(Property):

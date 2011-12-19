@@ -935,6 +935,15 @@ class ModelTests(test_utils.NDBTest):
     ent2 = ent.key.get()
     self.assertTrue(ent2.pkl == sample)
 
+  def testJsonProperty(self):
+    class MyModel(model.Model):
+      pkl = model.JsonProperty()
+    sample = [1, 2, {'a': 'one', 'b': [1, 2]}, 'xyzzy', [1, 2, 3]]
+    ent = MyModel(pkl=sample)
+    ent.put()
+    ent2 = ent.key.get()
+    self.assertTrue(ent2.pkl == sample)
+
   def DateAndOrTimePropertyTest(self, propclass, t1, t2):
     class ClockInOut(model.Model):
       ctime = propclass(auto_now_add=True)
