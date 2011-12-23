@@ -1673,7 +1673,7 @@ class StructuredGetForDictMixin(Property):
     value = self._get_value(entity)
     if self._repeated:
       value = [v._to_dict() for v in value]
-    else:
+    elif value is not None:
       value = value._to_dict()
     return value
 

@@ -1405,11 +1405,18 @@ class ModelTests(test_utils.NDBTest):
     class MyModel(model.Model):
       a = model.StructuredProperty(MySubmodel)
       b = model.LocalStructuredProperty(MySubmodel, repeated=True)
+      c = model.StructuredProperty(MySubmodel)
+      d = model.LocalStructuredProperty(MySubmodel)
+      e = model.StructuredProperty(MySubmodel, repeated=True)
     x = MyModel(a=MySubmodel(foo='foo', bar=42),
                 b=[MySubmodel(foo='f'), MySubmodel(bar=4)])
     self.assertEqual({'a': {'foo': 'foo', 'bar': 42},
                       'b': [{'foo': 'f', 'bar': None,},
-                            {'foo': None, 'bar': 4}]},
+                            {'foo': None, 'bar': 4}],
+                      'c': None,
+                      'd': None,
+                      'e': [],
+                      },
                      x.to_dict())
 
   def testModelPickling(self):
