@@ -978,6 +978,20 @@ class QueryTests(test_utils.NDBTest):
     b = it.next()
     self.assertEqual(a, b)
 
+  def testKindlessQuery(self):
+    class ParentModel(model.Model):
+      a = model.StringProperty()
+    class ChildModel(model.Model):
+      b = model.StringProperty()
+    p = ParentModel(a= "Test1")
+    p.put()
+    c = ChildModel(parent=p.key, b="Test2")
+    c.put()
+    q = query.Query(ancestor=p.key)
+    self.assertEqual(q.count(), 2)
+    l = q.fetch()
+    self.assertTrue(c in l)
+    self.assertTrue(p in l)
 
 def main():
   unittest.main()

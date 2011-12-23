@@ -735,7 +735,7 @@ class Query(object):
       filters = filters._to_filter(bindings)
     dsquery = datastore_query.Query(app=self.__app,
                                     namespace=self.__namespace,
-                                    kind=kind.decode('utf-8'),
+                                    kind=kind.decode('utf-8') if kind else None,
                                     ancestor=ancestor,
                                     filter_predicate=filters,
                                     order=self.__orders)
