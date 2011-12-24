@@ -7,6 +7,7 @@ import pickle
 import unittest
 
 from google.appengine.api import namespace_manager
+from google.appengine.api import datastore_types
 
 from . import polymodel
 from . import model
@@ -61,6 +62,24 @@ class PolyModelTests(test_utils.NDBTest):
     self.assertEqual(Shoe.query(Sneaker.pump == False).fetch(), [snkr])
     self.assertEqual(Moccasin.query().fetch(), [m])
     self.assertEqual(Sneaker.query().fetch(), [snkr])
+
+  def testBlobKeyProperty(self):
+    class MyModel(PolyModel):
+      pass
+    class MyDerivedModel(MyModel):
+      image = model.BlobKeyProperty()
+
+    test_blobkey = datastore_types.BlobKey('testkey123')
+    m = MyDerivedModel()
+    m.image = test_blobkey
+    m.put()
+
+    m = m.key.get()
+    m.image = test_blobkey
+    m.put()
+
+    self.assertTrue(isinstance(m.image, datastore_types.BlobKey))
+    self.assertEqual(str(m.image), str(test_blobkey))
 
   def testClassKeyProperty(self):
     # Tests for the class_ property.
