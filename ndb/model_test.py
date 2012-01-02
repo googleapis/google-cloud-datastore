@@ -3145,6 +3145,17 @@ class CacheTests(test_utils.NDBTest):
         self.first = first
         self.last = last or first
 
+      def __eq__(self, other):
+        if not isinstance(other, FuzzyDate):
+          return NotImplemented
+        return self.first == other.first and self.last == other.last
+
+      def __ne__(self, other):
+        eq = self.__eq__(other)
+        if eq is not NotImplemented:
+          eq = not eq
+        return eq
+
       def __repr__(self):
         return 'FuzzyDate(%r, %r)' % (self.first, self.last)
     
