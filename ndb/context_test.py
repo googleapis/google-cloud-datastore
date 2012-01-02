@@ -522,8 +522,8 @@ class ContextTests(test_utils.NDBTest):
       qry = query.Query(kind='Foo')
       results = yield self.ctx.map_query(qry, callback)
       self.assertEqual(results, [ent1, ent2])
-      self.assertTrue(results[0] is ent1)
-      self.assertTrue(results[1] is ent2)
+      self.assertTrue(results[0] is self.ctx._cache[ent1.key])
+      self.assertTrue(results[1] is self.ctx._cache[ent2.key])
     foo().check_success()
 
   def testContext_AllocateIds(self):

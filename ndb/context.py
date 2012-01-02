@@ -732,33 +732,16 @@ class Context(object):
             pass  # It was a keys-only query and ent is really a Key.
           else:
             key = ent._key
-            if key in self._cache:
-              hit = self._cache[key]
-              if hit is not None and hit.key != key:
-                # The cached entry has been mutated to have a different key.
-                # That's a false hit.  Get rid of it.
-                # See issue #13.  http://goo.gl/jxjOP
-                del self._cache[key]
-            if key in self._cache:
-              # Assume the cache is more up to date.
-              if self._cache[key] is None:
-                # This is a weird case.  Apparently this entity was
-                # deleted concurrently with the query.  Let's just
-                # pretend the delete happened first.
-                logging.info('Conflict: entity %s was deleted', key)
-                continue
-              # Replace the entity the callback will see with the one
-              # from the cache.
-              if ent != self._cache[key]:
-                logging.info('Conflict: entity %s was modified', key)
-              ent = self._cache[key]
-            else:
-              # Cache the entity only if this is an ancestor query;
-              # non-ancestor queries may return stale results, since in
-              # the HRD these queries are "eventually consistent".
-              # TODO: Shouldn't we check this before considering cache hits?
-              if is_ancestor_query and self._use_cache(key, options):
-                self._cache[key] = ent
+            if self._use_cache(key, options):
+              # TODO: If this is the HRD and not an ancestor query,
+              # the result may be stale.  Do we care?  Does it matter
+              # if the value is already cached or not?  There is also
+              # a case where the cache is stale, if the context was
+              # long-lived, so simply replacing the query result with
+              # the cached value is wrong too.  Maybe only cache the
+              # result if it wasn't already in the cache?  Log a
+              # warning if it differs from the cache?  See issue 117.
+              self._cache[key] = ent
           if callback is None:
             val = ent
           else:
