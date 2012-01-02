@@ -1789,10 +1789,11 @@ class StructuredProperty(StructuredGetForDictMixin):
     # but that seems a rare case, so for now I don't care.
     ok = super(StructuredProperty, self)._has_value(entity)
     if ok and rest:
-      subent = self._get_value(entity)
-      if subent is None:
+      lst = self._get_base_value_unwrapped_as_list(entity)
+      if len(lst) != 1 or lst == [None]:
         raise RuntimeError('Failed to retrieve sub-entity of StructuredProperty'
                            ' %s' % self._name)
+      subent = lst[0]
       subprop = subent._properties.get(rest[0])
       if subprop is None:
         ok = False

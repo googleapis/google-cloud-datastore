@@ -3136,6 +3136,49 @@ class CacheTests(test_utils.NDBTest):
     e = key.get()
     self.assertEqual(e, None)
 
+  def testCustomStructuredPropertyInRepeatedStructuredProperty(self):
+    class FuzzyDate(object):
+
+      def __init__(self, first, last=None):
+        assert isinstance(first, datetime.date)
+        assert last is None or isinstance(last, datetime.date)
+        self.first = first
+        self.last = last or first
+
+      def __repr__(self):
+        return 'FuzzyDate(%r, %r)' % (self.first, self.last)
+    
+    class FuzzyDateModel(model.Model):
+      first = model.DateProperty()
+      last = model.DateProperty()
+
+    class FuzzyDateProperty(model.StructuredProperty):
+
+      def __init__(self, **kwds):
+        super(FuzzyDateProperty, self).__init__(FuzzyDateModel, **kwds)
+
+      def _validate(self, value):
+        assert isinstance(value, FuzzyDate)
+
+      def _to_base_type(self, value):
+        return FuzzyDateModel(first=value.first, last=value.last)
+
+      def _from_base_type(self, value):
+        return FuzzyDate(value.first, value.last)
+
+    class Inner(model.Model):
+      date = FuzzyDateProperty()
+        
+    class Outer(model.Model):
+      wrap = model.StructuredProperty(Inner, repeated=True)
+
+    d = datetime.date(1900,1,1)
+    fd = FuzzyDate(d)
+    orig = Outer(wrap=[Inner(date=fd), Inner(date=fd)])
+    key = orig.put()
+    q = Outer.query()
+    copy = q.get()
+    self.assertEqual(copy, orig)
 
 def main():
   unittest.main()
