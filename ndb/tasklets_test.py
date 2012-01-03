@@ -27,6 +27,20 @@ class TaskletTests(test_utils.NDBTest):
   def universal_callback(self, *args):
     self.log.append(args)
 
+  def testAddFlowException(self):
+    try:
+      self.assertRaises(TypeError, tasklets.add_flow_exception, 'abc')
+      self.assertRaises(TypeError, tasklets.add_flow_exception, str)
+      tasklets.add_flow_exception(ZeroDivisionError)
+      self.assertTrue(ZeroDivisionError in tasklets._flow_exceptions)
+      @tasklets.tasklet
+      def foo():
+        1/0
+        yield
+      self.assertRaises(ZeroDivisionError, foo().get_result)
+    finally:
+      tasklets._init_flow_exceptions()
+
   def testFuture_Constructor(self):
     f = tasklets.Future()
     self.assertEqual(f._result, None)
