@@ -131,6 +131,41 @@ class _State(utils.threading_local):
 _state = _State()
 
 
+# Tuple of exceptions that should not be logged (except in debug mode).
+_flow_exceptions = ()
+
+
+def add_flow_exception(exc):
+  """Add an exception that should not be logged.
+
+  The argument must be a subclass of Exception.
+  """
+  global _flow_exceptions
+  if not isinstance(exc, type) or not issubclass(exc, Exception):
+    raise TypeError('Expected an Exception subclass, got %r' % (exc,))
+  as_set = set(_flow_exceptions)
+  as_set.add(exc)
+  _flow_exceptions = tuple(as_set)
+
+
+def _init_flow_exceptions():
+  """Internal helper to initialize _flow_exceptions.
+
+  This automatically adds webob.exc.HTTPException, if it can be imported.
+  """
+  global _flow_exceptions
+  _flow_exceptions = ()
+  try:
+    from webob import exc
+  except ImportError:
+    pass
+  else:
+    add_flow_exception(exc.HTTPException)
+
+
+_init_flow_exceptions()
+
+
 class Future(object):
   """A Future has 0 or more callbacks.
 
@@ -333,9 +368,15 @@ class Future(object):
 
     except Exception, err:
       _, _, tb = sys.exc_info()
-      logging.warning('%s raised %s(%s)',
-                      info, err.__class__.__name__, err,
-                      exc_info=(logging.getLogger().level <= logging.INFO))
+      if isinstance(err, _flow_exceptions):
+        logging_debug('%s raised %s(%s)',
+                      info, err.__class__.__name__, err)
+      elif logging.getLogger().level > logging.INFO:
+        logging.warning('%s raised %s(%s)',
+                        info, err.__class__.__name__, err)
+      else:
+        logging.warning('%s raised %s(%s)',
+                        info, err.__class__.__name__, err, exc_info=True)
       self.set_exception(err, tb)
       return
 
