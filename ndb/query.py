@@ -1217,7 +1217,7 @@ class QueryIterator(object):
     """
     if self._batch is None:
       raise datastore_errors.BadArgumentError('There is no cursor currently')
-    return self._batch.cursor(self._index + 1)
+    return self._batch.cursor(self._index + 1)  # TODO: inline this as async.
 
   def __iter__(self):
     """Iterator protocol: get the iterator for this iterator, i.e. self."""
