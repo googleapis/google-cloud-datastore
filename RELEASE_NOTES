@@ -1,3 +1,18 @@
+Release 0.9.5
+
+Various minor issues fixed over the holidays.
+
+- Issue 63: Add PickleProperty, JsonProperty.
+- Improve type check for ancestor parameter to query().
+- Fix kind-less ancestor queries.
+- Issue 121: Do not die on *StructProperty equal to None.
+- Issue 119: Pre-compute the subclass when deserializing PolyModel.
+- Issue 123: Support custom property inside repeated StructuredProperty.
+- Issue 117: Simplify policy for updating cache with query results.
+- Issue 124: Don't log webob exceptions at alarming levels.
+
+----------------------------------------
+
 Release 0.9.4
 
 A pretty significant release, but not 1.0 since we're still in
