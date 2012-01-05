@@ -711,7 +711,7 @@ class Context(object):
     lo_hi = yield self._conn.async_allocate_ids(options, key, size, max)
     raise tasklets.Return(lo_hi)
 
-  @datastore_rpc._positional(3)
+  @utils.positional(3)
   def map_query(self, query, callback, options=None, merge_future=None):
     mfut = merge_future
     if mfut is None:
@@ -761,7 +761,7 @@ class Context(object):
     helper()
     return mfut
 
-  @datastore_rpc._positional(2)
+  @utils.positional(2)
   def iter_query(self, query, callback=None, options=None):
     return self.map_query(query, callback=callback, options=options,
                           merge_future=tasklets.SerialQueueFuture())

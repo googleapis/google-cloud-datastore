@@ -133,11 +133,11 @@ import sys
 from google.appengine.api import datastore_errors
 from google.appengine.api import datastore_types
 from google.appengine.datastore import datastore_query
-from google.appengine.datastore import datastore_rpc
 from google.appengine.ext import gql
 
 from . import model
 from . import tasklets
+from . import utils
 
 __all__ = ['Binding', 'AND', 'OR', 'parse_gql', 'Query',
            'QueryOptions', 'Cursor']
@@ -664,7 +664,7 @@ class Query(object):
   operators !=, IN or OR is used.
   """
 
-  @datastore_rpc._positional(1)
+  @utils.positional(1)
   def __init__(self, kind=None, ancestor=None, filters=None, orders=None,
                app=None, namespace=None):
     """Constructor.
@@ -873,7 +873,7 @@ class Query(object):
 
   __iter__ = iter
 
-  @datastore_rpc._positional(2)
+  @utils.positional(2)
   def map(self, callback, merge_future=None, **q_options):
     """Map a callback function or tasklet over the query results.
 
@@ -907,7 +907,7 @@ class Query(object):
     return self.map_async(callback, merge_future=merge_future,
                           **q_options).get_result()
 
-  @datastore_rpc._positional(2)
+  @utils.positional(2)
   def map_async(self, callback, merge_future=None, **q_options):
     """Map a callback function or tasklet over the query results.
 
@@ -917,7 +917,7 @@ class Query(object):
                                             options=_make_options(q_options),
                                             merge_future=merge_future)
 
-  @datastore_rpc._positional(2)
+  @utils.positional(2)
   def fetch(self, limit=None, **q_options):
     """Fetch a list of query results, up to a limit.
 
@@ -931,7 +931,7 @@ class Query(object):
     return self.fetch_async(limit, **q_options).get_result()
 
   @tasklets.tasklet
-  @datastore_rpc._positional(2)
+  @utils.positional(2)
   def fetch_async(self, limit=None, **q_options):
     """Fetch a list of query results, up to a limit.
 
@@ -978,7 +978,7 @@ class Query(object):
       raise tasklets.Return(None)
     raise tasklets.Return(res[0])
 
-  @datastore_rpc._positional(2)
+  @utils.positional(2)
   def count(self, limit=None, **q_options):
     """Count the number of query results, up to a limit.
 
@@ -997,7 +997,7 @@ class Query(object):
     return self.count_async(limit, **q_options).get_result()
 
   @tasklets.tasklet
-  @datastore_rpc._positional(2)
+  @utils.positional(2)
   def count_async(self, limit=None, **q_options):
     """Count the number of query results, up to a limit.
 
@@ -1039,7 +1039,7 @@ class Query(object):
       total += batch.skipped_results
     raise tasklets.Return(total)
 
-  @datastore_rpc._positional(2)
+  @utils.positional(2)
   def fetch_page(self, page_size, **q_options):
     """Fetch a page of results.
 
@@ -1067,7 +1067,7 @@ class Query(object):
     return self.fetch_page_async(page_size, **q_options).get_result()
 
   @tasklets.tasklet
-  @datastore_rpc._positional(2)
+  @utils.positional(2)
   def fetch_page_async(self, page_size, **q_options):
     """Fetch a page of results.
 
@@ -1159,7 +1159,7 @@ class QueryIterator(object):
   # Indicate the loop is exhausted.
   _exhausted = False
 
-  @datastore_rpc._positional(2)
+  @utils.positional(2)
   def __init__(self, query, **q_options):
     """Constructor.  Takes a Query and query options.
 

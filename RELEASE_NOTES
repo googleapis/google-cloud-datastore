@@ -10,6 +10,7 @@ Various minor issues fixed over the holidays.
 - Issue 123: Support custom property inside repeated StructuredProperty.
 - Issue 117: Simplify policy for updating cache with query results.
 - Issue 124: Don't log webob exceptions at alarming levels.
+- Issue 126: Improve repr() of Futures.
 
 ----------------------------------------
 

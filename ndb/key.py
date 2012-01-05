@@ -76,8 +76,9 @@ import os
 from google.appengine.api import datastore_errors
 from google.appengine.api import datastore_types
 from google.appengine.api import namespace_manager
-from google.appengine.datastore import datastore_rpc
 from google.appengine.datastore import entity_pb
+
+from . import utils
 
 __all__ = ['Key']
 
@@ -554,7 +555,7 @@ class Key(object):
 
 # The remaining functions in this module are private.
 
-@datastore_rpc._positional(1)
+@utils.positional(1)
 def _ConstructReference(cls, pairs=None, flat=None,
                         reference=None, serialized=None, urlsafe=None,
                         app=None, namespace=None, parent=None):
