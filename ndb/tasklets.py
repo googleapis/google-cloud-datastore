@@ -212,20 +212,20 @@ class Future(object):
     if self._done:
       if self._exception is not None:
         state = 'exception %s: %s' % (self._exception.__class__.__name__,
-                                   self._exception)
+                                      self._exception)
       else:
         state = 'result %r' % (self._result,)
     else:
       state = 'pending'
     line = '?'
     for line in self._where:
-      if 'ndb/tasklets.py' not in line:
+      if 'tasklets.py' not in line:
         break
     if self._info:
-      line += ' for %s;' % self._info
+      line += ' for %s' % self._info
     if self._geninfo:
-      line += ' %s;' % self._geninfo
-    return '<%s %x created by %s %s>' % (
+      line += ' %s' % self._geninfo
+    return '<%s %x created by %s; %s>' % (
       self.__class__.__name__, id(self), line, state)
 
   def dump(self):

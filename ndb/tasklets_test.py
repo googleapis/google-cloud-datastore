@@ -11,6 +11,7 @@ from . import eventloop
 from . import model
 from . import test_utils
 from . import tasklets
+from . import utils
 
 
 class TaskletTests(test_utils.NDBTest):
@@ -49,8 +50,8 @@ class TaskletTests(test_utils.NDBTest):
 
   def testFuture_Repr(self):
     f = tasklets.Future()
-    prefix = (r'<Future [\da-f]+ created by '
-              r'(testFuture_Repr\(tasklets_test.py:\d+\)|\?) ')
+    prefix = (r'<Future [\da-f]+ created by'
+              r'( testFuture_Repr\(tasklets_test.py:\d+\)|\?); ')
     self.assertTrue(re.match(prefix + r'pending>$', repr(f)), repr(f))
     f.set_result('abc')
     self.assertTrue(re.match(prefix + r'result \'abc\'>$', repr(f)), repr(f))
@@ -59,6 +60,27 @@ class TaskletTests(test_utils.NDBTest):
     self.assertTrue(re.match(prefix + r'exception RuntimeError: abc>$',
                              repr(f)),
                     repr(f))
+
+  def testFuture_Repr_TaskletWrapper(self):
+    prefix = r'<Future [\da-f]+ created by '
+    @tasklets.tasklet
+    @utils.positional(1)
+    def foo():
+      f1 = tasklets.Future()
+      self.assertTrue(re.match(prefix +
+                               r'foo\(tasklets_test.py:\d+\); pending>$',
+                               repr(f1)),
+                      repr(f1))
+      f1.set_result(None)
+      yield f1
+    f2 = foo()
+    self.assertTrue(
+      re.match(prefix +
+               r'testFuture_Repr_TaskletWrapper\(tasklets_test.py:\d+\) '
+               r'for tasklet foo\(tasklets_test.py:\d+\).*; pending>$',
+               repr(f2)),
+      repr(f2))
+    f2.check_success()
 
   def testFuture_Done_State(self):
     f = tasklets.Future()

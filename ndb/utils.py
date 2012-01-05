@@ -22,6 +22,7 @@ def wrapping(wrapped):
     wrapper.__name__ = wrapped.__name__
     wrapper.__doc__ = wrapped.__doc__
     wrapper.__dict__.update(wrapped.__dict__)
+    wrapper.__wrapped__ = wrapped
     return wrapper
   return wrapping_wrapper
 
@@ -54,6 +55,7 @@ def get_stack(limit=10):
 
 
 def func_info(func, lineno=None):
+  func = getattr(func, '__wrapped__', func)
   code = func.func_code
   return code_info(code, lineno)
 
@@ -89,6 +91,29 @@ def code_info(code, lineno=None):
   if lineno is None:
     lineno = code.co_firstlineno
   return '%s(%s:%s)' % (funcname, filename, lineno)
+
+
+def positional(max_pos_args):
+  """A decorator to declare that only the first N arguments may be positional.
+
+  Note that for methods, n includes 'self'.
+  """
+  __ndb_debug__ = 'SKIP'
+  def positional_decorator(wrapped):
+    __ndb_debug__ = 'SKIP'
+    @wrapping(wrapped)
+    def positional_wrapper(*args, **kwds):
+      __ndb_debug__ = 'SKIP'
+      if len(args) > max_pos_args:
+        plural_s = ''
+        if max_pos_args != 1:
+          plural_s = 's'
+        raise TypeError(
+          '%s() takes at most %d positional argument%s (%d given)' %
+          (wrapped.__name__, max_pos_args, plural_s, len(args)))
+      return wrapped(*args, **kwds)
+    return positional_wrapper
+  return positional_decorator
 
 
 def logging_debug(*args):
