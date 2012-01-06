@@ -38,6 +38,29 @@ class EventLoop(object):
     self.queue = []  # Sorted list of (time, callback, args, kwds)
     self.rpcs = {}  # Map of rpc -> (callback, args, kwds)
 
+  def clear(self):
+    """Remove all pending events without running any."""
+    while self.current or self.idlers or self.queue or self.rpcs:
+      current = self.current
+      idlers = self.idlers
+      queue = self.queue
+      rpcs = self.rpcs
+      logging_debug('Clearing stale EventLoop instance...')
+      if current:
+        logging_debug('  current = %s', current)
+      if idlers:
+        logging_debug('  idlers = %s', idlers)
+      if queue:
+        logging_debug('  queue = %s', queue)
+      if rpcs:
+        logging_debug('  rpcs = %s', rpcs)
+      self.__init__()
+      current.clear()
+      idlers.clear()
+      queue[:] = []
+      rpcs.clear()
+      logging_debug('Cleared')
+
   def insort_event_right(self, event, lo=0, hi=None):
     """Insert event in queue, and keep it sorted assuming queue is sorted.
 
@@ -221,9 +244,11 @@ def get_event_loop():
   at the start of each request.  Also, each thread gets its own loop.
   """
   # TODO: Make sure this works with the multithreaded Python 2.7 runtime.
-  ev = None
-  if os.getenv(_EVENT_LOOP_KEY):
-    ev = _state.event_loop
+  ev = _state.event_loop
+  if not os.getenv(_EVENT_LOOP_KEY) and ev is not None:
+    ev.clear()
+    _state.event_loop = None
+    ev = None
   if ev is None:
     ev = EventLoop()
     _state.event_loop = ev

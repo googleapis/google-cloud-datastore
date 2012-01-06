@@ -366,6 +366,13 @@ class Future(object):
       self.set_result(result)
       return
 
+    except GeneratorExit:
+      # In Python 2.5, this derives from Exception, but we don't want
+      # to handle it like other Exception instances.  So we catch and
+      # re-raise it immediately.  See issue 127.  http://goo.gl/2p5Pn
+      # TODO: Remove when Python 2.5 is no longer supported.
+      raise
+
     except Exception, err:
       _, _, tb = sys.exc_info()
       if isinstance(err, _flow_exceptions):
@@ -404,6 +411,8 @@ class Future(object):
           for subfuture in value:
             mfut.add_dependent(subfuture)
           mfut.complete()
+        except GeneratorExit:
+          raise
         except Exception, err:
           _, _, tb = sys.exc_info()
           mfut.set_exception(err, tb)
@@ -417,6 +426,8 @@ class Future(object):
   def _on_rpc_completion(self, rpc, gen):
     try:
       result = rpc.get_result()
+    except GeneratorExit:
+      raise
     except Exception, err:
       _, _, tb = sys.exc_info()
       self._help_tasklet_along(gen, exc=err, tb=tb)
@@ -523,6 +534,8 @@ class MultiFuture(Future):
       raise RuntimeError('MultiFuture done before finishing.')
     try:
       result = [r.get_result() for r in self._results]
+    except GeneratorExit:
+      raise
     except Exception, err:
       _, _, tb = sys.exc_info()
       self.set_exception(err, tb)
@@ -877,6 +890,8 @@ class ReducingFuture(Future):
       return  # Already done.
     try:
       val = fut.get_result()
+    except GeneratorExit:
+      raise
     except Exception, err:
       _, _, tb = sys.exc_info()
       self.set_exception(err, tb)
@@ -887,6 +902,8 @@ class ReducingFuture(Future):
       self._queue.clear()
       try:
         nval = self._reducer(todo)
+      except GeneratorExit:
+        raise
       except Exception, err:
         _, _, tb = sys.exc_info()
         self.set_exception(err, tb)
@@ -908,6 +925,8 @@ class ReducingFuture(Future):
       self._queue.clear()
       try:
         nval = self._reducer(todo)
+      except GeneratorExit:
+        raise
       except Exception, err:
         _, _, tb = sys.exc_info()
         self.set_exception(err, tb)

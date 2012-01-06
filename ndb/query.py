@@ -764,6 +764,8 @@ class Query(object):
           queue.putq((batch, i, result))
       queue.complete()
 
+    except GeneratorExit:
+      raise
     except Exception:
       if not queue.done():
         _, e, tb = sys.exc_info()

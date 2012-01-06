@@ -573,7 +573,7 @@ class Context(object):
         entity = self._cache[key]  # May be None, meaning "doesn't exist".
         if entity is None or entity._key == key:
           # If entity's key didn't change later, it is ok.
-          # See issue #13.  http://goo.gl/jxjOP
+          # See issue 13.  http://goo.gl/jxjOP
           raise tasklets.Return(entity)
 
     use_datastore = self._use_datastore(key, options)
@@ -751,6 +751,8 @@ class Context(object):
             else:
               val = callback(ent)
           mfut.putq(val)
+      except GeneratorExit:
+        raise
       except Exception, err:
         _, _, tb = sys.exc_info()
         mfut.set_exception(err, tb)
@@ -804,6 +806,8 @@ class Context(object):
               result = yield result
           finally:
             yield tctx.flush()
+        except GeneratorExit:
+          raise
         except Exception:
           t, e, tb = sys.exc_info()
           yield tconn.async_rollback(options)  # TODO: Don't block???

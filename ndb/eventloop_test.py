@@ -131,6 +131,24 @@ class EventLoopTests(test_utils.NDBTest):
     eventloop.run()
     self.assertEqual(calls, [1])
 
+  def testCleanUpStaleEvents(self):
+    # See issue 127.  http://goo.gl/2p5Pn
+    from . import model
+    class M(model.Model): pass
+    M().put()
+    M().put()
+    M().put()
+    # The fetch_page() call leaves an unnecessary but unavoidable RPC
+    # around that is never waited for.  This was causing problems when
+    # it was being garbage-collected in get_event_loop(), especially
+    # with Python 2.5, where GeneratorExit derived from Exception.
+    M.query().fetch_page(2)
+    ev = eventloop.get_event_loop()
+    self.assertEqual(len(ev.rpcs), 1)
+    del os.environ[eventloop._EVENT_LOOP_KEY]
+    ev = eventloop.get_event_loop()  # A new event loop.
+    self.assertEqual(len(ev.rpcs), 0)
+
 def main():
   unittest.main()
 
