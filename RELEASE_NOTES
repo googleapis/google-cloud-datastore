@@ -11,6 +11,7 @@ Various minor issues fixed over the holidays.
 - Issue 117: Simplify policy for updating cache with query results.
 - Issue 124: Don't log webob exceptions at alarming levels.
 - Issue 126: Improve repr() of Futures.
+- Issue 127: Fix Deadlock error in code that doesn't use @context.toplevel.
 
 ----------------------------------------
 
