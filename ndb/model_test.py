@@ -3158,7 +3158,7 @@ class CacheTests(test_utils.NDBTest):
 
       def __repr__(self):
         return 'FuzzyDate(%r, %r)' % (self.first, self.last)
-    
+
     class FuzzyDateModel(model.Model):
       first = model.DateProperty()
       last = model.DateProperty()
@@ -3179,7 +3179,7 @@ class CacheTests(test_utils.NDBTest):
 
     class Inner(model.Model):
       date = FuzzyDateProperty()
-        
+
     class Outer(model.Model):
       wrap = model.StructuredProperty(Inner, repeated=True)
 
