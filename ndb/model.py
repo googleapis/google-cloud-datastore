@@ -1397,12 +1397,18 @@ class JsonProperty(BlobProperty):
   # Use late import so the dependency is optional.
 
   def _to_base_type(self, value):
-    import simplejson
-    return simplejson.dumps(value, 2)
+    try:
+      import json
+    except ImportError:
+      import simplejson as json
+    return json.dumps(value, 2)
 
   def _from_base_type(self, value):
-    import simplejson
-    return simplejson.loads(value)
+    try:
+      import json
+    except ImportError:
+      import simplejson as json
+    return json.loads(value)
 
 
 class UserProperty(Property):
