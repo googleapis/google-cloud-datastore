@@ -13,6 +13,13 @@ __all__ = []
 DEBUG = True  # Set to False for some speedups
 
 
+def logging_debug(*args):
+  # NOTE: If you want to see debug messages, set the logging level
+  # manually to logging.DEBUG - 1; or for tests use -v -v -v (see below).
+  if DEBUG and logging.getLogger().level < logging.DEBUG:
+    logging.debug(*args)
+
+
 def wrapping(wrapped):
   # A decorator to decorate a decorator's wrapper.  Following the lead
   # of Twisted and Monocle, this is supposed to make debugging heavily
@@ -29,10 +36,10 @@ def wrapping(wrapped):
 
 # Define a base class for classes that need to be thread-local.
 if os.getenv('wsgi.multithread'):
-  logging.debug('Using threading.local')
+  logging_debug('Using threading.local')
   threading_local = threading.local
 else:
-  logging.debug('Not using threading.local')
+  logging_debug('Not using threading.local')
   threading_local = object
 
 
@@ -114,13 +121,6 @@ def positional(max_pos_args):
       return wrapped(*args, **kwds)
     return positional_wrapper
   return positional_decorator
-
-
-def logging_debug(*args):
-  # NOTE: If you want to see debug messages, set the logging level
-  # manually to logging.DEBUG - 1; or for tests use -v -v -v (see below).
-  if DEBUG and logging.getLogger().level < logging.DEBUG:
-    logging.debug(*args)
 
 
 def tweak_logging():
