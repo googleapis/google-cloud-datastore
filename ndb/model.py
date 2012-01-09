@@ -1950,7 +1950,10 @@ class GenericProperty(Property):
     # (We don't even want to think about multiple members... :-)
     if v.has_stringvalue():
       sval = v.stringvalue()
-      if p.meaning() not in (entity_pb.Property.BLOB,
+      meaning = p.meaning()
+      if meaning == entity_pb.Property.BLOBKEY:
+        sval = BlobKey(sval)
+      elif meaning not in (entity_pb.Property.BLOB,
                              entity_pb.Property.BYTESTRING):
         try:
           sval.decode('ascii')
@@ -2031,8 +2034,10 @@ class GenericProperty(Property):
       pv.set_y(value.lon)
     elif isinstance(value, users.User):
       datastore_types.PackUser(p.name(), value, v)
+    elif isinstance(value, BlobKey):
+      v.set_stringvalue(str(value))
+      p.set_meaning(entity_pb.Property.BLOBKEY)
     else:
-      # TODO: BlobKey.
       raise NotImplementedError('Property %s does not support %s types.' %
                                 (self._name, type(value)))
 

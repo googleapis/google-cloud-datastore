@@ -3071,6 +3071,17 @@ class ModelTests(test_utils.NDBTest):
     self.assertEqual(key.id(), 'b')
     self.assertEqual(key.kind(), 'Foo')
 
+  def testExpandoBlobKey(self):
+    class Foo(model.Expando):
+      pass
+    bk = model.BlobKey('blah')
+    foo = Foo(bk=bk)
+    foo.put()
+    bar = foo.key.get(use_memcache=False, use_cache=False)
+    self.assertTrue(isinstance(bar.bk, model.BlobKey))
+    self.assertEqual(bar.bk, bk)
+
+
 class CacheTests(test_utils.NDBTest):
 
   def SetupContextCache(self):
