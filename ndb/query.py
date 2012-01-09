@@ -354,6 +354,8 @@ class FilterNode(Node):
   """Tree node for a single filter expression."""
 
   def __new__(cls, name, opsymbol, value):
+    if isinstance(value, model.Key):
+      value = value.to_old_key()
     if opsymbol == '!=':
       n1 = FilterNode(name, '<', value)
       n2 = FilterNode(name, '>', value)

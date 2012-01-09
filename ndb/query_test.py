@@ -4,6 +4,7 @@ import datetime
 import unittest
 
 from google.appengine.api import datastore_errors
+from google.appengine.api import users
 
 from . import model
 from . import query
@@ -992,6 +993,32 @@ class QueryTests(test_utils.NDBTest):
     l = q.fetch()
     self.assertTrue(c in l)
     self.assertTrue(p in l)
+
+  def testExpandoQueries(self):
+    class Foo(model.Expando):
+      pass
+    testdata = {'int': 42,
+                'float': 3.14,
+                'string': 'hello',
+                'bool': True,
+                # Don't call this 'key'; it interferes with the built-in
+                # key attribute (the entity's key).
+                'akey': model.Key('Foo', 1),
+                'point': model.GeoPt(52.35, 4.9166667),
+                'user': users.User('test@example.com', 'example.com', '123'),
+                'blobkey': model.BlobKey('blah'),
+                'none': None,
+                }
+    for name, value in testdata.iteritems():
+      foo = Foo()
+      setattr(foo, name, value)
+      foo.put()
+      qry = Foo.query(query.FilterNode(name, '=', value))
+      res = qry.get()
+      self.assertTrue(res is not None, name)
+      self.assertEqual(getattr(res, name), value)
+      res.key.delete()
+
 
 def main():
   unittest.main()
