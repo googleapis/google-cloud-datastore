@@ -802,6 +802,56 @@ class ModelTests(test_utils.NDBTest):
                         repeated=True, required=True, default='')
     self.assertEqual('MyModel()', repr(MyModel()))
 
+  def testKeyProperty(self):
+    class RefModel(model.Model):
+      pass
+    class FancyModel(model.Model):
+      @classmethod
+      def _get_kind(cls):
+        return 'Fancy'
+    class FancierModel(model.Model):
+      @classmethod
+      def _get_kind(cls):
+        return u'Fancier'
+    class FanciestModel(model.Model):
+      @classmethod
+      def _get_kind(cls):
+        return '\xff'
+    class MyModel(model.Model):
+      basic = model.KeyProperty(kind=None)
+      ref = model.KeyProperty(kind=RefModel)
+      refs = model.KeyProperty(kind=RefModel, repeated=True)
+      fancy = model.KeyProperty(kind=FancyModel)
+      fancee = model.KeyProperty(kind='Fancy')
+      fancier = model.KeyProperty(kind=FancierModel)
+      fanciest = model.KeyProperty(kind=FanciestModel)
+      faanceest = model.KeyProperty(kind=u'\xff')
+    a = MyModel(basic=model.Key('Foo', 1),
+                ref=model.Key(RefModel, 1),
+                refs=[model.Key(RefModel, 2), model.Key(RefModel, 3)],
+                fancy=model.Key(FancyModel, 1),
+                fancee=model.Key(FancyModel, 2),
+                fancier=model.Key('Fancier', 1),
+                fanciest=model.Key(FanciestModel, 1))
+    a.put()
+    b = a.key.get()
+    self.assertEqual(a, b)
+    # Try some assignments.
+    b.basic = model.Key('Bar', 1)
+    b.ref = model.Key(RefModel, 2)
+    b.refs = [model.Key(RefModel, 4)]
+    # Try the repr().
+    self.assertEqual(repr(MyModel.basic), "KeyProperty('basic')")
+    self.assertEqual(repr(MyModel.ref), "KeyProperty('ref', kind='RefModel')")
+    # Try some errors declaring properties.
+    self.assertRaises(TypeError, model.KeyProperty, kind=42)  # Non-class.
+    self.assertRaises(TypeError, model.KeyProperty, kind=int)  # Non-Model.
+    # Try some errors assigning property values.
+    self.assertRaises(datastore_errors.BadValueError,
+                      setattr, a, 'ref', model.Key('Bar', 1))
+    self.assertRaises(datastore_errors.BadValueError,
+                      setattr, a, 'refs', [model.Key('Bar', 1)])
+
   def testBlobKeyProperty(self):
     class MyModel(model.Model):
       image = model.BlobKeyProperty()

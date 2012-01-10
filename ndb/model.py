@@ -1463,8 +1463,29 @@ class UserProperty(Property):
 
 
 class KeyProperty(Property):
-  """A Property whose value is a Key object."""
-  # TODO: optionally check the kind (or maybe require this?)
+  """A Property whose value is a Key object.
+
+  Optional keyword argument: kind=<kind>, to require that keys
+  assigned to this property always have the indicated kind.  May be a
+  string or a Model subclass.
+  """
+
+  _attributes = Property._attributes + ['_kind']
+
+  _kind = None
+
+  @utils.positional(1 + Property._positional)
+  def __init__(self, *args, **kwds):
+    kind = kwds.pop('kind', None)
+    super(KeyProperty, self).__init__(*args, **kwds)
+    if kind is not None:
+      if isinstance(kind, type) and issubclass(kind, Model):
+        kind = kind._get_kind()
+      if isinstance(kind, unicode):
+        kind = kind.encode('utf-8')
+      if not isinstance(kind, str):
+        raise TypeError('kind must be a Model class or a string')
+    self._kind = kind
 
   def _datastore_type(self, value):
     return datastore_types.Key(value.urlsafe())
@@ -1476,6 +1497,10 @@ class KeyProperty(Property):
     if not value.id():
       raise datastore_errors.BadValueError('Expected complete Key, got %r' %
                                            (value,))
+    if self._kind is not None:
+      if value.kind() != self._kind:
+        raise datastore_errors.BadValueError(
+          'Expected Key with kind=%r, got %r' % (self._kind, value))
 
   def _db_set_value(self, v, unused_p, value):
     if not isinstance(value, Key):
