@@ -99,7 +99,7 @@ class Key(object):
   - Key(pairs=[(kind1, id1), (kind2, id2), ...])
   - Key(flat=[kind1, id1, kind2, id2, ...])
 
-  Either of the above constructor forms can additional pass in another
+  Either of the above constructor forms can additionally pass in another
   key using parent=<key>.  The (kind, id) pairs of the parent key are
   inserted before the (kind, id) pairs passed explicitly.
 
