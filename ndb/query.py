@@ -947,8 +947,9 @@ class Query(object):
     elif limit is None:
       limit = _MAX_LIMIT
     q_options['limit'] = limit
-    q_options.setdefault('prefetch_size', limit)
     q_options.setdefault('batch_size', limit)
+    # If batch size is specified, it overrides the default prefetch size too.
+    q_options.setdefault('prefetch_size', q_options['batch_size'])
     res = []
     it = self.iter(**q_options)
     while (yield it.has_next_async()):
@@ -1021,8 +1022,8 @@ class Query(object):
       # _MultiQuery does not support iterating over result batches,
       # so just fetch results and count them.
       # TODO: Use QueryIterator to avoid materializing the results list.
-      q_options.setdefault('prefetch_size', limit)
       q_options.setdefault('batch_size', limit)
+      q_options.setdefault('prefetch_size', q_options['batch_size'])
       q_options.setdefault('keys_only', True)
       results = yield self.fetch_async(limit, **q_options)
       raise tasklets.Return(len(results))
