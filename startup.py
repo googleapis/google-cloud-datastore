@@ -11,6 +11,7 @@ from google.appengine.api import memcache
 from google.appengine.api.memcache import memcache_stub
 from google.appengine.api import taskqueue
 from google.appengine.api.taskqueue import taskqueue_stub
+from google.appengine.api import urlfetch_stub
 
 from ndb.model import *
 from ndb.query import *
@@ -22,6 +23,8 @@ mc_stub = memcache_stub.MemcacheServiceStub()
 apiproxy_stub_map.apiproxy.RegisterStub('memcache', mc_stub)
 tq_stub = taskqueue_stub.TaskQueueServiceStub()
 apiproxy_stub_map.apiproxy.RegisterStub('taskqueue', tq_stub)
+uf_stub = urlfetch_stub.URLFetchServiceStub()
+apiproxy_stub_map.apiproxy.RegisterStub('urlfetch', uf_stub)
 os.environ['APPLICATION_ID'] = '_'
 
 class Employee(Model):

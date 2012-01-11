@@ -1141,6 +1141,13 @@ class ContextTests(test_utils.NDBTest):
     # Check that ndb ignores the corrupt memcache value
     self.assertEqual(ent, key.get())
 
+  def testUrlFetch(self):
+    self.testbed.init_urlfetch_stub()
+    # TODO: Avoid depending on actually accessing google.com.
+    fut = self.ctx.urlfetch('http://google.com')
+    result = fut.get_result()
+    self.assertTrue(isinstance(result.content, str))
+
 
 class ContextFutureCachingTests(test_utils.NDBTest):
   # See issue 62.  http://goo.gl/5zLkK

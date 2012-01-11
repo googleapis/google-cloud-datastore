@@ -1078,6 +1078,22 @@ class Context(object):
     return self._memcache_off_batcher.add((key, -delta),
                                           (initial_value, namespace))
 
+  @tasklets.tasklet
+  def urlfetch(self, url, payload=None, method='GET', headers={},
+               allow_truncated=False, follow_redirects=True,
+               validate_certificate=None, deadline=None, callback=None):
+    from google.appengine.api import urlfetch
+    rpc = urlfetch.create_rpc(deadline=deadline, callback=callback)
+    urlfetch.make_fetch_call(rpc, url,
+                             payload=payload,
+                             method=method,
+                             headers=headers,
+                             allow_truncated=allow_truncated,
+                             follow_redirects=follow_redirects,
+                             validate_certificate=validate_certificate)
+    result = yield rpc
+    raise tasklets.Return(result)
+
 
 def toplevel(func):
   """A sync tasklet that sets a fresh default Context.
