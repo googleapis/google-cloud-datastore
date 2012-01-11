@@ -1,3 +1,15 @@
+Release 0.9.6
+
+- Explicit batch_size sets default for prefetch_size.
+- Add urlfetch support to Context.
+- Issue 111: Allow specifying a kind for KeyProperty.
+- Issue 129: FilterNode should convert new Key to old Key.
+- Add support for BlobKey in Expandio (an old TODO).
+- Issue 132: Use either json or simplejson in JsonProperty.
+- Issue 131: Suppress debug messages about threading.local.
+
+----------------------------------------
+
 Release 0.9.5
 
 Various minor issues fixed over the holidays.
