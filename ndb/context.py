@@ -733,15 +733,19 @@ class Context(object):
           else:
             key = ent._key
             if self._use_cache(key, options):
-              # TODO: If this is the HRD and not an ancestor query,
-              # the result may be stale.  Do we care?  Does it matter
-              # if the value is already cached or not?  There is also
-              # a case where the cache is stale, if the context was
-              # long-lived, so simply replacing the query result with
-              # the cached value is wrong too.  Maybe only cache the
-              # result if it wasn't already in the cache?  Log a
-              # warning if it differs from the cache?  See issue 117.
-              self._cache[key] = ent
+              # Update the cache. If this key was already in the
+              # cache, update the cached entity in-place and return
+              # the cached entity, to maintain the invariant that
+              # there is only one copy of each cached entity.
+              cached_ent = self._cache.get(key)
+              if cached_ent is not None and cached_ent.key == key:
+                # TODO: Do the in-place update more subtly, so that
+                # mutable property values (e.g. repeated or structured
+                # properties) keep their identity.
+                cached_ent._values = ent._values
+                ent = cached_ent
+              else:
+                self._cache[key] = ent
           if callback is None:
             val = ent
           else:

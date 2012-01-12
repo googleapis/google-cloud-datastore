@@ -1019,6 +1019,28 @@ class QueryTests(test_utils.NDBTest):
       self.assertEqual(getattr(res, name), value)
       res.key.delete()
 
+  def testQueryCacheInteraction(self):
+    class Bar(model.Model):
+      name = model.StringProperty()
+    ctx = tasklets.get_context()
+    ctx.set_cache_policy(True)
+    a = Bar(name='a')
+    a.put()
+    b = a.key.get()
+    self.assertTrue(b is a)  # Just verifying that the cache is on.
+    b = Bar.query().get()
+    self.assertTrue(b is a)
+    a.name = 'x'  # Modify, but don't write
+    b = Bar.query().get()
+    self.assertTrue(b is a)
+    self.assertEqual(a.name, 'a')
+    a.name = 'x'
+    a.key = None
+    b = Bar.query().get()
+    self.assertFalse(b is a)
+    self.assertEqual(a.name, 'x')
+    self.assertEqual(b.name, 'a')
+
 
 def main():
   unittest.main()
