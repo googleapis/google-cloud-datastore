@@ -2613,9 +2613,50 @@ class Model(object):
 
     This is the asynchronous version of Model._get_or_insert().
     """
+    # NOTE: The signature is really weird here because we want to support
+    # models with properties named e.g. 'cls' or 'name'.
     from . import tasklets
-    ctx = tasklets.get_context()
-    return ctx.get_or_insert(*args, **kwds)
+    cls, name = args  # These must always be positional.
+    our_kwds = {}
+    for kwd in 'app', 'namespace', 'parent', 'context_options':
+      # For each of these keyword arguments, if there is a property
+      # with the same name, the caller *must* use _foo=..., otherwise
+      # they may use either _foo=... or foo=..., but _foo=... wins.
+      alt_kwd = '_' + kwd
+      if alt_kwd in kwds:
+        our_kwds[kwd] = kwds.pop(alt_kwd)
+      elif (kwd in kwds and
+          not isinstance(getattr(cls, kwd, None), Property)):
+        our_kwds[kwd] = kwds.pop(kwd)
+    app = our_kwds.get('app')
+    namespace = our_kwds.get('namespace')
+    parent = our_kwds.get('parent')
+    context_options = our_kwds.get('context_options')
+    # (End of super-special argument parsing.)
+    # TODO: Test the heck out of this, in all sorts of evil scenarios.
+    if not isinstance(name, basestring):
+      raise TypeError('name must be a string; received %r' % name)
+    elif not name:
+      raise ValueError('name cannot be an empty string.')
+    key = Key(cls, name, app=app, namespace=namespace, parent=parent)
+
+    @tasklets.tasklet
+    def internal_tasklet():
+      ent = yield key.get_async(options=context_options)
+      if ent is None:
+        @tasklets.tasklet
+        def txn():
+          ent = yield key.get_async(options=context_options)
+          if ent is None:
+            ent = cls(**kwds)  # TODO: Check for forbidden keys
+            ent._key = key
+            yield ent.put_async(options=context_options)
+          raise tasklets.Return(ent)
+        ent = yield transaction_async(txn)
+      raise tasklets.Return(ent)
+
+    return internal_tasklet()
+
   get_or_insert_async = _get_or_insert_async
 
   @classmethod

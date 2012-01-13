@@ -856,56 +856,6 @@ class Context(object):
     yield futures
 
   @tasklets.tasklet
-  def get_or_insert(*args, **kwds):
-    # TODO: Get rid of this and implement it in model.py instead.
-    # NOTE: The signature is really weird here because we want to support
-    # models with properties named e.g. 'self' or 'name'.
-    self, model_class, name = args  # These must always be positional.
-    our_kwds = {}
-    for kwd in 'app', 'namespace', 'parent', 'context_options':
-      # For each of these keyword arguments, if there is a property
-      # with the same name, the caller *must* use _foo=..., otherwise
-      # they may use either _foo=... or foo=..., but _foo=... wins.
-      alt_kwd = '_' + kwd
-      if alt_kwd in kwds:
-        our_kwds[kwd] = kwds.pop(alt_kwd)
-      elif (kwd in kwds and
-          not isinstance(getattr(model_class, kwd, None), model.Property)):
-        our_kwds[kwd] = kwds.pop(kwd)
-    app = our_kwds.get('app')
-    namespace = our_kwds.get('namespace')
-    parent = our_kwds.get('parent')
-    context_options = our_kwds.get('context_options')
-    # (End of super-special argument parsing.)
-    # TODO: Test the heck out of this, in all sorts of evil scenarios.
-    if not isinstance(name, basestring):
-      raise TypeError('name must be a string; received %r' % name)
-    elif not name:
-      raise ValueError('name cannot be an empty string.')
-    key = model.Key(model_class, name,
-                    app=app, namespace=namespace, parent=parent)
-    # Temporarily make self the current context, even if it isn't, so
-    # we can use key.get_async() instead of self.get() -- this is so
-    # that pre/post call hooks are invoked correctly.
-    save_context = tasklets.get_context()
-    try:
-      tasklets.set_context(self)
-      ent = yield key.get_async(options=context_options)
-    finally:
-      tasklets.set_context(save_context)
-    if ent is None:
-      @tasklets.tasklet
-      def txn():
-        ent = yield key.get_async(options=context_options)
-        if ent is None:
-          ent = model_class(**kwds)  # TODO: Check for forbidden keys
-          ent._key = key
-          yield ent.put_async(options=context_options)
-        raise tasklets.Return(ent)
-      ent = yield self.transaction(txn)
-    raise tasklets.Return(ent)
-
-  @tasklets.tasklet
   def _memcache_get_tasklet(self, todo, options):
     if not todo:
       raise RuntimeError('Nothing to do.')

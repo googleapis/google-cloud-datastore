@@ -2156,6 +2156,30 @@ class ModelTests(test_utils.NDBTest):
     self.assertNotEqual(key.get(), None)
     self.assertEqual(key.get().text, 'baz')
 
+
+  def testGetOrInsertAsync(self):
+    class Mod(model.Model):
+      data = model.StringProperty()
+    @tasklets.tasklet
+    def foo():
+      ent = yield Mod.get_or_insert_async('a', data='hello')
+      self.assertTrue(isinstance(ent, Mod))
+      ent2 = yield Mod.get_or_insert_async('a', data='hello')
+      self.assertEqual(ent2, ent)
+    foo().check_success()
+
+  def testGetOrInsertAsyncWithParent(self):
+    class Mod(model.Model):
+      data = model.StringProperty()
+    @tasklets.tasklet
+    def foo():
+      parent = model.Key(flat=('Foo', 1))
+      ent = yield Mod.get_or_insert_async('a', _parent=parent, data='hello')
+      self.assertTrue(isinstance(ent, Mod))
+      ent2 = yield Mod.get_or_insert_async('a', parent=parent, data='hello')
+      self.assertEqual(ent2, ent)
+    foo().check_success()
+
   def testGetById(self):
     class MyModel(model.Model):
       pass
