@@ -1108,8 +1108,7 @@ def _make_options(q_options):
   if 'options' in q_options:
     # Move 'options' to 'config' since that is what QueryOptions() uses.
     if 'config' in q_options:
-      raise TypeError('The options pertaining to a config option must be '
-                      'given independently instead of using a config argument.')
+      raise TypeError('You cannot use config= and options= at the same time')
     q_options['config'] = q_options.pop('options')
   return QueryOptions(**q_options)
 
