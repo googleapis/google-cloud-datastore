@@ -1,10 +1,13 @@
-Release 0.9.6
+Release 0.9.6 (not yet released -- more may come)
 
+- Issue 125: Support prospective search API.
+- Issue 108: Remove get_or_insert() from Context.
+- Issue 117 (again): Improve cache/query interaction.
 - Explicit batch_size sets default for prefetch_size.
 - Add urlfetch support to Context.
 - Issue 111: Allow specifying a kind for KeyProperty.
 - Issue 129: FilterNode should convert new Key to old Key.
-- Add support for BlobKey in Expandio (an old TODO).
+- Add support for BlobKey in Expando (an old TODO).
 - Issue 132: Use either json or simplejson in JsonProperty.
 - Issue 131: Suppress debug messages about threading.local.
 
