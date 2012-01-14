@@ -2182,7 +2182,7 @@ class Model(object):
 
   @utils.positional(1)
   def __init__(self, key=None, id=None, parent=None, **kwds):
-    """Creates a new instance of this model (a.k.a. as an entity).
+    """Creates a new instance of this model (a.k.a. an entity).
 
     The new entity must be written to the datastore using an explicit
     call to .put().
