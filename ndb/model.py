@@ -2699,7 +2699,7 @@ class Model(object):
 
   @classmethod
   def _get_by_id(cls, id, parent=None, **ctx_options):
-    """Returns a instance of Model class by ID.
+    """Returns an instance of Model class by ID.
 
     This is really just a shorthand for Key(cls, id).get().
 
@@ -2716,7 +2716,7 @@ class Model(object):
 
   @classmethod
   def _get_by_id_async(cls, id, parent=None, **ctx_options):
-    """Returns a instance of Model class by ID.
+    """Returns an instance of Model class by ID.
 
     This is the asynchronous version of Model._get_by_id().
     """
