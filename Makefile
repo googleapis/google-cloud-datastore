@@ -61,6 +61,10 @@ context_test:
 thread_test:
 	PYTHONPATH=$(GAEPATH):. $(PYTHON) -m ndb.thread_test $(FLAGS)
 
+ps_test:
+	PYTHONPATH=$(GAEPATH):. $(PYTHON) -m ndb.prospective_search_test $(FLAGS)
+
+
 runtests:
 	PYTHONPATH=$(GAEPATH):. $(PYTHON) runtests.py $(FLAGS)
 
