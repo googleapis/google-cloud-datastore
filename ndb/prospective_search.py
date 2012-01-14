@@ -134,7 +134,7 @@ def list_subscriptions(document_class,
                        sub_id_start='',
                        topic=None,
                        max_results=DEFAULT_LIST_SUBSCRIPTIONS_MAX_RESULTS,
-                       expires_before=None): 
+                       expires_before=None):
   """List subscriptions on a topic."""
   topic = _get_document_topic(document_class, topic)
   return prospective_search.list_subscriptions(
