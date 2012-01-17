@@ -62,7 +62,8 @@ exceptions indicated in the list below:
 
 - GeoPtProperty: a geographical location, i.e. (latitude, longitude)
 
-- KeyProperty: a datastore Key value
+- KeyProperty: a datastore Key value, optionally constrained to
+  referring to a specific kind
 
 - UserProperty: a User object (for backwards compatibility only)
 
@@ -79,6 +80,15 @@ exceptions indicated in the list below:
 
 - GenericProperty: a property whose type is not constrained; mostly
   used by the Expando class (see below) but also usable explicitly
+
+- JsonProperty: a property whose value is any object that can be
+  serialized using JSON; the value written to the datastore is a JSON
+  representation of that object
+
+- PickleProperty: a property whose value is any object that can be
+  serialized using Python's pickle protocol; the value written to the
+  datastore is the pickled representation of that object, using the
+  highest available pickle protocol
 
 Most Property classes have similar constructor signatures.  They
 accept several optional keyword arguments:
@@ -1385,7 +1395,7 @@ class PickleProperty(BlobProperty):
   """A Property whose value is any picklable Python object."""
 
   def _to_base_type(self, value):
-    return pickle.dumps(value, 2)
+    return pickle.dumps(value, pickle.HIGHEST_PROTOCOL)
 
   def _from_base_type(self, value):
     return pickle.loads(value)
