@@ -774,6 +774,39 @@ class Query(object):
         queue.set_exception(e, tb)
       raise
 
+  @tasklets.tasklet
+  def _run_to_list(self, results, options=None):
+    # Internal version of run_to_queue(), without a queue.
+    ctx = tasklets.get_context()
+    conn = ctx._conn
+    dsquery = self._get_query(conn)
+    rpc = dsquery.run_async(conn, options)
+    while rpc is not None:
+      batch = yield rpc
+      rpc = batch.next_batch_async(options)
+      for result in batch.results:
+        # Update cache, copying code from Context().map_query().
+        if not options or not options.keys_only:
+          key = result._key
+          if ctx._use_cache(key, options):
+            cached_result = ctx._cache.get(key)
+            if cached_result is not None and cached_result.key == key:
+              cached_result._values = result._values
+              result = cached_result
+            else:
+              ctx._cache[key] = result
+        results.append(result)
+
+    raise tasklets.Return(results)
+
+  def _needs_multi_query(self):
+    filters = self.__filters
+    if filters is not None:
+      filters = filters.resolve()
+      if isinstance(filters, DisjunctionNode):
+        return True
+    return False
+
   def _maybe_multi_query(self):
     filters = self.__filters
     if filters is not None:
@@ -891,7 +924,9 @@ class Query(object):
     with a Key.  Also, when produce_cursors=True is given, it is
     called with three arguments: the current batch, the index within
     the batch, and the entity or Key at that index.  The callback can
-    return whatever it wants.
+    return whatever it wants.  If the callback is None, a trivial
+    callback is assumed that just returns the entity or key passed in
+    (ignoring produce_cursors).
 
     Optional merge future: The merge_future is an advanced argument
     that can be used to override how the callback results are combined
@@ -934,7 +969,6 @@ class Query(object):
     """
     return self.fetch_async(limit, **q_options).get_result()
 
-  @tasklets.tasklet
   @utils.positional(2)
   def fetch_async(self, limit=None, **q_options):
     """Fetch a list of query results, up to a limit.
@@ -948,13 +982,11 @@ class Query(object):
       limit = _MAX_LIMIT
     q_options['limit'] = limit
     q_options.setdefault('batch_size', limit)
-    res = []
-    it = self.iter(**q_options)
-    while (yield it.has_next_async()):
-      res.append(it.next())
-      if len(res) >= limit:
-        break
-    raise tasklets.Return(res)
+    if self._needs_multi_query():
+      return self.map_async(None, **q_options)
+    # Optimization using direct batches.
+    options = _make_options(q_options)
+    return self._run_to_list([], options=options)
 
   def get(self, **q_options):
     """Get the first query result, if any.
@@ -1015,8 +1047,7 @@ class Query(object):
                       'keyword argument simultaneously.')
     elif limit is None:
       limit = _MAX_LIMIT
-    if (self.__filters is not None and
-        isinstance(self.__filters, DisjunctionNode)):
+    if self._needs_multi_query():
       # _MultiQuery does not support iterating over result batches,
       # so just fetch results and count them.
       # TODO: Use QueryIterator to avoid materializing the results list.
