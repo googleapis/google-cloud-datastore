@@ -1831,10 +1831,12 @@ class StructuredProperty(StructuredGetForDictMixin):
     ok = super(StructuredProperty, self)._has_value(entity)
     if ok and rest:
       lst = self._get_base_value_unwrapped_as_list(entity)
-      if len(lst) != 1 or lst == [None]:
+      if len(lst) != 1:
         raise RuntimeError('Failed to retrieve sub-entity of StructuredProperty'
                            ' %s' % self._name)
       subent = lst[0]
+      if subent is None:
+        return True
       subprop = subent._properties.get(rest[0])
       if subprop is None:
         ok = False
@@ -1851,6 +1853,10 @@ class StructuredProperty(StructuredGetForDictMixin):
         for unused_name, prop in sorted(value._properties.iteritems()):
           prop._serialize(value, pb, prefix + self._name + '.',
                           self._repeated or parent_repeated)
+      elif parent_repeated:
+        # Serialize a single None
+        super(StructuredProperty, self)._serialize(
+          entity, pb, prefix=prefix, parent_repeated=parent_repeated)
 
   def _deserialize(self, entity, p, depth=1):
     if not self._repeated:
@@ -1868,6 +1874,10 @@ class StructuredProperty(StructuredGetForDictMixin):
                            'retrieved not a %s instance %r' %
                            (self._name, cls.__name__, subentity))
       prop = subentity._get_property_for(p, depth=depth)
+      if prop is None:
+        # Special case: kill subentity after all.
+        self._store_value(entity, None)
+        return
       prop._deserialize(subentity, p, depth + 1)
       return
 
@@ -2433,9 +2443,13 @@ class Model(object):
     name = p.name()
     parts = name.split('.')
     if len(parts) <= depth:
-      raise RuntimeError('Model %s expected to find property %s separated by '
-                         'periods at a depth of %i; received %r' %
-                         (self.__class__.__name__, name, depth, parts))
+      # Apparently there's an unstructured value here.
+      # Assume it is a None written for a missing value.
+      # (It could also be that a schema change turned an unstructured
+      # value into a structured one.  In that case, too, it seems
+      # better to return None than to return an unstructured value,
+      # since the latter doesn't match the current schema.)
+      return None
     next = parts[depth]
     prop = self._properties.get(next)
     if prop is None:

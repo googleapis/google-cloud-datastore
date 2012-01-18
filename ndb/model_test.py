@@ -3276,6 +3276,26 @@ class CacheTests(test_utils.NDBTest):
     copy = q.get()
     self.assertEqual(copy, orig)
 
+  def testSubStructureEqualToNone(self):
+    class IntRangeModel(model.Model):
+      first = model.IntegerProperty()
+      last = model.IntegerProperty()
+
+    class Inner(model.Model):
+      range = model.StructuredProperty(IntRangeModel)
+      other = model.IntegerProperty()
+
+    class Outer(model.Model):
+      wrap = model.StructuredProperty(Inner, repeated=True)
+
+    orig = Outer(wrap=[Inner(other=2),
+                       Inner(range=IntRangeModel(first=0, last=10), other=4)])
+    orig.put()
+    q = Outer.query()
+    copy = q.get()
+    self.assertEqual(copy.wrap[0].range, None)
+    self.assertEqual(copy.wrap[1].range, IntRangeModel(first=0, last=10))
+
 def main():
   unittest.main()
 

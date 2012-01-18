@@ -1,5 +1,7 @@
 Release 0.9.6 (not yet released -- more may come)
 
+- Issue 141: Speed up fetch(), especially for keys_only=True.
+- Issue 138: Fix for subproperty=None in repeated structured property.
 - Issue 125: Support prospective search API.
 - Issue 108: Remove get_or_insert() from Context.
 - Issue 117 (again): Improve cache/query interaction.
