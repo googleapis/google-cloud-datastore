@@ -62,12 +62,16 @@ def get_stack(limit=10):
 
 
 def func_info(func, lineno=None):
+  if not DEBUG:
+    return None
   func = getattr(func, '__wrapped__', func)
   code = func.func_code
   return code_info(code, lineno)
 
 
 def gen_info(gen):
+  if not DEBUG:
+    return None
   frame = gen.gi_frame
   if gen.gi_running:
     prefix = 'running generator '
@@ -87,10 +91,14 @@ def gen_info(gen):
 
 
 def frame_info(frame):
+  if not DEBUG:
+    return None
   return code_info(frame.f_code, frame.f_lineno)
 
 
 def code_info(code, lineno=None):
+  if not DEBUG:
+    return None
   funcname = code.co_name
   # TODO: Be cleverer about stripping filename,
   # e.g. strip based on sys.path.
@@ -107,6 +115,8 @@ def positional(max_pos_args):
   """
   __ndb_debug__ = 'SKIP'
   def positional_decorator(wrapped):
+    if not DEBUG:
+      return wrapped
     __ndb_debug__ = 'SKIP'
     @wrapping(wrapped)
     def positional_wrapper(*args, **kwds):

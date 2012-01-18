@@ -405,7 +405,7 @@ class Future(object):
         return
       if isinstance(value, (tuple, list)):
         # Arrange for yield to return a list of results (not Futures).
-        info = 'multi-yield from ' + utils.gen_info(gen)
+        info = 'multi-yield from %s' % utils.gen_info(gen)
         mfut = MultiFuture(info)
         try:
           for subfuture in value:
