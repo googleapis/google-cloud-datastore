@@ -1741,21 +1741,29 @@ class StructuredProperty(StructuredGetForDictMixin):
                         'properties of its own.' % self._name)
     self._modelclass = modelclass
 
-  def _fix_up(self, cls, code_name):
-    super(StructuredProperty, self)._fix_up(cls, code_name)
-    self._fix_up_nested_properties()
-
-  def _fix_up_nested_properties(self):
-    for prop in self._modelclass._properties.itervalues():
-      prop_copy = copy.copy(prop)
-      prop_copy._name = self._name + '.' + prop._name
-      if isinstance(prop_copy, StructuredProperty):
-        # Guard against simple recursive model definitions.
-        # See model_test: testRecursiveStructuredProperty().
-        # TODO: Guard against indirect recursion.
-        if prop_copy._modelclass is not self._modelclass:
-          prop_copy._fix_up_nested_properties()
-      setattr(self, prop._code_name, prop_copy)
+  def __getattr__(self, attrname):
+    """Dynamically get a subproperty."""
+    # Optimistically try to use the dict key.
+    prop = self._modelclass._properties.get(attrname)
+    # We're done if we have a hit and _code_name matches.
+    if prop is None or prop._code_name != attrname:
+      # Otherwise, use linear search looking for a matching _code_name.
+      for prop in self._modelclass._properties.values():
+        if prop._code_name == attrname:
+          break
+      else:
+        # This is executed when we never execute the above break.
+        prop = None
+    if prop is None:
+      raise AttributeError('Model subclass %s has no attribute %s' %
+                           (self._modelclass.__name__, attrname))
+    prop_copy = copy.copy(prop)
+    prop_copy._name = self._name + '.' + prop_copy._name
+    # Cache the outcome, so subsequent requests for the same attribute
+    # name will get the copied property directly rather than going
+    # through the above motions all over again.
+    setattr(self, attrname, prop_copy)
+    return prop_copy
 
   def _comparison(self, op, value):
     if op != '=':

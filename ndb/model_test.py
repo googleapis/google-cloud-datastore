@@ -232,48 +232,42 @@ key <
 >
 entity_group <
 >
-raw_property <
-  meaning: 15
+property <
   name: "root.left.left.name"
   value <
     stringValue: "a1a"
   >
   multiple: false
 >
-raw_property <
-  meaning: 15
+property <
   name: "root.left.name"
   value <
     stringValue: "a1"
   >
   multiple: false
 >
-raw_property <
-  meaning: 15
+property <
   name: "root.left.rite.name"
   value <
     stringValue: "a1b"
   >
   multiple: false
 >
-raw_property <
-  meaning: 15
+property <
   name: "root.name"
   value <
     stringValue: "a"
   >
   multiple: false
 >
-raw_property <
-  meaning: 15
+property <
   name: "root.rite.name"
   value <
     stringValue: "a2"
   >
   multiple: false
 >
-raw_property <
-  meaning: 15
+property <
   name: "root.rite.rite.name"
   value <
     stringValue: "a2b"
@@ -1175,9 +1169,9 @@ class ModelTests(test_utils.NDBTest):
 
   def testRecursiveStructuredProperty(self):
     class Node(model.Model):
-      name = model.StringProperty(indexed=False)
+      name = model.StringProperty()
     Node.left = model.StructuredProperty(Node)
-    Node.rite = model.StructuredProperty(Node)
+    Node.right = model.StructuredProperty(Node, 'rite')
     Node._fix_up_properties()
     class Tree(model.Model):
       root = model.StructuredProperty(Node)
@@ -1188,14 +1182,19 @@ class ModelTests(test_utils.NDBTest):
     tree.root = Node(name='a',
                      left=Node(name='a1',
                                left=Node(name='a1a'),
-                               rite=Node(name='a1b')),
-                     rite=Node(name='a2',
-                               rite=Node(name='a2b')))
+                               right=Node(name='a1b')),
+                     right=Node(name='a2',
+                                right=Node(name='a2b')))
     pb = tree._to_pb()
     self.assertEqual(str(pb), RECURSIVE_PB)
 
     tree2 = Tree._from_pb(pb)
     self.assertEqual(tree2, tree)
+
+    # Also test querying nodes.
+    tree.put()
+    tree3 = Tree.query(Tree.root.left.right.name == 'a1b').get()
+    self.assertEqual(tree3, tree)
 
   def testRenamedProperty(self):
     class MyModel(model.Model):
