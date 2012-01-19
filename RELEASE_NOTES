@@ -1,4 +1,6 @@
-Release 0.9.6 (not yet released -- more may come)
+Release 0.9.6
+
+Features, speedups and bugfixes.
 
 - Issue 141: Speed up fetch(), especially for keys_only=True.
 - Issue 140: Fix query for recursive structured property.
