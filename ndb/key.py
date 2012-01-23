@@ -201,7 +201,8 @@ class Key(object):
         kwargs = _args[0]
       else:
         if 'flat' in kwargs:
-          raise TypeError('Key() cannot accept flat as a keyword argument.')
+          raise TypeError('Key() with positional arguments '
+                          'cannot accept flat as a keyword argument.')
         kwargs['flat'] = _args
     self = super(Key, cls).__new__(cls)
     # Either __reference or (__pairs, __app, __namespace) must be set.
