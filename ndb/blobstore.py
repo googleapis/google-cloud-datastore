@@ -108,7 +108,7 @@ class BlobInfo(model.Model):
   def get_async(cls, blobkey):
     assert isinstance(blobkey, (BlobKey, basestring))  # TODO: Another error
     return cls.get_by_id_async(str(blobkey))
-  
+
   @classmethod
   def get_multi(cls, blobkeys):
     futs = cls.get_multi_async(blobkeys)
