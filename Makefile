@@ -64,6 +64,9 @@ thread_test:
 ps_test:
 	PYTHONPATH=$(GAEPATH):. $(PYTHON) -m ndb.prospective_search_test $(FLAGS)
 
+blobstore_test:
+	PYTHONPATH=$(GAEPATH):. $(PYTHON) -m ndb.blobstore_test $(FLAGS)
+
 
 runtests:
 	PYTHONPATH=$(GAEPATH):. $(PYTHON) runtests.py $(FLAGS)
