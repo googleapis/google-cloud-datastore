@@ -85,6 +85,7 @@ class BlobInfo(model.Model):
   - size
   - md5_hash
 
+  Because BlobInfo instances are immutable anyway, leave caching on.
   """
 
   @classmethod
@@ -114,7 +115,9 @@ class BlobInfo(model.Model):
   def get_multi_async(cls, blobkeys):
     for blobkey in blobkeys:
       assert isinstance(blobkey, (BlobKey, basestring))  # TODO: Another error
-    return model.get_multi_async(map(str, blobkeys))
+    blobkeystrs = map(str, blobkeys)
+    keys = [model.Key(BLOB_INFO_KIND, id) for id in blobkeystrs]
+    return model.get_multi_async(keys)
 
   def _put_async(self):
     """Cheap way to make BlobInfo entities read-only."""
