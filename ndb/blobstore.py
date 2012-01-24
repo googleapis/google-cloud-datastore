@@ -4,6 +4,7 @@ from google.appengine.api.blobstore import blobstore  # Internal version
 from google.appengine.ext.blobstore import blobstore as ext_blobstore
 
 from . import model
+from . import tasklets
 
 __all__ = ['BLOB_INFO_KIND',
            'BLOB_KEY_HEADER',
@@ -30,6 +31,9 @@ __all__ = ['BLOB_INFO_KIND',
            'fetch_data',
            'fetch_data_async',
            'get',
+           'get_async',
+           'get_multi',
+           'get_multi_async',
            'parse_blob_info']
 
 Error = blobstore.Error
@@ -43,10 +47,6 @@ BlobInfoParseError = ext_blobstore.BlobInfoParseError
 
 BlobKey = blobstore.BlobKey
 create_rpc = blobstore.create_rpc
-create_upload_url = blobstore.create_upload_url
-create_upload_url_async = blobstore.create_upload_url_async
-delete = blobstore.delete
-delete_async = blobstore.delete_async
 
 BLOB_INFO_KIND = blobstore.BLOB_INFO_KIND
 BLOB_MIGRATION_KIND = blobstore.BLOB_MIGRATION_KIND
@@ -56,6 +56,7 @@ MAX_BLOB_FETCH_SIZE = blobstore.MAX_BLOB_FETCH_SIZE
 UPLOAD_INFO_CREATION_HEADER = blobstore.UPLOAD_INFO_CREATION_HEADER
 
 BlobKeyProperty = model.BlobKeyProperty
+assert BlobKey is model.BlobKey
 
 
 class BlobInfo(model.Model):
@@ -100,7 +101,8 @@ class BlobInfo(model.Model):
 
   @classmethod
   def get(cls, blobkey):
-    return cls.get_async(blobkey).get_result()
+    fut = cls.get_async(blobkey)
+    return fut.get_result()
 
   @classmethod
   def get_async(cls, blobkey):
@@ -109,7 +111,8 @@ class BlobInfo(model.Model):
   
   @classmethod
   def get_multi(cls, blobkeys):
-    return [fut.get_result() for fut in cls.get_multi_async(blobkeys)]
+    futs = cls.get_multi_async(blobkeys)
+    return [fut.get_result() for fut in futs]
 
   @classmethod
   def get_multi_async(cls, blobkeys):
@@ -128,17 +131,54 @@ class BlobInfo(model.Model):
     return BlobKey(self._key.id())  # Cache this?
 
   def delete(self):
-    return self.delete_async().get_result()
+    fut = delete_async(self.key())
+    fut.get_result()
 
   def delete_async(self):
-    return blobstore.delete_async(self.key())
+    return delete_async(self.key())  # A Future!
 
   def open(self, *args, **kwds):
     return BlobReader(self, *args, **kwds)
 
 
 get = BlobInfo.get
+get_async = BlobInfo.get_async
+get_multi = BlobInfo.get_multi
+get_multi_async = BlobInfo.get_multi_async
 
+
+def delete(blob_key):
+  fut = delete_async(blob_key)
+  return fut.get_result()
+
+
+@tasklets.tasklet
+def delete_async(blob_key):
+  yield blobstore.delete_async(blob_key)
+
+
+def create_upload_url(success_path,
+                      max_bytes_per_blob=None,
+                      max_bytes_total=None,
+                      rpc=None):
+  fut = create_upload_url_async(success_path,
+                                max_bytes_per_blob=max_bytes_per_blob,
+                                max_bytes_total=max_bytes_total,
+                                rpc=rpc)
+  return fut.get_result()
+
+
+@tasklets.tasklet
+def create_upload_url_async(success_path,
+                      max_bytes_per_blob=None,
+                      max_bytes_total=None,
+                      rpc=None):
+  rpc = create_upload_url_async(success_path,
+                                max_bytes_per_blob=max_bytes_per_blob,
+                                max_bytes_total=max_bytes_total,
+                                rpc=rpc)
+  result = yield rpc
+  raise tasklets.Return(result)
 
 def parse_blob_info(field_storage):
   """Parse a BlobInfo record from file upload field_storage."""
@@ -186,14 +226,17 @@ def parse_blob_info(field_storage):
 
 
 def fetch_data(blob, start_index, end_index, rpc=None):
-  rpc = fetch_data_async(blob, start_index, end_index, rpc=rpc)
-  return rpc.get_result()
+  fut = fetch_data_async(blob, start_index, end_index, rpc=rpc)
+  return fut.get_result()
 
 
+@tasklets.tasklet
 def fetch_data_async(blob, start_index, end_index, rpc=None):
   if isinstance(blob, BlobInfo):
     blob = blob.key()
-  return blobstore.fetch_data_async(blob, start_index, end_index, rpc=rpc)
+  result = yield blobstore.fetch_data_async(blob, start_index, end_index,
+                                            rpc=rpc)
+  raise tasklets.Return(result)
 
 
 class BlobReader(ext_blobstore.BlobReader):

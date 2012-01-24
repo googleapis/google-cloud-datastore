@@ -23,6 +23,39 @@ class BlobstoreTests(test_utils.NDBTest):
     bs_stub = blobstore_stub.BlobstoreServiceStub(storage)
     self.testbed._register_stub('blobstore', bs_stub)
 
+  def testAll(self):
+    for name in blobstore.__all__:
+      self.assertTrue(hasattr(blobstore, name), name)
+    module_type = type(blobstore)
+    for name in dir(blobstore):
+      if not name.startswith('_'):
+        obj = getattr(blobstore, name)
+        if not isinstance(obj, module_type):
+          self.assertTrue(name in blobstore.__all__, name)
+
+  def testConstants(self):
+    # This intentionally hardcodes the values.  I'd like to know when
+    # they change.
+    self.assertEqual(blobstore.BLOB_INFO_KIND, '__BlobInfo__')
+    self.assertEqual(blobstore.BLOB_MIGRATION_KIND, '__BlobMigration__')
+    self.assertEqual(blobstore.BLOB_KEY_HEADER, 'X-AppEngine-BlobKey')
+    self.assertEqual(blobstore.BLOB_RANGE_HEADER, 'X-AppEngine-BlobRange')
+    self.assertEqual(blobstore.UPLOAD_INFO_CREATION_HEADER,
+                     'X-AppEngine-Upload-Creation')
+    self.assertEqual(blobstore.MAX_BLOB_FETCH_SIZE, 1015808)
+
+  def testExceptions(self):
+    self.assertTrue(issubclass(blobstore.Error, Exception))
+    self.assertTrue(issubclass(blobstore.InternalError, blobstore.Error))
+    self.assertTrue(issubclass(blobstore.BlobFetchSizeTooLargeError,
+                               blobstore.Error))
+    self.assertTrue(issubclass(blobstore.BlobNotFoundError, blobstore.Error))
+    self.assertTrue(issubclass(blobstore.DataIndexOutOfRangeError,
+                               blobstore.Error))
+    self.assertTrue(issubclass(blobstore.PermissionDeniedError,
+                               blobstore.Error))
+    self.assertTrue(issubclass(blobstore.BlobInfoParseError, blobstore.Error))
+
   def create_blobinfo(self, blobkey):
     """Handcraft a dummy BlobInfo."""
     b = blobstore.BlobInfo(key=model.Key(blobstore.BLOB_INFO_KIND, blobkey),
@@ -50,15 +83,6 @@ class BlobstoreTests(test_utils.NDBTest):
     self.assertRaises(Exception, model.put_multi, [b])
     self.assertRaises(Exception, model.put_multi_async, [b])
 
-  def testBlobInfo_Get_Function(self):
-    b = self.create_blobinfo('dummy')
-    c = blobstore.get(b.key())
-    self.assertEqual(c, b)
-    self.assertTrue(c is not b)
-    c = blobstore.get('dummy')
-    self.assertEqual(c, b)
-    self.assertTrue(c is not b)
-
   def testBlobInfo_Get(self):
     b = self.create_blobinfo('dummy')
     c = blobstore.BlobInfo.get(b.key())
@@ -70,12 +94,16 @@ class BlobstoreTests(test_utils.NDBTest):
 
   def testBlobInfo_GetAsync(self):
     b = self.create_blobinfo('dummy')
-    c = blobstore.BlobInfo.get_async(b.key()).get_result()
+    cf = blobstore.BlobInfo.get_async(b.key())
+    self.assertTrue(isinstance(cf, tasklets.Future))
+    c = cf.get_result()
     self.assertEqual(c, b)
     self.assertTrue(c is not b)
-    c = blobstore.BlobInfo.get_async(str(b.key())).get_result()
-    self.assertEqual(c, b)
-    self.assertTrue(c is not b)
+    df = blobstore.BlobInfo.get_async(str(b.key()))
+    self.assertTrue(isinstance(df, tasklets.Future))
+    d = df.get_result()
+    self.assertEqual(d, b)
+    self.assertTrue(d is not b)
 
   def testBlobInfo_GetMulti(self):
     b = self.create_blobinfo('b')
@@ -104,10 +132,32 @@ class BlobstoreTests(test_utils.NDBTest):
 
   def testBlobInfo_DeleteAsync(self):
     b = self.create_blobinfo('dummy')
-    b.delete_async().get_result()
+    df = b.delete_async()
+    self.assertTrue(isinstance(df, tasklets.Future), df)
+    df.get_result()
     d = blobstore.get(b.key())
     self.assertEqual(d, None)
-  
+
+  def testBlobstore_Get(self):
+    b = self.create_blobinfo('dummy')
+    c = blobstore.get(b.key())
+    self.assertEqual(c, b)
+    self.assertTrue(c is not b)
+    c = blobstore.get('dummy')
+    self.assertEqual(c, b)
+    self.assertTrue(c is not b)
+
+  def testBlobstore_GetAsync(self):
+    b = self.create_blobinfo('dummy')
+    cf = blobstore.get_async(b.key())
+    self.assertTrue(isinstance(cf, tasklets.Future))
+    c = cf.get_result()
+    self.assertEqual(c, b)
+    self.assertTrue(c is not b)
+    cf = blobstore.get_async('dummy')
+    c = cf.get_result()
+    self.assertEqual(c, b)
+    self.assertTrue(c is not b)
 
 
 def main():
