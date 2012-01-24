@@ -6,8 +6,6 @@ import unittest
 
 from google.appengine.api import namespace_manager
 from google.appengine.api import datastore_types
-from google.appengine.api.blobstore import blobstore_stub
-from google.appengine.api.blobstore import dict_blob_storage
 
 from . import blobstore
 from . import model
@@ -19,9 +17,7 @@ class BlobstoreTests(test_utils.NDBTest):
 
   def setUp(self):
     super(BlobstoreTests, self).setUp()
-    storage = dict_blob_storage.DictBlobStorage()
-    bs_stub = blobstore_stub.BlobstoreServiceStub(storage)
-    self.testbed._register_stub('blobstore', bs_stub)
+    self.testbed.init_blobstore_stub()
 
   def testAll(self):
     for name in blobstore.__all__:
