@@ -173,10 +173,10 @@ def create_upload_url_async(success_path,
                       max_bytes_per_blob=None,
                       max_bytes_total=None,
                       rpc=None):
-  rpc = create_upload_url_async(success_path,
-                                max_bytes_per_blob=max_bytes_per_blob,
-                                max_bytes_total=max_bytes_total,
-                                rpc=rpc)
+  rpc = blobstore.create_upload_url_async(success_path,
+                                          max_bytes_per_blob=max_bytes_per_blob,
+                                          max_bytes_total=max_bytes_total,
+                                          rpc=rpc)
   result = yield rpc
   raise tasklets.Return(result)
 
