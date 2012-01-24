@@ -35,7 +35,9 @@ def wrapping(wrapped):
 
 
 # Define a base class for classes that need to be thread-local.
-if os.getenv('wsgi.multithread'):
+# This is pretty subtle; we want to use threading.local if threading
+# is supported, but object if it is not.
+if threading.local.__module__ == 'thread':
   logging_debug('Using threading.local')
   threading_local = threading.local
 else:
