@@ -58,9 +58,6 @@ tasklets_test:
 context_test:
 	PYTHONPATH=$(GAEPATH):. $(PYTHON) -m ndb.context_test $(FLAGS)
 
-thread_test:
-	PYTHONPATH=$(GAEPATH):. $(PYTHON) -m ndb.thread_test $(FLAGS)
-
 ps_test:
 	PYTHONPATH=$(GAEPATH):. $(PYTHON) -m ndb.prospective_search_test $(FLAGS)
 
@@ -131,6 +128,9 @@ s stress:
 
 race:
 	PYTHONPATH=$(GAEPATH):. $(PYTHON) race.py $(FLAGS)
+
+mttest:
+	PYTHONPATH=$(GAEPATH):. $(PYTHON) mttest.py $(FLAGS)
 
 $(CUSTOM):
 	PYTHONPATH=$(GAEPATH):. $(PYTHON) $(CUSTOM).py $(FLAGS)
