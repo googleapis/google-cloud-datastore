@@ -22,9 +22,7 @@ class ProspectiveSearchTests(test_utils.NDBTest):
     ps_stub = prospective_search_stub.ProspectiveSearchStub(dummy_fn, tq_stub)
     self.testbed._register_stub('matcher', ps_stub)
 
-  def testAll(self):
-    for name in prospective_search.__all__:
-      self.assertTrue(hasattr(prospective_search, name), name)
+  the_module = prospective_search
 
   def testSubscribe(self):
     class Foo(model.Model):

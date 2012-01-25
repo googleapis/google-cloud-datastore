@@ -19,15 +19,7 @@ class BlobstoreTests(test_utils.NDBTest):
     super(BlobstoreTests, self).setUp()
     self.testbed.init_blobstore_stub()
 
-  def testAll(self):
-    for name in blobstore.__all__:
-      self.assertTrue(hasattr(blobstore, name), name)
-    module_type = type(blobstore)
-    for name in dir(blobstore):
-      if not name.startswith('_'):
-        obj = getattr(blobstore, name)
-        if not isinstance(obj, module_type):
-          self.assertTrue(name in blobstore.__all__, name)
+  the_module = blobstore
 
   def testConstants(self):
     # This intentionally hardcodes the values.  I'd like to know when
