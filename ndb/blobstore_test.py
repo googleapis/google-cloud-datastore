@@ -1,5 +1,7 @@
 """Tests for blobstore.py."""
 
+import cgi
+import cStringIO
 import datetime
 import pickle
 import unittest
@@ -170,6 +172,29 @@ class BlobstoreTests(test_utils.NDBTest):
     self.assertTrue(isinstance(urlf, tasklets.Future), urlf)
     url  = urlf.get_result()
     self.assertTrue('/_ah/upload/' in url, url)
+
+  def testBlobstore_ParseBlobInfo(self):
+    fd = cStringIO.StringIO(
+      'Content-type: image/jpeg\n'
+      'Content-length: 42\n'
+      'X-AppEngine-Upload-Creation: 2012-01-24 17:35:00.000000\n'
+      'Content-MD5: eHh4\n'
+      '\n'
+      )
+    env = {'REQUEST_METHOD': 'POST'}
+    hdrs = {'content-disposition': 'blah; filename=hello.txt; name=hello',
+            'content-type': 'text/plain; blob-key=xxx'}
+    fs = cgi.FieldStorage(fd, headers=hdrs, environ=env)
+    bi = blobstore.parse_blob_info(fs)
+    self.assertTrue(isinstance(bi, blobstore.BlobInfo))
+    self.assertEqual(
+      bi,
+      blobstore.BlobInfo(key=model.Key(blobstore.BlobInfo, 'xxx'),
+                         content_type='image/jpeg',
+                         creation=datetime.datetime(2012, 1, 24, 17, 35),
+                         filename='hello.txt',
+                         md5_hash='xxx',
+                         size=42))
 
 
 def main():

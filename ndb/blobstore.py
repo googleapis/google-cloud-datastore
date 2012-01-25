@@ -1,5 +1,8 @@
 """NDB version of google.appengine.ext.blobstore."""
 
+import base64
+import email
+
 from google.appengine.api.blobstore import blobstore  # Internal version
 from google.appengine.ext.blobstore import blobstore as ext_blobstore
 
