@@ -3,23 +3,34 @@
 This currently builds on google.appengine.ext.blobstore and provides a
 similar API.  The main API differences:
 
+- BlobInfo is an actual Model subclass rather than a pseudo-model class.
+  To query, use BlobInfo.query() and its documented properties.  Other
+  changes:
+  - The kind is '__BlobInfo__' (BLOB_INFO_KIND).
+  - key() is a method returning a BlobKey instance.
+  - put() and friends are disabled.
+  - Added class methods get() and friends.
+  - Added instance methods delete() and friends, and open().
+
 - Instead of BlobReferenceProperty, there's BlobKeyProperty.
 
-- APIs that in ext.blobstore take either a key or a list of keys are
-  split into two: one that takes a key and one that takes a list of
-  keys, the latter having a name ending in _multi.  This applies to
-  get() and get_multi(), and to delete() and delete_multi().
+- There is no create_rpc() function.  Instead, functions and methods
+  take keyword arguments to specify deadline, callback, and (in some
+  case) datastore options.
+
+- APIs (get() and delete()) that in ext.blobstore take either a key or
+  a list of keys are split into two: one that takes a key and one that
+  takes a list of keys, the latter having a name ending in _multi.
 
 - The following APIs have a synchronous and an async version:
+  - BlobInfo.get()
+  - BlobInfo.delete()
   - create_upload_url()
   - get()
   - get_multi()
   - delete()
   - delete_multi()
   - fetch_data()
-  - BlobInfo.get()
-  - BlobInfo.delete()
-
 """
 
 import base64
@@ -48,7 +59,6 @@ __all__ = ['BLOB_INFO_KIND',
            'InternalError',
            'MAX_BLOB_FETCH_SIZE',
            'UPLOAD_INFO_CREATION_HEADER',
-           'create_rpc',
            'create_upload_url',
            'create_upload_url_async',
            'delete',
@@ -73,9 +83,8 @@ DataIndexOutOfRangeError = blobstore.DataIndexOutOfRangeError
 PermissionDeniedError = blobstore.PermissionDeniedError
 BlobInfoParseError = ext_blobstore.BlobInfoParseError
 
-# So are BlobKey and create_rpc().
+# So is BlobKey.
 BlobKey = blobstore.BlobKey
-create_rpc = blobstore.create_rpc
 
 # And the constants.
 BLOB_INFO_KIND = blobstore.BLOB_INFO_KIND
@@ -87,9 +96,8 @@ UPLOAD_INFO_CREATION_HEADER = blobstore.UPLOAD_INFO_CREATION_HEADER
 
 # Re-export BlobKeyProperty from ndb.model for completeness.
 BlobKeyProperty = model.BlobKeyProperty
-assert BlobKey is model.BlobKey
 
-# TODO: Add rpc=None to all of the APIs.  (Methods and functions.)
+# TODO: Docstrings all over.
 
 
 class BlobInfo(model.Model):
@@ -98,11 +106,11 @@ class BlobInfo(model.Model):
   This is a Model subclass that has been doctored to be unwritable.
 
   Properties:
-  - content_type
-  - creation
-  - filename
-  - size
-  - md5_hash
+  - content_type: Content type of blob.
+  - creation: Creation date of blob, when it was uploaded.
+  - filename: Filename user selected from their machine.
+  - size: Size of uncompressed blob.
+  - md5_hash: The md5 hash value of the uploaded blob (in hex).
 
   Additional API:
 
@@ -137,42 +145,48 @@ class BlobInfo(model.Model):
     return BLOB_INFO_KIND  # __BlobInfo__
 
   @classmethod
-  def get(cls, blobkey):
-    fut = cls.get_async(blobkey)
+  def get(cls, blob_key, **ctx_options):
+    fut = cls.get_async(blob_key, **ctx_options)
     return fut.get_result()
 
   @classmethod
-  def get_async(cls, blobkey):
-    assert isinstance(blobkey, (BlobKey, basestring))  # TODO: Another error
-    return cls.get_by_id_async(str(blobkey))
+  def get_async(cls, blob_key, **ctx_options):
+    if not isinstance(blob_key, (BlobKey, basestring)):
+      raise TypeError('Expected blob key, got %r' % (blob_key,))
+    if 'parent' in ctx_options:
+      raise TypeError('Parent is not supported')
+    return cls.get_by_id_async(str(blob_key), **ctx_options)
 
   @classmethod
-  def get_multi(cls, blobkeys):
-    futs = cls.get_multi_async(blobkeys)
+  def get_multi(cls, blob_keys, **ctx_options):
+    futs = cls.get_multi_async(blob_keys, **ctx_options)
     return [fut.get_result() for fut in futs]
 
   @classmethod
-  def get_multi_async(cls, blobkeys):
-    for blobkey in blobkeys:
-      assert isinstance(blobkey, (BlobKey, basestring))  # TODO: Another error
-    blobkeystrs = map(str, blobkeys)
-    keys = [model.Key(BLOB_INFO_KIND, id) for id in blobkeystrs]
-    return model.get_multi_async(keys)
+  def get_multi_async(cls, blob_keys, **ctx_options):
+    for blob_key in blob_keys:
+      if not isinstance(blob_key, (BlobKey, basestring)):
+        raise TypeError('Expected blob key, got %r' % (blob_key,))
+    if 'parent' in ctx_options:
+      raise TypeError('Parent is not supported')
+    blob_keystrs = map(str, blob_keys)
+    keys = [model.Key(BLOB_INFO_KIND, id) for id in blob_keystrs]
+    return model.get_multi_async(keys, **ctx_options)
 
-  def _put_async(self):
+  def _put_async(self, **ctx_options):
     """Cheap way to make BlobInfo entities read-only."""
-    assert False  # TODO: Another error
+    raise TypeError('BlobInfo is read-only')
   put_async = _put_async
 
   def key(self):
     return BlobKey(self._key.id())  # Cache this?
 
-  def delete(self):
-    fut = delete_async(self.key())
+  def delete(self, **options):
+    fut = delete_async(self.key(), **options)
     fut.get_result()
 
-  def delete_async(self):
-    return delete_async(self.key())  # A Future!
+  def delete_async(self, **options):
+    return delete_async(self.key(), **options)  # A Future!
 
   def open(self, *args, **kwds):
     return BlobReader(self, *args, **kwds)
@@ -184,38 +198,40 @@ get_multi = BlobInfo.get_multi
 get_multi_async = BlobInfo.get_multi_async
 
 
-def delete(blob_key):
-  assert isinstance(blob_key, (basestring, BlobKey))
-  fut = delete_async(blob_key)
+def delete(blob_key, **options):
+  fut = delete_async(blob_key, **options)
   return fut.get_result()
 
 
 @tasklets.tasklet
-def delete_async(blob_key):
-  assert isinstance(blob_key, (basestring, BlobKey))
-  yield blobstore.delete_async(blob_key)
+def delete_async(blob_key, **options):
+  if not isinstance(blob_key, (basestring, BlobKey)):
+    raise TypeError('Expected blob key, got %r' % (blob_key,))
+  rpc = blobstore.create_rpc(**options)
+  yield blobstore.delete_async(blob_key, rpc=rpc)
 
 
-def delete_multi(blob_keys):
-  assert not isinstance(blob_keys, (basestring, BlobKey))
-  fut = delete_multi_async(blob_keys)
+def delete_multi(blob_keys, **options):
+  fut = delete_multi_async(blob_keys, **options)
   fut.get_result()
 
 
 @tasklets.tasklet
-def delete_multi_async(blob_keys):
-  assert not isinstance(blob_keys, (basestring, BlobKey))
-  yield blobstore.delete_async(blob_keys)
+def delete_multi_async(blob_keys, **options):
+  if isinstance(blob_keys, (basestring, BlobKey)):
+    raise TypeError('Expected a list, got %r' % (blob_key,))
+  rpc = blobstore.create_rpc(**options)
+  yield blobstore.delete_async(blob_keys, rpc=rpc)
 
 
 def create_upload_url(success_path,
                       max_bytes_per_blob=None,
                       max_bytes_total=None,
-                      rpc=None):
+                      **options):
   fut = create_upload_url_async(success_path,
                                 max_bytes_per_blob=max_bytes_per_blob,
                                 max_bytes_total=max_bytes_total,
-                                rpc=rpc)
+                                **options)
   return fut.get_result()
 
 
@@ -223,7 +239,8 @@ def create_upload_url(success_path,
 def create_upload_url_async(success_path,
                       max_bytes_per_blob=None,
                       max_bytes_total=None,
-                      rpc=None):
+                      **options):
+  rpc = blobstore.create_rpc(**options)
   rpc = blobstore.create_upload_url_async(success_path,
                                           max_bytes_per_blob=max_bytes_per_blob,
                                           max_bytes_total=max_bytes_total,
@@ -277,17 +294,18 @@ def parse_blob_info(field_storage):
                   )
 
 
-def fetch_data(blob, start_index, end_index, rpc=None):
-  fut = fetch_data_async(blob, start_index, end_index, rpc=rpc)
+def fetch_data(blob, start_index, end_index, **options):
+  fut = fetch_data_async(blob, start_index, end_index, **options)
   return fut.get_result()
 
 
 @tasklets.tasklet
-def fetch_data_async(blob, start_index, end_index, rpc=None):
+def fetch_data_async(blob, start_index, end_index, **options):
   if isinstance(blob, BlobInfo):
     blob = blob.key()
-  result = yield blobstore.fetch_data_async(blob, start_index, end_index,
-                                            rpc=rpc)
+  rpc = blobstore.create_rpc(**options)
+  rpc = blobstore.fetch_data_async(blob, start_index, end_index, rpc=rpc)
+  result = yield rpc
   raise tasklets.Return(result)
 
 
@@ -295,11 +313,23 @@ class BlobReader(ext_blobstore.BlobReader):
   # Hack alert: this can access private attributes of the parent class
   # because it has the same class name.  (This is a Python feature.)
 
+  def __fill_buffer(self, size=0):
+    """Fills the internal buffer.
+
+    Args:
+      size: Number of bytes to read. Will be clamped to
+        [self.__buffer_size, MAX_BLOB_FETCH_SIZE].
+    """
+    read_size = min(max(size, self.__buffer_size), MAX_BLOB_FETCH_SIZE)
+
+    self.__buffer = fetch_data(self.__blob_key, self.__position,
+                               self.__position + read_size - 1)
+    self.__buffer_position = 0
+    self.__eof = len(self.__buffer) < read_size
+
   @property
   def blob_info(self):
-    # This is the only method we need to override, since it is the
-    # only one that references the BlobInfo class (of which we have
-    # our own version).
+    """Returns the BlobInfo for this file."""
     if not self.__blob_info:
       self.__blob_info = BlobInfo.get(self.__blob_key)
     return self.__blob_info
