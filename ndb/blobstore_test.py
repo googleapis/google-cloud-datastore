@@ -196,6 +196,24 @@ class BlobstoreTests(test_utils.NDBTest):
                          md5_hash='xxx',
                          size=42))
 
+  def testBlobstore_FetchData(self):
+    self.create_blobinfo('xxx')
+    stub = self.testbed.get_stub('blobstore')
+    storage = stub.storage
+    storage._blobs['xxx'] = 'abcde'
+    result = blobstore.fetch_data('xxx', 0, 3)  # Range is inclusive!
+    self.assertEqual(result, 'abcd')
+
+  def testBlobstore_FetchDataAsync(self):
+    b = self.create_blobinfo('xxx')
+    stub = self.testbed.get_stub('blobstore')
+    storage = stub.storage
+    storage._blobs['xxx'] = 'abcde'
+    fut = blobstore.fetch_data_async(b, 0, 2)
+    self.assertTrue(isinstance(fut, tasklets.Future), fut)
+    result = fut.get_result()
+    self.assertEqual(result, 'abc')
+
 
 def main():
   unittest.main()
