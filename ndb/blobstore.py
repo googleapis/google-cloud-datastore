@@ -1,4 +1,7 @@
-"""NDB version of google.appengine.ext.blobstore."""
+"""NDB interface for Blobstore.
+
+This currently builds on google.appengine.ext.blobstore.
+"""
 
 import base64
 import email
@@ -39,6 +42,7 @@ __all__ = ['BLOB_INFO_KIND',
            'get_multi_async',
            'parse_blob_info']
 
+# Exceptions are all imported.
 Error = blobstore.Error
 InternalError = blobstore.InternalError
 BlobFetchSizeTooLargeError = blobstore.BlobFetchSizeTooLargeError
@@ -48,9 +52,11 @@ DataIndexOutOfRangeError = blobstore.DataIndexOutOfRangeError
 PermissionDeniedError = blobstore.PermissionDeniedError
 BlobInfoParseError = ext_blobstore.BlobInfoParseError
 
+# So are BlobKey and create_rpc().
 BlobKey = blobstore.BlobKey
 create_rpc = blobstore.create_rpc
 
+# And the constants.
 BLOB_INFO_KIND = blobstore.BLOB_INFO_KIND
 BLOB_MIGRATION_KIND = blobstore.BLOB_MIGRATION_KIND
 BLOB_KEY_HEADER = blobstore.BLOB_KEY_HEADER
@@ -58,6 +64,7 @@ BLOB_RANGE_HEADER = blobstore.BLOB_RANGE_HEADER
 MAX_BLOB_FETCH_SIZE = blobstore.MAX_BLOB_FETCH_SIZE
 UPLOAD_INFO_CREATION_HEADER = blobstore.UPLOAD_INFO_CREATION_HEADER
 
+# Re-export BlobKeyProperty from ndb.model for completeness.
 BlobKeyProperty = model.BlobKeyProperty
 assert BlobKey is model.BlobKey
 
@@ -65,16 +72,14 @@ assert BlobKey is model.BlobKey
 class BlobInfo(model.Model):
   """Information about blobs in Blobstore.
 
-  Class methods:
-  - query(): like ext.blobstore.BlobInfo.all(), but returns an NDB query
-  - get(): like ext.blobstore.BlobInfo.get(), but for a single key only
-  - get_multi(): ditto for multiple keys
-  - get_async(), get_multi_async(): async version of get() and get_multi()
-  - _get_kind(): like ext.blobstore.Blobinfo.kind()
-  - There is no equivalent fot gql()
+  This is a Model subclass that has been doctored to be unwritable.
 
-  Class properties:
-  - _properties: like ext.blobstore.Blobinfo.properties()
+  Additional API:
+
+  Class methods:
+  - get(): retrieve a BlobInfo by key
+  - get_multi(): retrieve a list of BlobInfos by keys
+  - get_async(), get_multi_async(): async version of get() and get_multi()
 
   Instance methods:
   - delete(): delete this blob
@@ -82,7 +87,7 @@ class BlobInfo(model.Model):
   - key(): return the BlobKey() for this blob
   - open(): return a BlobReader instance for this blob
 
-  Instance properties:
+  Properties:
   - content_type
   - creation
   - filename
