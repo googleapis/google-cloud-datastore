@@ -1,6 +1,25 @@
 """NDB interface for Blobstore.
 
-This currently builds on google.appengine.ext.blobstore.
+This currently builds on google.appengine.ext.blobstore and provides a
+similar API.  The main API differences:
+
+- Instead of BlobReferenceProperty, there's BlobKeyProperty.
+
+- APIs that in ext.blobstore take either a key or a list of keys are
+  split into two: one that takes a key and one that takes a list of
+  keys, the latter having a name ending in _multi.  This applies to
+  get() and get_multi(), and to delete() and delete_multi().
+
+- The following APIs have a synchronous and an async version:
+  - create_upload_url()
+  - get()
+  - get_multi()
+  - delete()
+  - delete_multi()
+  - fetch_data()
+  - BlobInfo.get()
+  - BlobInfo.delete()
+
 """
 
 import base64
@@ -34,6 +53,8 @@ __all__ = ['BLOB_INFO_KIND',
            'create_upload_url_async',
            'delete',
            'delete_async',
+           'delete_multi',
+           'delete_multi_async',
            'fetch_data',
            'fetch_data_async',
            'get',
@@ -68,11 +89,20 @@ UPLOAD_INFO_CREATION_HEADER = blobstore.UPLOAD_INFO_CREATION_HEADER
 BlobKeyProperty = model.BlobKeyProperty
 assert BlobKey is model.BlobKey
 
+# TODO: Add rpc=None to all of the APIs.  (Methods and functions.)
+
 
 class BlobInfo(model.Model):
   """Information about blobs in Blobstore.
 
   This is a Model subclass that has been doctored to be unwritable.
+
+  Properties:
+  - content_type
+  - creation
+  - filename
+  - size
+  - md5_hash
 
   Additional API:
 
@@ -84,22 +114,17 @@ class BlobInfo(model.Model):
   Instance methods:
   - delete(): delete this blob
   - delete_async(): async version of delete()
-  - key(): return the BlobKey() for this blob
+  - key(): return the BlobKey for this blob
   - open(): return a BlobReader instance for this blob
 
-  Properties:
-  - content_type
-  - creation
-  - filename
-  - size
-  - md5_hash
+  Because BlobInfo instances are synchronized with Blobstore, the class
+  cache policies are off.
 
-  Because BlobInfo instances are immutable anyway, leave caching on.
+  Do not subclass this class.
   """
 
-  @classmethod
-  def _get_kind(cls):
-    return BLOB_INFO_KIND  # __BlobInfo__
+  _use_cache = False
+  _use_memcache = False
 
   content_type = model.StringProperty()
   creation = model.DateTimeProperty()
@@ -107,7 +132,9 @@ class BlobInfo(model.Model):
   size = model.IntegerProperty()
   md5_hash = model.StringProperty()
 
-  # TODO: Add rpc=None to all of the APIs.  (Methods and functions.)
+  @classmethod
+  def _get_kind(cls):
+    return BLOB_INFO_KIND  # __BlobInfo__
 
   @classmethod
   def get(cls, blobkey):
@@ -158,13 +185,27 @@ get_multi_async = BlobInfo.get_multi_async
 
 
 def delete(blob_key):
+  assert isinstance(blob_key, (basestring, BlobKey))
   fut = delete_async(blob_key)
   return fut.get_result()
 
 
 @tasklets.tasklet
 def delete_async(blob_key):
+  assert isinstance(blob_key, (basestring, BlobKey))
   yield blobstore.delete_async(blob_key)
+
+
+def delete_multi(blob_keys):
+  assert not isinstance(blob_keys, (basestring, BlobKey))
+  fut = delete_multi_async(blob_keys)
+  fut.get_result()
+
+
+@tasklets.tasklet
+def delete_multi_async(blob_keys):
+  assert not isinstance(blob_keys, (basestring, BlobKey))
+  yield blobstore.delete_async(blob_keys)
 
 
 def create_upload_url(success_path,
@@ -189,6 +230,7 @@ def create_upload_url_async(success_path,
                                           rpc=rpc)
   result = yield rpc
   raise tasklets.Return(result)
+
 
 def parse_blob_info(field_storage):
   """Parse a BlobInfo record from file upload field_storage."""
@@ -255,6 +297,9 @@ class BlobReader(ext_blobstore.BlobReader):
 
   @property
   def blob_info(self):
+    # This is the only method we need to override, since it is the
+    # only one that references the BlobInfo class (of which we have
+    # our own version).
     if not self.__blob_info:
       self.__blob_info = BlobInfo.get(self.__blob_key)
     return self.__blob_info
