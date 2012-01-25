@@ -214,6 +214,25 @@ class BlobstoreTests(test_utils.NDBTest):
     result = fut.get_result()
     self.assertEqual(result, 'abc')
 
+  def testBlobInfo_Open(self):
+    b = self.create_blobinfo('xxx')
+    stub = self.testbed.get_stub('blobstore')
+    storage = stub.storage
+    storage._blobs['xxx'] = 'abcde'
+    f = b.open()
+    self.assertEqual(f.read(3), 'abc')
+    self.assertEqual(f.read(3), 'de')
+    self.assertEqual(f.blob_info, b)
+
+  def testBlobReader(self):
+    b = self.create_blobinfo('xxx')
+    stub = self.testbed.get_stub('blobstore')
+    storage = stub.storage
+    storage._blobs['xxx'] = 'abcde'
+    f = blobstore.BlobReader('xxx')
+    self.assertEqual(f.read(), 'abcde')
+    self.assertEqual(f.blob_info, b)
+
 
 def main():
   unittest.main()
