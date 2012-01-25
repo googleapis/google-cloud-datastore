@@ -147,6 +147,30 @@ class BlobstoreTests(test_utils.NDBTest):
     self.assertEqual(c, b)
     self.assertTrue(c is not b)
 
+  def testBlobstore_Delete(self):
+    b = self.create_blobinfo('dummy')
+    blobstore.delete(b.key())
+    d = blobstore.get(b.key())
+    self.assertEqual(d, None)
+
+  def testBlobstore_DeleteAsync(self):
+    b = self.create_blobinfo('dummy')
+    df = blobstore.delete_async(b.key())
+    self.assertTrue(isinstance(df, tasklets.Future), df)
+    df.get_result()
+    d = blobstore.get(b.key())
+    self.assertEqual(d, None)
+
+  def testBlobstore_CreateUploadUrl(self):
+    url = blobstore.create_upload_url('/foo')
+    self.assertTrue('/_ah/upload/' in url, url)
+
+  def testBlobstore_CreateUploadUrlAsync(self):
+    urlf = blobstore.create_upload_url_async('/foo')
+    self.assertTrue(isinstance(urlf, tasklets.Future), urlf)
+    url  = urlf.get_result()
+    self.assertTrue('/_ah/upload/' in url, url)
+
 
 def main():
   unittest.main()

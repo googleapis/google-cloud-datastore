@@ -99,6 +99,8 @@ class BlobInfo(model.Model):
   size = model.IntegerProperty()
   md5_hash = model.StringProperty()
 
+  # TODO: Add rpc=None to all of the APIs.  (Methods and functions.)
+
   @classmethod
   def get(cls, blobkey):
     fut = cls.get_async(blobkey)
