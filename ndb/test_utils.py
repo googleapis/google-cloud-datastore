@@ -93,14 +93,21 @@ class NDBTest(unittest.TestCase):
     if self.the_module is None:
       return
     modname = self.the_module.__name__
+    undefined = []
     for name in self.the_module.__all__:
-      self.assertTrue(hasattr(self.the_module, name),
-                      '%s.%s in __all__ but not defined.' % (modname, name))
+      if not hasattr(self.the_module, name):
+        undefined.append(name)
+    self.assertFalse(undefined,
+                     '%s.__all__ has some names that are not defined: %s' %
+                     (modname, undefined))
     module_type = type(self.the_module)
+    unlisted = []
     for name in dir(self.the_module):
       if not name.startswith('_'):
         obj = getattr(self.the_module, name)
         if not isinstance(obj, module_type):
-          self.assertTrue(name in self.the_module.__all__,
-                          '%s.%s defined but not in __all__.' %
-                          (modname, name))
+          if name not in self.the_module.__all__:
+            unlisted.append(name)
+    self.assertFalse(unlisted,
+                     '%s defines some names that are not in __all__: %s' %
+                     (modname, unlisted))
