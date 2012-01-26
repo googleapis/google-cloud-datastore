@@ -18,8 +18,14 @@ handlers:
 - url: /test.*
   script: demo/test.py
 
-- url: /.*
+- url: /home
   script: demo/main.py
+
+- url: /account
+  script: demo/main.py
+
+- url: /.*
+  script: demo/guestbook.py
 
 builtins:
 - appstats: on
