@@ -20,8 +20,6 @@ from . import utils
 
 __all__ = ['toplevel', 'Context', 'ContextOptions', 'AutoBatcher']
 
-logging_debug = utils.logging_debug
-
 _LOCK_TIME = 32  # Time to lock out memcache.add() after datastore updates.
 _LOCKED = 0  # Special value to store in memcache indicating locked value.
 
@@ -110,8 +108,8 @@ class AutoBatcher(object):
     return '%s(%s)' % (self.__class__.__name__, self._todo_tasklet.__name__)
 
   def run_queue(self, options, todo):
-    logging_debug('AutoBatcher(%s): %d items',
-                  self._todo_tasklet.__name__, len(todo))
+    utils.logging_debug('AutoBatcher(%s): %d items',
+                        self._todo_tasklet.__name__, len(todo))
     fut = self._todo_tasklet(todo, options)
     self._running.append(fut)
     # Add a callback when we're done.
@@ -126,8 +124,8 @@ class AutoBatcher(object):
     fut = tasklets.Future('%s.add(%s, %s)' % (self, arg, options))
     todo = self._queues.get(options)
     if todo is None:
-      logging_debug('AutoBatcher(%s): creating new queue for %r',
-                    self._todo_tasklet.__name__, options)
+      utils.logging_debug('AutoBatcher(%s): creating new queue for %r',
+                          self._todo_tasklet.__name__, options)
       if not self._queues:
         eventloop.add_idle(self._on_idle)
       todo = self._queues[options] = []

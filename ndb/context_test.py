@@ -50,6 +50,8 @@ class ContextTests(test_utils.NDBTest):
         auto_batcher_class=MyAutoBatcher)
     tasklets.set_context(self.ctx)
 
+  the_module = context
+
   def testContext_AutoBatcher_Get(self):
     @tasklets.tasklet
     def foo():
