@@ -33,7 +33,7 @@ function focus() {
   <a href="%(login)s">login</a> |
   <a href="%(logout)s">logout</a>
 
-  <form method=POST action=/>
+  <form method=POST action=/home>
     <!-- TODO: XSRF protection -->
     <input type=text id=body name=body size=60>
     <input type=submit>
@@ -53,7 +53,7 @@ ACCOUNT_PAGE = """
     <input type=text name=nickname size=20 value=%(proposed_nickname)s><br>
     <input type=submit name=%(action)s value="%(action)s Account">
     <input type=submit name=delete value="Delete Account">
-    <a href=/>back to home page</a>
+    <a href=/home>back to home page</a>
   </form>
 </body>
 """
@@ -114,8 +114,8 @@ class HomePage(webapp.RequestHandler):
     if user is not None:
       nickname = yield get_nickname(user.user_id())
     values = {'nickname': nickname,
-              'login': users.create_login_url('/'),
-              'logout': users.create_logout_url('/'),
+              'login': users.create_login_url('/home'),
+              'logout': users.create_logout_url('/home'),
               }
     self.response.out.write(HOME_PAGE % values)
     qry, options = self._make_query()
@@ -185,7 +185,7 @@ class HomePage(webapp.RequestHandler):
         userid = user.user_id()
       message = Message(body=body, when=time.time(), userid=userid)
       yield message.put_async()
-    self.redirect('/')
+    self.redirect('/home')
 
 
 class AccountPage(webapp.RequestHandler):
@@ -209,8 +209,8 @@ class AccountPage(webapp.RequestHandler):
     values = {'email': email,
               'nickname': nickname,
               'proposed_nickname': proposed_nickname,
-              'login': users.create_login_url('/'),
-              'logout': users.create_logout_url('/'),
+              'login': users.create_login_url('/home'),
+              'logout': users.create_logout_url('/home'),
               'action': action,
               }
     self.response.out.write(ACCOUNT_PAGE % values)
@@ -242,7 +242,7 @@ class AccountPage(webapp.RequestHandler):
 
 
 urls = [
-  ('/', HomePage),
+  ('/home', HomePage),
   ('/account', AccountPage),
   ]
 
