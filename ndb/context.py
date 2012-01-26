@@ -814,7 +814,7 @@ class Context(object):
           t, e, tb = sys.exc_info()
           yield tconn.async_rollback(options)  # TODO: Don't block???
           if issubclass(t, datastore_errors.Rollback):
-            # TODO: Raise value using context.get_return_value(t)?
+            # TODO: Raise value using tasklets.get_return_value(t)?
             return
           else:
             raise t, e, tb
