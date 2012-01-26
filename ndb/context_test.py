@@ -1,6 +1,8 @@
 """Tests for context.py."""
 
 import logging
+import socket
+import threading
 import unittest
 
 from google.appengine.api import datastore_errors
@@ -1116,11 +1118,33 @@ class ContextTests(test_utils.NDBTest):
     # Check that ndb ignores the corrupt memcache value
     self.assertEqual(ent, key.get())
 
+  def start_test_server(self, host, port):
+    lock = threading.Lock()
+    lock.acquire()
+    def run():
+      s = socket.socket()
+      s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+      s.bind((host, port))
+      s.listen(1)
+      lock.release()  # Signal socket is set up.
+      c, addr = s.accept()
+      s.close()
+      c.recv(1000)  # Throw away request.
+      c.send('HTTP/1.0 200 Ok\r\n\r\n')  # Emptiest response.
+      c.close()
+    t = threading.Thread(target=run)
+    t.start()
+    return lock
+
   def testUrlFetch(self):
     self.testbed.init_urlfetch_stub()
-    # TODO: Avoid depending on actually accessing google.com.
-    fut = self.ctx.urlfetch('http://google.com')
+    host = '127.0.0.1'
+    port = 12345  # TODO: Pick a random port?
+    lock = self.start_test_server(host, port)
+    lock.acquire()  # Block until socket is set up.
+    fut = self.ctx.urlfetch('http://%s:%d' % (host, port))
     result = fut.get_result()
+    self.assertEqual(result.status_code, 200)
     self.assertTrue(isinstance(result.content, str))
 
 
