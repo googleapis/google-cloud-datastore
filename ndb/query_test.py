@@ -971,7 +971,7 @@ class QueryTests(test_utils.NDBTest):
     self.assertEqual(qry.ancestor, None)
     self.assertEqual(qry.filters, None)
     self.assertEqual(qry.orders, None)
-    self.assertEqual(qry.parameters, {})
+    self.assertEqual(qry.parameters, None)
 
   def testGqlAncestorWithParameter(self):
     qry = query.gql(
@@ -990,25 +990,25 @@ class QueryTests(test_utils.NDBTest):
     self.assertEqual(qry.ancestor, key)
     self.assertEqual(qry.filters, None)
     self.assertEqual(qry.orders, None)
-    self.assertEqual(qry.parameters, {})
+    self.assertEqual(qry.parameters, None)
 
   def testGqlFilter(self):
     qry = query.gql(
-      "SELECT * FROM Foo WHERE prop1 = 1 AND prop2 = 'a'")
+      "SELECT * FROM Foo WHERE name = 'joe' AND rate = 1")
     self.assertEqual(qry.kind, 'Foo')
     self.assertEqual(qry.ancestor, None)
     self.assertEqual(qry.filters,
                      query.ConjunctionNode(
-                       query.FilterNode('prop1', '=', 1),
-                       query.FilterNode('prop2', '=', 'a')))
+                       query.FilterNode('name', '=', 'joe'),
+                       query.FilterNode('rate', '=', 1)))
     self.assertEqual(qry.orders, None)
-    self.assertEqual(qry.parameters, {})
+    self.assertEqual(qry.parameters, None)
 
   def testGqlOrder(self):
     qry = query.gql(
-      'SELECT * FROM Foo ORDER BY prop1')
+      'SELECT * FROM Foo ORDER BY name')
     self.assertEqual(query._orders_to_orderings(qry.orders),
-                     [('prop1', query._ASC)])
+                     [('name', query._ASC)])
 
   def testGqlOffset(self):
     qry = query.gql(
@@ -1022,25 +1022,25 @@ class QueryTests(test_utils.NDBTest):
 
   def testGqlParameters(self):
     qry = query.gql(
-      'SELECT * FROM Foo WHERE prop1 = :1 AND prop2 = :foo')
+      'SELECT * FROM Foo WHERE name = :1 AND rate = :foo')
     self.assertEqual(qry.kind, 'Foo')
     self.assertEqual(qry.ancestor, None)
     self.assertEqual(qry.filters,
                      query.ConjunctionNode(
-                       query.FilterNode('prop1', '=',
+                       query.ParameterNode(Foo.name, '=',
                                         query.Parameter(1)),
-                       query.FilterNode('prop2', '=',
+                       query.ParameterNode(Foo.rate, '=',
                                         query.Parameter('foo'))))
     self.assertEqual(qry.orders, None)
     self.assertEqual(qry.parameters, {1: query.Parameter(1),
                                     'foo': query.Parameter('foo')})
 
   def testGqlResolveParameters(self):
-    qry = query.gql(
+    pqry = query.gql(
       'SELECT * FROM Foo WHERE name = :1')
-    qry.parameters[1].set('joe')
+    qry = pqry.bind('joe')
     self.assertEqual(list(qry), [self.joe])
-    qry.parameters[1].set('jill')
+    qry = pqry.bind('jill')
     self.assertEqual(list(qry), [self.jill])
 
   def testGqlUnresolvedParameters(self):

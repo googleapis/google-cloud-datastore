@@ -640,6 +640,7 @@ class Property(ModelAttribute):
     Returns:
       A FilterNode instance representing the requested comparison.
     """
+    # NOTE: This is also used by query.gql().
     if not self._indexed:
       raise datastore_errors.BadFilterError(
         'Cannot query for unindexed property %s' % self._name)

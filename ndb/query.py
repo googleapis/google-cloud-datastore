@@ -143,7 +143,7 @@ __all__ = ['Query', 'QueryOptions', 'Cursor', 'QueryIterator',
            'RepeatedStructuredPropertyPredicate',
            'AND', 'OR', 'ConjunctionNode', 'DisjunctionNode',
            'FilterNode', 'PostFilterNode', 'FalseNode', 'Node',
-           'Parameter', 'gql',
+           'ParameterNode', 'Parameter', 'gql',
            ]
 
 # Re-export some useful classes from the lower-level module.
@@ -245,8 +245,6 @@ class Parameter(object):
   The value must be set (bound) separately by calling .set(value).
   """
 
-  _UNSET = object()  # Marker for unset value.
-
   def __init__(self, key):
     """Constructor.
 
@@ -257,18 +255,14 @@ class Parameter(object):
       raise TypeError('Parameter key must be an integer or string, not %s' %
                       (key,))
     self.__key = key
-    self.__value = Parameter._UNSET
 
   def __repr__(self):
-    if self.__value is Parameter._UNSET:
-      return '%s(%r)' % (self.__class__.__name__, self.__key)
-    else:
-      return '%s(%r)<%s>' % (self.__class__.__name__, self.__key, self.__value)
+    return '%s(%r)' % (self.__class__.__name__, self.__key)
 
   def __eq__(self, other):
     if not isinstance(other, Parameter):
       return NotImplementedError
-    return self.__key == other.__key and self.__value == other.__value
+    return self.__key == other.__key
 
   def __ne__(self, other):
     eq = self.__eq__(other)
@@ -276,41 +270,10 @@ class Parameter(object):
       eq = not eq
     return eq
 
-  def is_set(self):
-    """Test whether the value is set."""
-    return self.__value is not Parameter._UNSET
-
-  @property
-  def value(self):
-    """Retrieve the value.  Raises AttributeError if it is not set."""
-    if self.__value is Parameter._UNSET:
-      raise AttributeError('Parameter :%s is not set.' % (self.__key,))
-    return self.__value
-
   @property
   def key(self):
     """Retrieve the key."""
     return self.__key
-
-  def set(self, value):
-    """Set the value."""
-    self.__value = value
-
-  def reset(self):
-    """Reset the value."""
-    self.__value = Parameter._UNSET
-  clear = reset  # TODO: Decide on reset() or clear().
-
-  def resolve(self):
-    """Return the value currently associated with this Parameter."""
-    value = self.__value
-    if value is Parameter._UNSET:
-      raise datastore_errors.BadArgumentError(
-        'Parameter :%s is not set.' % (self.__key,))
-    if isinstance(value, Parameter):
-      raise datastore_errors.BadArgumentError(
-        'Recursive Parameter :%s.' % (self.__key,))
-    return value
 
 
 class Node(object):
@@ -348,19 +311,21 @@ class Node(object):
     """Helper to extract post-filter Nodes, if any."""
     return None
 
-  def resolve(self):
-    """Extract the Parameter's value if necessary."""
-    raise NotImplementedError
+  def resolve(self, args, kwds):
+    """Return a Node with Parameters replaced by the selected values.
 
-  def _sort_key(self):
-    return id(self)
+    Args:
+      args: tuple of positional argument values (for :1, etc.).
+      kwds: dict of named argument values (for :foo, etc.).
+
+    Returns:
+      A Node instance.
+    """
+    return self
 
 
 class FalseNode(Node):
   """Tree node for an always-failing filter."""
-
-  def __new__(cls):
-    return super(Node, cls).__new__(cls)
 
   def __eq__(self, other):
     if not isinstance(other, FalseNode):
@@ -375,8 +340,50 @@ class FalseNode(Node):
     raise datastore_errors.BadQueryError(
       'Cannot convert FalseNode to predicate')
 
-  def resolve(self):
-    return self
+
+class ParameterNode(Node):
+  """Tree node for a parameterized filter."""
+
+  def __new__(cls, prop, op, param):
+    assert isinstance(prop, model.Property)
+    assert op in _OPS
+    assert isinstance(param, Parameter)
+    obj = super(ParameterNode, cls).__new__(cls)
+    obj.__prop = prop
+    obj.__op = op
+    obj.__param = param
+    return obj
+
+  def __repr__(self):
+    return 'ParameterNode(%r, %r, %r)' % (self.__prop, self.__op, self.__param)
+
+  def __eq__(self, other):
+    if not isinstance(other, ParameterNode):
+      return NotImplemented
+    return (self.__prop._name == other.__prop._name and
+            self.__op == other.__op and
+            self.__param == other.__param)
+
+  def _to_filter(self, parameters, post=False):
+    raise datastore_errors.BadArgumentError(
+      'Parameter :%s is not bound.' % (self.__param.key,))
+
+  def resolve(self, args, kwds):
+    key = self.__param.key
+    if isinstance(key, (int, long)):
+      if 1 <= key <= len(args):
+        value = args[key - 1]
+      else:
+        raise datastore_errors.BadArgumentError(
+          'Parameter :%d is not bound.' % key)
+    else:
+      if key in kwds:
+        value = kwds[key]
+      else:
+        raise datastore_errors.BadArgumentError(
+          'Parameter :%s is not bound.' % key)
+    assert self.__op not in ('!=', 'in')  # XXX FOR NOW TODO
+    return FilterNode(self.__prop._name, self.__op, value)
 
 
 class FilterNode(Node):
@@ -404,9 +411,6 @@ class FilterNode(Node):
     self.__opsymbol = opsymbol
     self.__value = value
     return self
-
-  def _sort_key(self):
-    return self.__name, self.__opsymbol, self.__value
 
   def __repr__(self):
     return '%s(%r, %r, %r)' % (self.__class__.__name__,
@@ -600,6 +604,8 @@ AND = ConjunctionNode
 OR = DisjunctionNode
 
 
+# XXX TODO: Explain what this is for (I think for GQL "casts".)
+# XXX TODO: If som make it complete (support all that GQL can generate).
 def _args_to_val(func, args, parameters):
   """Helper for GQL parsing."""
   from google.appengine.ext import gql  # Late import, in case never used.
@@ -629,8 +635,8 @@ def _args_to_val(func, args, parameters):
   raise ValueError('Unexpected func (%r)' % func)
 
 
-# TODO: LIMIT should apply to q.fetch() without args.
-# TODO: q.iter() should raise if unbound parameters exist.
+# TODO: LIMIT should apply to q.fetch() without args.  XXX
+# TODO: q.iter() should raise if unbound parameters exist.  XXX
 def gql(query_string):
   """Parse a GQL query string.
 
@@ -653,7 +659,9 @@ def gql(query_string):
   flt = gql_qry.filters()
   parameters = {}
   filters = []
-  for ((name, op), values) in flt.iteritems():
+  for name_op in sorted(flt):
+    name, op = name_op
+    values = flt[name_op]
     op = op.lower()
     if op == 'is' and name == gql.GQL._GQL__ANCESTOR:
       if len(values) != 1:
@@ -665,9 +673,22 @@ def gql(query_string):
       raise NotImplementedError('Operation %r is not supported.' % op)
     for (func, args) in values:
       val = _args_to_val(func, args, parameters)
-      filters.append(FilterNode(name, op, val))
+      prop = modelclass._properties.get(name)
+      if prop is None:
+        if isinstance(modelclass, Expando):
+          prop = model.GenericProperty(name)
+        else:
+          # TODO XXX What exception?
+          raise KeyError('%s has no property named %s' % (modelclass, name))
+      if op == 'in':
+        node = prop._IN(val)
+      else:
+        if isinstance(val, Parameter):
+          node = ParameterNode(prop, op, val)
+        else:
+          node = prop._comparison(op, val)
+      filters.append(node)
   if filters:
-    filters.sort(key=lambda x: x._sort_key())  # For predictable tests.
     filters = ConjunctionNode(*filters)
   else:
     filters = None
@@ -680,6 +701,8 @@ def gql(query_string):
   if not keys_only:
     keys_only = None
   options = QueryOptions(offset=offset, limit=limit, keys_only=keys_only)
+  if not parameters:
+    parameters = None
   qry = Query(kind=kind,
               ancestor=ancestor,
               filters=filters,
@@ -767,6 +790,9 @@ class Query(object):
     return '%s(%s)' % (self.__class__.__name__, ', '.join(args))
 
   def _get_query(self, connection):
+    if self.__parameters:
+      raise datastore_errors.BadArgumentError(
+        'Cannot run query with unbound parameter.')
     kind = self.__kind
     ancestor = self.__ancestor
     parameters = {}
@@ -846,25 +872,19 @@ class Query(object):
 
   def _needs_multi_query(self):
     filters = self.__filters
-    if filters is not None:
-      filters = filters.resolve()
-      if isinstance(filters, DisjunctionNode):
-        return True
-    return False
+    return filters is not None and isinstance(filters, DisjunctionNode)
 
   def _maybe_multi_query(self):
+    if not self._needs_multi_query():
+      return None
+    # Switch to a _MultiQuery.
     filters = self.__filters
-    if filters is not None:
-      filters = filters.resolve()
-      if isinstance(filters, DisjunctionNode):
-        # Switch to a _MultiQuery.
-        subqueries = []
-        for subfilter in filters:
-          subquery = Query(kind=self.__kind, ancestor=self.__ancestor,
-                           filters=subfilter, orders=self.__orders)
-          subqueries.append(subquery)
-        return _MultiQuery(subqueries)
-    return None
+    subqueries = []
+    for subfilter in filters:
+      subquery = Query(kind=self.__kind, ancestor=self.__ancestor,
+                       filters=subfilter, orders=self.__orders)
+      subqueries.append(subquery)
+    return _MultiQuery(subqueries)
 
   @property
   def kind(self):
@@ -1204,6 +1224,30 @@ class Query(object):
     if self.__default_options is not None:
       options = self.__default_options.merge(options)
     return options
+
+  # TODO: New design: Parameters don't have a value; values get added
+  # when you call bind().  Maybe resolve() gets a dict of arguments.
+  # Maybe arguments even get passed as query options.
+  def bind(self, *args, **kwds):
+    """Bind parameter values.  Returns a new Query object."""
+    if not self.__parameters:
+      assert not args
+      assert not kwds
+      return self
+    ancestor = self.__ancestor
+    if isinstance(ancestor, Parameter):
+      ancestor = ancestor.resolve(args, kwds)
+    filters = self.__filters
+    if filters is not None:
+      filters = filters.resolve(args, kwds)
+    return Query(kind=self.__kind,
+                 ancestor=ancestor,
+                 filters=filters,
+                 orders=self.__orders,
+                 app=self.__app,
+                 namespace=self.__namespace,
+                 default_options=self.__default_options,
+                 parameters=None)
 
 
 class QueryIterator(object):
