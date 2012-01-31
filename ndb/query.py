@@ -238,28 +238,79 @@ class RepeatedStructuredPropertyPredicate(datastore_query.FilterPredicate):
 
 
 class Binding(object):
-  """Used with GQL; for now unsupported."""
+  """Used to represent a bound variable in a GQL query.
 
-  def __init__(self, value=None, key=None):
-    """Constructor.  The value may be changed later."""
-    self.value = value
-    self.key = key
+  Binding(1) corresponds to a slot labeled ":1" in a GQL query.
+  Binding('xyz') corresponds to a slot labeled ":xyz".
+
+  The value must be set (bound) separately by calling .set(value).
+  """
+
+  _UNSET = object()  # Marker for unset value.
+
+  def __init__(self, key):
+    """Constructor.
+
+    Args:
+      key: The Binding key, must be either an integer or a string.
+    """
+    if not isinstance(key, (int, long, basestring)):
+      raise TypeError('Binding key must be an integer or string, not %s' %
+                      (key,))
+    self.__key = key
+    self.__value = Binding._UNSET
 
   def __repr__(self):
-    return '%s(%r, %r)' % (self.__class__.__name__, self.value, self.key)
+    if self.__value is Binding._UNSET:
+      return '%s(%r)' % (self.__class__.__name__, self.__key)
+    else:
+      return '%s(%r)<%s>' % (self.__class__.__name__, self.__key, self.__value)
 
   def __eq__(self, other):
-    # TODO: When comparing tree nodes containing Bindings, Bindings
-    # should be compared by object identity?
     if not isinstance(other, Binding):
-      return NotImplemented
-    return self.value == other.value and self.key == other.key
+      return NotImplementedError
+    return self.__key == other.__key and self.__value == other.__value
+
+  def __ne__(self, other):
+    eq = self.__eq__(other)
+    if eq is not NotImplemented:
+      eq = not eq
+    return eq
+
+  def is_set(self):
+    """Test whether the value is set."""
+    return self.__value is not Binding._UNSET
+
+  @property
+  def value(self):
+    """Retrieve the value.  Raises AttributeError if it is not set."""
+    if self.__value is Binding._UNSET:
+      raise AttributeError('Binding :%s is not set.' % (key,))
+    return self.__value
+
+  @property
+  def key(self):
+    """Retrieve the key."""
+    return self.__key
+
+  def set(self, value):
+    """Set the value."""
+    self.__value = value
+
+  def reset(self):
+    """Reset the value."""
+    self.__value = Binding._UNSET
+  clear = reset  # TODO: Decide on reset() or clear().
 
   def resolve(self):
     """Return the value currently associated with this Binding."""
-    value = self.value
+    value = self.__value
+    if value is Binding._UNSET:
+      raise datastore_errors.BadArgumentError(
+        'Binding :%s is not set.' % (self.__key,))
     if isinstance(value, Binding):
-      raise RuntimeError('Recursive Binding.')
+      raise datastore_errors.BadArgumentError(
+        'Recursive Binding :%s.' % (self.__key,))
     return value
 
 
@@ -555,7 +606,7 @@ def _args_to_val(func, args, bindings):
       if arg in bindings:
         val = bindings[arg]
       else:
-        val = Binding(None, arg)
+        val = Binding(arg)
         bindings[arg] = val
     elif isinstance(arg, gql.Literal):
       val = arg.Get()
@@ -575,10 +626,6 @@ def _args_to_val(func, args, bindings):
   raise ValueError('Unexpected func (%r)' % func)
 
 
-# TODO: Not everybody likes GQL.
-
-# TODO: GQL doesn't support querying for structured property values.
-
 def parse_gql(query_string):
   """Parse a GQL query string.
 
@@ -586,11 +633,15 @@ def parse_gql(query_string):
     query_string: Full GQL query, e.g. 'SELECT * FROM Kind WHERE prop = 1'.
 
   Returns:
-    A tuple (query, options, bindings) where query is a Query instance,
-    options a datastore_query.QueryOptions instance, and bindings a dict
-    mapping integers and strings to Binding instances.
+    A Query instance.
   """
   gql_qry = gql.GQL(query_string)
+  kind = gql_qry.kind()
+  modelclass = model.Model._kind_map.get(kind)
+  if modelclass is None:
+    raise datastore_errors.BadQueryError(
+      "No model class found for kind '%s'. Did you forget to import it?" %
+      kind)
   ancestor = None
   flt = gql_qry.filters()
   bindings = {}
@@ -614,18 +665,21 @@ def parse_gql(query_string):
   else:
     filters = None
   orders = _orderings_to_orders(gql_qry.orderings())
-  qry = Query(kind=gql_qry._kind,
-              ancestor=ancestor,
-              filters=filters,
-              orders=orders)
   offset = gql_qry.offset()
-  if offset < 0:
-    offset = None
   limit = gql_qry.limit()
   if limit < 0:
     limit = None
-  options = QueryOptions(offset=offset, limit=limit)
-  return qry, options, bindings
+  keys_only = gql_qry._keys_only
+  if not keys_only:
+    keys_only = None
+  options = QueryOptions(offset=offset, limit=limit, keys_only=keys_only)
+  qry = Query(kind=kind,
+              ancestor=ancestor,
+              filters=filters,
+              orders=orders,
+              default_options=options,
+              bindings=bindings)
+  return qry
 
 
 class Query(object):
@@ -642,7 +696,8 @@ class Query(object):
 
   @utils.positional(1)
   def __init__(self, kind=None, ancestor=None, filters=None, orders=None,
-               app=None, namespace=None):
+               app=None, namespace=None,
+               default_options=None, bindings=None):
     """Constructor.
 
     Args:
@@ -652,6 +707,8 @@ class Query(object):
       orders: Optional datastore_query.Order object.
       app: Optional app id.
       namespace: Optional namespace.
+      default_options: Optional QueryOptions object.
+      bindings: Optional dict mapping ints and strigns to Binding objects.
     """
     if ancestor is not None and not isinstance(ancestor, Binding):
       if not isinstance(ancestor, model.Key):
@@ -678,6 +735,8 @@ class Query(object):
     self.__orders = orders  # None or datastore_query.Order instance
     self.__app = app
     self.__namespace = namespace
+    self.__default_options = default_options
+    self.__bindings = bindings
 
   def __repr__(self):
     args = []
@@ -694,6 +753,10 @@ class Query(object):
       args.append('app=%r' % self.__app)
     if self.__namespace is not None:
       args.append('namespace=%r' % self.__namespace)
+    if self.__default_options is not None:
+      args.append('default_options=%r' % self.__default_options)
+    if self.__bindings is not None:
+      args.append('bindings=%r' % self.__bindings)
     return '%s(%s)' % (self.__class__.__name__, ', '.join(args))
 
   def _get_query(self, connection):
@@ -821,6 +884,16 @@ class Query(object):
     """Accessor for the filters (a datastore_query.Order or None)."""
     return self.__orders
 
+  @property
+  def default_options(self):
+    """Accessor for the default_options (a QueryOptions instance or None)."""
+    return self.__default_options
+
+  @property
+  def bindings(self):
+    """Accessor for the bindings (a dict or None)."""
+    return self.__bindings
+
   def filter(self, *args):
     """Return a new Query with additional filter(s) applied."""
     if not args:
@@ -927,9 +1000,11 @@ class Query(object):
 
     This is the asynchronous version of Query.map().
     """
-    return tasklets.get_context().map_query(self, callback,
-                                            options=_make_options(q_options),
-                                            merge_future=merge_future)
+    return tasklets.get_context().map_query(
+      self,
+      callback,
+      options=self._make_options(q_options),
+      merge_future=merge_future)
 
   @utils.positional(2)
   def fetch(self, limit=None, **q_options):
@@ -960,7 +1035,7 @@ class Query(object):
     if self._needs_multi_query():
       return self.map_async(None, **q_options)
     # Optimization using direct batches.
-    options = _make_options(q_options)
+    options = self._make_options(q_options)
     return self._run_to_list([], options=options)
 
   def get(self, **q_options):
@@ -1036,7 +1111,7 @@ class Query(object):
     # before that offset without fetching the items.
     q_options['offset'] = limit
     q_options['limit'] = 0
-    options = _make_options(q_options)
+    options = self._make_options(q_options)
     conn = tasklets.get_context()._conn
     dsquery = self._get_query(conn)
     rpc = dsquery.run_async(conn, options)
@@ -1095,28 +1170,33 @@ class Query(object):
       cursor = None
     raise tasklets.Return(results, cursor, it.probably_has_next())
 
+  def _make_options(self, q_options):
+    """Helper to construct a QueryOptions object from keyword arguents.
 
-def _make_options(q_options):
-  """Helper to construct a QueryOptions object from keyword arguents.
+    Args:
+      q_options: a dict of keyword arguments.
 
-  Args:
-    q_options: a dict of keyword arguments.
+    Note that either 'options' or 'config' can be used to pass another
+    QueryOptions object, but not both.  If another QueryOptions object is
+    given it provides default values.
 
-  Note that either 'options' or 'config' can be used to pass another
-  QueryOptions object, but not both.  If another QueryOptions object is
-  given it provides default values.
+    If self.default_options is set, it is used to provide defaults,
+    which have a lower precedence than options set in q_options.
 
-  Returns:
-    A QueryOptions object, or None if q_options is empty.
-  """
-  if not q_options:
-    return None
-  if 'options' in q_options:
-    # Move 'options' to 'config' since that is what QueryOptions() uses.
-    if 'config' in q_options:
-      raise TypeError('You cannot use config= and options= at the same time')
-    q_options['config'] = q_options.pop('options')
-  return QueryOptions(**q_options)
+    Returns:
+      A QueryOptions object, or None if q_options is empty.
+    """
+    if not q_options:
+      return self.default_options
+    if 'options' in q_options:
+      # Move 'options' to 'config' since that is what QueryOptions() uses.
+      if 'config' in q_options:
+        raise TypeError('You cannot use config= and options= at the same time')
+      q_options['config'] = q_options.pop('options')
+    options = QueryOptions(**q_options)
+    if self.__default_options is not None:
+      options = self.__default_options.merge(options)
+    return options
 
 
 class QueryIterator(object):
@@ -1174,7 +1254,7 @@ class QueryIterator(object):
     """
     ctx = tasklets.get_context()
     callback = None
-    options = _make_options(q_options)
+    options = query._make_options(q_options)
     if options is not None and options.produce_cursors:
       callback = self._extended_callback
     self._iter = ctx.iter_query(query, callback=callback, options=options)
@@ -1363,6 +1443,13 @@ class _MultiQuery(object):
     self.__subqueries = subqueries
     self.__orders = orders
     self.ancestor = None  # Hack for map_query().
+
+  def _make_options(self, q_options):
+    return self.__subqueries[0].default_options
+
+  @property
+  def default_options(self):
+    return self.__subqueries[0].default_options
 
   @property
   def orders(self):

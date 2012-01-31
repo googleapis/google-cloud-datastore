@@ -372,7 +372,9 @@ class ModelAdapter(datastore_rpc.AbstractAdapter):
       kind = key.kind()
     modelclass = Model._kind_map.get(kind, self.default_model)
     if modelclass is None:
-      raise KindError("No implementation found for kind '%s'" % kind)
+      raise KindError(
+        "No model class found for kind '%s'. Did you forget to import it?" %
+        kind)
     entity = modelclass._from_pb(pb, key=key, set_key=False)
     if self.want_pbs:
       entity._orig_pb = pb
