@@ -284,7 +284,7 @@ class Parameter(object):
   def value(self):
     """Retrieve the value.  Raises AttributeError if it is not set."""
     if self.__value is Parameter._UNSET:
-      raise AttributeError('Parameter :%s is not set.' % (key,))
+      raise AttributeError('Parameter :%s is not set.' % (self.__key,))
     return self.__value
 
   @property
@@ -351,6 +351,9 @@ class Node(object):
   def resolve(self):
     """Extract the Parameter's value if necessary."""
     raise NotImplementedError
+
+  def _sort_key(self):
+    return id(self)
 
 
 class FalseNode(Node):
@@ -436,7 +439,7 @@ class FilterNode(Node):
 
   def resolve(self):
     if self.__opsymbol == 'in':
-      if isinstance(self.__value, Parameter):
+      if not isinstance(self.__value, Parameter):
         raise RuntimeError('Unexpanded non-Parameter IN.')
       return FilterNode(self.__name, self.__opsymbol, self.__value.resolve())
     else:
