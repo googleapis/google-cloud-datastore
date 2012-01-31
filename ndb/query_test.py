@@ -1050,7 +1050,7 @@ class QueryTests(test_utils.NDBTest):
     self.assertRaises(datastore_errors.BadArgumentError, qry.fetch)
     self.assertRaises(datastore_errors.BadArgumentError, qry.count)
     self.assertRaises(datastore_errors.BadArgumentError, list, qry)
-    ##self.assertRaises(datastore_errors.BadArgumentError, qry.iter)
+    self.assertRaises(datastore_errors.BadArgumentError, qry.iter)
 
 
 def main():

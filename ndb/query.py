@@ -345,9 +345,9 @@ class ParameterNode(Node):
   """Tree node for a parameterized filter."""
 
   def __new__(cls, prop, op, param):
-    assert isinstance(prop, model.Property)
-    assert op in _OPS
-    assert isinstance(param, Parameter)
+    assert isinstance(prop, model.Property), prop
+    assert op in _OPS, op
+    assert isinstance(param, Parameter), param
     obj = super(ParameterNode, cls).__new__(cls)
     obj.__prop = prop
     obj.__op = op
@@ -382,8 +382,10 @@ class ParameterNode(Node):
       else:
         raise datastore_errors.BadArgumentError(
           'Parameter :%s is not bound.' % key)
-    assert self.__op not in ('!=', 'in')  # XXX FOR NOW TODO
-    return FilterNode(self.__prop._name, self.__op, value)
+    if self.__op == 'in':
+      return self.__prop._IN(value)
+    else:
+      return self.__prop._comparison(self.__op, value)
 
 
 class FilterNode(Node):
@@ -396,7 +398,7 @@ class FilterNode(Node):
       n1 = FilterNode(name, '<', value)
       n2 = FilterNode(name, '>', value)
       return DisjunctionNode(n1, n2)
-    if opsymbol == 'in' and not isinstance(value, Parameter):
+    if opsymbol == 'in':
       if not isinstance(value, (list, tuple, set, frozenset)):
         raise TypeError('in expected a list, tuple or set of values; '
                         'received %r' % value)
@@ -604,10 +606,18 @@ AND = ConjunctionNode
 OR = DisjunctionNode
 
 
-# XXX TODO: Explain what this is for (I think for GQL "casts".)
-# XXX TODO: If som make it complete (support all that GQL can generate).
 def _args_to_val(func, args, parameters):
-  """Helper for GQL parsing."""
+  """Helper for GQL parsing.
+
+  This can extract the value from a GQL literal, return a Parameter
+  for a GQL bound parameter (:1 or :foo), and interprets casts like
+  KEY(...) and plain lists of values like (1, 2, 3).
+
+  Args:
+    func: A string indicating what kind of thing this is.
+    args: One or more GQL values, each integer, string, or GQL literal.
+    parameters: Dict of parameters, updated in place.
+  """
   from google.appengine.ext import gql  # Late import, in case never used.
   vals = []
   for arg in args:
@@ -631,12 +641,16 @@ def _args_to_val(func, args, parameters):
   if func == 'key':
     if len(vals) == 1 and isinstance(vals[0], basestring):
       return model.Key(urlsafe=vals[0])
-    raise TypeError('Unexpected key args (%r)' % vals)
+    elif len(vals) % 2 == 0:
+      return model.Key(*vals)
+    else:
+      raise TypeError('Unexpected key args (%r)' % vals)
+  # TODO: Implement the other GQL builtins: DATETIME, DATE, TIME,
+  # USER, GEOPT.
   raise ValueError('Unexpected func (%r)' % func)
 
 
 # TODO: LIMIT should apply to q.fetch() without args.  XXX
-# TODO: q.iter() should raise if unbound parameters exist.  XXX
 def gql(query_string):
   """Parse a GQL query string.
 
@@ -673,20 +687,21 @@ def gql(query_string):
       raise NotImplementedError('Operation %r is not supported.' % op)
     for (func, args) in values:
       val = _args_to_val(func, args, parameters)
-      prop = modelclass._properties.get(name)
-      if prop is None:
-        if isinstance(modelclass, Expando):
-          prop = model.GenericProperty(name)
-        else:
-          # TODO XXX What exception?
-          raise KeyError('%s has no property named %s' % (modelclass, name))
-      if op == 'in':
+      if name == '__key__':
+        prop = modelclass._key
+      else:
+        prop = modelclass._properties.get(name)
+        if prop is None:
+          if isinstance(modelclass, model.Expando):
+            prop = model.GenericProperty(name)
+          else:
+            raise KeyError('Model %s has no property named %s' % (kind, name))
+      if isinstance(val, Parameter):
+        node = ParameterNode(prop, op, val)
+      elif op == 'in':
         node = prop._IN(val)
       else:
-        if isinstance(val, Parameter):
-          node = ParameterNode(prop, op, val)
-        else:
-          node = prop._comparison(op, val)
+        node = prop._comparison(op, val)
       filters.append(node)
   if filters:
     filters = ConjunctionNode(*filters)
@@ -792,7 +807,8 @@ class Query(object):
   def _get_query(self, connection):
     if self.__parameters:
       raise datastore_errors.BadArgumentError(
-        'Cannot run query with unbound parameter.')
+        'Cannot run query with unbound parameters %s.' %
+        self.__parameters.keys())
     kind = self.__kind
     ancestor = self.__ancestor
     parameters = {}
@@ -981,6 +997,10 @@ class Query(object):
     Returns:
       A QueryIterator object.
     """
+    if self.__parameters:
+      raise datastore_errors.BadArgumentError(
+        'Cannot run query with unbound parameters %s.' %
+        self.__parameters.keys())
     return QueryIterator(self, **q_options)
 
   __iter__ = iter
@@ -1225,14 +1245,11 @@ class Query(object):
       options = self.__default_options.merge(options)
     return options
 
-  # TODO: New design: Parameters don't have a value; values get added
-  # when you call bind().  Maybe resolve() gets a dict of arguments.
-  # Maybe arguments even get passed as query options.
   def bind(self, *args, **kwds):
     """Bind parameter values.  Returns a new Query object."""
     if not self.__parameters:
-      assert not args
-      assert not kwds
+      assert not args, args
+      assert not kwds, kwds
       return self
     ancestor = self.__ancestor
     if isinstance(ancestor, Parameter):
@@ -1499,12 +1516,23 @@ class _MultiQuery(object):
     return self.__subqueries[0].default_options
 
   @property
+  def orders(self):
+    return self.__orders
+
+  @property
   def default_options(self):
     return self.__subqueries[0].default_options
 
   @property
-  def orders(self):
-    return self.__orders
+  def parameters(self):
+    parameters = {}
+    for subq in self.__subqueries:
+      subp = subq.parameters
+      if subp:
+        parameters.update(subp)
+    if not parameters:
+      parameters = None
+    return parameters
 
   @tasklets.tasklet
   def run_to_queue(self, queue, conn, options=None):
@@ -1649,6 +1677,10 @@ class _MultiQuery(object):
   # Datastore API using the default context.
 
   def iter(self, **q_options):
+    if self.parameters:
+      raise datastore_errors.BadArgumentError(
+        'Cannot run query with unbound parameters %s.' %
+        self.parameters.keys())
     return QueryIterator(self, **q_options)
 
   __iter__ = iter
