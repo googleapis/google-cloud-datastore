@@ -134,7 +134,6 @@ import sys
 from google.appengine.api import datastore_errors
 from google.appengine.api import datastore_types
 from google.appengine.datastore import datastore_query
-from google.appengine.ext import gql
 
 from . import model
 from . import tasklets
@@ -144,7 +143,7 @@ __all__ = ['Query', 'QueryOptions', 'Cursor', 'QueryIterator',
            'RepeatedStructuredPropertyPredicate',
            'AND', 'OR', 'ConjunctionNode', 'DisjunctionNode',
            'FilterNode', 'PostFilterNode', 'FalseNode', 'Node',
-           'Binding', 'parse_gql',
+           'Parameter', 'gql',
            ]
 
 # Re-export some useful classes from the lower-level module.
@@ -237,11 +236,11 @@ class RepeatedStructuredPropertyPredicate(datastore_query.FilterPredicate):
   # within columns.
 
 
-class Binding(object):
+class Parameter(object):
   """Used to represent a bound variable in a GQL query.
 
-  Binding(1) corresponds to a slot labeled ":1" in a GQL query.
-  Binding('xyz') corresponds to a slot labeled ":xyz".
+  Parameter(1) corresponds to a slot labeled ":1" in a GQL query.
+  Parameter('xyz') corresponds to a slot labeled ":xyz".
 
   The value must be set (bound) separately by calling .set(value).
   """
@@ -252,22 +251,22 @@ class Binding(object):
     """Constructor.
 
     Args:
-      key: The Binding key, must be either an integer or a string.
+      key: The Parameter key, must be either an integer or a string.
     """
     if not isinstance(key, (int, long, basestring)):
-      raise TypeError('Binding key must be an integer or string, not %s' %
+      raise TypeError('Parameter key must be an integer or string, not %s' %
                       (key,))
     self.__key = key
-    self.__value = Binding._UNSET
+    self.__value = Parameter._UNSET
 
   def __repr__(self):
-    if self.__value is Binding._UNSET:
+    if self.__value is Parameter._UNSET:
       return '%s(%r)' % (self.__class__.__name__, self.__key)
     else:
       return '%s(%r)<%s>' % (self.__class__.__name__, self.__key, self.__value)
 
   def __eq__(self, other):
-    if not isinstance(other, Binding):
+    if not isinstance(other, Parameter):
       return NotImplementedError
     return self.__key == other.__key and self.__value == other.__value
 
@@ -279,13 +278,13 @@ class Binding(object):
 
   def is_set(self):
     """Test whether the value is set."""
-    return self.__value is not Binding._UNSET
+    return self.__value is not Parameter._UNSET
 
   @property
   def value(self):
     """Retrieve the value.  Raises AttributeError if it is not set."""
-    if self.__value is Binding._UNSET:
-      raise AttributeError('Binding :%s is not set.' % (key,))
+    if self.__value is Parameter._UNSET:
+      raise AttributeError('Parameter :%s is not set.' % (key,))
     return self.__value
 
   @property
@@ -299,18 +298,18 @@ class Binding(object):
 
   def reset(self):
     """Reset the value."""
-    self.__value = Binding._UNSET
+    self.__value = Parameter._UNSET
   clear = reset  # TODO: Decide on reset() or clear().
 
   def resolve(self):
-    """Return the value currently associated with this Binding."""
+    """Return the value currently associated with this Parameter."""
     value = self.__value
-    if value is Binding._UNSET:
+    if value is Parameter._UNSET:
       raise datastore_errors.BadArgumentError(
-        'Binding :%s is not set.' % (self.__key,))
-    if isinstance(value, Binding):
+        'Parameter :%s is not set.' % (self.__key,))
+    if isinstance(value, Parameter):
       raise datastore_errors.BadArgumentError(
-        'Recursive Binding :%s.' % (self.__key,))
+        'Recursive Parameter :%s.' % (self.__key,))
     return value
 
 
@@ -318,7 +317,7 @@ class Node(object):
   """Base class for filter expression tree nodes.
 
   Tree nodes are considered immutable, even though they can contain
-  Binding instances, which are not.  In particular, two identical
+  Parameter instances, which are not.  In particular, two identical
   trees may be represented by the same Node object in different
   contexts.
   """
@@ -341,7 +340,7 @@ class Node(object):
     raise TypeError('Nodes cannot be ordered')
   __le__ = __lt__ = __ge__ = __gt__ = __unordered
 
-  def _to_filter(self, bindings, post=False):
+  def _to_filter(self, parameters, post=False):
     """Helper to convert to datastore_query.Filter, or None."""
     raise NotImplementedError
 
@@ -350,7 +349,7 @@ class Node(object):
     return None
 
   def resolve(self):
-    """Extract the Binding's value if necessary."""
+    """Extract the Parameter's value if necessary."""
     raise NotImplementedError
 
 
@@ -365,7 +364,7 @@ class FalseNode(Node):
       return NotImplemented
     return True
 
-  def _to_filter(self, unused_bindings, post=False):
+  def _to_filter(self, unused_parameters, post=False):
     if post:
       return None
     # Because there's no point submitting a query that will never
@@ -387,7 +386,7 @@ class FilterNode(Node):
       n1 = FilterNode(name, '<', value)
       n2 = FilterNode(name, '>', value)
       return DisjunctionNode(n1, n2)
-    if opsymbol == 'in' and not isinstance(value, Binding):
+    if opsymbol == 'in' and not isinstance(value, Parameter):
       if not isinstance(value, (list, tuple, set, frozenset)):
         raise TypeError('in expected a list, tuple or set of values; '
                         'received %r' % value)
@@ -420,7 +419,7 @@ class FilterNode(Node):
             self.__opsymbol == other.__opsymbol and
             self.__value == other.__value)
 
-  def _to_filter(self, bindings, post=False):
+  def _to_filter(self, parameters, post=False):
     if post:
       return None
     if self.__opsymbol in ('!=', 'in'):
@@ -428,8 +427,8 @@ class FilterNode(Node):
                                 'expressions and therefore cannot be converted '
                                 'to a single filter (%r)' % self.__opsymbol)
     value = self.__value
-    if isinstance(value, Binding):
-      bindings[value.key] = value
+    if isinstance(value, Parameter):
+      parameters[value.key] = value
       value = value.resolve()
       # TODO: validate the resolved value.
     return datastore_query.make_filter(self.__name.decode('utf-8'),
@@ -437,8 +436,8 @@ class FilterNode(Node):
 
   def resolve(self):
     if self.__opsymbol == 'in':
-      if isinstance(self.__value, Binding):
-        raise RuntimeError('Unexpanded non-Binding IN.')
+      if isinstance(self.__value, Parameter):
+        raise RuntimeError('Unexpanded non-Parameter IN.')
       return FilterNode(self.__name, self.__opsymbol, self.__value.resolve())
     else:
       return self
@@ -464,7 +463,7 @@ class PostFilterNode(Node):
       return NotImplemented
     return self is other
 
-  def _to_filter(self, unused_bindings, post=False):
+  def _to_filter(self, unused_parameters, post=False):
     if post:
       return self.predicate
     else:
@@ -525,9 +524,9 @@ class ConjunctionNode(Node):
       return NotImplemented
     return self.__nodes == other.__nodes
 
-  def _to_filter(self, bindings, post=False):
+  def _to_filter(self, parameters, post=False):
     filters = filter(None,
-                     (node._to_filter(bindings, post=post)
+                     (node._to_filter(parameters, post=post)
                       for node in self.__nodes
                       if isinstance(node, PostFilterNode) == post))
     if not filters:
@@ -598,16 +597,17 @@ AND = ConjunctionNode
 OR = DisjunctionNode
 
 
-def _args_to_val(func, args, bindings):
+def _args_to_val(func, args, parameters):
   """Helper for GQL parsing."""
+  from google.appengine.ext import gql  # Late import, in case never used.
   vals = []
   for arg in args:
     if isinstance(arg, (int, long, basestring)):
-      if arg in bindings:
-        val = bindings[arg]
+      if arg in parameters:
+        val = parameters[arg]
       else:
-        val = Binding(arg)
-        bindings[arg] = val
+        val = Parameter(arg)
+        parameters[arg] = val
     elif isinstance(arg, gql.Literal):
       val = arg.Get()
     else:
@@ -626,15 +626,19 @@ def _args_to_val(func, args, bindings):
   raise ValueError('Unexpected func (%r)' % func)
 
 
-def parse_gql(query_string):
+# TODO: LIMIT should apply to q.fetch() without args.
+# TODO: q.iter() should raise if unbound parameters exist.
+def gql(query_string):
   """Parse a GQL query string.
 
   Args:
     query_string: Full GQL query, e.g. 'SELECT * FROM Kind WHERE prop = 1'.
+    *args, **kwds: Optional bindings.
 
   Returns:
     A Query instance.
   """
+  from google.appengine.ext import gql  # Late import, in case never used.
   gql_qry = gql.GQL(query_string)
   kind = gql_qry.kind()
   modelclass = model.Model._kind_map.get(kind)
@@ -644,7 +648,7 @@ def parse_gql(query_string):
       kind)
   ancestor = None
   flt = gql_qry.filters()
-  bindings = {}
+  parameters = {}
   filters = []
   for ((name, op), values) in flt.iteritems():
     op = op.lower()
@@ -652,12 +656,12 @@ def parse_gql(query_string):
       if len(values) != 1:
         raise ValueError('"is" requires exactly one value')
       [(func, args)] = values
-      ancestor = _args_to_val(func, args, bindings)
+      ancestor = _args_to_val(func, args, parameters)
       continue
     if op not in _OPS:
       raise NotImplementedError('Operation %r is not supported.' % op)
     for (func, args) in values:
-      val = _args_to_val(func, args, bindings)
+      val = _args_to_val(func, args, parameters)
       filters.append(FilterNode(name, op, val))
   if filters:
     filters.sort(key=lambda x: x._sort_key())  # For predictable tests.
@@ -678,7 +682,7 @@ def parse_gql(query_string):
               filters=filters,
               orders=orders,
               default_options=options,
-              bindings=bindings)
+              parameters=parameters)
   return qry
 
 
@@ -697,7 +701,7 @@ class Query(object):
   @utils.positional(1)
   def __init__(self, kind=None, ancestor=None, filters=None, orders=None,
                app=None, namespace=None,
-               default_options=None, bindings=None):
+               default_options=None, parameters=None):
     """Constructor.
 
     Args:
@@ -708,9 +712,9 @@ class Query(object):
       app: Optional app id.
       namespace: Optional namespace.
       default_options: Optional QueryOptions object.
-      bindings: Optional dict mapping ints and strigns to Binding objects.
+      parameters: Optional dict mapping ints and strigns to Parameter objects.
     """
-    if ancestor is not None and not isinstance(ancestor, Binding):
+    if ancestor is not None and not isinstance(ancestor, Parameter):
       if not isinstance(ancestor, model.Key):
         raise TypeError('ancestor must be a Key')
       if not ancestor.id():
@@ -736,7 +740,7 @@ class Query(object):
     self.__app = app
     self.__namespace = namespace
     self.__default_options = default_options
-    self.__bindings = bindings
+    self.__parameters = parameters
 
   def __repr__(self):
     args = []
@@ -755,16 +759,16 @@ class Query(object):
       args.append('namespace=%r' % self.__namespace)
     if self.__default_options is not None:
       args.append('default_options=%r' % self.__default_options)
-    if self.__bindings is not None:
-      args.append('bindings=%r' % self.__bindings)
+    if self.__parameters is not None:
+      args.append('parameters=%r' % self.__parameters)
     return '%s(%s)' % (self.__class__.__name__, ', '.join(args))
 
   def _get_query(self, connection):
     kind = self.__kind
     ancestor = self.__ancestor
-    bindings = {}
-    if isinstance(ancestor, Binding):
-      bindings[ancestor.key] = ancestor
+    parameters = {}
+    if isinstance(ancestor, Parameter):
+      parameters[ancestor.key] = ancestor
       ancestor = ancestor.resolve()
     if ancestor is not None:
       ancestor = connection.adapter.key_to_pb(ancestor)
@@ -772,7 +776,7 @@ class Query(object):
     post_filters = None
     if filters is not None:
       post_filters = filters._post_filters()
-      filters = filters._to_filter(bindings)
+      filters = filters._to_filter(parameters)
     dsquery = datastore_query.Query(app=self.__app,
                                     namespace=self.__namespace,
                                     kind=kind.decode('utf-8') if kind else None,
@@ -782,7 +786,7 @@ class Query(object):
     if post_filters is not None:
       dsquery = datastore_query._AugmentedQuery(
         dsquery,
-        in_memory_filter=post_filters._to_filter(bindings, post=True))
+        in_memory_filter=post_filters._to_filter(parameters, post=True))
     return dsquery
 
   @tasklets.tasklet
@@ -890,9 +894,9 @@ class Query(object):
     return self.__default_options
 
   @property
-  def bindings(self):
-    """Accessor for the bindings (a dict or None)."""
-    return self.__bindings
+  def parameters(self):
+    """Accessor for the parameters (a dict or None)."""
+    return self.__parameters
 
   def filter(self, *args):
     """Return a new Query with additional filter(s) applied."""
