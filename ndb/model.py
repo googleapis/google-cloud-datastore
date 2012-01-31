@@ -2594,6 +2594,14 @@ class Model(object):
     return qry
   query = _query
 
+  @classmethod
+  def _gql(cls, query_string, *args, **kwds):
+    """Run a GQL query."""
+    from .query import gql  # Import late to avoid circular imports.
+    return gql('SELECT * FROM %s %s' % (cls._get_kind(), query_string),
+               *args, **kwds)
+  gql = _gql
+
   def _put(self, **ctx_options):
     """Write this entity to the datastore.
 
