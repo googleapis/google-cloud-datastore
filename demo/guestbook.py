@@ -43,7 +43,8 @@ class Guestbook(webapp.RequestHandler):
     # We set the parent key on each 'Greeting' to ensure each guestbook's
     # greetings are in the same entity group.
     guestbook_name = self.request.get('guestbook_name')
-    greeting = Greeting(parent=model.Key("Book", guestbook_name or "*fakebook*"),
+    greeting = Greeting(parent=model.Key("Book",
+                                         guestbook_name or "*fakebook*"),
                         content = self.request.get('content'))
     greeting.put()
     self.redirect('/?' + urllib.urlencode({'guestbook_name': guestbook_name}))

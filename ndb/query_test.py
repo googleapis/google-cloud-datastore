@@ -854,84 +854,6 @@ class QueryTests(test_utils.NDBTest):
                       FilterNode('name', '=', 'moe')))
     self.assertEqual(filters, expected)
 
-  def testGqlMinimal(self):
-    qry, unused_options, bindings = query.parse_gql('SELECT * FROM Kind')
-    self.assertEqual(qry.kind, 'Kind')
-    self.assertEqual(qry.ancestor, None)
-    self.assertEqual(qry.filters, None)
-    self.assertEqual(qry.orders, None)
-    self.assertEqual(bindings, {})
-
-  def testGqlAncestorWithBinding(self):
-    qry, unused_options, bindings = query.parse_gql(
-      'SELECT * FROM Kind WHERE ANCESTOR IS :1')
-    self.assertEqual(qry.kind, 'Kind')
-    self.assertEqual(qry.ancestor, query.Binding(None, 1))
-    self.assertEqual(qry.filters, None)
-    self.assertEqual(qry.orders, None)
-    self.assertEqual(bindings, {1: query.Binding(None, 1)})
-
-  def testGqlAncestor(self):
-    key = model.Key('Foo', 42)
-    qry, unused_options, bindings = query.parse_gql(
-      "SELECT * FROM Kind WHERE ANCESTOR IS KEY('%s')" % key.urlsafe())
-    self.assertEqual(qry.kind, 'Kind')
-    self.assertEqual(qry.ancestor, key)
-    self.assertEqual(qry.filters, None)
-    self.assertEqual(qry.orders, None)
-    self.assertEqual(bindings, {})
-
-  def testGqlFilter(self):
-    qry, unused_options, bindings = query.parse_gql(
-      "SELECT * FROM Kind WHERE prop1 = 1 AND prop2 = 'a'")
-    self.assertEqual(qry.kind, 'Kind')
-    self.assertEqual(qry.ancestor, None)
-    self.assertEqual(qry.filters,
-                     query.ConjunctionNode(
-                       query.FilterNode('prop1', '=', 1),
-                       query.FilterNode('prop2', '=', 'a')))
-    self.assertEqual(qry.orders, None)
-    self.assertEqual(bindings, {})
-
-  def testGqlOrder(self):
-    qry, unused_options, unused_bindings = query.parse_gql(
-      'SELECT * FROM Kind ORDER BY prop1')
-    self.assertEqual(query._orders_to_orderings(qry.orders),
-                     [('prop1', query._ASC)])
-
-  def testGqlOffset(self):
-    unused_qry, options, unused_bindings = query.parse_gql(
-      'SELECT * FROM Kind OFFSET 2')
-    self.assertEqual(options.offset, 2)
-
-  def testGqlLimit(self):
-    unused_qry, options, unused_bindings = query.parse_gql(
-      'SELECT * FROM Kind LIMIT 2')
-    self.assertEqual(options.limit, 2)
-
-  def testGqlBindings(self):
-    qry, unused_options, bindings = query.parse_gql(
-      'SELECT * FROM Kind WHERE prop1 = :1 AND prop2 = :foo')
-    self.assertEqual(qry.kind, 'Kind')
-    self.assertEqual(qry.ancestor, None)
-    self.assertEqual(qry.filters,
-                     query.ConjunctionNode(
-                       query.FilterNode('prop1', '=',
-                                        query.Binding(None, 1)),
-                       query.FilterNode('prop2', '=',
-                                        query.Binding(None, 'foo'))))
-    self.assertEqual(qry.orders, None)
-    self.assertEqual(bindings, {1: query.Binding(None, 1),
-                                'foo': query.Binding(None, 'foo')})
-
-  def testResolveBindings(self):
-    qry, unused_options, bindings = query.parse_gql(
-      'SELECT * FROM Foo WHERE name = :1')
-    bindings[1].value = 'joe'
-    self.assertEqual(list(qry), [self.joe])
-    bindings[1].value = 'jill'
-    self.assertEqual(list(qry), [self.jill])
-
   def testKeyFilter(self):
     class MyModel(model.Model):
       number = model.IntegerProperty()
@@ -1042,6 +964,93 @@ class QueryTests(test_utils.NDBTest):
     self.assertFalse(b is a)
     self.assertEqual(a.name, 'x')
     self.assertEqual(b.name, 'a')
+
+  def testGqlMinimal(self):
+    qry = query.gql('SELECT * FROM Foo')
+    self.assertEqual(qry.kind, 'Foo')
+    self.assertEqual(qry.ancestor, None)
+    self.assertEqual(qry.filters, None)
+    self.assertEqual(qry.orders, None)
+    self.assertEqual(qry.parameters, None)
+
+  def testGqlAncestorWithParameter(self):
+    qry = query.gql(
+      'SELECT * FROM Foo WHERE ANCESTOR IS :1')
+    self.assertEqual(qry.kind, 'Foo')
+    self.assertEqual(qry.ancestor, query.Parameter(1))
+    self.assertEqual(qry.filters, None)
+    self.assertEqual(qry.orders, None)
+    self.assertEqual(qry.parameters, {1: query.Parameter(1)})
+
+  def testGqlAncestor(self):
+    key = model.Key('Foo', 42)
+    qry = query.gql(
+      "SELECT * FROM Foo WHERE ANCESTOR IS KEY('%s')" % key.urlsafe())
+    self.assertEqual(qry.kind, 'Foo')
+    self.assertEqual(qry.ancestor, key)
+    self.assertEqual(qry.filters, None)
+    self.assertEqual(qry.orders, None)
+    self.assertEqual(qry.parameters, None)
+
+  def testGqlFilter(self):
+    qry = query.gql(
+      "SELECT * FROM Foo WHERE name = 'joe' AND rate = 1")
+    self.assertEqual(qry.kind, 'Foo')
+    self.assertEqual(qry.ancestor, None)
+    self.assertEqual(qry.filters,
+                     query.ConjunctionNode(
+                       query.FilterNode('name', '=', 'joe'),
+                       query.FilterNode('rate', '=', 1)))
+    self.assertEqual(qry.orders, None)
+    self.assertEqual(qry.parameters, None)
+
+  def testGqlOrder(self):
+    qry = query.gql(
+      'SELECT * FROM Foo ORDER BY name')
+    self.assertEqual(query._orders_to_orderings(qry.orders),
+                     [('name', query._ASC)])
+
+  def testGqlOffset(self):
+    qry = query.gql(
+      'SELECT * FROM Foo OFFSET 2')
+    self.assertEqual(qry.default_options.offset, 2)
+
+  def testGqlLimit(self):
+    qry = query.gql(
+      'SELECT * FROM Foo LIMIT 2')
+    self.assertEqual(qry.default_options.limit, 2)
+
+  def testGqlParameters(self):
+    qry = query.gql(
+      'SELECT * FROM Foo WHERE name = :1 AND rate = :foo')
+    self.assertEqual(qry.kind, 'Foo')
+    self.assertEqual(qry.ancestor, None)
+    self.assertEqual(qry.filters,
+                     query.ConjunctionNode(
+                       query.ParameterNode(Foo.name, '=',
+                                        query.Parameter(1)),
+                       query.ParameterNode(Foo.rate, '=',
+                                        query.Parameter('foo'))))
+    self.assertEqual(qry.orders, None)
+    self.assertEqual(qry.parameters, {1: query.Parameter(1),
+                                    'foo': query.Parameter('foo')})
+
+  def testGqlResolveParameters(self):
+    pqry = query.gql(
+      'SELECT * FROM Foo WHERE name = :1')
+    qry = pqry.bind('joe')
+    self.assertEqual(list(qry), [self.joe])
+    qry = pqry.bind('jill')
+    self.assertEqual(list(qry), [self.jill])
+
+  def testGqlUnresolvedParameters(self):
+    self.ExpectErrors()
+    qry = query.gql(
+      'SELECT * FROM Foo WHERE name = :1')
+    self.assertRaises(datastore_errors.BadArgumentError, qry.fetch)
+    self.assertRaises(datastore_errors.BadArgumentError, qry.count)
+    self.assertRaises(datastore_errors.BadArgumentError, list, qry)
+    self.assertRaises(datastore_errors.BadArgumentError, qry.iter)
 
 
 def main():
