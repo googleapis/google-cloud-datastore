@@ -1,3 +1,4 @@
+import readline
 import startup
 
 from ndb import *
