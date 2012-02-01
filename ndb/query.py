@@ -1098,11 +1098,12 @@ class Query(object):
 
     This is the asynchronous version of Query.fetch().
     """
-    if 'limit' in q_options:
-      raise TypeError('Cannot specify limit as a non-keyword argument and as a '
-                      'keyword argument simultaneously.')
-    elif limit is None:
-      limit = _MAX_LIMIT
+    if limit is None:
+      default_options = self._make_options(q_options)
+      if default_options is not None and default_options.limit is not None:
+        limit = default_options.limit
+      else:
+        limit = _MAX_LIMIT
     q_options['limit'] = limit
     q_options.setdefault('batch_size', limit)
     if self._needs_multi_query():

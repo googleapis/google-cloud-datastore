@@ -973,28 +973,26 @@ class QueryTests(test_utils.NDBTest):
     self.assertEqual(qry.orders, None)
     self.assertEqual(qry.parameters, None)
 
-  def testGqlAncestorWithParameter(self):
-    qry = query.gql(
-      'SELECT * FROM Foo WHERE ANCESTOR IS :1')
-    self.assertEqual(qry.kind, 'Foo')
-    self.assertEqual(qry.ancestor, query.Parameter(1))
-    self.assertEqual(qry.filters, None)
-    self.assertEqual(qry.orders, None)
-    self.assertEqual(qry.parameters, {1: query.Parameter(1)})
-
   def testGqlAncestor(self):
     key = model.Key('Foo', 42)
-    qry = query.gql(
-      "SELECT * FROM Foo WHERE ANCESTOR IS KEY('%s')" % key.urlsafe())
+    qry = query.gql("SELECT * FROM Foo WHERE ANCESTOR IS KEY('%s')" %
+                    key.urlsafe())
     self.assertEqual(qry.kind, 'Foo')
     self.assertEqual(qry.ancestor, key)
     self.assertEqual(qry.filters, None)
     self.assertEqual(qry.orders, None)
     self.assertEqual(qry.parameters, None)
 
+  def testGqlAncestorWithParameter(self):
+    qry = query.gql('SELECT * FROM Foo WHERE ANCESTOR IS :1')
+    self.assertEqual(qry.kind, 'Foo')
+    self.assertEqual(qry.ancestor, query.Parameter(1))
+    self.assertEqual(qry.filters, None)
+    self.assertEqual(qry.orders, None)
+    self.assertEqual(qry.parameters, {1: query.Parameter(1)})
+
   def testGqlFilter(self):
-    qry = query.gql(
-      "SELECT * FROM Foo WHERE name = 'joe' AND rate = 1")
+    qry = query.gql("SELECT * FROM Foo WHERE name = 'joe' AND rate = 1")
     self.assertEqual(qry.kind, 'Foo')
     self.assertEqual(qry.ancestor, None)
     self.assertEqual(qry.filters,
@@ -1005,24 +1003,20 @@ class QueryTests(test_utils.NDBTest):
     self.assertEqual(qry.parameters, None)
 
   def testGqlOrder(self):
-    qry = query.gql(
-      'SELECT * FROM Foo ORDER BY name')
+    qry = query.gql('SELECT * FROM Foo ORDER BY name')
     self.assertEqual(query._orders_to_orderings(qry.orders),
                      [('name', query._ASC)])
 
   def testGqlOffset(self):
-    qry = query.gql(
-      'SELECT * FROM Foo OFFSET 2')
+    qry = query.gql('SELECT * FROM Foo OFFSET 2')
     self.assertEqual(qry.default_options.offset, 2)
 
   def testGqlLimit(self):
-    qry = query.gql(
-      'SELECT * FROM Foo LIMIT 2')
+    qry = query.gql('SELECT * FROM Foo LIMIT 2')
     self.assertEqual(qry.default_options.limit, 2)
 
   def testGqlParameters(self):
-    qry = query.gql(
-      'SELECT * FROM Foo WHERE name = :1 AND rate = :foo')
+    qry = query.gql('SELECT * FROM Foo WHERE name = :1 AND rate = :foo')
     self.assertEqual(qry.kind, 'Foo')
     self.assertEqual(qry.ancestor, None)
     self.assertEqual(qry.filters,
@@ -1036,8 +1030,7 @@ class QueryTests(test_utils.NDBTest):
                                     'foo': query.Parameter('foo')})
 
   def testGqlResolveParameters(self):
-    pqry = query.gql(
-      'SELECT * FROM Foo WHERE name = :1')
+    pqry = query.gql('SELECT * FROM Foo WHERE name = :1')
     qry = pqry.bind('joe')
     self.assertEqual(list(qry), [self.joe])
     qry = pqry.bind('jill')
@@ -1051,6 +1044,64 @@ class QueryTests(test_utils.NDBTest):
     self.assertRaises(datastore_errors.BadArgumentError, qry.count)
     self.assertRaises(datastore_errors.BadArgumentError, list, qry)
     self.assertRaises(datastore_errors.BadArgumentError, qry.iter)
+
+  def checkGql(self, expected, gql, args=(), kwds={},
+               fetch=lambda x: list(x)):
+    actual = fetch(query.gql(gql).bind(*args, **kwds))
+    self.assertEqual(expected, actual)
+
+  def testGqlBasicQueries(self):
+    self.checkGql([self.joe, self.jill, self.moe], "SELECT * FROM Foo")
+
+  def testGqlKeyQueries(self):
+    self.checkGql([self.joe.key, self.jill.key, self.moe.key],
+                  "SELECT __key__ FROM Foo")
+
+  def testGqlOperatorQueries(self):
+    self.checkGql([self.joe], "SELECT * FROM Foo WHERE name = 'joe'")
+    self.checkGql([self.moe], "SELECT * FROM Foo WHERE name > 'joe'")
+    self.checkGql([self.jill], "SELECT * FROM Foo WHERE name < 'joe'")
+    self.checkGql([self.joe, self.moe],
+                  "SELECT * FROM Foo WHERE name >= 'joe'")
+    self.checkGql([self.jill, self.joe],
+                  "SELECT * FROM Foo WHERE name <= 'joe'")
+    self.checkGql([self.jill, self.moe],
+                  "SELECT * FROM Foo WHERE name != 'joe'")
+    # NOTE: The ordering on these is questionable:
+    self.checkGql([self.joe, self.jill],
+                  "SELECT * FROM Foo WHERE name IN ('joe', 'jill')")
+    self.checkGql([self.jill, self.joe],
+                  "SELECT * FROM Foo WHERE name IN ('jill', 'joe')")
+
+  def testGqlOrderQueries(self):
+    self.checkGql([self.jill, self.joe, self.moe],
+                  "SELECT * FROM Foo ORDER BY name")
+    self.checkGql([self.moe, self.joe, self.jill],
+                  "SELECT * FROM Foo ORDER BY name DESC")
+    self.checkGql([self.joe, self.jill, self.moe],
+                  "SELECT * FROM Foo ORDER BY __key__ ASC")
+    self.checkGql([self.moe, self.jill, self.joe],
+                  "SELECT * FROM Foo ORDER BY __key__ DESC")
+    self.checkGql([self.jill, self.joe, self.moe],
+                  "SELECT * FROM Foo ORDER BY rate DESC, name")
+
+  def testGqlOffsetQuery(self):
+    self.checkGql([self.jill, self.moe], "SELECT * FROM Foo OFFSET 1")
+
+  def testGqlLimitQuery(self):
+    self.checkGql([self.joe, self.jill], "SELECT * FROM Foo LIMIT 2")
+
+  def testGqlLimitOffsetQuery(self):
+    self.checkGql([self.jill], "SELECT * FROM Foo LIMIT 1 OFFSET 1")
+
+  def testGqlLimitOffsetQueryUsingFetch(self):
+    self.checkGql([self.jill], "SELECT * FROM Foo LIMIT 1 OFFSET 1",
+                  fetch=lambda x: x.fetch())
+
+##   def testGqlLimitOffsetQueryUsingFetchPage(self):
+##     self.checkGql([self.jill],
+##                   "SELECT * FROM Foo LIMIT 1 OFFSET 1",
+##                   fetch=lambda x: x.fetch_page(2)[0])
 
 
 def main():
