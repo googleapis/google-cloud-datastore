@@ -1046,7 +1046,7 @@ class QueryTests(test_utils.NDBTest):
     self.assertRaises(datastore_errors.BadArgumentError, qry.iter)
 
   def checkGql(self, expected, gql, args=(), kwds={},
-               fetch=lambda x: list(x)):
+               fetch=lambda q: list(q)):
     actual = fetch(query.gql(gql).bind(*args, **kwds))
     self.assertEqual(expected, actual)
 
@@ -1096,12 +1096,16 @@ class QueryTests(test_utils.NDBTest):
 
   def testGqlLimitOffsetQueryUsingFetch(self):
     self.checkGql([self.jill], "SELECT * FROM Foo LIMIT 1 OFFSET 1",
-                  fetch=lambda x: x.fetch())
+                  fetch=lambda q: q.fetch())
+    # XXX TODO What if fetch(N+1) where LIMIT N ?
 
-##   def testGqlLimitOffsetQueryUsingFetchPage(self):
-##     self.checkGql([self.jill],
-##                   "SELECT * FROM Foo LIMIT 1 OFFSET 1",
-##                   fetch=lambda x: x.fetch_page(2)[0])
+  def testGqlLimittQueryUsingFetchPage(self):
+    def fetch_page_without_cursor(q, page_size=1):
+      results, cursor, more = q.fetch_page(page_size)
+      return ([r.name for r in results], more)
+    self.checkGql((['jill'], True),
+                  "SELECT * FROM Foo OFFSET 1",
+                  fetch=fetch_page_without_cursor)
 
 
 def main():
