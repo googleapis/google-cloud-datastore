@@ -303,7 +303,7 @@ class Node(object):
     raise TypeError('Nodes cannot be ordered')
   __le__ = __lt__ = __ge__ = __gt__ = __unordered
 
-  def _to_filter(self, parameters, post=False):
+  def _to_filter(self, post=False):
     """Helper to convert to datastore_query.Filter, or None."""
     raise NotImplementedError
 
@@ -332,7 +332,7 @@ class FalseNode(Node):
       return NotImplemented
     return True
 
-  def _to_filter(self, unused_parameters, post=False):
+  def _to_filter(self, post=False):
     if post:
       return None
     # Because there's no point submitting a query that will never
@@ -365,7 +365,7 @@ class ParameterNode(Node):
             self.__op == other.__op and
             self.__param == other.__param)
 
-  def _to_filter(self, parameters, post=False):
+  def _to_filter(self, post=False):
     raise datastore_errors.BadArgumentError(
       'Parameter :%s is not bound.' % (self.__param.key,))
 
@@ -429,7 +429,7 @@ class FilterNode(Node):
             self.__opsymbol == other.__opsymbol and
             self.__value == other.__value)
 
-  def _to_filter(self, parameters, post=False):
+  def _to_filter(self, post=False):
     if post:
       return None
     if self.__opsymbol in ('!=', 'in'):
@@ -437,18 +437,15 @@ class FilterNode(Node):
                                 'expressions and therefore cannot be converted '
                                 'to a single filter (%r)' % self.__opsymbol)
     value = self.__value
-    if isinstance(value, Parameter):
-      parameters[value.key] = value
-      value = value.resolve()
-      # TODO: validate the resolved value.
     return datastore_query.make_filter(self.__name.decode('utf-8'),
                                        self.__opsymbol, value)
 
-  def resolve(self):
+  def resolve(self, args, kwds):
     if self.__opsymbol == 'in':
       if not isinstance(self.__value, Parameter):
         raise RuntimeError('Unexpanded non-Parameter IN.')
-      return FilterNode(self.__name, self.__opsymbol, self.__value.resolve())
+      return FilterNode(self.__name, self.__opsymbol,
+                        self.__value.resolve(args, kwds))
     else:
       return self
 
@@ -473,13 +470,13 @@ class PostFilterNode(Node):
       return NotImplemented
     return self is other
 
-  def _to_filter(self, unused_parameters, post=False):
+  def _to_filter(self, post=False):
     if post:
       return self.predicate
     else:
       return None
 
-  def resolve(self):
+  def resolve(self, args, kwds):
     return self
 
 
@@ -534,9 +531,9 @@ class ConjunctionNode(Node):
       return NotImplemented
     return self.__nodes == other.__nodes
 
-  def _to_filter(self, parameters, post=False):
+  def _to_filter(self, post=False):
     filters = filter(None,
-                     (node._to_filter(parameters, post=post)
+                     (node._to_filter(post=post)
                       for node in self.__nodes
                       if isinstance(node, PostFilterNode) == post))
     if not filters:
@@ -556,8 +553,8 @@ class ConjunctionNode(Node):
       return self
     return ConjunctionNode(*post_filters)
 
-  def resolve(self):
-    nodes = [node.resolve() for node in self.__nodes]
+  def resolve(self, args, kwds):
+    nodes = [node.resolve(args, kwds) for node in self.__nodes]
     if nodes == self.__nodes:
       return self
     return ConjunctionNode(*nodes)
@@ -595,8 +592,8 @@ class DisjunctionNode(Node):
       return NotImplemented
     return self.__nodes == other.__nodes
 
-  def resolve(self):
-    nodes = [node.resolve() for node in self.__nodes]
+  def resolve(self, args, kwds):
+    nodes = [node.resolve(args, kwds) for node in self.__nodes]
     if nodes == self.__nodes:
       return self
     return DisjunctionNode(*nodes)
@@ -844,17 +841,13 @@ class Query(object):
         self.__parameters.keys())
     kind = self.__kind
     ancestor = self.__ancestor
-    parameters = {}
-    if isinstance(ancestor, Parameter):
-      parameters[ancestor.key] = ancestor
-      ancestor = ancestor.resolve()
     if ancestor is not None:
       ancestor = connection.adapter.key_to_pb(ancestor)
     filters = self.__filters
     post_filters = None
     if filters is not None:
       post_filters = filters._post_filters()
-      filters = filters._to_filter(parameters)
+      filters = filters._to_filter()
     dsquery = datastore_query.Query(app=self.__app,
                                     namespace=self.__namespace,
                                     kind=kind.decode('utf-8') if kind else None,
@@ -864,7 +857,7 @@ class Query(object):
     if post_filters is not None:
       dsquery = datastore_query._AugmentedQuery(
         dsquery,
-        in_memory_filter=post_filters._to_filter(parameters, post=True))
+        in_memory_filter=post_filters._to_filter(post=True))
     return dsquery
 
   @tasklets.tasklet
