@@ -1236,6 +1236,21 @@ class QueryTests(test_utils.NDBTest):
       query.gql("SELECT __key__ FROM Bar WHERE atime=TIME(:1, :2, :3)")
            .bind(14, 54, 0).fetch())
 
+  def testGqlStructuredPropertyQuery(self):
+    class Bar(model.Model):
+      foo = model.StructuredProperty(Foo)
+    barf = Bar(foo=Foo(name='one', rate=3, tags=['a', 'b']))
+    barf.put()
+    barg = Bar(foo=Foo(name='two', rate=4, tags=['b', 'c']))
+    barg.put()
+    barh = Bar()
+    barh.put()
+    # TODO: Once SDK 1.6.3 is released, drop quotes around foo.name.
+    q = Bar.gql("WHERE \"foo.name\" = 'one'")
+    self.assertEqual([barf], q.fetch())
+    q = Bar.gql("WHERE foo = :1").bind(Foo(name='two', rate=4))
+    self.assertEqual([barg], q.fetch())
+
 
 def main():
   unittest.main()
