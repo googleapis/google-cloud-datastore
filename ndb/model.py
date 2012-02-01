@@ -568,7 +568,7 @@ class Property(ModelAttribute):
       if isinstance(name, unicode):
         name = name.encode('utf-8')
       if '.' in name:
-        raise ValueError('name cannot contain period characters' % name)
+        raise ValueError('Name %r cannot contain period characters' % (name,))
       self._name = name
     if indexed is not None:
       self._indexed = indexed
