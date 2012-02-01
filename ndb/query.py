@@ -341,6 +341,7 @@ class FalseNode(Node):
       'Cannot convert FalseNode to predicate')
 
 
+# TODO: Kill all asserts (again).
 class ParameterNode(Node):
   """Tree node for a parameterized filter."""
 
@@ -650,6 +651,45 @@ def _args_to_val(func, args, parameters):
   raise ValueError('Unexpected func (%r)' % func)
 
 
+def _get_prop_from_modelclass(modelclass, name):
+  """XXX"""
+  if name == '__key__':
+    return modelclass._key
+
+  parts = name.split('.')
+  part, more = parts[0], parts[1:]
+  prop = modelclass._properties.get(part)
+  if prop is None:
+    if issubclass(modelclass, model.Expando):
+      prop = model.GenericProperty(part)
+    else:
+      import pdb; pdb.set_trace()
+      raise KeyError('Model %s has no property named %r' %
+                     (modelclass._get_kind(), part))
+
+  while more:
+    part = more.pop(0)
+    assert isinstance(prop, model.StructuredProperty), prop
+    maybe = getattr(prop, part, None)
+    if isinstance(maybe, model.Property) and maybe._name == part:
+      prop = maybe
+    else:
+      maybe = prop._modelclass._properties.get(part)
+      if maybe is not None:
+        # Must get it this way to get the copy with the long name.
+        # (See StructuredProperty.__getattr__() for details.)
+        prop = getattr(prop, maybe._code_name)
+      else:
+        if issubclass(prop._modelclass, model.Expando) and not more:
+          prop = model.GenericProperty()
+          prop._name = name  # Bypass the restriction on dots.
+        else:
+          raise KeyError('Model %s has no property named %r' %
+                         (prop._modelclass._get_kind(), part))
+
+  return prop
+
+
 # TODO: LIMIT should apply to q.fetch() without args.  XXX
 def gql(query_string):
   """Parse a GQL query string.
@@ -687,15 +727,8 @@ def gql(query_string):
       raise NotImplementedError('Operation %r is not supported.' % op)
     for (func, args) in values:
       val = _args_to_val(func, args, parameters)
-      if name == '__key__':
-        prop = modelclass._key
-      else:
-        prop = modelclass._properties.get(name)
-        if prop is None:
-          if isinstance(modelclass, model.Expando):
-            prop = model.GenericProperty(name)
-          else:
-            raise KeyError('Model %s has no property named %s' % (kind, name))
+      prop = _get_prop_from_modelclass(modelclass, name)
+      assert prop._name == name, prop
       if isinstance(val, Parameter):
         node = ParameterNode(prop, op, val)
       elif op == 'in':
@@ -1710,10 +1743,8 @@ def _orders_to_orderings(orders):
 
 def _ordering_to_order(ordering, modelclass):
   name, direction = ordering
-  prop = modelclass._properties.get(name)
-  if prop is None and not isinstance(modelclass, model.Expando):
-    # TODO XXX What exception?
-    raise KeyError('%s has no property named %s' % (modelclass, name))
+  prop = _get_prop_from_modelclass(modelclass, name)
+  assert prop._name == name, prop
   return datastore_query.PropertyOrder(name, direction)
 
 

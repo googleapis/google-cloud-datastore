@@ -76,3 +76,14 @@ conn = ctx._conn
 E = Employee
 M = Manager
 B = BlobTest
+
+class Node(Expando):
+  pass
+Node.left = StructuredProperty(Node)
+Node.right = StructuredProperty(Node, 'rite')
+Node._fix_up_properties()
+
+anode = Node(left=Node(label='a'), right=Node(label='b'), tag='root')
+anode.put()
+bnode = Node(left=Node(tag='x'), right=Node(tag='y'), tag='root')
+bnode.put()
