@@ -605,7 +605,7 @@ OR = DisjunctionNode
 
 
 def _args_to_val(func, args, parameters):
-  """Helper for GQL parsing.
+  """Helper for GQL parsing to extract values from GQL expressions.
 
   This can extract the value from a GQL literal, return a Parameter
   for a GQL bound parameter (:1 or :foo), and interprets casts like
@@ -649,7 +649,20 @@ def _args_to_val(func, args, parameters):
 
 
 def _get_prop_from_modelclass(modelclass, name):
-  """XXX"""
+  """Helper for FQL parsing to turn a property name into a property object.
+
+  Args:
+    modelclass: The model class specified in the query.
+    name: The property name.  This may contain dots which indicate
+      sub-properties of structured properties.
+
+  Returns:
+    A Property object.
+
+  Raises:
+    KeyError if the property doesn't exist and the model clas doesn't
+    derive from Expando.
+  """
   if name == '__key__':
     return modelclass._key
 
@@ -687,7 +700,6 @@ def _get_prop_from_modelclass(modelclass, name):
   return prop
 
 
-# TODO: LIMIT should apply to q.fetch() without args.  XXX
 def gql(query_string):
   """Parse a GQL query string.
 
