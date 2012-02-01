@@ -1151,7 +1151,7 @@ class QueryTests(test_utils.NDBTest):
     moeref.put()
     self.assertEqual(
       [noref],
-      Bar.gql("WHERE ref = null").fetch())
+      Bar.gql("WHERE ref = NULL").fetch())
     self.assertEqual(
       [noref],
       Bar.gql("WHERE ref = :1").bind(None).fetch())
@@ -1171,6 +1171,28 @@ class QueryTests(test_utils.NDBTest):
       [joeref],
       Bar.gql("WHERE ref = KEY('Foo', :1)").bind(self.joe.key.id()).fetch())
 
+  def testGqlKeyFunctionAncestor(self):
+    class Bar(model.Model):
+      pass
+    nobar = Bar()
+    nobar.put()
+    joebar = Bar(parent=self.joe.key)
+    joebar.put()
+    moebar = Bar(parent=self.moe.key)
+    moebar.put()
+    self.assertEqual(
+      [joebar],
+      Bar.gql("WHERE ANCESTOR IS KEY('%s')" % self.joe.key.urlsafe()).fetch())
+    self.assertEqual(
+      [joebar],
+      Bar.gql("WHERE ANCESTOR IS :1").bind(self.joe.key).fetch())
+    self.assertEqual(
+      [joebar],
+      Bar.gql("WHERE ANCESTOR IS KEY(:1)").bind(self.joe.key.urlsafe()).fetch())
+    self.assertEqual(
+      [joebar],
+      Bar.gql("WHERE ANCESTOR IS KEY('Foo', :1)")
+         .bind(self.joe.key.id()).fetch())
 
 def main():
   unittest.main()
