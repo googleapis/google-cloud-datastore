@@ -264,6 +264,7 @@ class Parameter(object):
       return NotImplementedError
     return self.__key == other.__key
 
+  # TODO: Refactor this generic __ne__ into a base class.
   def __ne__(self, other):
     eq = self.__eq__(other)
     if eq is not NotImplemented:
@@ -290,6 +291,57 @@ class Parameter(object):
         raise datastore_errors.BadArgumentError(
           'Parameter :%s is not bound.' % key)
     return value
+
+
+class _ParameterizedFunction(object):
+  """XXX"""
+
+  def __init__(self, func, values):
+    self.__func = func
+    self.__values = values
+    self.__method = getattr(self, 'do_%s' % func)
+
+  def __repr__(self):
+    return '_ParameterizedFunction(%r, %r)' % (self.__func, self.__values)
+
+  def __eq__(self, other):
+    if not isinstance(other, _ParameterizedFunction):
+      return NotImplementedError
+    return (self.__func == other.__func and
+            self.__values == other.__values)
+
+  def __ne__(self, other):
+    eq = self.__eq__(other)
+    if eq is not NotImplemented:
+      eq = not eq
+    return eq
+
+  def is_parameterized(self):
+    for val in self.__values:
+      if isinstance(val, Parameter):
+        return True
+    return False
+
+  def resolve(self, args, kwds):
+    values = []
+    for val in self.__values:
+      if isinstance(val, Parameter):
+        val = val.resolve(args, kwds)
+      values.append(val)
+    return self.__method(values)
+
+  def do_list(self, args):
+    return args
+
+  def do_key(self, args):
+    if len(args) == 1 and isinstance(args[0], basestring):
+      return model.Key(urlsafe=args[0])
+    elif len(args) % 2 == 0:
+      return model.Key(*args)
+    raise TypeError('Unexpected args to KEY(): %r' % args)
+
+  # TODO: Implement the other GQL builtins: DATETIME, DATE, TIME,
+  # USER, GEOPT.
 
 
 class Node(object):
@@ -364,7 +416,7 @@ class ParameterNode(Node):
   def __new__(cls, prop, op, param):
     assert isinstance(prop, model.Property), prop
     assert op in _OPS, op
-    assert isinstance(param, Parameter), param
+    assert isinstance(param, (Parameter, _ParameterizedFunction)), param
     obj = super(ParameterNode, cls).__new__(cls)
     obj.__prop = prop
     obj.__op = op
@@ -446,7 +498,7 @@ class FilterNode(Node):
 
   def resolve(self, args, kwds):
     if self.__opsymbol == 'in':
-      if not isinstance(self.__value, Parameter):
+      if not isinstance(self.__value, (Parameter, _ParameterizedFunction)):
         raise RuntimeError('Unexpanded non-Parameter IN.')
       return FilterNode(self.__name, self.__opsymbol,
                         self.__value.resolve(args, kwds))
@@ -637,19 +689,12 @@ def _args_to_val(func, args, parameters):
   if func == 'nop':
     if len(vals) != 1:
       raise TypeError('"nop" requires exactly one value')
-    return vals[0]
-  if func == 'list':
-    return vals
-  if func == 'key':
-    if len(vals) == 1 and isinstance(vals[0], basestring):
-      return model.Key(urlsafe=vals[0])
-    elif len(vals) % 2 == 0:
-      return model.Key(*vals)
-    else:
-      raise TypeError('Unexpected key args (%r)' % vals)
-  # TODO: Implement the other GQL builtins: DATETIME, DATE, TIME,
-  # USER, GEOPT.
-  raise ValueError('Unexpected func (%r)' % func)
+    return vals[0]  # May be a Parameter
+  pfunc = _ParameterizedFunction(func, vals)
+  if pfunc.is_parameterized():
+    return pfunc
+  else:
+    return pfunc.resolve((), {})
 
 
 def _get_prop_from_modelclass(modelclass, name):
@@ -677,7 +722,6 @@ def _get_prop_from_modelclass(modelclass, name):
     if issubclass(modelclass, model.Expando):
       prop = model.GenericProperty(part)
     else:
-      import pdb; pdb.set_trace()
       raise KeyError('Model %s has no property named %r' %
                      (modelclass._get_kind(), part))
 
@@ -742,7 +786,7 @@ def gql(query_string):
       val = _args_to_val(func, args, parameters)
       prop = _get_prop_from_modelclass(modelclass, name)
       assert prop._name == name, prop
-      if isinstance(val, Parameter):
+      if isinstance(val, (Parameter, _ParameterizedFunction)):
         node = ParameterNode(prop, op, val)
       elif op == 'in':
         node = prop._IN(val)
@@ -801,7 +845,9 @@ class Query(object):
       default_options: Optional QueryOptions object.
       parameters: Optional dict mapping ints and strigns to Parameter objects.
     """
-    if ancestor is not None and not isinstance(ancestor, Parameter):
+    if (ancestor is not None and
+        not isinstance(ancestor, (Parameter, _ParameterizedFunction))):
+      # XXX TODO: if a function, it must be KEY(...).
       if not isinstance(ancestor, model.Key):
         raise TypeError('ancestor must be a Key')
       if not ancestor.id():
@@ -1295,7 +1341,7 @@ class Query(object):
       assert not kwds, kwds
       return self
     ancestor = self.__ancestor
-    if isinstance(ancestor, Parameter):
+    if isinstance(ancestor, (Parameter, _ParameterizedFunction)):
       ancestor = ancestor.resolve(args, kwds)
     filters = self.__filters
     if filters is not None:

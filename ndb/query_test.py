@@ -1140,6 +1140,37 @@ class QueryTests(test_utils.NDBTest):
     q = query.gql("SELECT * FROM Foo WHERE name IN :1")
     self.assertEqual([self.jill, self.joe], q.bind(('jill', 'joe')).fetch())
 
+  def testGqlKeyFunction(self):
+    class Bar(model.Model):
+      ref = model.KeyProperty(kind=Foo)
+    noref = Bar()
+    noref.put()
+    joeref = Bar(ref=self.joe.key)
+    joeref.put()
+    moeref = Bar(ref=self.moe.key)
+    moeref.put()
+    self.assertEqual(
+      [noref],
+      Bar.gql("WHERE ref = null").fetch())
+    self.assertEqual(
+      [noref],
+      Bar.gql("WHERE ref = :1").bind(None).fetch())
+    self.assertEqual(
+      [joeref],
+      Bar.gql("WHERE ref = :1").bind(self.joe.key).fetch())
+    self.assertEqual(
+      [joeref],
+      Bar.gql("WHERE ref = KEY('%s')" % self.joe.key.urlsafe()).fetch())
+    self.assertEqual(
+      [joeref],
+      Bar.gql("WHERE ref = KEY('Foo', %s)" % self.joe.key.id()).fetch())
+    self.assertEqual(
+      [joeref],
+      Bar.gql("WHERE ref = KEY(:1)").bind(self.joe.key.urlsafe()).fetch())
+    self.assertEqual(
+      [joeref],
+      Bar.gql("WHERE ref = KEY('Foo', :1)").bind(self.joe.key.id()).fetch())
+
 
 def main():
   unittest.main()
