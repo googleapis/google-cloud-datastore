@@ -1097,15 +1097,39 @@ class QueryTests(test_utils.NDBTest):
   def testGqlLimitOffsetQueryUsingFetch(self):
     self.checkGql([self.jill], "SELECT * FROM Foo LIMIT 1 OFFSET 1",
                   fetch=lambda q: q.fetch())
-    # XXX TODO What if fetch(N+1) where LIMIT N ?
 
-  def testGqlLimittQueryUsingFetchPage(self):
-    def fetch_page_without_cursor(q, page_size=1):
-      results, cursor, more = q.fetch_page(page_size)
-      return ([r.name for r in results], more)
-    self.checkGql((['jill'], True),
-                  "SELECT * FROM Foo OFFSET 1",
-                  fetch=fetch_page_without_cursor)
+# XXX TODO: Make this work:
+##   def testGqlLimitQueryUsingFetch(self):
+##     self.checkGql([self.joe, self.jill], "SELECT * FROM Foo LIMIT 2",
+##                   fetch=lambda q: q.fetch(3))
+
+  def testGqlOffsetQueryUsingFetchPage(self):
+    q = query.gql("SELECT * FROM Foo LIMIT 2")
+    res1, cur1, more1 = q.fetch_page(1)
+    self.assertEqual([self.joe], res1)
+    self.assertEqual(True, more1)
+    res2, cur2, more2 = q.fetch_page(1, start_cursor=cur1)
+    self.assertEqual([self.jill], res2)
+    # XXX TODO: Gotta make this work:
+##     self.assertEqual(False, more2)
+##     res3, cur3, more3 = q.fetch_page(1, start_cursor=cur2)
+##     self.assertEqual([], res3)
+##     self.assertEqual(False, more3)
+##     self.assertEqual(None, cur3)
+
+  def testGqlLimitQueryUsingFetchPage(self):
+    q = query.gql("SELECT * FROM Foo OFFSET 1")
+    res1, cur1, more1 = q.fetch_page(1)
+    self.assertEqual([self.jill], res1)
+    self.assertEqual(True, more1)
+    # NOTE: Without offset=0, the following break.
+    res2, cur2, more2 = q.fetch_page(1, start_cursor=cur1, offset=0)
+    self.assertEqual([self.moe], res2)
+    self.assertEqual(False, more2)
+    res3, cur3, more3 = q.fetch_page(1, start_cursor=cur2, offset=0)
+    self.assertEqual([], res3)
+    self.assertEqual(False, more3)
+    self.assertEqual(None, cur3)
 
 
 def main():
