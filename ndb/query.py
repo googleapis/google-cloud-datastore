@@ -275,6 +275,22 @@ class Parameter(object):
     """Retrieve the key."""
     return self.__key
 
+  def resolve(self, args, kwds):
+    key = self.__key
+    if isinstance(key, (int, long)):
+      if 1 <= key <= len(args):
+        value = args[key - 1]
+      else:
+        raise datastore_errors.BadArgumentError(
+          'Parameter :%d is not bound.' % key)
+    else:
+      if key in kwds:
+        value = kwds[key]
+      else:
+        raise datastore_errors.BadArgumentError(
+          'Parameter :%s is not bound.' % key)
+    return value
+
 
 class Node(object):
   """Base class for filter expression tree nodes.
@@ -370,19 +386,7 @@ class ParameterNode(Node):
       'Parameter :%s is not bound.' % (self.__param.key,))
 
   def resolve(self, args, kwds):
-    key = self.__param.key
-    if isinstance(key, (int, long)):
-      if 1 <= key <= len(args):
-        value = args[key - 1]
-      else:
-        raise datastore_errors.BadArgumentError(
-          'Parameter :%d is not bound.' % key)
-    else:
-      if key in kwds:
-        value = kwds[key]
-      else:
-        raise datastore_errors.BadArgumentError(
-          'Parameter :%s is not bound.' % key)
+    value = self.__param.resolve(args, kwds)
     if self.__op == 'in':
       return self.__prop._IN(value)
     else:

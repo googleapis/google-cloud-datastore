@@ -1029,7 +1029,7 @@ class QueryTests(test_utils.NDBTest):
     self.assertEqual(qry.parameters, {1: query.Parameter(1),
                                     'foo': query.Parameter('foo')})
 
-  def testGqlResolveParameters(self):
+  def testGqlBindParameters(self):
     pqry = query.gql('SELECT * FROM Foo WHERE name = :1')
     qry = pqry.bind('joe')
     self.assertEqual(list(qry), [self.joe])
@@ -1130,6 +1130,15 @@ class QueryTests(test_utils.NDBTest):
     self.assertEqual([], res3)
     self.assertEqual(False, more3)
     self.assertEqual(None, cur3)
+
+  def testGqlParameterizedAncestor(self):
+    q = query.gql("SELECT * FROM Foo WHERE ANCESTOR IS :1")
+    self.assertEqual([self.moe], q.bind(self.moe.key).fetch())
+
+  def testGqlParameterizedInClause(self):
+    # NOTE: The ordering on these is questionable:
+    q = query.gql("SELECT * FROM Foo WHERE name IN :1")
+    self.assertEqual([self.jill, self.joe], q.bind(('jill', 'joe')).fetch())
 
 
 def main():
