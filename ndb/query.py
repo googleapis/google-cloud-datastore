@@ -707,7 +707,7 @@ def gql(query_string):
     filters = ConjunctionNode(*filters)
   else:
     filters = None
-  orders = _orderings_to_orders(gql_qry.orderings())
+  orders = _orderings_to_orders(gql_qry.orderings(), modelclass)
   offset = gql_qry.offset()
   limit = gql_qry.limit()
   if limit < 0:
@@ -1708,13 +1708,17 @@ def _orders_to_orderings(orders):
   raise ValueError('Bad order: %r' % (orders,))
 
 
-def _ordering_to_order(ordering):
+def _ordering_to_order(ordering, modelclass):
   name, direction = ordering
+  prop = modelclass._properties.get(name)
+  if prop is None and not isinstance(modelclass, model.Expando):
+    # TODO XXX What exception?
+    raise KeyError('%s has no property named %s' % (modelclass, name))
   return datastore_query.PropertyOrder(name, direction)
 
 
-def _orderings_to_orders(orderings):
-  orders = [_ordering_to_order(o) for o in orderings]
+def _orderings_to_orders(orderings, modelclass):
+  orders = [_ordering_to_order(o, modelclass) for o in orderings]
   if not orders:
     return None
   if len(orders) == 1:
