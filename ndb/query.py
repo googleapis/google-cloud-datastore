@@ -127,6 +127,7 @@ del with_statement  # No need to export this.
 
 __author__ = 'guido@google.com (Guido van Rossum)'
 
+import datetime
 import heapq
 import itertools
 import sys
@@ -143,7 +144,8 @@ __all__ = ['Query', 'QueryOptions', 'Cursor', 'QueryIterator',
            'RepeatedStructuredPropertyPredicate',
            'AND', 'OR', 'ConjunctionNode', 'DisjunctionNode',
            'FilterNode', 'PostFilterNode', 'FalseNode', 'Node',
-           'ParameterNode', 'Parameter', 'gql',
+           'ParameterNode', 'ParameterizedThing', 'Parameter',
+           'ParameterizedFunction', 'gql',
            ]
 
 # Re-export some useful classes from the lower-level module.
@@ -236,8 +238,23 @@ class RepeatedStructuredPropertyPredicate(datastore_query.FilterPredicate):
   # within columns.
 
 
-class Parameter(object):
-  """Used to represent a bound variable in a GQL query.
+class ParameterizedThing(object):
+  """Base class for Parameter and ParameterizedFunction.
+
+  This exists purely for isinstance() checks.
+  """
+
+  def __eq__(self, other):
+    raise NotImplementedError
+
+  def __ne__(self, other):
+    eq = self.__eq__(other)
+    if eq is not NotImplemented:
+      eq = not eq
+    return eq
+
+class Parameter(ParameterizedThing):
+  """Represents a bound variable in a GQL query.
 
   Parameter(1) corresponds to a slot labeled ":1" in a GQL query.
   Parameter('xyz') corresponds to a slot labeled ":xyz".
@@ -261,15 +278,8 @@ class Parameter(object):
 
   def __eq__(self, other):
     if not isinstance(other, Parameter):
-      return NotImplementedError
+      return NotImplemented
     return self.__key == other.__key
-
-  # TODO: Refactor this generic __ne__ into a base class.
-  def __ne__(self, other):
-    eq = self.__eq__(other)
-    if eq is not NotImplemented:
-      eq = not eq
-    return eq
 
   @property
   def key(self):
@@ -293,28 +303,39 @@ class Parameter(object):
     return value
 
 
-class _ParameterizedFunction(object):
-  """XXX"""
+class ParameterizedFunction(ParameterizedThing):
+  """Represents a GQL function with parameterized arguments.
+
+  For example, ParameterizedFunction('key', [Parameter(1)]) stands for
+  the GQL syntax KEY(:1).
+  """
 
   def __init__(self, func, values):
+    from google.appengine.ext import gql  # Late import, in case never used.
     self.__func = func
     self.__values = values
-    self.__method = getattr(self, 'do_%s' % func)
+    # NOTE: A horrible hack using GQL private variables so we can
+    # reuse GQL's implementations of its built-in functions.
+    gqli = gql.GQL('SELECT * FROM Dummy')
+    gql_method = gqli._GQL__cast_operators[func]
+    self.__method = getattr(gqli, '_GQL' + gql_method.__name__)
 
   def __repr__(self):
-    return '_ParameterizedFunction(%r, %r)' % (self.__func, self.__values)
+    return 'ParameterizedFunction(%r, %r)' % (self.__func, self.__values)
 
   def __eq__(self, other):
-    if not isinstance(other, _ParameterizedFunction):
-      return NotImplementedError
+    if not isinstance(other, ParameterizedFunction):
+      return NotImplemented
     return (self.__func == other.__func and
             self.__values == other.__values)
 
-  def __ne__(self, other):
-    eq = self.__eq__(other)
-    if eq is not NotImplemented:
-      eq = not eq
-    return eq
+  @property
+  def func(self):
+    return self.__func
+
+  @property
+  def values(self):
+    return self.__values
 
   def is_parameterized(self):
     for val in self.__values:
@@ -328,20 +349,16 @@ class _ParameterizedFunction(object):
       if isinstance(val, Parameter):
         val = val.resolve(args, kwds)
       values.append(val)
-    return self.__method(values)
-
-  def do_list(self, args):
-    return args
-
-  def do_key(self, args):
-    if len(args) == 1 and isinstance(args[0], basestring):
-      return model.Key(urlsafe=args[0])
-    elif len(args) % 2 == 0:
-      return model.Key(*args)
-    raise TypeError('Unexpected args to KEY(): %r' % args)
-
-  # TODO: Implement the other GQL builtins: DATETIME, DATE, TIME,
-  # USER, GEOPT.
+    result = self.__method(values)
+    # The gql module returns slightly different types in some cases.
+    if self.__func == 'key' and isinstance(result, datastore_types.Key):
+      result = model.Key.from_old_key(result)
+    elif self.__func == 'time' and isinstance(result, datetime.datetime):
+      result = datetime.time(result.hour, result.minute,
+                             result.second, result.microsecond)
+    elif self.__func == 'date' and isinstance(result, datetime.datetime):
+      result = datetime.date(result.year, result.month, result.day)
+    return result
 
 
 class Node(object):
@@ -409,14 +426,14 @@ class FalseNode(Node):
       'Cannot convert FalseNode to predicate')
 
 
-# TODO: Kill all asserts (again).
+# XXX TODO: Kill all asserts (again).
 class ParameterNode(Node):
   """Tree node for a parameterized filter."""
 
   def __new__(cls, prop, op, param):
     assert isinstance(prop, model.Property), prop
     assert op in _OPS, op
-    assert isinstance(param, (Parameter, _ParameterizedFunction)), param
+    assert isinstance(param, ParameterizedThing), param
     obj = super(ParameterNode, cls).__new__(cls)
     obj.__prop = prop
     obj.__op = op
@@ -498,7 +515,7 @@ class FilterNode(Node):
 
   def resolve(self, args, kwds):
     if self.__opsymbol == 'in':
-      if not isinstance(self.__value, (Parameter, _ParameterizedFunction)):
+      if not isinstance(self.__value, ParameterizedThing):
         raise RuntimeError('Unexpanded non-Parameter IN.')
       return FilterNode(self.__name, self.__opsymbol,
                         self.__value.resolve(args, kwds))
@@ -690,7 +707,7 @@ def _args_to_val(func, args, parameters):
     if len(vals) != 1:
       raise TypeError('"nop" requires exactly one value')
     return vals[0]  # May be a Parameter
-  pfunc = _ParameterizedFunction(func, vals)
+  pfunc = ParameterizedFunction(func, vals)
   if pfunc.is_parameterized():
     return pfunc
   else:
@@ -786,7 +803,7 @@ def gql(query_string):
       val = _args_to_val(func, args, parameters)
       prop = _get_prop_from_modelclass(modelclass, name)
       assert prop._name == name, prop
-      if isinstance(val, (Parameter, _ParameterizedFunction)):
+      if isinstance(val, ParameterizedThing):
         node = ParameterNode(prop, op, val)
       elif op == 'in':
         node = prop._IN(val)
@@ -845,19 +862,22 @@ class Query(object):
       default_options: Optional QueryOptions object.
       parameters: Optional dict mapping ints and strigns to Parameter objects.
     """
-    if (ancestor is not None and
-        not isinstance(ancestor, (Parameter, _ParameterizedFunction))):
-      # XXX TODO: if a function, it must be KEY(...).
-      if not isinstance(ancestor, model.Key):
-        raise TypeError('ancestor must be a Key')
-      if not ancestor.id():
-        raise ValueError('ancestor cannot be an incomplete key')
-      if app is not None:
-        if app != ancestor.app():
-          raise TypeError('app/ancestor mismatch')
-      if namespace is not None:
-        if namespace != ancestor.namespace():
-          raise TypeError('namespace/ancestor mismatch')
+    if ancestor is not None:
+      if isinstance(ancestor, ParameterizedThing):
+        if isinstance(ancestor, ParameterizedFunction):
+          if ancestor.func != 'key':
+            raise TypeError('ancestor cannot be a GQL function other than KEY')
+      else:
+        if not isinstance(ancestor, model.Key):
+          raise TypeError('ancestor must be a Key')
+        if not ancestor.id():
+          raise ValueError('ancestor cannot be an incomplete key')
+        if app is not None:
+          if app != ancestor.app():
+            raise TypeError('app/ancestor mismatch')
+        if namespace is not None:
+          if namespace != ancestor.namespace():
+            raise TypeError('namespace/ancestor mismatch')
     if filters is not None:
       if not isinstance(filters, Node):
         raise TypeError('filters must be a query Node or None; received %r' %
@@ -1341,7 +1361,7 @@ class Query(object):
       assert not kwds, kwds
       return self
     ancestor = self.__ancestor
-    if isinstance(ancestor, (Parameter, _ParameterizedFunction)):
+    if isinstance(ancestor, ParameterizedThing):
       ancestor = ancestor.resolve(args, kwds)
     filters = self.__filters
     if filters is not None:

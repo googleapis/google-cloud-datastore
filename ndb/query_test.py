@@ -1194,6 +1194,49 @@ class QueryTests(test_utils.NDBTest):
       Bar.gql("WHERE ANCESTOR IS KEY('Foo', :1)")
          .bind(self.joe.key.id()).fetch())
 
+  def testGqlAncestorFunctionError(self):
+    self.assertRaises(TypeError,
+                      query.gql, 'SELECT * FROM Foo WHERE ANCESTOR IS USER(:1)')
+
+  def testGqlOtherFunctions(self):
+    class Bar(model.Model):
+      auser = model.UserProperty()
+      apoint = model.GeoPtProperty()
+      adatetime = model.DateTimeProperty()
+      adate = model.DateProperty()
+      atime = model.TimeProperty()
+    abar = Bar(
+      auser=users.User('test@example.com'),
+      apoint=model.GeoPt(52.35, 4.9166667),
+      adatetime=datetime.datetime(2012, 2, 1, 14, 54, 0),
+      adate=datetime.date(2012, 2, 1),
+      atime=datetime.time(14, 54, 0),
+      )
+    abar.put()
+    bbar = Bar()
+    bbar.put()
+    self.assertEqual(
+      [abar.key],
+      query.gql("SELECT __key__ FROM Bar WHERE auser=USER(:1)")
+           .bind('test@example.com').fetch())
+    self.assertEqual(
+      [abar.key],
+      query.gql("SELECT __key__ FROM Bar WHERE apoint=GEOPT(:1, :2)")
+           .bind(52.35, 4.9166667).fetch())
+    self.assertEqual(
+      [abar.key],
+      query.gql("SELECT __key__ FROM Bar WHERE adatetime=DATETIME(:1)")
+           .bind('2012-02-01 14:54:00').fetch())
+    self.assertEqual(
+      [abar.key],
+      query.gql("SELECT __key__ FROM Bar WHERE adate=DATE(:1, :2, :3)")
+           .bind(2012, 2, 1).fetch())
+    self.assertEqual(
+      [abar.key],
+      query.gql("SELECT __key__ FROM Bar WHERE atime=TIME(:1, :2, :3)")
+           .bind(14, 54, 0).fetch())
+
+
 def main():
   unittest.main()
 
