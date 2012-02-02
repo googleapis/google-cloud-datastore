@@ -1,3 +1,15 @@
+Release 0.9.7 (not yet)
+
+Noteworthy fixes and features:
+
+- Issue 114: Add full GQL support.
+- New demo: guestbook.py.
+- Issue 144: Full Blobstore API.
+- Added __all__ to all modules.
+- Issue 145: Fix threading use in tests.
+
+----------------------------------------
+
 Release 0.9.6
 
 Features, speedups and bugfixes.
