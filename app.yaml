@@ -1,0 +1,32 @@
+# Demo app.
+application: ndb-experiment
+version: 1
+runtime: python
+api_version: 1
+
+handlers:
+
+- url: /django_middleware
+  script: demo/django_middleware_test.py
+
+- url: /intest.*
+  script: demo/intest.py
+
+- url: /hello.*
+  script: demo/hello.py
+
+- url: /test.*
+  script: demo/test.py
+
+- url: /home
+  script: demo/main.py
+
+- url: /account
+  script: demo/main.py
+
+- url: /.*
+  script: demo/guestbook.py
+
+builtins:
+- appstats: on
+- remote_api: on
