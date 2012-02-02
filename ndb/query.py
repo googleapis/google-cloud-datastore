@@ -719,6 +719,11 @@ def _get_prop_from_modelclass(modelclass, name):
     KeyError if the property doesn't exist and the model clas doesn't
     derive from Expando.
   """
+  if modelclass is None:
+    prop = model.GenericProperty()
+    prop._name = name  # Bypass the restriction on dots.
+    return prop
+
   if name == '__key__':
     return modelclass._key
 
@@ -770,11 +775,14 @@ def gql(query_string):
   from google.appengine.ext import gql  # Late import, in case never used.
   gql_qry = gql.GQL(query_string)
   kind = gql_qry.kind()
-  modelclass = model.Model._kind_map.get(kind)
-  if modelclass is None:
-    raise datastore_errors.BadQueryError(
-      "No model class found for kind '%s'. Did you forget to import it?" %
-      kind)
+  if kind is None:
+    modelclass = None
+  else:
+    modelclass = model.Model._kind_map.get(kind)
+    if modelclass is None:
+      raise datastore_errors.BadQueryError(
+        "No model class found for kind %r. Did you forget to import it?" %
+        (kind,))
   ancestor = None
   flt = gql_qry.filters()
   parameters = {}

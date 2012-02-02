@@ -1295,6 +1295,10 @@ class QueryTests(test_utils.NDBTest):
     q = Baz.gql("WHERE \"bar.bow\" = 1")
     self.assertEqual([bazar], q.fetch())
 
+  def testGqlKindlessQuery(self):
+    results = query.gql('SELECT *').fetch()
+    self.assertEqual([self.joe, self.jill, self.moe], results)
+
 
 def main():
   unittest.main()
