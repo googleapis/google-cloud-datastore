@@ -286,20 +286,13 @@ class Parameter(ParameterizedThing):
     """Retrieve the key."""
     return self.__key
 
-  def resolve(self, args, kwds):
+  def resolve(self, bindings, used):
     key = self.__key
-    if isinstance(key, (int, long)):
-      if 1 <= key <= len(args):
-        value = args[key - 1]
-      else:
-        raise datastore_errors.BadArgumentError(
-          'Parameter :%d is not bound.' % key)
-    else:
-      if key in kwds:
-        value = kwds[key]
-      else:
-        raise datastore_errors.BadArgumentError(
-          'Parameter :%s is not bound.' % key)
+    if key not in bindings:
+      raise datastore_errors.BadArgumentError(
+        'Parameter :%s is not bound.' % key)
+    value = bindings[key]
+    used[key] = True
     return value
 
 
@@ -343,11 +336,11 @@ class ParameterizedFunction(ParameterizedThing):
         return True
     return False
 
-  def resolve(self, args, kwds):
+  def resolve(self, bindings, used):
     values = []
     for val in self.__values:
       if isinstance(val, Parameter):
-        val = val.resolve(args, kwds)
+        val = val.resolve(bindings, used)
       values.append(val)
     result = self.__method(values)
     # The gql module returns slightly different types in some cases.
@@ -396,12 +389,12 @@ class Node(object):
     """Helper to extract post-filter Nodes, if any."""
     return None
 
-  def resolve(self, args, kwds):
+  def resolve(self, bindings, used):
     """Return a Node with Parameters replaced by the selected values.
 
     Args:
-      args: tuple of positional argument values (for :1, etc.).
-      kwds: dict of named argument values (for :foo, etc.).
+      bindings: A dict mapping integers and strings to values.
+      used: A dict into which use of use of a binding is recorded.
 
     Returns:
       A Node instance.
@@ -456,8 +449,8 @@ class ParameterNode(Node):
     raise datastore_errors.BadArgumentError(
       'Parameter :%s is not bound.' % (self.__param.key,))
 
-  def resolve(self, args, kwds):
-    value = self.__param.resolve(args, kwds)
+  def resolve(self, bindings, used):
+    value = self.__param.resolve(bindings, used)
     if self.__op == 'in':
       return self.__prop._IN(value)
     else:
@@ -616,8 +609,8 @@ class ConjunctionNode(Node):
       return self
     return ConjunctionNode(*post_filters)
 
-  def resolve(self, args, kwds):
-    nodes = [node.resolve(args, kwds) for node in self.__nodes]
+  def resolve(self, bindings, used):
+    nodes = [node.resolve(bindings, used) for node in self.__nodes]
     if nodes == self.__nodes:
       return self
     return ConjunctionNode(*nodes)
@@ -655,8 +648,8 @@ class DisjunctionNode(Node):
       return NotImplemented
     return self.__nodes == other.__nodes
 
-  def resolve(self, args, kwds):
-    nodes = [node.resolve(args, kwds) for node in self.__nodes]
+  def resolve(self, bindings, used):
+    nodes = [node.resolve(bindings, used) for node in self.__nodes]
     if nodes == self.__nodes:
       return self
     return DisjunctionNode(*nodes)
@@ -667,7 +660,7 @@ AND = ConjunctionNode
 OR = DisjunctionNode
 
 
-def _args_to_val(func, args, parameters):
+def _args_to_val(func, args):
   """Helper for GQL parsing to extract values from GQL expressions.
 
   This can extract the value from a GQL literal, return a Parameter
@@ -677,17 +670,12 @@ def _args_to_val(func, args, parameters):
   Args:
     func: A string indicating what kind of thing this is.
     args: One or more GQL values, each integer, string, or GQL literal.
-    parameters: Dict of parameters, updated in place.
   """
   from google.appengine.ext import gql  # Late import, in case never used.
   vals = []
   for arg in args:
     if isinstance(arg, (int, long, basestring)):
-      if arg in parameters:
-        val = parameters[arg]
-      else:
-        val = Parameter(arg)
-        parameters[arg] = val
+      val = Parameter(arg)
     elif isinstance(arg, gql.Literal):
       val = arg.Get()
     else:
@@ -701,7 +689,7 @@ def _args_to_val(func, args, parameters):
   if pfunc.is_parameterized():
     return pfunc
   else:
-    return pfunc.resolve((), {})
+    return pfunc.resolve({}, {})
 
 
 def _get_prop_from_modelclass(modelclass, name):
@@ -776,8 +764,7 @@ class Query(object):
 
   @utils.positional(1)
   def __init__(self, kind=None, ancestor=None, filters=None, orders=None,
-               app=None, namespace=None,
-               default_options=None, parameters=None):
+               app=None, namespace=None, default_options=None):
     """Constructor.
 
     Args:
@@ -788,7 +775,6 @@ class Query(object):
       app: Optional app id.
       namespace: Optional namespace.
       default_options: Optional QueryOptions object.
-      parameters: Optional dict mapping ints and strigns to Parameter objects.
     """
     if ancestor is not None:
       if isinstance(ancestor, ParameterizedThing):
@@ -821,7 +807,6 @@ class Query(object):
     self.__app = app
     self.__namespace = namespace
     self.__default_options = default_options
-    self.__parameters = parameters
 
   def __repr__(self):
     args = []
@@ -840,15 +825,10 @@ class Query(object):
       args.append('namespace=%r' % self.namespace)
     if self.default_options is not None:
       args.append('default_options=%r' % self.default_options)
-    if self.parameters is not None:
-      args.append('parameters=%r' % self.parameters)
     return '%s(%s)' % (self.__class__.__name__, ', '.join(args))
 
   def _get_query(self, connection):
-    if self.parameters:
-      raise datastore_errors.BadArgumentError(
-        'Cannot run query with unbound parameters %s.' %
-        self.parameters.keys())
+    self.bind()  #  Raises an exception if there are unbound parameters.
     kind = self.kind
     ancestor = self.ancestor
     if ancestor is not None:
@@ -936,8 +916,7 @@ class Query(object):
       subquery = self.__class__(kind=self.kind, ancestor=self.ancestor,
                                 filters=subfilter, orders=self.orders,
                                 app=self.app, namespace=self.namespace,
-                                default_options=self.default_options,
-                                parameters=self.parameters)
+                                default_options=self.default_options)
       subqueries.append(subquery)
     return _MultiQuery(subqueries)
 
@@ -976,11 +955,6 @@ class Query(object):
     """Accessor for the default_options (a QueryOptions instance or None)."""
     return self.__default_options
 
-  @property
-  def parameters(self):
-    """Accessor for the parameters (a dict or None)."""
-    return self.__parameters
-
   def filter(self, *args):
     """Return a new Query with additional filter(s) applied."""
     if not args:
@@ -1002,8 +976,7 @@ class Query(object):
     return self.__class__(kind=self.kind, ancestor=self.ancestor,
                           filters=pred, orders=self.orders,
                           app=self.app, namespace=self.namespace,
-                          default_options=self.default_options,
-                          parameters=self.parameters)
+                          default_options=self.default_options)
 
   def order(self, *args):
     """Return a new Query with additional sort order(s) applied."""
@@ -1031,8 +1004,7 @@ class Query(object):
     return self.__class__(kind=self.kind, ancestor=self.ancestor,
                           filters=self.filters, orders=orders,
                           app=self.app, namespace=self.namespace,
-                          default_options=self.default_options,
-                          parameters=self.parameters)
+                          default_options=self.default_options)
 
   # Datastore API using the default context.
 
@@ -1045,10 +1017,7 @@ class Query(object):
     Returns:
       A QueryIterator object.
     """
-    if self.parameters:
-      raise datastore_errors.BadArgumentError(
-        'Cannot run query with unbound parameters %s.' %
-        self.parameters.keys())
+    self.bind()  #  Raises an exception if there are unbound parameters.
     return QueryIterator(self, **q_options)
 
   __iter__ = iter
@@ -1296,25 +1265,28 @@ class Query(object):
 
   def bind(self, *args, **kwds):
     """Bind parameter values.  Returns a new Query object."""
-    if not self.parameters:
-      if args:
-        raise TypeError('This query has no parameters, so you cannot pass '
-                        'parameter values to bind().')
-      return self
+    bindings = dict(kwds)
+    for i, arg in enumerate(args):
+      bindings[i + 1] = arg
+    used = {}
     ancestor = self.ancestor
-    # TODO: Keep track of which positional parameters were used.
-    # This matches GQL in db: ot using a named parameter is okay,
-    # but positional parameters must all be used at least once.
     if isinstance(ancestor, ParameterizedThing):
-      ancestor = ancestor.resolve(args, kwds)
+      ancestor = ancestor.resolve(bindings, used)
     filters = self.filters
     if filters is not None:
-      filters = filters.resolve(args, kwds)
+      filters = filters.resolve(bindings, used)
+    unused = []
+    for i in xrange(1, 1 + len(args)):
+      if i not in used:
+        unused.append(i)
+    if unused:
+      raise datastore_errors.BadArgumentError(
+        'Positional arguments %s were given but not used.' %
+        ', '.join(str(i) for i in unused))
     return self.__class__(kind=self.kind, ancestor=ancestor,
                           filters=filters, orders=self.orders,
                           app=self.app, namespace=self.namespace,
-                          default_options=self.default_options,
-                          parameters=None)
+                          default_options=self.default_options)
 
 
 @utils.positional(1)
@@ -1341,7 +1313,6 @@ def gql(query_string, query_class=Query):
         (kind,))
   ancestor = None
   flt = gql_qry.filters()
-  parameters = {}
   filters = []
   for name_op in sorted(flt):
     name, op = name_op
@@ -1351,12 +1322,12 @@ def gql(query_string, query_class=Query):
       if len(values) != 1:
         raise ValueError('"is" requires exactly one value')
       [(func, args)] = values
-      ancestor = _args_to_val(func, args, parameters)
+      ancestor = _args_to_val(func, args)
       continue
     if op not in _OPS:
       raise NotImplementedError('Operation %r is not supported.' % op)
     for (func, args) in values:
-      val = _args_to_val(func, args, parameters)
+      val = _args_to_val(func, args)
       prop = _get_prop_from_modelclass(modelclass, name)
       if prop._name != name:
         raise RuntimeError('Whoa! _get_prop_from_modelclass(%s, %r) '
@@ -1382,14 +1353,11 @@ def gql(query_string, query_class=Query):
   if not keys_only:
     keys_only = None
   options = QueryOptions(offset=offset, limit=limit, keys_only=keys_only)
-  if not parameters:
-    parameters = None
   qry = query_class(kind=kind,
                     ancestor=ancestor,
                     filters=filters,
                     orders=orders,
-                    default_options=options,
-                    parameters=parameters)
+                    default_options=options)
   return qry
 
 
@@ -1649,17 +1617,6 @@ class _MultiQuery(object):
   def default_options(self):
     return self.__subqueries[0].default_options
 
-  @property
-  def parameters(self):
-    parameters = {}
-    for subq in self.__subqueries:
-      subp = subq.parameters
-      if subp:
-        parameters.update(subp)
-    if not parameters:
-      parameters = None
-    return parameters
-
   @tasklets.tasklet
   def run_to_queue(self, queue, conn, options=None):
     """Run this query, putting entities into the given queue."""
@@ -1803,10 +1760,6 @@ class _MultiQuery(object):
   # Datastore API using the default context.
 
   def iter(self, **q_options):
-    if self.parameters:
-      raise datastore_errors.BadArgumentError(
-        'Cannot run query with unbound parameters %s.' %
-        self.parameters.keys())
     return QueryIterator(self, **q_options)
 
   __iter__ = iter
