@@ -1779,7 +1779,10 @@ class StructuredProperty(_StructuredGetForDictMixin):
     # Import late to avoid circular imports.
     from .query import ConjunctionNode, PostFilterNode
     from .query import RepeatedStructuredPropertyPredicate
-    value = self._do_validate(value)  # None is not allowed!
+    if value is None:
+      from .query import FilterNode  # Import late to avoid circular imports.
+      return FilterNode(self._name, op, value)
+    value = self._do_validate(value)
     value = self._call_to_base_type(value)
     filters = []
     match_keys = []
@@ -1865,7 +1868,7 @@ class StructuredProperty(_StructuredGetForDictMixin):
         for unused_name, prop in sorted(value._properties.iteritems()):
           prop._serialize(value, pb, prefix + self._name + '.',
                           self._repeated or parent_repeated)
-      elif parent_repeated:
+      else:
         # Serialize a single None
         super(StructuredProperty, self)._serialize(
           entity, pb, prefix=prefix, parent_repeated=parent_repeated)

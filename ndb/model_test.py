@@ -233,9 +233,21 @@ key <
 entity_group <
 >
 property <
+  name: "root.left.left.left"
+  value <
+  >
+  multiple: false
+>
+property <
   name: "root.left.left.name"
   value <
     stringValue: "a1a"
+  >
+  multiple: false
+>
+property <
+  name: "root.left.left.rite"
+  value <
   >
   multiple: false
 >
@@ -247,9 +259,21 @@ property <
   multiple: false
 >
 property <
+  name: "root.left.rite.left"
+  value <
+  >
+  multiple: false
+>
+property <
   name: "root.left.rite.name"
   value <
     stringValue: "a1b"
+  >
+  multiple: false
+>
+property <
+  name: "root.left.rite.rite"
+  value <
   >
   multiple: false
 >
@@ -261,6 +285,12 @@ property <
   multiple: false
 >
 property <
+  name: "root.rite.left"
+  value <
+  >
+  multiple: false
+>
+property <
   name: "root.rite.name"
   value <
     stringValue: "a2"
@@ -268,9 +298,21 @@ property <
   multiple: false
 >
 property <
+  name: "root.rite.rite.left"
+  value <
+  >
+  multiple: false
+>
+property <
   name: "root.rite.rite.name"
   value <
     stringValue: "a2b"
+  >
+  multiple: false
+>
+property <
+  name: "root.rite.rite.rite"
+  value <
   >
   multiple: false
 >

@@ -425,6 +425,16 @@ class QueryTests(test_utils.NDBTest):
     q = C.query(C.c == x.c)
     self.assertEqual(q.get(), x)
 
+  def testQueryForWholeStructureNone(self):
+    class X(model.Model):
+      name = model.StringProperty()
+    class Y(model.Model):
+      x = model.StructuredProperty(X)
+    y = Y(x=None)
+    y.put()
+    q = Y.query(Y.x == None)
+    self.assertEqual(q.fetch(), [y])
+
   def testQueryAncestorConsistentWithAppId(self):
     class Employee(model.Model):
       pass
@@ -1256,6 +1266,10 @@ class QueryTests(test_utils.NDBTest):
     self.assertEqual([barf], q.fetch())
     q = Bar.gql("WHERE foo = :1").bind(Foo(name='two', rate=4))
     self.assertEqual([barg], q.fetch())
+    q = Bar.gql("WHERE foo = NULL")
+    self.assertEqual([barh], q.fetch())
+    q = Bar.gql("WHERE foo = :1")
+    self.assertEqual([barh], q.bind(None).fetch())
 
   def testGqlExpandoProperty(self):
     class Bar(model.Expando):
