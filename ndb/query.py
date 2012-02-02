@@ -426,7 +426,6 @@ class FalseNode(Node):
       'Cannot convert FalseNode to predicate')
 
 
-# XXX TODO: Kill all asserts (again).
 class ParameterNode(Node):
   """Tree node for a parameterized filter."""
 
@@ -1820,7 +1819,10 @@ def _orders_to_orderings(orders):
 def _ordering_to_order(ordering, modelclass):
   name, direction = ordering
   prop = _get_prop_from_modelclass(modelclass, name)
-  assert prop._name == name, prop
+  if prop._name != name:
+    raise RuntimeError('Whoa! _get_prop_from_modelclass(%s, %r) '
+                       'returned a property whose name is %r?!' %
+                       (modelclass.__name__, name, prop._name))
   return datastore_query.PropertyOrder(name, direction)
 
 

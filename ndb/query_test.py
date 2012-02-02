@@ -1269,6 +1269,18 @@ class QueryTests(test_utils.NDBTest):
     q = Bar.gql("WHERE nude = :1")
     self.assertEqual([bare], q.bind(42).fetch())
 
+  def testGqlExpandoInStructure(self):
+    class Bar(model.Expando):
+      pass
+    class Baz(model.Model):
+      bar = model.StructuredProperty(Bar)
+    bazar = Baz(bar=Bar(bow=1, wow=2))
+    bazar.put()
+    bazone = Baz()
+    bazone.put()
+    q = Baz.gql("WHERE \"bar.bow\" = 1")
+    self.assertEqual([bazar], q.fetch())
+
 
 def main():
   unittest.main()
