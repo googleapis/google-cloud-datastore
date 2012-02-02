@@ -559,7 +559,7 @@ class Property(ModelAttribute):
                  '_choices', '_validator', '_verbose_name']
   _positional = 1  # Only name is a positional argument.
 
-  @utils.positional(1 + _positional)
+  @utils.positional(1 + _positional)  # Add 1 for self.
   def __init__(self, name=None, indexed=None, repeated=None,
                required=None, default=None, choices=None, validator=None,
                verbose_name=None):
@@ -567,6 +567,8 @@ class Property(ModelAttribute):
     if name is not None:
       if isinstance(name, unicode):
         name = name.encode('utf-8')
+      if not isinstance(name, str):
+        raise TypeError('Name %r is not a string' % (name,))
       if '.' in name:
         raise ValueError('Name %r cannot contain period characters' % (name,))
       self._name = name
@@ -1488,10 +1490,40 @@ class KeyProperty(Property):
 
   _kind = None
 
-  @utils.positional(1 + Property._positional)
+  @utils.positional(2 + Property._positional)
   def __init__(self, *args, **kwds):
-    kind = kwds.pop('kind', None)
-    super(KeyProperty, self).__init__(*args, **kwds)
+    # Support several positional signatures:
+    # ()  =>  name=None, kind from kwds
+    # (None)  =>  name=None, kind from kwds
+    # (name)  =>  name=arg 0, kind from kwds
+    # (kind)  =>  name=None, kind=arg 0
+    # (name, kind)  => name=arg 0, kind=arg 1
+    # (kind, name)  => name=arg 1, kind=arg 0
+    # The positional kind must be a Model subclass; it cannot be a string.
+    name = kind = None
+
+    for arg in args:
+      if isinstance(arg, basestring):
+        if name is not None:
+          raise TypeError('You can only specify one name')
+        name = arg
+      elif isinstance(arg, type) and issubclass(arg, Model):
+        if kind is not None:
+          raise TypeError('You can only specify one kind')
+        kind = arg
+      elif arg is not None:
+        raise TypeError('Unexpected positional argument: %r' % (arg,))
+
+    if name is None:
+      name = kwds.pop('name', None)
+    elif 'name' in kwds:
+      raise TypeError('You can only specify name once')
+
+    if kind is None:
+      kind = kwds.pop('kind', None)
+    elif 'kind' in kwds:
+      raise TypeError('You can only specify kind once')
+
     if kind is not None:
       if isinstance(kind, type) and issubclass(kind, Model):
         kind = kind._get_kind()
@@ -1499,6 +1531,9 @@ class KeyProperty(Property):
         kind = kind.encode('utf-8')
       if not isinstance(kind, str):
         raise TypeError('kind must be a Model class or a string')
+
+    super(KeyProperty, self).__init__(name, **kwds)
+
     self._kind = kind
 
   def _datastore_type(self, value):
