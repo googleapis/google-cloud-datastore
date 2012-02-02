@@ -1139,6 +1139,12 @@ class QueryTests(test_utils.NDBTest):
     # NOTE: The ordering on these is questionable:
     q = query.gql("SELECT * FROM Foo WHERE name IN :1")
     self.assertEqual([self.jill, self.joe], q.bind(('jill', 'joe')).fetch())
+    # Exercise the LIST function.
+    q = query.gql("SELECT * FROM Foo WHERE name IN (:a, :b)")
+    self.assertEqual([self.jill, self.joe], q.bind(a='jill', b='joe').fetch())
+    # Generate OR/AND nodes containing parameter nodes.
+    q = query.gql("SELECT * FROM Foo WHERE name = :1 AND rate in (1, 2)")
+    self.assertEqual([self.jill], q.bind('jill').fetch())
 
   def testGqlKeyFunction(self):
     class Bar(model.Model):
@@ -1209,7 +1215,7 @@ class QueryTests(test_utils.NDBTest):
       auser=users.User('test@example.com'),
       apoint=model.GeoPt(52.35, 4.9166667),
       adatetime=datetime.datetime(2012, 2, 1, 14, 54, 0),
-      adate=datetime.date(2012, 2, 1),
+      adate=datetime.date(2012, 2, 2),
       atime=datetime.time(14, 54, 0),
       )
     abar.put()
@@ -1229,12 +1235,12 @@ class QueryTests(test_utils.NDBTest):
            .bind('2012-02-01 14:54:00').fetch())
     self.assertEqual(
       [abar.key],
-      query.gql("SELECT __key__ FROM Bar WHERE adate=DATE(:1, :2, :3)")
-           .bind(2012, 2, 1).fetch())
+      query.gql("SELECT __key__ FROM Bar WHERE adate=DATE(:1, :2, :2)")
+           .bind(2012, 2).fetch())
     self.assertEqual(
       [abar.key],
-      query.gql("SELECT __key__ FROM Bar WHERE atime=TIME(:1, :2, :3)")
-           .bind(14, 54, 0).fetch())
+      query.gql("SELECT __key__ FROM Bar WHERE atime=TIME(:hour, :min, :sec)")
+           .bind(hour=14, min=54, sec=0).fetch())
 
   def testGqlStructuredPropertyQuery(self):
     class Bar(model.Model):
@@ -1250,6 +1256,18 @@ class QueryTests(test_utils.NDBTest):
     self.assertEqual([barf], q.fetch())
     q = Bar.gql("WHERE foo = :1").bind(Foo(name='two', rate=4))
     self.assertEqual([barg], q.fetch())
+
+  def testGqlExpandoProperty(self):
+    class Bar(model.Expando):
+      pass
+    babar = Bar(name='Babar')
+    babar.put()
+    bare = Bar(nude=42)
+    bare.put()
+    q = Bar.gql("WHERE name = 'Babar'")
+    self.assertEqual([babar], q.fetch())
+    q = Bar.gql("WHERE nude = :1")
+    self.assertEqual([bare], q.bind(42).fetch())
 
 
 def main():

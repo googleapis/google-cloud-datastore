@@ -431,9 +431,12 @@ class ParameterNode(Node):
   """Tree node for a parameterized filter."""
 
   def __new__(cls, prop, op, param):
-    assert isinstance(prop, model.Property), prop
-    assert op in _OPS, op
-    assert isinstance(param, ParameterizedThing), param
+    if not isinstance(prop, model.Property):
+      raise TypeError('Expected a Property, got %r' % (prop,))
+    if op not in _OPS:
+      raise TypeError('Expected a valid operator, got %r' % (op,))
+    if not isinstance(param, ParameterizedThing):
+      raise TypeError('Expected a ParameterizedThing, got %r' % (param,))
     obj = super(ParameterNode, cls).__new__(cls)
     obj.__prop = prop
     obj.__op = op
@@ -513,15 +516,6 @@ class FilterNode(Node):
     return datastore_query.make_filter(self.__name.decode('utf-8'),
                                        self.__opsymbol, value)
 
-  def resolve(self, args, kwds):
-    if self.__opsymbol == 'in':
-      if not isinstance(self.__value, ParameterizedThing):
-        raise RuntimeError('Unexpanded non-Parameter IN.')
-      return FilterNode(self.__name, self.__opsymbol,
-                        self.__value.resolve(args, kwds))
-    else:
-      return self
-
 
 class PostFilterNode(Node):
   """Tree node representing an in-memory filtering operation.
@@ -548,9 +542,6 @@ class PostFilterNode(Node):
       return self.predicate
     else:
       return None
-
-  def resolve(self, args, kwds):
-    return self
 
 
 class ConjunctionNode(Node):
@@ -739,12 +730,14 @@ def _get_prop_from_modelclass(modelclass, name):
     if issubclass(modelclass, model.Expando):
       prop = model.GenericProperty(part)
     else:
-      raise KeyError('Model %s has no property named %r' %
-                     (modelclass._get_kind(), part))
+      raise TypeError('Model %s has no property named %r' %
+                      (modelclass._get_kind(), part))
 
   while more:
     part = more.pop(0)
-    assert isinstance(prop, model.StructuredProperty), prop
+    if not isinstance(prop, model.StructuredProperty):
+      raise TypeError('Model %s has no property named %r' %
+                      (modelclass._get_kind(), part))
     maybe = getattr(prop, part, None)
     if isinstance(maybe, model.Property) and maybe._name == part:
       prop = maybe
@@ -802,7 +795,10 @@ def gql(query_string):
     for (func, args) in values:
       val = _args_to_val(func, args, parameters)
       prop = _get_prop_from_modelclass(modelclass, name)
-      assert prop._name == name, prop
+      if prop._name != name:
+        raise RuntimeError('Whoa! _get_prop_from_modelclass(%s, %r) '
+                           'returned a property whose name is %r?!' %
+                           (modelclass.__name__, name, prop._name))
       if isinstance(val, ParameterizedThing):
         node = ParameterNode(prop, op, val)
       elif op == 'in':
@@ -1357,10 +1353,14 @@ class Query(object):
   def bind(self, *args, **kwds):
     """Bind parameter values.  Returns a new Query object."""
     if not self.__parameters:
-      assert not args, args
-      assert not kwds, kwds
+      if args:
+        raise TypeError('This query has no parameters, so you cannot pass '
+                        'parameter values to bind().')
       return self
     ancestor = self.__ancestor
+    # TODO: Keep track of which positional parameters were used.
+    # This matches GQL in db: ot using a named parameter is okay,
+    # but positional parameters must all be used at least once.
     if isinstance(ancestor, ParameterizedThing):
       ancestor = ancestor.resolve(args, kwds)
     filters = self.__filters
