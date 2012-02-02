@@ -762,81 +762,6 @@ def _get_prop_from_modelclass(modelclass, name):
   return prop
 
 
-def gql(query_string):
-  """Parse a GQL query string.
-
-  Args:
-    query_string: Full GQL query, e.g. 'SELECT * FROM Kind WHERE prop = 1'.
-    *args, **kwds: Optional bindings.
-
-  Returns:
-    A Query instance.
-  """
-  from google.appengine.ext import gql  # Late import, in case never used.
-  gql_qry = gql.GQL(query_string)
-  kind = gql_qry.kind()
-  if kind is None:
-    modelclass = None
-  else:
-    modelclass = model.Model._kind_map.get(kind)
-    if modelclass is None:
-      raise datastore_errors.BadQueryError(
-        "No model class found for kind %r. Did you forget to import it?" %
-        (kind,))
-  ancestor = None
-  flt = gql_qry.filters()
-  parameters = {}
-  filters = []
-  for name_op in sorted(flt):
-    name, op = name_op
-    values = flt[name_op]
-    op = op.lower()
-    if op == 'is' and name == gql.GQL._GQL__ANCESTOR:
-      if len(values) != 1:
-        raise ValueError('"is" requires exactly one value')
-      [(func, args)] = values
-      ancestor = _args_to_val(func, args, parameters)
-      continue
-    if op not in _OPS:
-      raise NotImplementedError('Operation %r is not supported.' % op)
-    for (func, args) in values:
-      val = _args_to_val(func, args, parameters)
-      prop = _get_prop_from_modelclass(modelclass, name)
-      if prop._name != name:
-        raise RuntimeError('Whoa! _get_prop_from_modelclass(%s, %r) '
-                           'returned a property whose name is %r?!' %
-                           (modelclass.__name__, name, prop._name))
-      if isinstance(val, ParameterizedThing):
-        node = ParameterNode(prop, op, val)
-      elif op == 'in':
-        node = prop._IN(val)
-      else:
-        node = prop._comparison(op, val)
-      filters.append(node)
-  if filters:
-    filters = ConjunctionNode(*filters)
-  else:
-    filters = None
-  orders = _orderings_to_orders(gql_qry.orderings(), modelclass)
-  offset = gql_qry.offset()
-  limit = gql_qry.limit()
-  if limit < 0:
-    limit = None
-  keys_only = gql_qry._keys_only
-  if not keys_only:
-    keys_only = None
-  options = QueryOptions(offset=offset, limit=limit, keys_only=keys_only)
-  if not parameters:
-    parameters = None
-  qry = Query(kind=kind,
-              ancestor=ancestor,
-              filters=filters,
-              orders=orders,
-              default_options=options,
-              parameters=parameters)
-  return qry
-
-
 class Query(object):
   """Query object.
 
@@ -900,45 +825,45 @@ class Query(object):
 
   def __repr__(self):
     args = []
-    if self.__kind is not None:
-      args.append('kind=%r' % self.__kind)
-    if self.__ancestor is not None:
-      args.append('ancestor=%r' % self.__ancestor)
-    if self.__filters is not None:
-      args.append('filters=%r' % self.__filters)
-    if self.__orders is not None:
+    if self.kind is not None:
+      args.append('kind=%r' % self.kind)
+    if self.ancestor is not None:
+      args.append('ancestor=%r' % self.ancestor)
+    if self.filters is not None:
+      args.append('filters=%r' % self.filters)
+    if self.orders is not None:
       # TODO: Format orders better.
       args.append('orders=...')  # PropertyOrder doesn't have a good repr().
-    if self.__app is not None:
-      args.append('app=%r' % self.__app)
-    if self.__namespace is not None:
-      args.append('namespace=%r' % self.__namespace)
-    if self.__default_options is not None:
-      args.append('default_options=%r' % self.__default_options)
-    if self.__parameters is not None:
-      args.append('parameters=%r' % self.__parameters)
+    if self.app is not None:
+      args.append('app=%r' % self.app)
+    if self.namespace is not None:
+      args.append('namespace=%r' % self.namespace)
+    if self.default_options is not None:
+      args.append('default_options=%r' % self.default_options)
+    if self.parameters is not None:
+      args.append('parameters=%r' % self.parameters)
     return '%s(%s)' % (self.__class__.__name__, ', '.join(args))
 
   def _get_query(self, connection):
-    if self.__parameters:
+    if self.parameters:
       raise datastore_errors.BadArgumentError(
         'Cannot run query with unbound parameters %s.' %
-        self.__parameters.keys())
-    kind = self.__kind
-    ancestor = self.__ancestor
+        self.parameters.keys())
+    kind = self.kind
+    ancestor = self.ancestor
     if ancestor is not None:
       ancestor = connection.adapter.key_to_pb(ancestor)
-    filters = self.__filters
+    filters = self.filters
     post_filters = None
     if filters is not None:
       post_filters = filters._post_filters()
       filters = filters._to_filter()
-    dsquery = datastore_query.Query(app=self.__app,
-                                    namespace=self.__namespace,
+    dsquery = datastore_query.Query(app=self.app,
+                                    namespace=self.namespace,
                                     kind=kind.decode('utf-8') if kind else None,
                                     ancestor=ancestor,
                                     filter_predicate=filters,
-                                    order=self.__orders)
+                                    order=self.orders)
     if post_filters is not None:
       dsquery = datastore_query._AugmentedQuery(
         dsquery,
@@ -998,18 +923,21 @@ class Query(object):
     raise tasklets.Return(results)
 
   def _needs_multi_query(self):
-    filters = self.__filters
+    filters = self.filters
     return filters is not None and isinstance(filters, DisjunctionNode)
 
   def _maybe_multi_query(self):
     if not self._needs_multi_query():
       return None
     # Switch to a _MultiQuery.
-    filters = self.__filters
+    filters = self.filters
     subqueries = []
     for subfilter in filters:
-      subquery = Query(kind=self.__kind, ancestor=self.__ancestor,
-                       filters=subfilter, orders=self.__orders)
+      subquery = self.__class__(kind=self.kind, ancestor=self.ancestor,
+                                filters=subfilter, orders=self.orders,
+                                app=self.app, namespace=self.namespace,
+                                default_options=self.default_options,
+                                parameters=self.parameters)
       subqueries.append(subquery)
     return _MultiQuery(subqueries)
 
@@ -1017,11 +945,6 @@ class Query(object):
   def kind(self):
     """Accessor for the kind (a string or None)."""
     return self.__kind
-
-  @property
-  def namespace(self):
-    """Accessor for the namespace (a string or None)."""
-    return self.__namespace
 
   @property
   def ancestor(self):
@@ -1037,6 +960,16 @@ class Query(object):
   def orders(self):
     """Accessor for the filters (a datastore_query.Order or None)."""
     return self.__orders
+
+  @property
+  def app(self):
+    """Accessor for the app (a string or None)."""
+    return self.__app
+
+  @property
+  def namespace(self):
+    """Accessor for the namespace (a string or None)."""
+    return self.__namespace
 
   @property
   def default_options(self):
@@ -1067,8 +1000,10 @@ class Query(object):
     else:
       pred = ConjunctionNode(*preds)
     return self.__class__(kind=self.kind, ancestor=self.ancestor,
-                          orders=self.orders, filters=pred,
-                          namespace=self.namespace)
+                          filters=pred, orders=self.orders,
+                          app=self.app, namespace=self.namespace,
+                          default_options=self.default_options,
+                          parameters=self.parameters)
 
   def order(self, *args):
     """Return a new Query with additional sort order(s) applied."""
@@ -1076,7 +1011,7 @@ class Query(object):
     if not args:
       return self
     orders = []
-    o = self.__orders
+    o = self.orders
     if o:
       orders.append(o)
     for arg in args:
@@ -1095,7 +1030,9 @@ class Query(object):
       orders = datastore_query.CompositeOrder(orders)
     return self.__class__(kind=self.kind, ancestor=self.ancestor,
                           filters=self.filters, orders=orders,
-                          namespace=self.namespace)
+                          app=self.app, namespace=self.namespace,
+                          default_options=self.default_options,
+                          parameters=self.parameters)
 
   # Datastore API using the default context.
 
@@ -1108,10 +1045,10 @@ class Query(object):
     Returns:
       A QueryIterator object.
     """
-    if self.__parameters:
+    if self.parameters:
       raise datastore_errors.BadArgumentError(
         'Cannot run query with unbound parameters %s.' %
-        self.__parameters.keys())
+        self.parameters.keys())
     return QueryIterator(self, **q_options)
 
   __iter__ = iter
@@ -1353,34 +1290,107 @@ class Query(object):
         raise TypeError('You cannot use config= and options= at the same time')
       q_options['config'] = q_options.pop('options')
     options = QueryOptions(**q_options)
-    if self.__default_options is not None:
-      options = self.__default_options.merge(options)
+    if self.default_options is not None:
+      options = self.default_options.merge(options)
     return options
 
   def bind(self, *args, **kwds):
     """Bind parameter values.  Returns a new Query object."""
-    if not self.__parameters:
+    if not self.parameters:
       if args:
         raise TypeError('This query has no parameters, so you cannot pass '
                         'parameter values to bind().')
       return self
-    ancestor = self.__ancestor
+    ancestor = self.ancestor
     # TODO: Keep track of which positional parameters were used.
     # This matches GQL in db: ot using a named parameter is okay,
     # but positional parameters must all be used at least once.
     if isinstance(ancestor, ParameterizedThing):
       ancestor = ancestor.resolve(args, kwds)
-    filters = self.__filters
+    filters = self.filters
     if filters is not None:
       filters = filters.resolve(args, kwds)
-    return Query(kind=self.__kind,
-                 ancestor=ancestor,
-                 filters=filters,
-                 orders=self.__orders,
-                 app=self.__app,
-                 namespace=self.__namespace,
-                 default_options=self.__default_options,
-                 parameters=None)
+    return self.__class__(kind=self.kind, ancestor=ancestor,
+                          filters=filters, orders=self.orders,
+                          app=self.app, namespace=self.namespace,
+                          default_options=self.default_options,
+                          parameters=None)
+
+
+@utils.positional(1)
+def gql(query_string, query_class=Query):
+  """Parse a GQL query string.
+
+  Args:
+    query_string: Full GQL query, e.g. 'SELECT * FROM Kind WHERE prop = 1'.
+    query_class: Optional class to use, default Query.
+
+  Returns:
+    An instance of query_class.
+  """
+  from google.appengine.ext import gql  # Late import, in case never used.
+  gql_qry = gql.GQL(query_string)
+  kind = gql_qry.kind()
+  if kind is None:
+    modelclass = None
+  else:
+    modelclass = model.Model._kind_map.get(kind)
+    if modelclass is None:
+      raise datastore_errors.BadQueryError(
+        "No model class found for kind %r. Did you forget to import it?" %
+        (kind,))
+  ancestor = None
+  flt = gql_qry.filters()
+  parameters = {}
+  filters = []
+  for name_op in sorted(flt):
+    name, op = name_op
+    values = flt[name_op]
+    op = op.lower()
+    if op == 'is' and name == gql.GQL._GQL__ANCESTOR:
+      if len(values) != 1:
+        raise ValueError('"is" requires exactly one value')
+      [(func, args)] = values
+      ancestor = _args_to_val(func, args, parameters)
+      continue
+    if op not in _OPS:
+      raise NotImplementedError('Operation %r is not supported.' % op)
+    for (func, args) in values:
+      val = _args_to_val(func, args, parameters)
+      prop = _get_prop_from_modelclass(modelclass, name)
+      if prop._name != name:
+        raise RuntimeError('Whoa! _get_prop_from_modelclass(%s, %r) '
+                           'returned a property whose name is %r?!' %
+                           (modelclass.__name__, name, prop._name))
+      if isinstance(val, ParameterizedThing):
+        node = ParameterNode(prop, op, val)
+      elif op == 'in':
+        node = prop._IN(val)
+      else:
+        node = prop._comparison(op, val)
+      filters.append(node)
+  if filters:
+    filters = ConjunctionNode(*filters)
+  else:
+    filters = None
+  orders = _orderings_to_orders(gql_qry.orderings(), modelclass)
+  offset = gql_qry.offset()
+  limit = gql_qry.limit()
+  if limit < 0:
+    limit = None
+  keys_only = gql_qry._keys_only
+  if not keys_only:
+    keys_only = None
+  options = QueryOptions(offset=offset, limit=limit, keys_only=keys_only)
+  if not parameters:
+    parameters = None
+  qry = query_class(kind=kind,
+                    ancestor=ancestor,
+                    filters=filters,
+                    orders=orders,
+                    default_options=options,
+                    parameters=parameters)
+  return qry
 
 
 class QueryIterator(object):

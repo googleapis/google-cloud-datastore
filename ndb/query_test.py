@@ -1299,6 +1299,30 @@ class QueryTests(test_utils.NDBTest):
     results = query.gql('SELECT *').fetch()
     self.assertEqual([self.joe, self.jill, self.moe], results)
 
+  def testGqlSubclass(self):
+    # You can pass gql() a subclass of Query and it'll use that.
+    class MyQuery(query.Query):
+      pass
+    q = query.gql("SELECT * FROM Foo", query_class=MyQuery)
+    self.assertTrue(isinstance(q, MyQuery))
+    # This also works for Model.gql().
+    q = Foo.gql("WHERE name = :1", query_class=MyQuery)
+    self.assertTrue(isinstance(q, MyQuery))
+    # And bind() preserves the class.
+    qb = q.bind('joe')
+    self.assertTrue(isinstance(qb, MyQuery))
+    # .filter() also preserves the class, as well as default_options
+    # and parameters.
+    qf = q.filter(Foo.rate == 1)
+    self.assertTrue(isinstance(qf, MyQuery))
+    self.assertEqual(qf.default_options, q.default_options)
+    self.assertEqual(qf.parameters, q.parameters)
+    # Same for .options().
+    qo = q.order(-Foo.name)
+    self.assertTrue(isinstance(qo, MyQuery))
+    self.assertEqual(qo.default_options, q.default_options)
+    self.assertEqual(qo.parameters, q.parameters)
+
 
 def main():
   unittest.main()
