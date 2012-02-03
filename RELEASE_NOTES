@@ -4,6 +4,8 @@ Noteworthy fixes and features:
 
 - Issue 114: Add full GQL support.
 - Issue 144: Full Blobstore API.
+- The @transactional decorator now supports options, e.g.:
+  @transactional(retries=1, xg=True).
 - If the value for a StructuredProperty is None, an explicit None
   is written and can be queried for.
 - New demo: guestbook.py.

@@ -2777,6 +2777,35 @@ class ModelTests(test_utils.NDBTest):
     self.assertEqual(logs[0], logs[1])
     self.assertNotEqual(before, logs[0])
 
+  def testTransactionalDecoratorExtensions(self):
+    # Test that @transactional(flag=value, ...) works too.
+    @model.transactional()
+    def callback1(log):
+      self.assertTrue(model.in_transaction())
+      ctx = tasklets.get_context()
+      orig_async_commit = ctx._conn.async_commit
+      def wrap_async_commit(options):
+        log.append(options)
+        return orig_async_commit(options)
+      ctx._conn.async_commit = wrap_async_commit
+    log = []
+    callback1(log)
+    self.assertEqual(log, [None])
+
+    @model.transactional(retries=42)
+    def callback2(log):
+      self.assertTrue(model.in_transaction())
+      ctx = tasklets.get_context()
+      orig_async_commit = ctx._conn.async_commit
+      def wrap_async_commit(options):
+        log.append(options)
+        return orig_async_commit(options)
+      ctx._conn.async_commit = wrap_async_commit
+    log = []
+    callback2(log)
+    self.assertEqual(len(log), 1)
+    self.assertEqual(log[0].retries, 42)
+
   def testPropertyFilters(self):
     class M(model.Model):
       dt = model.DateTimeProperty()

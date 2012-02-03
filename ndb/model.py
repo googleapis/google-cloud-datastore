@@ -2975,22 +2975,39 @@ def in_transaction():
 
 
 @utils.positional(1)
-def transactional(func):
+def transactional(func=None, **ctx_options):
   """Decorator to make a function automatically run in a transaction.
 
   If we're already in a transaction this is a no-op.
 
-  Note: If you need to override the retry count, or want some kind of
-  async behavior, or pass Context options, use the transaction()
-  function above.
+  This supports two forms:
+
+  (1) Vanilla:
+      @transactional
+      def callback(arg):
+        ...
+
+  (2) With options:
+      @transactional(retries=1)
+      def callback(arg):
+        ...
   """
-  @utils.wrapping(func)
-  def transactional_wrapper(*args, **kwds):
-    if in_transaction():
-      return func(*args, **kwds)
-    else:
-      return transaction(lambda: func(*args, **kwds))
-  return transactional_wrapper
+  if func is not None:
+    # Form (1), vanilla.
+    if ctx_options:
+      raise TypeError('@transactional() does not take positional arguments')
+    return transactional()(func)
+
+  # Form (2), with options.
+  def outer_transactional_wrapper(func):
+    @utils.wrapping(func)
+    def transactional_wrapper(*args, **kwds):
+      if in_transaction():
+        return func(*args, **kwds)
+      else:
+        return transaction(lambda: func(*args, **kwds), **ctx_options)
+    return transactional_wrapper
+  return outer_transactional_wrapper
 
 
 def get_multi_async(keys, **ctx_options):
