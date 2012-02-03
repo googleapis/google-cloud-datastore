@@ -1,12 +1,12 @@
-Release 0.9.7 (not yet)
+Release 0.9.7
 
 Noteworthy fixes and features:
 
 - Issue 114: Add full GQL support.
+- Issue 144: Full Blobstore API.
 - If the value for a StructuredProperty is None, an explicit None
   is written and can be queried for.
 - New demo: guestbook.py.
-- Issue 144: Full Blobstore API.
 - Added __all__ to all modules.
 - Issue 145: Fix threading use in tests.
 
