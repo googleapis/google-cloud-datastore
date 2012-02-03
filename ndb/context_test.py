@@ -725,10 +725,8 @@ class ContextTests(test_utils.NDBTest):
       raise tasklets.Return(42)
     self.assertRaises(datastore_errors.BadRequestError,
                       self.ctx.transaction(tx).check_success)
-    if hasattr(datastore_rpc.TransactionOptions, 'xg'):
-      # In 1.5.4, XG transactions are not supported
-      res = self.ctx.transaction(tx, xg=True).get_result()
-      self.assertEqual(res, 42)
+    res = self.ctx.transaction(tx, xg=True).get_result()
+    self.assertEqual(res, 42)
 
   def testContext_TransactionMemcache(self):
     class Foo(model.Model):
