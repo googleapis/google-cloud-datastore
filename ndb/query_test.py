@@ -1297,10 +1297,7 @@ class QueryTests(test_utils.NDBTest):
     # You can pass gql() a subclass of Query and it'll use that.
     class MyQuery(query.Query):
       pass
-    q = query.gql("SELECT * FROM Foo", query_class=MyQuery)
-    self.assertTrue(isinstance(q, MyQuery))
-    # This also works for Model.gql().
-    q = Foo.gql("WHERE name = :1", query_class=MyQuery)
+    q = query._gql("SELECT * FROM Foo WHERE name = :1", query_class=MyQuery)
     self.assertTrue(isinstance(q, MyQuery))
     # And bind() preserves the class.
     qb = q.bind('joe')
@@ -1322,6 +1319,10 @@ class QueryTests(test_utils.NDBTest):
     self.assertRaises(datastore_errors.BadArgumentError, q.bind, self.joe.key)
     self.assertRaises(datastore_errors.BadArgumentError, q.bind,
                       self.joe.key, 2, 42)
+
+  def testGqlWithBind(self):
+    q = Foo.gql("WHERE name = :1", 'joe')
+    self.assertEqual([self.joe], q.fetch())
 
 
 def main():

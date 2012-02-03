@@ -1265,6 +1265,10 @@ class Query(object):
 
   def bind(self, *args, **kwds):
     """Bind parameter values.  Returns a new Query object."""
+    return self._bind(args, kwds)
+
+  def _bind(self, args, kwds):
+    """Bind parameter values.  Returns a new Query object."""
     bindings = dict(kwds)
     for i, arg in enumerate(args):
       bindings[i + 1] = arg
@@ -1289,9 +1293,25 @@ class Query(object):
                           default_options=self.default_options)
 
 
-@utils.positional(1)
-def gql(query_string, query_class=Query):
+def gql(query_string, *args, **kwds):
   """Parse a GQL query string.
+
+  Args:
+    query_string: Full GQL query, e.g. 'SELECT * FROM Kind WHERE prop = 1'.
+    *args, **kwds: If present, used to call bind().
+
+  Returns:
+    An instance of query_class.
+  """
+  qry = _gql(query_string)
+  if args or kwds:
+    qry = qry._bind(args, kwds)
+  return qry
+
+
+@utils.positional(1)
+def _gql(query_string, query_class=Query):
+  """Parse a GQL query string (internal version).
 
   Args:
     query_string: Full GQL query, e.g. 'SELECT * FROM Kind WHERE prop = 1'.
