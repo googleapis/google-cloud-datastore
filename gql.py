@@ -1,7 +1,9 @@
 import readline
-import startup
 
 from ndb import *
+from ndb import metadata
+
+import startup
 
 def repl():
   while True:
