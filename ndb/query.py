@@ -1263,6 +1263,22 @@ class Query(object):
       options = self.default_options.merge(options)
     return options
 
+  def analyze(self):
+    """Return a dict giving the required parameters."""
+    class MockBindings(dict):
+      def __contains__(self, key):
+        self[key] = None
+        return True
+    bindings = MockBindings()
+    used = {}
+    ancestor = self.ancestor
+    if isinstance(ancestor, ParameterizedThing):
+      ancestor = ancestor.resolve(bindings, used)
+    filters = self.filters
+    if filters is not None:
+      filters = filters.resolve(bindings, used)
+    return sorted(used)  # Returns only the keys.
+
   def bind(self, *args, **kwds):
     """Bind parameter values.  Returns a new Query object."""
     return self._bind(args, kwds)

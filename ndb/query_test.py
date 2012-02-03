@@ -1324,6 +1324,16 @@ class QueryTests(test_utils.NDBTest):
     q = Foo.gql("WHERE name = :1", 'joe')
     self.assertEqual([self.joe], q.fetch())
 
+  def testGqlAnalyze(self):
+    q = Foo.gql("WHERE name = 'joe'")
+    self.assertEqual([], q.analyze())
+    q = Foo.gql("WHERE name = :1 AND rate = :2")
+    self.assertEqual([1, 2], q.analyze())
+    q = Foo.gql("WHERE name = :foo AND rate = :bar")
+    self.assertEqual(['bar', 'foo'], q.analyze())
+    q = Foo.gql("WHERE tags = :1 AND name = :foo AND rate = :bar")
+    self.assertEqual([1, 'bar', 'foo'], q.analyze())
+
 
 def main():
   unittest.main()
