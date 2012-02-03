@@ -1264,7 +1264,7 @@ class Query(object):
     return options
 
   def analyze(self):
-    """Return a dict giving the required parameters."""
+    """Return a list giving the parameters required by a query."""
     class MockBindings(dict):
       def __contains__(self, key):
         self[key] = None
