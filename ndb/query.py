@@ -707,11 +707,6 @@ def _get_prop_from_modelclass(modelclass, name):
     KeyError if the property doesn't exist and the model clas doesn't
     derive from Expando.
   """
-  if modelclass is None:
-    prop = model.GenericProperty()
-    prop._name = name  # Bypass the restriction on dots.
-    return prop
-
   if name == '__key__':
     return modelclass._key
 
@@ -1340,9 +1335,11 @@ def _gql(query_string, query_class=Query):
   gql_qry = gql.GQL(query_string)
   kind = gql_qry.kind()
   if kind is None:
-    modelclass = None
+    modelclass = model.Expando
   else:
-    modelclass = model.Model._kind_map.get(kind)
+    ctx = tasklets.get_context()
+    default_model = ctx._conn.adapter.default_model
+    modelclass = model.Model._kind_map.get(kind, default_model)
     if modelclass is None:
       raise datastore_errors.BadQueryError(
         "No model class found for kind %r. Did you forget to import it?" %
