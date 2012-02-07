@@ -65,9 +65,9 @@ import os
 import sys
 import types
 
-from google.appengine.api import apiproxy_stub_map
-from google.appengine.api import apiproxy_rpc
-from google.appengine.datastore import datastore_rpc
+from .google_imports import apiproxy_stub_map
+from .google_imports import apiproxy_rpc
+from .google_imports import datastore_rpc
 
 from . import eventloop
 from . import utils

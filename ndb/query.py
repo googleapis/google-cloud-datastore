@@ -132,9 +132,9 @@ import heapq
 import itertools
 import sys
 
-from google.appengine.api import datastore_errors
-from google.appengine.api import datastore_types
-from google.appengine.datastore import datastore_query
+from .google_imports import datastore_errors
+from .google_imports import datastore_types
+from .google_imports import datastore_query
 
 from . import model
 from . import tasklets
@@ -304,7 +304,7 @@ class ParameterizedFunction(ParameterizedThing):
   """
 
   def __init__(self, func, values):
-    from google.appengine.ext import gql  # Late import, in case never used.
+    from .google_imports import gql  # Late import, to avoid name conflict.
     self.__func = func
     self.__values = values
     # NOTE: A horrible hack using GQL private variables so we can
@@ -671,7 +671,7 @@ def _args_to_val(func, args):
     func: A string indicating what kind of thing this is.
     args: One or more GQL values, each integer, string, or GQL literal.
   """
-  from google.appengine.ext import gql  # Late import, in case never used.
+  from .google_imports import gql  # Late import, to avoid name conflict.
   vals = []
   for arg in args:
     if isinstance(arg, (int, long, basestring)):
@@ -1336,7 +1336,7 @@ def _gql(query_string, query_class=Query):
   Returns:
     An instance of query_class.
   """
-  from google.appengine.ext import gql  # Late import, in case never used.
+  from .google_imports import gql  # Late import, to avoid name conflict.
   gql_qry = gql.GQL(query_string)
   kind = gql_qry.kind()
   if kind is None:

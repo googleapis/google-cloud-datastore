@@ -3,14 +3,15 @@
 import logging
 import sys
 
-from google.appengine.api import datastore  # For taskqueue coordination
-from google.appengine.api import datastore_errors
-from google.appengine.api import memcache
-from google.appengine.api import namespace_manager
-from google.appengine.datastore import datastore_rpc
-from google.appengine.datastore import entity_pb
+from .google_imports import datastore  # For taskqueue coordination
+from .google_imports import datastore_errors
+from .google_imports import memcache
+from .google_imports import namespace_manager
+from .google_imports import urlfetch
+from .google_imports import datastore_rpc
+from .google_imports import entity_pb
 
-from google.net.proto import ProtocolBuffer
+from .google_imports import ProtocolBuffer
 
 from . import key as key_module
 from . import model
@@ -1035,7 +1036,6 @@ class Context(object):
   def urlfetch(self, url, payload=None, method='GET', headers={},
                allow_truncated=False, follow_redirects=True,
                validate_certificate=None, deadline=None, callback=None):
-    from google.appengine.api import urlfetch
     rpc = urlfetch.create_rpc(deadline=deadline, callback=callback)
     urlfetch.make_fetch_call(rpc, url,
                              payload=payload,

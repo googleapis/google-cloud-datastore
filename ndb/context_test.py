@@ -5,12 +5,12 @@ import socket
 import threading
 import unittest
 
-from google.appengine.api import datastore_errors
-from google.appengine.api import memcache
-from google.appengine.api import taskqueue
-from google.appengine.datastore import datastore_rpc
-from google.appengine.datastore import datastore_stub_util
-from google.appengine.runtime import apiproxy_errors
+from .google_imports import datastore_errors
+from .google_imports import memcache
+from .google_imports import taskqueue
+from .google_imports import datastore_rpc
+from .google_imports import datastore_stub_util
+from .google_imports import apiproxy_errors
 
 from . import context
 from . import eventloop

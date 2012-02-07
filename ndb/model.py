@@ -285,12 +285,12 @@ import cPickle as pickle
 import datetime
 import zlib
 
-from google.appengine.api import datastore_errors
-from google.appengine.api import datastore_types
-from google.appengine.api import users
-from google.appengine.datastore import datastore_query
-from google.appengine.datastore import datastore_rpc
-from google.appengine.datastore import entity_pb
+from .google_imports import datastore_errors
+from .google_imports import datastore_types
+from .google_imports import users
+from .google_imports import datastore_query
+from .google_imports import datastore_rpc
+from .google_imports import entity_pb
 
 from . import utils
 

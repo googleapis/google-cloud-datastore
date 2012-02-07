@@ -3,8 +3,8 @@
 import datetime
 import unittest
 
-from google.appengine.api import datastore_errors
-from google.appengine.api import users
+from .google_imports import datastore_errors
+from .google_imports import users
 
 from . import model
 from . import query
