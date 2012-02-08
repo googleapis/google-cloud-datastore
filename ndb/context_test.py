@@ -3,6 +3,7 @@
 import logging
 import socket
 import threading
+import time
 import unittest
 
 from .google_imports import datastore_errors
@@ -1133,6 +1134,7 @@ class ContextTests(test_utils.NDBTest):
       c.send('HTTP/1.0 200 Ok\r\n\r\n')  # Emptiest response.
       c.close()
     t = threading.Thread(target=run)
+    t.setDaemon(True)
     t.start()
     return lock
 
@@ -1141,7 +1143,13 @@ class ContextTests(test_utils.NDBTest):
     host = '127.0.0.1'
     port = 12345  # TODO: Pick a random port?
     lock = self.start_test_server(host, port)
-    lock.acquire()  # Block until socket is set up.
+    # Block until socket is set up, or 5 seconds have passed.
+    for i in xrange(500):
+      if lock.acquire(False):
+        break
+      time.sleep(0.01)
+    else:
+      self.fail('Socket was not ready in 5 seconds')
     fut = self.ctx.urlfetch('http://%s:%d' % (host, port))
     result = fut.get_result()
     self.assertEqual(result.status_code, 200)
