@@ -66,10 +66,10 @@ blobstore_test:
 
 
 runtests:
-	PYTHONPATH=$(GAEPATH):. $(PYTHON) runtests.py $(FLAGS)
+	PYTHONPATH=$(GAEPATH):. $(PYTHON) ndb/ndb_test.py $(FLAGS)
 
 c cov cove cover coverage:
-	PYTHONPATH=$(GAEPATH):. $(COVERAGE) run runtests.py $(FLAGS)
+	PYTHONPATH=$(GAEPATH):. $(COVERAGE) run ndb/ndb_test.py $(FLAGS)
 	$(COVERAGE) html $(NONTESTS)
 	$(COVERAGE) report -m $(NONTESTS)
 	echo "open file://`pwd`/htmlcov/index.html"

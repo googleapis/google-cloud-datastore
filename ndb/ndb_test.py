@@ -5,12 +5,19 @@ __author__ = 'Beech Horn'
 import sys
 import unittest
 
+try:
+  import ndb
+  location = 'ndb'
+except ImportError:
+  import google3.third_party.apphosting.python.ndb
+  location = 'google3.third_party.apphosting.python.ndb'
 
-def suite():
+
+def load_tests():
   mods = ['context', 'eventloop', 'key', 'metadata', 'model', 'polymodel',
           'prospective_search', 'query', 'stats', 'tasklets', 'blobstore']
   test_mods = ['%s_test' % name for name in mods]
-  ndb = __import__('ndb', fromlist=test_mods, level=1)
+  ndb = __import__(location, fromlist=test_mods, level=1)
 
   loader = unittest.TestLoader()
   suite = unittest.TestSuite()
@@ -32,7 +39,7 @@ def main():
       v += arg.count('v')
     elif arg == '-q':
       v = 0
-  unittest.TextTestRunner(verbosity=v).run(suite())
+  unittest.TextTestRunner(verbosity=v).run(load_tests())
 
 
 if __name__ == '__main__':
