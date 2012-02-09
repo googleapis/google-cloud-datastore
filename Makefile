@@ -8,7 +8,7 @@
 FLAGS=
 GAE=	/usr/local/google_appengine
 GAEPATH=$(GAE):$(GAE)/lib/yaml/lib:$(GAE)/lib/webob:$(GAE)/lib/fancy_urllib:$(GAE)/lib/simplejson
-TESTS=	`find ndb -name [a-z]\*_test.py`
+TESTS=	`find ndb -name [a-z]\*_test.py ! -name ndb_test.py`
 NONTESTS=`find ndb -name [a-z]\*.py ! -name \*_test.py`
 PORT=	8080
 ADDRESS=localhost
@@ -21,12 +21,16 @@ DATASTORE_PATH=/tmp/ndb-dev_appserver.datastore
 
 default: runtests
 
-test:
-	for i in $(TESTS); \
-	do \
-	  echo $$i; \
-	  PYTHONPATH=$(GAEPATH):. $(PYTHON) -m ndb.`basename $$i .py` $(FLAGS); \
-	done
+runtests:
+	PYTHONPATH=$(GAEPATH):. $(PYTHON) ndb/ndb_test.py $(FLAGS)
+
+c cov cove cover coverage:
+	PYTHONPATH=$(GAEPATH):. $(COVERAGE) run ndb/ndb_test.py $(FLAGS)
+	$(COVERAGE) html $(NONTESTS)
+	$(COVERAGE) report -m $(NONTESTS)
+	echo "open file://`pwd`/htmlcov/index.html"
+
+test: key_test model_test polymodel_test query_test metadata_test stats_test rpc_test eventloop_test tasklets_test context_test ps_test blobstore_test
 
 key_test:
 	PYTHONPATH=$(GAEPATH):. $(PYTHON) -m ndb.key_test $(FLAGS)
@@ -63,16 +67,6 @@ ps_test:
 
 blobstore_test:
 	PYTHONPATH=$(GAEPATH):. $(PYTHON) -m ndb.blobstore_test $(FLAGS)
-
-
-runtests:
-	PYTHONPATH=$(GAEPATH):. $(PYTHON) ndb/ndb_test.py $(FLAGS)
-
-c cov cove cover coverage:
-	PYTHONPATH=$(GAEPATH):. $(COVERAGE) run ndb/ndb_test.py $(FLAGS)
-	$(COVERAGE) html $(NONTESTS)
-	$(COVERAGE) report -m $(NONTESTS)
-	echo "open file://`pwd`/htmlcov/index.html"
 
 oldcoverage:
 	$(COVERAGE) erase
