@@ -19,7 +19,7 @@ from . import tasklets
 from . import eventloop
 from . import utils
 
-__all__ = ['toplevel', 'Context', 'ContextOptions', 'AutoBatcher']
+__all__ = ['Context', 'ContextOptions', 'AutoBatcher']
 
 _LOCK_TIME = 32  # Time to lock out memcache.add() after datastore updates.
 _LOCKED = 0  # Special value to store in memcache indicating locked value.
@@ -1046,25 +1046,3 @@ class Context(object):
                              validate_certificate=validate_certificate)
     result = yield rpc
     raise tasklets.Return(result)
-
-
-def toplevel(func):
-  """A sync tasklet that sets a fresh default Context.
-
-  Use this for toplevel view functions such as
-  webapp.RequestHandler.get() or Django view functions.
-  """
-  @utils.wrapping(func)
-  def add_context_wrapper(*args, **kwds):
-    __ndb_debug__ = utils.func_info(func)
-    tasklets._state.clear_all_pending()
-    # Create and install a new context.
-    ctx = tasklets.make_default_context()
-    try:
-      tasklets.set_context(ctx)
-      return tasklets.synctasklet(func)(*args, **kwds)
-    finally:
-      tasklets.set_context(None)
-      ctx.flush().check_success()
-      eventloop.run()  # Ensure writes are flushed, etc.
-  return add_context_wrapper

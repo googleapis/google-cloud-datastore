@@ -8,7 +8,7 @@ import time
 from google.appengine.api import memcache
 from google.appengine.ext import webapp
 
-from ndb import context, model, tasklets
+from ndb import model, tasklets
 
 
 @tasklets.tasklet
@@ -51,7 +51,7 @@ TRUE_VALUES = frozenset(['1', 'on', 't', 'true', 'y', 'yes'])
 
 class FiboHandler(webapp.RequestHandler):
 
-  @context.toplevel
+  @tasklets.toplevel
   def get(self):
     num = 10
     try:

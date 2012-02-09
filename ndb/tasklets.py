@@ -72,7 +72,7 @@ from .google_imports import datastore_rpc
 from . import eventloop
 from . import utils
 
-__all__ = ['Return', 'tasklet', 'synctasklet', 'sleep',
+__all__ = ['Return', 'tasklet', 'synctasklet', 'toplevel', 'sleep',
            'add_flow_exception', 'get_return_value',
            'get_context', 'set_context',
            'make_default_context', 'make_context',
@@ -1002,6 +1002,28 @@ def synctasklet(func):
     taskletfunc = tasklet(func)
     return taskletfunc(*args, **kwds).get_result()
   return synctasklet_wrapper
+
+
+def toplevel(func):
+  """A sync tasklet that sets a fresh default Context.
+
+  Use this for toplevel view functions such as
+  webapp.RequestHandler.get() or Django view functions.
+  """
+  @utils.wrapping(func)
+  def add_context_wrapper(*args, **kwds):
+    __ndb_debug__ = utils.func_info(func)
+    _state.clear_all_pending()
+    # Create and install a new context.
+    ctx = make_default_context()
+    try:
+      set_context(ctx)
+      return synctasklet(func)(*args, **kwds)
+    finally:
+      set_context(None)
+      ctx.flush().check_success()
+      eventloop.run()  # Ensure writes are flushed, etc.
+  return add_context_wrapper
 
 
 _CONTEXT_KEY = '__CONTEXT__'
