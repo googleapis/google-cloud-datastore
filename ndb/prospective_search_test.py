@@ -5,7 +5,7 @@ import os
 import unittest
 
 from .google_imports import apiproxy_stub_map
-from .google_imports import prospective_search_stub
+from .google_test_imports import prospective_search_stub
 
 
 from . import prospective_search

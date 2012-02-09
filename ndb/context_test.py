@@ -10,8 +10,8 @@ from .google_imports import datastore_errors
 from .google_imports import memcache
 from .google_imports import taskqueue
 from .google_imports import datastore_rpc
-from .google_imports import datastore_stub_util
 from .google_imports import apiproxy_errors
+from .google_test_imports import datastore_stub_util
 
 from . import context
 from . import eventloop
