@@ -25,15 +25,12 @@ if normal_environment:
   from google.appengine.api import urlfetch
   from google.appengine.api import users
   from google.appengine.api.prospective_search import prospective_search_pb
-  from google.appengine.api.prospective_search import prospective_search_stub
   from google.appengine.datastore import datastore_query
   from google.appengine.datastore import datastore_rpc
-  from google.appengine.datastore import datastore_stub_util
   from google.appengine.datastore import entity_pb
   from google.appengine.ext.blobstore import blobstore as ext_blobstore
   from google.appengine.ext import db
   from google.appengine.ext import gql
-  from google.appengine.ext import testbed
   from google.appengine.runtime import apiproxy_errors
   from google.net.proto import ProtocolBuffer
 else:
@@ -60,15 +57,5 @@ else:
   try:
     from google3.apphosting.api import prospective_search
     from google3.apphosting.api.prospective_search import prospective_search_pb
-    from google3.apphosting.api.prospective_search import prospective_search_stub
-  except ImportError:
-    pass
-  # The following are used by unit tests only.
-  try:
-    from google3.apphosting.datastore import datastore_stub_util
-  except ImportError:
-    pass
-  try:
-    from google3.apphosting.ext import testbed
   except ImportError:
     pass
