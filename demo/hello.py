@@ -3,11 +3,11 @@ import os
 from google.appengine.ext import webapp
 from google.appengine.ext.webapp import util
 
-from ndb import model, tasklets
+import ndb
 
-class Greeting(model.Model):
-    message = model.StringProperty()
-    userid = model.IntegerProperty()  # Not used here, but later
+class Greeting(ndb.Model):
+    message = ndb.StringProperty()
+    userid = ndb.IntegerProperty()  # Not used here, but later
 
 class HomePage(webapp.RequestHandler):
     def get(self):
@@ -15,7 +15,7 @@ class HomePage(webapp.RequestHandler):
         self.response.out.write(msg.message)
 
 urls = [('/.*', HomePage)]
-app = tasklets.toplevel(webapp.WSGIApplication(urls).__call__)
+app = ndb.toplevel(webapp.WSGIApplication(urls).__call__)
 
 def main():
     util.run_wsgi_app(app)

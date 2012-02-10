@@ -1,15 +1,16 @@
 import cgi
 import urllib
 
-from ndb import model
 from google.appengine.ext import webapp
 from google.appengine.ext.webapp.util import run_wsgi_app
 
+import ndb
 
-class Greeting(model.Model):
+
+class Greeting(ndb.Model):
   """Models an individual Guestbook entry with content and date."""
-  content = model.StringProperty()
-  date = model.DateTimeProperty(auto_now_add=True)
+  content = ndb.StringProperty()
+  date = ndb.DateTimeProperty(auto_now_add=True)
 
   @classmethod
   def QueryBook(cls, ancestor_key):
@@ -19,7 +20,7 @@ class MainPage(webapp.RequestHandler):
   def get(self):
     self.response.out.write('<html><body>')
     guestbook_name = self.request.get('guestbook_name')
-    ancestor_key = model.Key("Book", guestbook_name or "*fakebook*")
+    ancestor_key = ndb.Key("Book", guestbook_name or "*fakebook*")
     greetings = Greeting.QueryBook(ancestor_key)
 
     for greeting in greetings:
@@ -43,8 +44,8 @@ class Guestbook(webapp.RequestHandler):
     # We set the parent key on each 'Greeting' to ensure each guestbook's
     # greetings are in the same entity group.
     guestbook_name = self.request.get('guestbook_name')
-    greeting = Greeting(parent=model.Key("Book",
-                                         guestbook_name or "*fakebook*"),
+    greeting = Greeting(parent=ndb.Key("Book",
+                                       guestbook_name or "*fakebook*"),
                         content = self.request.get('content'))
     greeting.put()
     self.redirect('/?' + urllib.urlencode({'guestbook_name': guestbook_name}))

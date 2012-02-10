@@ -9,6 +9,9 @@ handlers:
 - url: /django_middleware
   script: demo/django_middleware_test.py
 
+- url: /fibo.*
+  script: demo/fibo.py
+
 - url: /intest.*
   script: demo/intest.py
 

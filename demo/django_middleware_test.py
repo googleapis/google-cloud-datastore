@@ -21,19 +21,19 @@ import logging
 from google.appengine.ext import webapp
 from google.appengine.ext.webapp import util
 
-from ndb import model, tasklets
+import ndb
 from ndb import django_middleware
 
 
-class Greeting(model.Model):
-    message = model.StringProperty()
+class Greeting(ndb.Model):
+    message = ndb.StringProperty()
 
 
 def _HandleMessage(handler):
   k = handler.request.get('key')
   g = None
   if k:
-    g = model.Key(urlsafe=k).get()
+    g = ndb.Key(urlsafe=k).get()
   else:
     g = Greeting()
     g.message = '1234'
