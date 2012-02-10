@@ -2,14 +2,16 @@
 
 import time
 
-from demo.main import model, context, tasklets, Message, Account, account_key
+import ndb
+
+from demo.main import Message, Account, account_key
 
 
-class LogRecord(model.Model):
-  timestamp = model.FloatProperty()
+class LogRecord(ndb.Model):
+  timestamp = ndb.FloatProperty()
 
 
-@context.toplevel
+@ndb.toplevel
 def main():
   print 'Content-type: text/plain'
   print

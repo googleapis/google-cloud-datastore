@@ -24,6 +24,9 @@ handlers:
 - url: /account
   script: demo/main.py
 
+- url: /dataviewer.*
+  script: demo/dataviewer.py
+
 - url: /.*
   script: demo/guestbook.py
 

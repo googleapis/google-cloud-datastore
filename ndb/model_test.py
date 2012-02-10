@@ -7,11 +7,12 @@ import pickle
 import re
 import unittest
 
-from google.appengine.api import datastore_errors
-from google.appengine.api import datastore_types
-from google.appengine.api import memcache
-from google.appengine.api import namespace_manager
-from google.appengine.api import users
+from .google_imports import datastore_errors
+from .google_imports import datastore_types
+from .google_imports import db
+from .google_imports import memcache
+from .google_imports import namespace_manager
+from .google_imports import users
 
 from . import eventloop
 from . import key
@@ -1574,7 +1575,6 @@ class ModelTests(test_utils.NDBTest):
 
   def testRejectOldPickles(self):
     global MyModel
-    from google.appengine.ext import db
     class MyModel(db.Model):
       name = db.StringProperty()
     dumped = []
@@ -3414,8 +3414,10 @@ class CacheTests(test_utils.NDBTest):
     self.assertEqual(copy.wrap[0].range, None)
     self.assertEqual(copy.wrap[1].range, IntRangeModel(first=0, last=10))
 
+
 def main():
   unittest.main()
+
 
 if __name__ == '__main__':
   main()
