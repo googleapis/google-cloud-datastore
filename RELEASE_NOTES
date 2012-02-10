@@ -1,3 +1,17 @@
+Release 0.9.8 (not yet)
+
+Final tweaks:
+
+- Moved @context.toplevel to @tasklets.toplevel.
+- Made GQL honor the default_model in the adapter.
+- Added demo/dataviewer.py.
+- Added tasklets.make_context().
+- Refactored imports to localize Google dependencies in one file.
+- Refactored (old) test target in Makefile.
+- Moved runtests.py to ndb/ndb_test.py.
+
+----------------------------------------
+
 Release 0.9.7
 
 Noteworthy fixes and features:
