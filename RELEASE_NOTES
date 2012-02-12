@@ -1,4 +1,4 @@
-Release 0.9.8 (not yet)
+Release 0.9.8 (release candidate)
 
 Final tweaks:
 
@@ -28,7 +28,7 @@ Noteworthy fixes and features:
 
 ----------------------------------------
 
-Release 0.9.6
+Release 0.9.6 (included in SDK 1.6.2)
 
 Features, speedups and bugfixes.
 
@@ -100,7 +100,7 @@ Bugs fixed:
 
 ----------------------------------------
 
-Release 0.9.3
+Release 0.9.3 (included in SDK 1.6.1)
 
 Two bugfixes:
 
@@ -129,7 +129,7 @@ This release contains several bugfixes and minor improvements:
 
 ----------------------------------------
 
-Release 0.9.1
+Release 0.9.1 (included in SDK 1.6.0)
 
 This release contains two bugfixes for release 0.9:
 
