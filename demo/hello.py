@@ -15,7 +15,7 @@ class HomePage(webapp.RequestHandler):
         self.response.out.write(msg.message)
 
 urls = [('/.*', HomePage)]
-app = ndb.toplevel(webapp.WSGIApplication(urls).__call__)
+app = ndb.toplevel(webapp.WSGIApplication(urls))
 
 def main():
     util.run_wsgi_app(app)
