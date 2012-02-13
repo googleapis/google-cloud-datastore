@@ -15,8 +15,7 @@ from google.appengine.api import taskqueue
 from google.appengine.api.taskqueue import taskqueue_stub
 from google.appengine.api import urlfetch_stub
 
-from ndb.model import *
-from ndb.query import *
+from ndb import *
 
 apiproxy_stub_map.apiproxy = apiproxy_stub_map.APIProxyStubMap()
 ds_stub = datastore_file_stub.DatastoreFileStub('_', None)
