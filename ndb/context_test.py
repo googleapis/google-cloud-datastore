@@ -1106,7 +1106,7 @@ class ContextTests(test_utils.NDBTest):
     s = socket.socket()
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     for i in range(10):
-      port = random.uniform(32768, 60000)
+      port = random.randrange(32768, 60000)
       try:
         s.bind((host, port))
         break
