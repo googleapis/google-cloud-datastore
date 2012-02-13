@@ -21,7 +21,7 @@ DATASTORE_PATH=/tmp/ndb-dev_appserver.datastore
 
 default: runtests
 
-runtests:
+runtests ndb_test:
 	PYTHONPATH=$(GAEPATH):. $(PYTHON) ndb/ndb_test.py $(FLAGS)
 
 c cov cove cover coverage:
