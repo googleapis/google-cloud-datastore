@@ -39,7 +39,8 @@ def main():
       v += arg.count('v')
     elif arg == '-q':
       v = 0
-  unittest.TextTestRunner(verbosity=v).run(load_tests())
+  result = unittest.TextTestRunner(verbosity=v).run(load_tests())
+  sys.exit(not result.wasSuccessful())
 
 
 if __name__ == '__main__':
