@@ -716,8 +716,15 @@ class Context(object):
     lo_hi = yield self._conn.async_allocate_ids(options, key, size, max)
     raise tasklets.Return(lo_hi)
 
+  @tasklets.tasklet
+  def get_indexes(self, **ctx_options):
+    options = _make_ctx_options(ctx_options)
+    index_list = yield self._conn.async_get_indexes(options)
+    raise tasklets.Return(index_list)
+
   @utils.positional(3)
-  def map_query(self, query, callback, options=None, merge_future=None):
+  def map_query(self, query, callback, pass_batch_into_callback=None,
+                options=None, merge_future=None):
     mfut = merge_future
     if mfut is None:
       mfut = tasklets.MultiFuture('map_query')
@@ -755,7 +762,7 @@ class Context(object):
             val = ent
           else:
             # TODO: If the callback raises, log and ignore.
-            if options is not None and options.produce_cursors:
+            if pass_batch_into_callback:
               val = callback(batch, i, ent)
             else:
               val = callback(ent)
@@ -773,8 +780,10 @@ class Context(object):
     return mfut
 
   @utils.positional(2)
-  def iter_query(self, query, callback=None, options=None):
+  def iter_query(self, query, callback=None, pass_batch_into_callback=None,
+                 options=None):
     return self.map_query(query, callback=callback, options=options,
+                          pass_batch_into_callback=pass_batch_into_callback,
                           merge_future=tasklets.SerialQueueFuture())
 
   @tasklets.tasklet
