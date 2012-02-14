@@ -1018,7 +1018,8 @@ class Query(object):
   __iter__ = iter
 
   @utils.positional(2)
-  def map(self, callback, merge_future=None, **q_options):
+  def map(self, callback, pass_batch_into_callback=None,
+          merge_future=None, **q_options):
     """Map a callback function or tasklet over the query results.
 
     Args:
@@ -1028,7 +1029,7 @@ class Query(object):
 
     Callback signature: The callback is normally called with an entity
     as argument.  However if keys_only=True is given, it is called
-    with a Key.  Also, when produce_cursors=True is given, it is
+    with a Key.  Also, when pass_batch_into_callback is True, it is
     called with three arguments: the current batch, the index within
     the batch, and the entity or Key at that index.  The callback can
     return whatever it wants.  If the callback is None, a trivial
@@ -1050,11 +1051,14 @@ class Query(object):
       returned, map() returns a list of the results of all callbacks.
       (But see 'optional merge future' above.)
     """
-    return self.map_async(callback, merge_future=merge_future,
+    return self.map_async(callback,
+                          pass_batch_into_callback=pass_batch_into_callback,
+                          merge_future=merge_future,
                           **q_options).get_result()
 
   @utils.positional(2)
-  def map_async(self, callback, merge_future=None, **q_options):
+  def map_async(self, callback, pass_batch_into_callback=None,
+                merge_future=None, **q_options):
     """Map a callback function or tasklet over the query results.
 
     This is the asynchronous version of Query.map().
@@ -1062,6 +1066,7 @@ class Query(object):
     return tasklets.get_context().map_query(
       self,
       callback,
+      pass_batch_into_callback=pass_batch_into_callback,
       options=self._make_options(q_options),
       merge_future=merge_future)
 
@@ -1450,9 +1455,11 @@ class QueryIterator(object):
     ctx = tasklets.get_context()
     callback = None
     options = query._make_options(q_options)
-    if options is not None and options.produce_cursors:
-      callback = self._extended_callback
-    self._iter = ctx.iter_query(query, callback=callback, options=options)
+    callback = self._extended_callback
+    self._iter = ctx.iter_query(query,
+                                callback=callback,
+                                pass_batch_into_callback=True,
+                                options=options)
     self._fut = None
 
   def _extended_callback(self, batch, index, ent):
@@ -1502,6 +1509,39 @@ class QueryIterator(object):
     if self._batch is None:
       raise datastore_errors.BadArgumentError('There is no cursor currently')
     return self._batch.cursor(self._index + 1)  # TODO: inline this as async.
+
+  def index_list(self):
+    """Return the list of indexes used for this query.
+
+    This returns a list of index representations, where an index
+    representation is the same as what is returned by get_indexes().
+
+    Before the first result, the information is unavailable, and then
+    None is returned.  This is not the same as an empty list -- the
+    empty list means that no index was used to execute the query.  (In
+    the dev_appserver, an empty list may also mean that only built-in
+    indexes were used; metadata queries also return an empty list
+    here.)
+
+    Proper use is as follows:
+      q = <modelclass>.query(<filters>)
+      i = q.iter()
+      try:
+        i.next()
+      except Stopiteration:
+        pass
+      indexes = i.index_list()
+      assert isinstance(indexes, list)
+
+    Notes:
+    - Forcing produce_cursors=False makes this always return None.
+    - This always returns None for a multi-query.
+    """
+    # TODO: Technically it is possible to implement this for
+    # multi-query by merging all the index lists from each subquery.
+    # Return None if the batch has no attribute index_list.
+    # This also applies when the batch itself is None.
+    return getattr(self._batch, 'index_list', None)
 
   def __iter__(self):
     """Iterator protocol: get the iterator for this iterator, i.e. self."""

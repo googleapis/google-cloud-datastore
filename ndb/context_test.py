@@ -618,7 +618,7 @@ class ContextTests(test_utils.NDBTest):
   def testContext_MapQuery_Cursors(self):
     qo = query.QueryOptions(produce_cursors=True)
     @tasklets.tasklet
-    def callback(unused_batch, _, ent):
+    def callback(ent):
       return ent.key.pairs()[-1]
     @tasklets.tasklet
     def foo():
