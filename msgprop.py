@@ -16,62 +16,75 @@ from protorpc import messages
 import ndb
 
 
-def _message_to_model(msg, message_class):
-  """Convert a message_class instance to a Model instance (really Expando)."""
-  assert issubclass(message_class, messages.Message), repr(message_class)
-  assert isinstance(msg, message_class), repr(msg)
-  exp = ndb.Expando()
-  for field in message_class.all_fields():
-    val = field.__get__(msg, message_class)
-    if isinstance(val, messages.Message):
-      exp._clone_properties()
-      exp._properties[field.name] = prop = MessageProperty(val.__class__)
-      prop._fix_up(ndb.Expando, field.name)
-      prop._set_value(exp, val)
-    elif field.repeated:
-      assert isinstance(val, list)
-      if val and isinstance(val[0], messages.Message):
-        exp._clone_properties()
-        exp._properties[field.name] = prop = MessageProperty(val[0].__class__,
-                                                             repeated=True)
-        prop._fix_up(ndb.Expando, field.name)
-      newval = []
-      for v in val:
-        newval.append(v)
-      val = newval
-      prop._set_value(exp, val)
+def make_model_class(message_type):
+  props = {}
+  for field in message_type.all_fields():
+    if isinstance(field, messages.MessageField):
+      prop = MessageProperty(field.type, field.name, repeated=field.repeated)
+    elif isinstance(field, messages.EnumField):
+      prop = EnumProperty(field.type, field.name, repeated=field.repeated)
+    elif isinstance(field, messages.BytesField):
+      prop = ndb.BlobProperty(field.name, repeated=field.repeated)
     else:
-      # Not a message. Just use the default behavior.
-      setattr(exp, field.name, val)
-  return exp
+      # IntegerField, FloatField, BooleanField, StringField.
+      prop = ndb.GenericProperty(field.name, repeated=field.repeated)
+    props[field.name] = prop
+  return ndb.MetaModel('%s__Model' % message_type.__name__, (ndb.Model,), props)
+
+
+class EnumProperty(ndb.StringProperty):
+
+  def __init__(self, enum_type, name=None, repeated=False):
+    self._enum_type = enum_type
+    super(EnumProperty, self).__init__(name, repeated=repeated)
+
+  def _validate(self, value):
+    if not isinstance(value, self._enum_type):
+      raise TypeError('Expected a %s instance, got %r instead' %
+                      (self._enum_type.__name__, value))
+
+  def _to_base_type(self, enum):
+    assert isinstance(enum, self._enum_type), repr(enum)
+    return enum.name
+
+  def _from_base_type(self, val):
+    assert isinstance(val, basestring)
+    return self._enum_type(val)
 
 
 class MessageProperty(ndb.StructuredProperty):
 
-  def __init__(self, message_class, meta_data=None, name=None, repeated=False):
-    """Constructor."""
-    self._message_class = message_class
-    self._meta_data = meta_data
-    super(MessageProperty, self).__init__(ndb.Expando, name, repeated=repeated)
+  def __init__(self, message_type, name=None, repeated=False):
+    self._message_type = message_type
+    modelclass = make_model_class(message_type)
+    super(MessageProperty, self).__init__(modelclass, name, repeated=repeated)
+
+  def __repr__(self):
+    return '%s(%s, %r, repeated=%r)' % (self.__class__.__name__,
+                                        self._message_type.__name__,
+                                        self._name, self._repeated)
 
   def _validate(self, value):
-    """Ensure that the value is a message_class instance."""
-    if not isinstance(value, self._message_class):
+    if not isinstance(value, self._message_type):
       raise TypeError('Expected a %s instance, got %r instead' %
-                      (self._message_class.__name__, value))
+                      (self._message_type.__name__, value))
 
-  def _to_base_type(self, value):
-    """Convert a message_class instance to a synthetic Model instance."""
-    return _message_to_model(value, self._message_class)
+  def _to_base_type(self, msg):
+    """Convert a message_type instance to a modelclass instance."""
+    assert isinstance(msg, self._message_type), repr(msg)
+    ent = self._modelclass()
+    for name in self._modelclass._properties:
+      val = getattr(msg, name)
+      setattr(ent, name, val)
+    return ent
 
-  def _from_base_type(self, value):
-    """Convert a Model instance to a message_class instance."""
-    assert isinstance(value, ndb.Model), repr(value)
-    kwds = {}
-    for field in self._message_class.all_fields():
-      if hasattr(value, field.name):
-        kwds[field.name] = getattr(value, field.name)
-    return self._message_class(**kwds)
+  def _from_base_type(self, ent):
+    assert isinstance(ent, self._modelclass), repr(ent)
+    msg = self._message_type()
+    for name in self._modelclass._properties:
+      val = getattr(ent, name)
+      setattr(msg, name, val)
+    return msg
 
 
 # Example classes from protorpc/demos/guestbook/server/
@@ -115,27 +128,35 @@ def main():
   ctx.set_cache_policy(False)
   ctx.set_memcache_policy(False)
 
+  print DbNotes.danotes
+
   note1 = Note(text='blah', when=int(time.time()))
   print 'Before:', note1
   ent = DbNote(note=note1)
-  print 'Entity:', ent
   ent.put()
   print 'After:', ent.key.get()
 
   print '-'*20
 
-  note2 = Note(text='blooh', when=0)
+  note2 = Note(text=u'blooh\u1234\U00102345blooh', when=0)
   notes = Notes(notes=[note1, note2])
   print 'Before:', notes
   ent = DbNotes(danotes=notes)
   print 'Entity:', ent
+  print ent._to_pb(set_key=False)
   ent.put()
   pb = ent._to_pb()
-  print 'Proto:', pb
   ent2 = DbNotes._from_pb(pb)
-  print 'Read back from proto:', ent2
-  ent3 = ent.key.get()
-  print 'After:', ent3
+  print 'After:', ent.key.get()
+
+  print '-'*20
+
+  req = GetNotesRequest(on_or_before=42)
+  class M(ndb.Model):
+    req = MessageProperty(GetNotesRequest)
+  m = M(req=req)
+  print m
+  print m.put().get()
 
   tb.deactivate()
 
