@@ -1,6 +1,6 @@
 """Prototype MessageProperty for ProtoRPC.
 
-Run this using 'make msgprop CUSTOM=msgprop'.
+Run this using 'make x CUSTOM=msgprop'.
 
 This requires copying (or symlinking) protorpc/python/protorpc into
 the appengine-ndb-experiment directory (making ndb and the inner
@@ -27,6 +27,7 @@ def _message_to_model(msg, message_class):
       exp._clone_properties()
       exp._properties[field.name] = prop = MessageProperty(val.__class__)
       prop._fix_up(ndb.Expando, field.name)
+      prop._set_value(exp, val)
     elif field.repeated:
       assert isinstance(val, list)
       if val and isinstance(val[0], messages.Message):
@@ -38,7 +39,10 @@ def _message_to_model(msg, message_class):
       for v in val:
         newval.append(v)
       val = newval
-    setattr(exp, field.name, val)
+      prop._set_value(exp, val)
+    else:
+      # Not a message. Just use the default behavior.
+      setattr(exp, field.name, val)
   return exp
 
 
@@ -124,6 +128,7 @@ def main():
   ent.put(use_cache=False)
   pb = ent._to_pb()
   ent2 = DbNotes._from_pb(pb)
+  import pdb; pdb.set_trace()
   print 'After:', ent.key.get(use_cache=False)
 
   tb.deactivate()
