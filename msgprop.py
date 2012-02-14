@@ -111,11 +111,16 @@ def main():
   tb.init_datastore_v3_stub()
   tb.init_memcache_stub()
 
+  ctx = ndb.get_context()
+  ctx.set_cache_policy(False)
+  ctx.set_memcache_policy(False)
+
   note1 = Note(text='blah', when=int(time.time()))
   print 'Before:', note1
   ent = DbNote(note=note1)
-  ent.put(use_cache=False)
-  print 'After:', ent.key.get(use_cache=False)
+  print 'Entity:', ent
+  ent.put()
+  print 'After:', ent.key.get()
 
   print '-'*20
 
@@ -124,12 +129,13 @@ def main():
   print 'Before:', notes
   ent = DbNotes(danotes=notes)
   print 'Entity:', ent
-  print ent._to_pb(set_key=False)
-  ent.put(use_cache=False)
+  ent.put()
   pb = ent._to_pb()
+  print 'Proto:', pb
   ent2 = DbNotes._from_pb(pb)
-  import pdb; pdb.set_trace()
-  print 'After:', ent.key.get(use_cache=False)
+  print 'Read back from proto:', ent2
+  ent3 = ent.key.get()
+  print 'After:', ent3
 
   tb.deactivate()
 
