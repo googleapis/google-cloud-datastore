@@ -13,25 +13,27 @@ from google.appengine.ext import testbed
 
 from protorpc import messages
 
-from ndb.model import *
+import ndb
 
 
 def _message_to_model(msg, message_class):
+  """Convert a message_class instance to a Model instance (really Expando)."""
+  assert issubclass(message_class, messages.Message), repr(message_class)
   assert isinstance(msg, message_class), repr(msg)
-  exp = Expando()
+  exp = ndb.Expando()
   for field in message_class.all_fields():
     val = field.__get__(msg, message_class)
     if isinstance(val, messages.Message):
       exp._clone_properties()
       exp._properties[field.name] = prop = MessageProperty(val.__class__)
-      prop._fix_up(Expando, field.name)
+      prop._fix_up(ndb.Expando, field.name)
     elif field.repeated:
       assert isinstance(val, list)
       if val and isinstance(val[0], messages.Message):
         exp._clone_properties()
         exp._properties[field.name] = prop = MessageProperty(val[0].__class__,
                                                              repeated=True)
-        prop._fix_up(Expando, field.name)
+        prop._fix_up(ndb.Expando, field.name)
       newval = []
       for v in val:
         newval.append(v)
@@ -40,25 +42,27 @@ def _message_to_model(msg, message_class):
   return exp
 
 
-class MessageProperty(StructuredProperty):
+class MessageProperty(ndb.StructuredProperty):
 
-  def __init__(self, message_class, meta_data=None,
-               name=None, repeated=False):
+  def __init__(self, message_class, meta_data=None, name=None, repeated=False):
+    """Constructor."""
     self._message_class = message_class
     self._meta_data = meta_data
-    super(MessageProperty, self).__init__(Expando, name, repeated=repeated)
+    super(MessageProperty, self).__init__(ndb.Expando, name, repeated=repeated)
 
   def _validate(self, value):
+    """Ensure that the value is a message_class instance."""
     if not isinstance(value, self._message_class):
       raise TypeError('Expected a %s instance, got %r instead' %
                       (self._message_class.__name__, value))
 
-  def _to_bot(self, value):
+  def _to_base_type(self, value):
     """Convert a message_class instance to a synthetic Model instance."""
     return _message_to_model(value, self._message_class)
 
-  def _to_top(self, value):
-    assert isinstance(value, Model), repr(value)
+  def _from_base_type(self, value):
+    """Convert a Model instance to a message_class instance."""
+    assert isinstance(value, ndb.Model), repr(value)
     kwds = {}
     for field in self._message_class.all_fields():
       if hasattr(value, field.name):
@@ -89,11 +93,11 @@ class Notes(messages.Message):
   notes = messages.MessageField(Note, 1, repeated=True)
 
 
-class DbNote(Model):
+class DbNote(ndb.Model):
   note = MessageProperty(Note)
 
 
-class DbNotes(Model):
+class DbNotes(ndb.Model):
   danotes = MessageProperty(Notes)
 
 
@@ -119,7 +123,6 @@ def main():
   print ent._to_pb(set_key=False)
   ent.put(use_cache=False)
   pb = ent._to_pb()
-  import pdb; pdb.set_trace()
   ent2 = DbNotes._from_pb(pb)
   print 'After:', ent.key.get(use_cache=False)
 
