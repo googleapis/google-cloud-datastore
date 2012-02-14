@@ -19,10 +19,16 @@ from . import tasklets
 from . import eventloop
 from . import utils
 
-__all__ = ['Context', 'ContextOptions', 'AutoBatcher']
+__all__ = ['Context', 'ContextOptions', 'AutoBatcher',
+           'EVENTUAL_CONSISTENCY',
+           ]
 
 _LOCK_TIME = 32  # Time to lock out memcache.add() after datastore updates.
 _LOCKED = 0  # Special value to store in memcache indicating locked value.
+
+
+# Constant for read_policy.
+EVENTUAL_CONSISTENCY = datastore_rpc.Configuration.EVENTUAL_CONSISTENCY
 
 
 class ContextOptions(datastore_rpc.TransactionOptions):
