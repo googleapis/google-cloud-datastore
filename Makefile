@@ -126,5 +126,5 @@ race:
 mttest:
 	PYTHONPATH=$(GAEPATH):. $(PYTHON) mttest.py $(FLAGS)
 
-$(CUSTOM):
+x $(CUSTOM):
 	PYTHONPATH=$(GAEPATH):. $(PYTHON) $(CUSTOM).py $(FLAGS)
