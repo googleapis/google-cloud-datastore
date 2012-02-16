@@ -681,7 +681,7 @@ class Property(ModelAttribute):
     if not isinstance(value, <top type>):
       raise TypeError(...)  # Or datastore_errors.BadValueError(...).
 
-  def _to_base_type(sellf, value):
+  def _to_base_type(self, value):
     '(Strict) user value to base value.'
     if isinstance(value, <user type>):
       return <base type>(value)
