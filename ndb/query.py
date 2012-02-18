@@ -889,6 +889,7 @@ class Query(object):
           if ctx._use_cache(key, options):
             cached_result = ctx._cache.get(key)
             if cached_result is not None and cached_result.key == key:
+              # TODO: Don't do this if the classes differ.  See issue 155.
               cached_result._values = result._values
               result = cached_result
             else:
