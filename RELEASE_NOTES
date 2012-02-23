@@ -1,3 +1,11 @@
+Release 0.9.9 (not yet)
+
+- Raise an error on attempting to create a nested transaction.
+- Make get_or_insert() use existing transaction if one exist.
+- Fixed index_list() tests.
+
+----------------------------------------
+
 Release 0.9.8
 
 Final tweaks:
