@@ -681,7 +681,7 @@ class Property(ModelAttribute):
     if not isinstance(value, <top type>):
       raise TypeError(...)  # Or datastore_errors.BadValueError(...).
 
-  def _to_base_type(sellf, value):
+  def _to_base_type(self, value):
     '(Strict) user value to base value.'
     if isinstance(value, <user type>):
       return <base type>(value)
@@ -2210,6 +2210,8 @@ class GenericProperty(Property):
   also be used explicitly for properties with dynamically-typed
   values.
   """
+  # TODO: Support reading and writing back compressed values:
+  # p.meaning_uri() == _MEANING_URI_COMPRESSED.  See issue 155.
 
   def _db_get_value(self, v, p):
     # This is awkward but there seems to be no faster way to inspect

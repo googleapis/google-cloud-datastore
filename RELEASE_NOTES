@@ -10,7 +10,7 @@ Release 0.9.8
 
 Final tweaks:
 
-- Issue 149: Add get_index() API.
+- Issue 149: Add get_indexes() API.
 - Issue 152: Made @utils.wrapping() more robust.
 - Moved @context.toplevel to @tasklets.toplevel.
 - Made GQL honor the default_model in the adapter.
