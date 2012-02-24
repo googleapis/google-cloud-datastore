@@ -2109,6 +2109,53 @@ class ModelTests(test_utils.NDBTest):
     self.assertFalse(b._properties['foo']._indexed)
     self.assertFalse(b._properties['bar']._indexed)
 
+  def testGenericPropertyCompressedRefusesIndexed(self):
+    self.assertRaises(NotImplementedError,
+                      model.GenericProperty, compressed=True, indexed=True)
+
+  def testGenericPropertyCompressed(self):
+    class Goo(model.Model):
+      comp = model.GenericProperty(compressed=True)
+      comps = model.GenericProperty(compressed=True, repeated=True)
+    self.assertFalse(Goo.comp._indexed)
+    self.assertFalse(Goo.comps._indexed)
+    a = Goo(comp='fizzy', comps=['x'*1000, 'y'*1000])
+    a.put()
+    self.assertTrue(isinstance(a._values['comp'].b_val,
+                               model._CompressedValue))
+    self.assertTrue(isinstance(a._values['comps'][0].b_val,
+                               model._CompressedValue))
+    self.assertTrue(isinstance(a._values['comps'][1].b_val,
+                               model._CompressedValue))
+    b = a.key.get()
+    self.assertEqual(a, b)
+    self.assertTrue(a is not b)
+    # Extra-double-check.
+    self.assertEqual(b.comp, 'fizzy')
+    self.assertEqual(b.comps, ['x'*1000, 'y'*1000])
+    # Now try some non-string values.
+    x = Goo(comp=42, comps=[u'\u1234'*1000, datetime.datetime(2012, 2, 23)])
+    x.put()
+    self.assertFalse(isinstance(x._values['comp'].b_val,
+                                model._CompressedValue))
+    self.assertFalse(isinstance(x._values['comps'][0].b_val,
+                                model._CompressedValue))
+    self.assertFalse(isinstance(x._values['comps'][1].b_val,
+                                model._CompressedValue))
+    y = x.key.get()
+    self.assertEqual(x, y)
+
+  def testExpandoReadsCompressed(self):
+    class Goo(model.Model):
+      comp = model.BlobProperty(compressed=True)
+    x = Goo(comp='foo')
+    x.put()
+    class Goo(model.Expando):
+      pass
+    y = x.key.get()
+    self.assertTrue(y._properties['comp']._compressed)
+    self.assertEqual(y.comp, 'foo')
+
   def testComputedProperty(self):
     class ComputedTest(model.Model):
       name = model.StringProperty()

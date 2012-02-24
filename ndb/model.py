@@ -2209,9 +2209,33 @@ class GenericProperty(Property):
   the datastore but not represented in the Model subclass) but can
   also be used explicitly for properties with dynamically-typed
   values.
+
+  This supports compressed=True, which is only effective for str
+  values (not for unicode), and implies indexed=False.
   """
-  # TODO: Support reading and writing back compressed values:
-  # p.meaning_uri() == _MEANING_URI_COMPRESSED.  See issue 155.
+
+  _compressed = False
+
+  _attributes = Property._attributes + ['_compressed']
+
+  @utils.positional(1 + Property._positional)
+  def __init__(self, name=None, compressed=False, **kwds):
+    if compressed:  # Compressed implies unindexed.
+      kwds.setdefault('indexed', False)
+    super(GenericProperty, self).__init__(name=name, **kwds)
+    self._compressed = compressed
+    if compressed and self._indexed:
+      # TODO: Allow this, but only allow == and IN comparisons?
+      raise NotImplementedError('GenericProperty %s cannot be compressed and '
+                                'indexed at the same time.' % self._name)
+
+  def _to_base_type(self, value):
+    if self._compressed and isinstance(value, str):
+      return _CompressedValue(zlib.compress(value))
+
+  def _from_base_type(self, value):
+    if isinstance(value, _CompressedValue):
+      return zlib.decompress(value.z_val)
 
   def _db_get_value(self, v, p):
     # This is awkward but there seems to be no faster way to inspect
@@ -2223,8 +2247,10 @@ class GenericProperty(Property):
       meaning = p.meaning()
       if meaning == entity_pb.Property.BLOBKEY:
         sval = BlobKey(sval)
-      elif meaning not in (entity_pb.Property.BLOB,
-                             entity_pb.Property.BYTESTRING):
+      elif meaning == entity_pb.Property.BLOB:
+        if p.meaning_uri() == _MEANING_URI_COMPRESSED:
+          sval = _CompressedValue(sval)
+      elif meaning != entity_pb.Property.BYTESTRING:
         try:
           sval.decode('ascii')
           # If this passes, don't return unicode.
@@ -2307,6 +2333,11 @@ class GenericProperty(Property):
     elif isinstance(value, BlobKey):
       v.set_stringvalue(str(value))
       p.set_meaning(entity_pb.Property.BLOBKEY)
+    elif isinstance(value, _CompressedValue):
+      value = value.z_val
+      v.set_stringvalue(value)
+      p.set_meaning_uri(_MEANING_URI_COMPRESSED)
+      p.set_meaning(entity_pb.Property.BLOB)
     else:
       raise NotImplementedError('Property %s does not support %s types.' %
                                 (self._name, type(value)))
@@ -2689,9 +2720,11 @@ class Model(_NotEqualMixin):
       prop = StructuredProperty(Expando, next)
       prop._store_value(self, _BaseValue(Expando()))
     else:
+      compressed = p.meaning_uri() == _MEANING_URI_COMPRESSED
       prop = GenericProperty(next,
                              repeated=p.multiple(),
-                             indexed=indexed)
+                             indexed=indexed,
+                             compressed=compressed)
     prop._code_name = next
     self._properties[prop._name] = prop
     return prop
