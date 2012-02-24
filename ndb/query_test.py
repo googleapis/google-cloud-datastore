@@ -1058,9 +1058,8 @@ class QueryTests(test_utils.NDBTest):
     a.name = 'x'  # Modify, but don't write
     b = Bar.query().get()
     self.assertTrue(b is a)
-    self.assertEqual(a.name, 'a')
-    a.name = 'x'
-    a.key = None
+    self.assertEqual(a.name, 'x')
+    a.key = None  # Invalidate cache by resetting key.
     b = Bar.query().get()
     self.assertFalse(b is a)
     self.assertEqual(a.name, 'x')
