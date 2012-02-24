@@ -1,5 +1,6 @@
 Release 0.9.9 (not yet)
 
+- Issue 158: Support GenericProperty(compressed=True).
 - Issue 156: Changed query cache policy (again).
 - Raise an error on attempting to create a nested transaction.
 - Make get_or_insert() use existing transaction if one exist.
