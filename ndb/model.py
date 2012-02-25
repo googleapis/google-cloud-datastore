@@ -1507,7 +1507,14 @@ class TextProperty(BlobProperty):
   """An unindexed Property whose value is a text string of unlimited length."""
 
   def _validate(self, value):
-    if not isinstance(value, basestring):
+    if isinstance(value, str):
+      # Decode from UTF-8 -- if this fails, we can't write it.
+      try:
+        value = unicode(value, 'utf-8')
+      except UnicodeError:
+        raise datastore_errors.BadValueError('Expected valid UTF-8, got %r' %
+                                             (value,))
+    elif not isinstance(value, unicode):
       raise datastore_errors.BadValueError('Expected string, got %r' %
                                            (value,))
     if self._indexed and len(value) > _MAX_STRING_LENGTH:
@@ -1522,8 +1529,13 @@ class TextProperty(BlobProperty):
   def _from_base_type(self, value):
     if isinstance(value, str):
       try:
-        return value.decode('utf-8')
+        return unicode(value, 'utf-8')
       except UnicodeDecodeError:
+        # Since older versions of NDB could write non-UTF-8 TEXT
+        # properties, we can't just reject these.  But _validate() now
+        # rejects these, so you can't write new non-UTF-8 TEXT
+        # properties.
+        # TODO: Eventually we should close this hole.
         pass
 
   def _db_set_uncompressed_meaning(self, p):

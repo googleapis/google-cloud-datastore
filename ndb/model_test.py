@@ -1812,8 +1812,11 @@ class ModelTests(test_utils.NDBTest):
     a.s = None
     a.s = 'abc'
     a.s = u'def'
-    a.s = '\xff'  # Not UTF-8.
+    a.s = u'\xff'
+    a.s = u'\u1234'
+    a.s = u'\U00012345'
     self.assertRaises(BVE, setattr, a, 's', 0)
+    self.assertRaises(BVE, setattr, a, 's', '\xff')
 
     a.i = None
     a.i = 42
@@ -1828,14 +1831,17 @@ class ModelTests(test_utils.NDBTest):
     a.t = None
     a.t = 'abc'
     a.t = u'def'
-    a.t = '\xff'  # Not UTF-8.
+    a.t = u'\xff'
+    a.t = u'\u1234'
+    a.t = u'\U00012345'
     self.assertRaises(BVE, setattr, a, 't', 0)
+    self.assertRaises(BVE, setattr, a, 't', '\xff')
 
     a.b = None
     a.b = 'abc'
     a.b = '\xff'
     self.assertRaises(BVE, setattr, a, 'b', u'')
-    self.assertRaises(BVE, setattr, a, 'b', u'')
+    self.assertRaises(BVE, setattr, a, 'b', u'\u1234')
 
     a.k = None
     a.k = model.Key('Foo', 42)
