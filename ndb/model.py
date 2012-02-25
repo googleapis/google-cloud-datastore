@@ -297,7 +297,6 @@ from . import utils
 # NOTE: 'key' is a common local variable name.
 from . import key as key_module
 Key = key_module.Key  # For export.
-_MAX_LONG = key_module._MAX_LONG
 
 # NOTE: Property and Error classes are added later.
 __all__ = ['Key', 'BlobKey', 'GeoPt', 'Rollback',
@@ -330,6 +329,9 @@ class KindError(datastore_errors.BadValueError):
 class ComputedPropertyError(datastore_errors.Error):
   """Raised when attempting to assign a value to a computed property."""
 
+# Various imported limits.
+_MAX_LONG = key_module._MAX_LONG
+_MAX_STRING_LENGTH = datastore_types._MAX_STRING_LENGTH
 
 # Map index directions to human-readable strings.
 _DIR_MAP = {
@@ -1448,10 +1450,15 @@ class BlobProperty(Property):
                                 'indexed at the same time.' % self._name)
 
   def _validate(self, value):
-    # TODO: Enforce size limit when indexed.
     if not isinstance(value, str):
       raise datastore_errors.BadValueError('Expected str, got %r' %
                                            (value,))
+    if (self._indexed and
+        not isinstance(self, TextProperty) and
+        len(value) > _MAX_STRING_LENGTH):
+      raise datastore_errors.BadValueError(
+        'Indexed value %s must be at most %d bytes' %
+        (self._name, _MAX_STRING_LENGTH))
 
   def _to_base_type(self, value):
     if self._compressed:
@@ -1500,10 +1507,13 @@ class TextProperty(BlobProperty):
   """An unindexed Property whose value is a text string of unlimited length."""
 
   def _validate(self, value):
-    # TODO: Enforce size limit when indexed.
     if not isinstance(value, basestring):
       raise datastore_errors.BadValueError('Expected string, got %r' %
                                            (value,))
+    if self._indexed and len(value) > _MAX_STRING_LENGTH:
+      raise datastore_errors.BadValueError(
+        'Indexed value %s must be at most %d characters' %
+        (self._name, _MAX_STRING_LENGTH))
 
   def _to_base_type(self, value):
     if isinstance(value, unicode):
@@ -2236,6 +2246,14 @@ class GenericProperty(Property):
   def _from_base_type(self, value):
     if isinstance(value, _CompressedValue):
       return zlib.decompress(value.z_val)
+
+  def _validate(self, value):
+    if (isinstance(value, basestring) and
+        self._indexed and
+        len(value) > _MAX_STRING_LENGTH):
+      raise datastore_errors.BadValueError(
+        'Indexed value %s must be at most %d bytes' %
+        (self._name, _MAX_STRING_LENGTH))
 
   def _db_get_value(self, v, p):
     # This is awkward but there seems to be no faster way to inspect

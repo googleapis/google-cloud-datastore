@@ -1746,6 +1746,57 @@ class ModelTests(test_utils.NDBTest):
       s = repr(prop)
       self.assertTrue(s.startswith(prop.__class__.__name__ + '('), s)
 
+  def testLengthRestriction(self):
+    # Check the following rules for size validation of blobs and texts:
+    # - Unindexed blob and text properties can be unlimited in size.
+    # - Indexed blob properties are limited to 500 bytes.
+    # - Indexed text properties are limited to 500 characters.
+    class MyModel(model.Model):
+      ublob = model.BlobProperty()  # Defaults to indexed=False.
+      iblob = model.BlobProperty(indexed=True)
+      utext = model.TextProperty()  # Defaults to indexed=False.
+      itext = model.TextProperty(indexed=True)
+      ustr = model.StringProperty(indexed=False)
+      istr = model.StringProperty()  # Defaults to indexed=True.
+      ugen = model.GenericProperty(indexed=False)
+      igen = model.GenericProperty(indexed=True)
+    largeblob = 'x'*500
+    toolargeblob = 'x'*501
+    hugeblob = 'x'*10000
+    largetext = u'\u1234'*500
+    toolargetext = u'\u1234'*500 + 'x'
+    hugetext = u'\u1234'*10000
+    ent = MyModel()
+    # These should all fail:
+    self.assertRaises(datastore_errors.BadValueError,
+                      setattr, ent, 'iblob', toolargeblob)
+    self.assertRaises(datastore_errors.BadValueError,
+                      setattr, ent, 'itext', toolargetext)
+    self.assertRaises(datastore_errors.BadValueError,
+                      setattr, ent, 'itext', toolargeblob)
+    self.assertRaises(datastore_errors.BadValueError,
+                      setattr, ent, 'istr', toolargetext)
+    self.assertRaises(datastore_errors.BadValueError,
+                      setattr, ent, 'istr', toolargeblob)
+    self.assertRaises(datastore_errors.BadValueError,
+                      setattr, ent, 'igen', toolargetext)
+    self.assertRaises(datastore_errors.BadValueError,
+                      setattr, ent, 'igen', toolargeblob)
+    # These should all work:
+    ent.ublob = hugeblob
+    ent.iblob = largeblob
+    ent.utext = hugetext
+    ent.itext = largetext
+    ent.ustr = hugetext
+    ent.istr = largetext
+    ent.ugen = hugetext
+    ent.igen = largetext
+    # Writing the entity should work:
+    key = ent.put()
+    # Reading it back should work:
+    ent2 = key.get()
+    self.assertEqual(ent2, ent)
+    self.assertTrue(ent2 is not ent)
 
   def testValidation(self):
     class All(model.Model):
