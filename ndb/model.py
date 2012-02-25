@@ -779,8 +779,8 @@ class Property(ModelAttribute):
       # value.lower() or value.strip() is fine, but one that returns
       # value + '$' is not.
       if not hasattr(validator, '__call__'):
-        raise TypeError('validator must be callable or None; received %r'
-                        % validator)
+        raise TypeError('validator must be callable or None; received %r' %
+                        validator)
       self._validator = validator
 
   def __repr__(self):
@@ -825,7 +825,6 @@ class Property(ModelAttribute):
         'Cannot query for unindexed property %s' % self._name)
     from .query import FilterNode  # Import late to avoid circular imports.
     if value is not None:
-      # TODO: Allow query.Binding instances?
       value = self._do_validate(value)
       value = self._call_to_base_type(value)
       value = self._datastore_type(value)
