@@ -1,5 +1,6 @@
 Release 0.9.9 (not yet)
 
+- Issue 159: Make Model.__init__() signature more robust.
 - Issue 163: String/TextProperty should not allow writing non-UTF-8 text.
 - Issue 139: Enforce size limits for indexed text/blob properties.
 - Issue 158: Support GenericProperty(compressed=True).

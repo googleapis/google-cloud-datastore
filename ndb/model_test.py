@@ -535,6 +535,61 @@ class ModelTests(test_utils.NDBTest):
     self.assertRaises(datastore_errors.BadArgumentError, model.Model, key=k,
                       id='bar', parent=p)
 
+  def testNamespaceAndApp(self):
+    m = model.Model(namespace='')
+    self.assertEqual(m.key.namespace(), '')
+    m = model.Model(namespace='x')
+    self.assertEqual(m.key.namespace(), 'x')
+    m = model.Model(app='y')
+    self.assertEqual(m.key.app(), 'y')
+
+  def testNamespaceAndAppErrors(self):
+    self.assertRaises(datastore_errors.BadArgumentError,
+                      model.Model, key=model.Key('X', 1), namespace='')
+    self.assertRaises(datastore_errors.BadArgumentError,
+                      model.Model, key=model.Key('X', 1), namespace='x')
+    self.assertRaises(datastore_errors.BadArgumentError,
+                      model.Model, key=model.Key('X', 1), app='y')
+
+  def testPropsOverrideConstructorArgs(self):
+    class MyModel(model.Model):
+      key = model.StringProperty()
+      id = model.StringProperty()
+      app = model.StringProperty()
+      namespace = model.StringProperty()
+      parent = model.StringProperty()
+    root = model.Key('Root', 1, app='app', namespace='ns')
+    key = model.Key(MyModel, 42, parent=root)
+
+    a = MyModel(_key=key)
+    self.assertEqual(a._key, key)
+    self.assertEqual(a.key, None)
+
+    b = MyModel(_id=42, _app='app', _namespace='ns', _parent=root)
+    self.assertEqual(b._key, key)
+    self.assertEqual(b.key, None)
+    self.assertEqual(b.id, None)
+    self.assertEqual(b.app, None)
+    self.assertEqual(b.namespace, None)
+    self.assertEqual(b.parent, None)
+
+    c = MyModel(key='key', id='id', app='app', namespace='ns', parent='root')
+    self.assertEqual(c._key, None)
+    self.assertEqual(c.key, 'key')
+    self.assertEqual(c.id, 'id')
+    self.assertEqual(c.app, 'app')
+    self.assertEqual(c.namespace, 'ns')
+    self.assertEqual(c.parent, 'root')
+
+    d = MyModel(_id=42, _app='app', _namespace='ns', _parent=root,
+                key='key', id='id', app='app', namespace='ns', parent='root')
+    self.assertEqual(d._key, key)
+    self.assertEqual(d.key, 'key')
+    self.assertEqual(d.id, 'id')
+    self.assertEqual(d.app, 'app')
+    self.assertEqual(d.namespace, 'ns')
+    self.assertEqual(d.parent, 'root')
+
   def testAdapter(self):
     class Foo(model.Model):
       name = model.StringProperty()

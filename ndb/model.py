@@ -2485,19 +2485,20 @@ class Model(_NotEqualMixin):
   _key = ModelKey()
   key = _key
 
-  @utils.positional(1)
-  def __init__(self, key=None, id=None, parent=None, **kwds):
+  def __init__(*args, **kwds):
     """Creates a new instance of this model (a.k.a. an entity).
 
     The new entity must be written to the datastore using an explicit
     call to .put().
 
-    Args:
+    Keyword Args:
       key: Key instance for this model. If key is used, id and parent must
         be None.
       id: Key id for this model. If id is used, key must be None.
       parent: Key instance for the parent model or None for a top-level one.
         If parent is used, key must be None.
+      namespace: Optional namespace.
+      app: Optional app ID.
       **kwds: Keyword arguments mapping to properties of this model.
 
     Note: you cannot define a property named key; the .key attribute
@@ -2506,25 +2507,38 @@ class Model(_NotEqualMixin):
     through the constructor, but can be assigned to entity attributes
     after the entity has been created.
     """
-    # TODO: Use the same signature hacks as in get_or_insert() to
-    # fully support properties named id, parent or key?
+    (self,) = args
+    get_arg = self.__get_arg
+    key = get_arg(kwds, 'key')
+    id = get_arg(kwds, 'id')
+    app = get_arg(kwds, 'app')
+    namespace = get_arg(kwds, 'namespace')
+    parent = get_arg(kwds, 'parent')
     if key is not None:
-      if id is not None:
+      if (id is not None or parent is not None or
+          app is not None or namespace is not None):
         raise datastore_errors.BadArgumentError(
-            'Model constructor accepts key or id, not both.')
-      if parent is not None:
-        raise datastore_errors.BadArgumentError(
-            'Model constructor accepts key or parent, not both.')
+            'Model constructor given key= does not accept '
+            'id=, app=, namespace=, or parent=.')
       self._key = _validate_key(key, entity=self)
-    elif id is not None or parent is not None:
-      # When parent is set but id is not, we have an incomplete key.
-      # Key construction will fail with invalid ids or parents, so no check
-      # is needed.
-      # TODO: should this be restricted to string ids?
-      self._key = Key(self._get_kind(), id, parent=parent)
-
+    elif (id is not None or parent is not None or
+          app is not None or namespace is not None):
+      self._key = Key(self._get_kind(), id,
+                      parent=parent, app=app, namespace=namespace)
     self._values = {}
     self._set_attributes(kwds)
+
+  @classmethod
+  def __get_arg(cls, kwds, kwd):
+    """Helper method to parse keywords that may be property names."""
+    alt_kwd = '_' + kwd
+    if alt_kwd in kwds:
+      return kwds.pop(alt_kwd)
+    if kwd in kwds:
+      obj = getattr(cls, kwd, None)
+      if not isinstance(obj, Property) or isinstance(obj, ModelKey):
+        return kwds.pop(kwd)
+    return None
 
   def __getstate__(self):
     return self._to_pb().Encode()
@@ -2905,8 +2919,12 @@ class Model(_NotEqualMixin):
   def _get_or_insert(*args, **kwds):
     """Transactionally retrieves an existing entity or creates a new one.
 
-    Args:
+    Positional Args:
       name: Key name to retrieve or create.
+
+    Keyword Args:
+      namespace: Optional namespace.
+      app: Optional app ID.
       parent: Parent entity key, if any.
       context_options: ContextOptions object (not keyword args!) or None.
       **kwds: Keyword arguments to pass to the constructor of the model class
@@ -2932,21 +2950,11 @@ class Model(_NotEqualMixin):
     # models with properties named e.g. 'cls' or 'name'.
     from . import tasklets
     cls, name = args  # These must always be positional.
-    our_kwds = {}
-    for kwd in 'app', 'namespace', 'parent', 'context_options':
-      # For each of these keyword arguments, if there is a property
-      # with the same name, the caller *must* use _foo=..., otherwise
-      # they may use either _foo=... or foo=..., but _foo=... wins.
-      alt_kwd = '_' + kwd
-      if alt_kwd in kwds:
-        our_kwds[kwd] = kwds.pop(alt_kwd)
-      elif (kwd in kwds and
-          not isinstance(getattr(cls, kwd, None), Property)):
-        our_kwds[kwd] = kwds.pop(kwd)
-    app = our_kwds.get('app')
-    namespace = our_kwds.get('namespace')
-    parent = our_kwds.get('parent')
-    context_options = our_kwds.get('context_options')
+    get_arg = cls.__get_arg
+    app = get_arg(kwds, 'app')
+    namespace = get_arg(kwds, 'namespace')
+    parent = get_arg(kwds, 'parent')
+    context_options = get_arg(kwds, 'context_options')
     # (End of super-special argument parsing.)
     # TODO: Test the heck out of this, in all sorts of evil scenarios.
     if not isinstance(name, basestring):
