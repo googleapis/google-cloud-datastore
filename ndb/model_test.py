@@ -2474,18 +2474,6 @@ class ModelTests(test_utils.NDBTest):
     model.transaction(txn)
     self.assertEqual(Mod.query().get(), None)
 
-  def testGetOrInsertAsyncInTransaction(self):
-    class Mod(model.Model):
-      data = model.StringProperty()
-    def txn():
-      ent = Mod.get_or_insert('a', data='hola')
-      self.assertTrue(isinstance(ent, Mod))
-      ent2 = Mod.get_or_insert('a', data='hola')
-      self.assertEqual(ent2, ent)
-      raise model.Rollback()
-    model.transaction(txn)
-    self.assertEqual(Mod.query().get(), None)
-
   def testGetById(self):
     class MyModel(model.Model):
       pass
