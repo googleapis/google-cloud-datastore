@@ -1,4 +1,4 @@
-Release 0.9.9 (not yet)
+Release 0.9.9
 
 - Issue 164: Reduce log spam for exceptions in production.
 - Issue 159: Make Model.__init__() signature more robust.
