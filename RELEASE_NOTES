@@ -1,6 +1,11 @@
-Release 0.9.9
+Release 1.0 (not yet)
 
 - Add support for transaction propagation options (SDK 1.6.4).
+
+----------------------------------------
+
+Release 0.9.9
+
 - Issue 164: Reduce log spam for exceptions in production.
 - Issue 159: Make Model.__init__() signature more robust.
 - Issue 163: String/TextProperty should not allow writing non-UTF-8 text.
