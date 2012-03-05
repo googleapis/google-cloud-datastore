@@ -1,4 +1,4 @@
-Release 0.9.9 (not yet)
+Release 0.9.9
 
 - Add support for transaction propagation options (SDK 1.6.4).
 - Issue 164: Reduce log spam for exceptions in production.

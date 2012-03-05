@@ -243,7 +243,7 @@ urls = [
   ('/account', AccountPage),
   ]
 
-app = ndb.toplevel(webapp.WSGIApplication(urls))
+app = webapp.WSGIApplication(urls)
 
 
 def main():
