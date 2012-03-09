@@ -137,6 +137,7 @@ from .google_imports import datastore_types
 from .google_imports import datastore_query
 
 from . import model
+from . import context
 from . import tasklets
 from . import utils
 
@@ -149,7 +150,6 @@ __all__ = ['Query', 'QueryOptions', 'Cursor', 'QueryIterator',
            ]
 
 # Re-export some useful classes from the lower-level module.
-QueryOptions = datastore_query.QueryOptions
 Cursor = datastore_query.Cursor
 
 # Some local renamings.
@@ -163,6 +163,10 @@ _OPS = frozenset(['=', '!=', '<', '<=', '>', '>=', 'in'])
 
 # Default limit value.  (Yes, the datastore uses int32!)
 _MAX_LIMIT = 2 ** 31 - 1
+
+
+class QueryOptions(context.ContextOptions, datastore_query.QueryOptions):
+  """Support both context options and query options (esp. use_cache)."""
 
 
 class RepeatedStructuredPropertyPredicate(datastore_query.FilterPredicate):

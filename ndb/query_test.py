@@ -1055,10 +1055,13 @@ class QueryTests(test_utils.NDBTest):
     self.assertTrue(b is a)  # Just verifying that the cache is on.
     b = Bar.query().get()
     self.assertTrue(b is a)
-    a.name = 'x'  # Modify, but don't write
+    a.name = 'x'  # Modify, but don't write.
     b = Bar.query().get()
     self.assertTrue(b is a)
     self.assertEqual(a.name, 'x')
+    b = Bar.query().get(use_cache=False)  # Skip the cache.
+    self.assertFalse(b is a)
+    self.assertEqual(b.name, 'a')
     a.key = None  # Invalidate cache by resetting key.
     b = Bar.query().get()
     self.assertFalse(b is a)

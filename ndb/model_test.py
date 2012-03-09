@@ -3015,7 +3015,8 @@ class ModelTests(test_utils.NDBTest):
     callback1(log)
     self.assertEqual(
       log,
-      [context.ContextOptions(propagation=context.ContextOptions.ALLOWED)])
+      [context.TransactionOptions(propagation=
+                                  context.TransactionOptions.ALLOWED)])
 
     @model.transactional(retries=42)
     def callback2(log):
@@ -3071,25 +3072,25 @@ class ModelTests(test_utils.NDBTest):
     self.assertEqual(nkey, key)
     self.assertEqual(key.get().count, 1)
     # propagation=NESTED -- creates new transaction
-    flag = context.ContextOptions.NESTED
+    flag = context.TransactionOptions.NESTED
     nkey, nctx = model.transactional(propagation=flag)(increment)(key)
     self.assertTrue(nctx is not octx)
     self.assertTrue(nctx.in_transaction())
     self.assertEqual(nkey, key)
     self.assertEqual(nkey.get().count, 2)
     # propagation=MANDATORY -- error
-    flag = context.ContextOptions.MANDATORY
+    flag = context.TransactionOptions.MANDATORY
     self.assertRaises(datastore_errors.BadRequestError,
                       model.transactional(propagation=flag)(increment), key)
     # propagation=ALLOWED -- creates new transaction
-    flag = context.ContextOptions.ALLOWED
+    flag = context.TransactionOptions.ALLOWED
     nkey, nctx = model.transactional(propagation=flag)(increment)(key)
     self.assertTrue(nctx is not octx)
     self.assertTrue(nctx.in_transaction())
     self.assertEqual(nkey, key)
     self.assertEqual(nkey.get().count, 3)
     # propagation=INDEPENDENT -- creates new transaction
-    flag = context.ContextOptions.INDEPENDENT
+    flag = context.TransactionOptions.INDEPENDENT
     nkey, nctx = model.transactional(propagation=flag)(increment)(key)
     self.assertTrue(nctx is not octx)
     self.assertTrue(nctx.in_transaction())
@@ -3120,23 +3121,23 @@ class ModelTests(test_utils.NDBTest):
       self.assertEqual(nkey, key)
       self.assertEqual(key.get().count, 1)
       # propagation=NESTED -- error
-      flag = context.ContextOptions.NESTED
+      flag = context.TransactionOptions.NESTED
       self.assertRaises(datastore_errors.BadRequestError,
                         model.transactional(propagation=flag)(increment), key)
       # propagation=MANDATORY -- runs in current context
-      flag = context.ContextOptions.MANDATORY
+      flag = context.TransactionOptions.MANDATORY
       nkey, nctx = model.transactional(propagation=flag)(increment)(key)
       self.assertTrue(nctx is octx)
       self.assertEqual(nkey, key)
       self.assertEqual(nkey.get().count, 2)
       # propagation=ALLOWED -- runs in current context
-      flag = context.ContextOptions.ALLOWED
+      flag = context.TransactionOptions.ALLOWED
       nkey, nctx = model.transactional(propagation=flag)(increment)(key)
       self.assertTrue(nctx is octx)
       self.assertEqual(nkey, key)
       self.assertEqual(nkey.get().count, 3)
       # propagation=INDEPENDENT -- creates new transaction
-      flag = context.ContextOptions.INDEPENDENT
+      flag = context.TransactionOptions.INDEPENDENT
       nkey, nctx = model.transactional(propagation=flag)(increment)(key)
       self.assertTrue(nctx is not octx)
       self.assertTrue(nctx.in_transaction())

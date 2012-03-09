@@ -19,7 +19,7 @@ from . import tasklets
 from . import eventloop
 from . import utils
 
-__all__ = ['Context', 'ContextOptions', 'AutoBatcher',
+__all__ = ['Context', 'ContextOptions', 'TransactionOptions', 'AutoBatcher',
            'EVENTUAL_CONSISTENCY',
            ]
 
@@ -31,7 +31,7 @@ _LOCKED = 0  # Special value to store in memcache indicating locked value.
 EVENTUAL_CONSISTENCY = datastore_rpc.Configuration.EVENTUAL_CONSISTENCY
 
 
-class ContextOptions(datastore_rpc.TransactionOptions):
+class ContextOptions(datastore_rpc.Configuration):
   """Configuration options that may be passed along with get/put/delete."""
 
   @datastore_rpc.ConfigOption
@@ -70,24 +70,30 @@ class ContextOptions(datastore_rpc.TransactionOptions):
     return value
 
 
+class TransactionOptions(ContextOptions, datastore_rpc.TransactionOptions):
+  """Support both context options and transaction options."""
+
+
+
 # options and config can be used interchangeably.
 _OPTION_TRANSLATIONS = {
   'options': 'config',
 }
 
 
-def _make_ctx_options(ctx_options):
+def _make_ctx_options(ctx_options, config_cls=ContextOptions):
   """Helper to construct a ContextOptions object from keyword arguments.
 
   Args:
-    ctx_options: a dict of keyword arguments.
+    ctx_options: A dict of keyword arguments.
+    config_cls: Optional Configuration class to use, default ContextOptions.
 
   Note that either 'options' or 'config' can be used to pass another
-  ContextOptions object, but not both.  If another ContextOptions
+  Configuration object, but not both.  If another Configuration
   object is given it provides default values.
 
   Returns:
-    A ContextOptions object, or None if ctx_options is empty.
+    A Configuration object, or None if ctx_options is empty.
   """
   if not ctx_options:
     return None
@@ -98,7 +104,7 @@ def _make_ctx_options(ctx_options):
         raise ValueError('Cannot specify %s and %s at the same time' %
                          (key, translation))
       ctx_options[translation] = ctx_options.pop(key)
-  return ContextOptions(**ctx_options)
+  return config_cls(**ctx_options)
 
 
 class AutoBatcher(object):
@@ -797,25 +803,25 @@ class Context(object):
     # Will invoke callback() one or more times with the default
     # context set to a new, transactional Context.  Returns a Future.
     # Callback may be a tasklet.
-    options = _make_ctx_options(ctx_options)
-    propagation = ContextOptions.propagation(options)
+    options = _make_ctx_options(ctx_options, TransactionOptions)
+    propagation = TransactionOptions.propagation(options)
     if propagation is None:
-      propagation = ContextOptions.NESTED
+      propagation = TransactionOptions.NESTED
 
     parent = self
-    if propagation == ContextOptions.NESTED:
+    if propagation == TransactionOptions.NESTED:
       if self.in_transaction():
         raise datastore_errors.BadRequestError(
           'Nested transactions are not supported.')
-    elif propagation == ContextOptions.MANDATORY:
+    elif propagation == TransactionOptions.MANDATORY:
       if not self.in_transaction():
         raise datastore_errors.BadRequestError(
           'Requires an existing transaction.')
       raise tasklets.Return(callback())
-    elif propagation == ContextOptions.ALLOWED:
+    elif propagation == TransactionOptions.ALLOWED:
       if self.in_transaction():
         raise tasklets.Return(callback())
-    elif propagation == ContextOptions.INDEPENDENT:
+    elif propagation == TransactionOptions.INDEPENDENT:
       while parent.in_transaction():
         parent = parent._parent_context
         if parent is None:
@@ -825,9 +831,9 @@ class Context(object):
       raise datastore_errors.BadArgumentError(
         'Invalid propagation value (%s).' % (propagation,))
 
-    app = ContextOptions.app(options) or key_module._DefaultAppId()
+    app = TransactionOptions.app(options) or key_module._DefaultAppId()
     # Note: zero retries means try it once.
-    retries = ContextOptions.retries(options)
+    retries = TransactionOptions.retries(options)
     if retries is None:
       retries = 3
     yield parent.flush()
