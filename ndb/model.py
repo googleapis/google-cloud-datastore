@@ -3183,16 +3183,18 @@ def transaction(callback, **ctx_options):
 
   Args:
     callback: A function or tasklet to be called.
-    **ctx_options: Context options.
+    **ctx_options: Transaction options.
 
   Useful options include:
     retries=N: Retry up to N times (i.e. try up to N+1 times)
     propagation=<flag>: Determines how an existing transaction should be
       propagated, where <flag> can be one of the following:
-      ContextOptions.NESTED: Start a nested transaction (not yet implemented).
-      ContextOptions.MANDATORY: A transaction must already be in progress.
-      ContextOptions.ALLOWED: If a transaction is in progress, join it.
-      ContextOptions.INDEPENDENT: Always start a new parallel transaction.
+      TransactionOptions.NESTED: Start a nested transaction (this is the
+        default; but actual nested transactions are not yet implemented,
+        so effectively you can only use this outside an existing transaction).
+      TransactionOptions.MANDATORY: A transaction must already be in progress.
+      TransactionOptions.ALLOWED: If a transaction is in progress, join it.
+      TransactionOptions.INDEPENDENT: Always start a new parallel transaction.
     xg=True: On the High Replication Datastore, enable cross-group
       transactions, i.e. allow writing to up to 5 entity groups.
 
@@ -3242,7 +3244,8 @@ def transactional(_func=None, **ctx_options):
 
   Args:
     _func: Do not use.
-    **ctx_options: Context options.
+    **ctx_options: Transaction options (see transaction(), but propagation
+      default to TransactionOptions.ALLOWED).
 
   This supports two forms:
 

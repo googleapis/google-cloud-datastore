@@ -1,6 +1,7 @@
 Release 1.0 (not yet)
 
 - Query operations can now pass use_cache=False (see issue 156 comment 7).
+- There's now a separate TransactionOptions object.
 - Add support for transaction propagation options (SDK 1.6.4).
 
 ----------------------------------------
