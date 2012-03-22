@@ -1,6 +1,6 @@
 """NDB -- A new datastore API for the Google App Engine Python runtime."""
 
-__version__ = '1.0'
+__version__ = '1.0.1'
 
 __all__ = []
 

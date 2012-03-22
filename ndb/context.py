@@ -642,9 +642,11 @@ class Context(object):
         # Don't serialize the key since it's already the memcache key.
         pbs = entity._to_pb(set_key=False).SerializePartialToString()
         timeout = self._get_memcache_timeout(key, options)
-        # Don't yield -- this can run in the background.
-        # TODO: See issue 105 though.
-        self.memcache_cas(mkey, pbs, time=timeout, namespace=ns)
+        # Don't use fire-and-forget -- for users who forget
+        # @ndb.toplevel, it's too painful to diagnose why their simple
+        # code using a single synchronous call doesn't seem to use
+        # memcache.  See issue 105.  http://goo.gl/JQZxp
+        yield self.memcache_cas(mkey, pbs, time=timeout, namespace=ns)
 
     if use_cache:
       # Cache hit or miss.  NOTE: In this case it is okay to cache a
@@ -687,7 +689,7 @@ class Context(object):
         if use_memcache:
           mkey = self._memcache_prefix + key.urlsafe()
           ns = key.namespace()
-          # TODO: Maybe don't yield here, like it get()?
+          # Don't use fire-and-forget -- see memcache_cas() in get().
           yield self.memcache_delete(mkey, namespace=ns)
 
     if key is not None:

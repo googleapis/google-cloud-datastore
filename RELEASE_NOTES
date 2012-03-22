@@ -1,5 +1,6 @@
 Release 1.0.1 (not yet)
 
+- Issue 105: Use yield for memcache_cas() call in Context.get().
 - Issue 168: Fix namespace for async queries.
 
 ----------------------------------------
