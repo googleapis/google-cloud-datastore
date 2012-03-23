@@ -218,6 +218,26 @@ class KeyTests(test_utils.NDBTest):
     k = key.Key(flat=flat)
     self.assertEqual(hash(k), hash(tuple(pairs)))
 
+  def testOrdering(self):
+    a = key.Key(app='app2', namespace='ns2', flat=('kind1', 1))
+    b = key.Key(app='app2', namespace='ns1', flat=('kind1', 1))
+    c = key.Key(app='app1', namespace='ns1', flat=('kind1', 1))
+    d = key.Key(app='app1', namespace='ns1', flat=('kind1', 2))
+    e = key.Key(app='app1', namespace='ns1', flat=('kind1', 'e'))
+    f = key.Key(app='app1', namespace='ns1', flat=('kind1', 'f'))
+    g = key.Key(app='app1', namespace='ns1', flat=('kind2', 'f', 'x', 1))
+    h = key.Key(app='app1', namespace='ns1', flat=('kind2', 'f', 'x', 2))
+    actual = sorted([a, b, c, d, e, f, g, h])
+    self.assertEqual(actual, [c, d, e, f, g, h, b, a])
+    for i in range(len(actual)):
+      for j in range(len(actual)):
+        self.assertEqual(actual[i] < actual[j], i < j)
+        self.assertEqual(actual[i] <= actual[j], i <= j)
+        self.assertEqual(actual[i] > actual[j], i > j)
+        self.assertEqual(actual[i] >= actual[j], i >= j)
+        self.assertEqual(actual[i] == actual[j], i == j)
+        self.assertEqual(actual[i] != actual[j], i != j)
+
   def testPickling(self):
     flat = ['Kind', 1, 'Subkind', 'foobar']
     k = key.Key(flat=flat)

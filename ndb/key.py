@@ -318,6 +318,8 @@ class Key(object):
 
   def __eq__(self, other):
     """Equality comparison operation."""
+    # This does not use __tuple() because it is usually enough to
+    # compare pairs(), and we're performance-conscious here.
     if not isinstance(other, Key):
       return NotImplemented
     return (tuple(self.pairs()) == tuple(other.pairs()) and
@@ -329,6 +331,34 @@ class Key(object):
     if not isinstance(other, Key):
       return NotImplemented
     return not self.__eq__(other)
+
+  def __tuple(self):
+    """Helper to return an orderable tuple."""
+    return (self.app(), self.namespace(), self.pairs())
+
+  def __lt__(self, other):
+    """Less than ordering."""
+    if not isinstance(other, Key):
+      return NotImplemented
+    return self.__tuple() < other.__tuple()
+
+  def __le__(self, other):
+    """Less than or equal ordering."""
+    if not isinstance(other, Key):
+      return NotImplemented
+    return self.__tuple() <= other.__tuple()
+
+  def __gt__(self, other):
+    """Greater than ordering."""
+    if not isinstance(other, Key):
+      return NotImplemented
+    return self.__tuple() > other.__tuple()
+
+  def __ge__(self, other):
+    """Greater than or equal ordering."""
+    if not isinstance(other, Key):
+      return NotImplemented
+    return self.__tuple() >= other.__tuple()
 
   def __getstate__(self):
     """Private API used for pickling."""
