@@ -1,6 +1,9 @@
 Introduction
 ------------
 
+(UPDATE: As of SDK 1.6.4, NDB has reached status General Availability.
+Mentions of its experimental status in this file should be ignored.)
+
 In this project I am developing a new, experimental datastore
 API for the Google App Engine Python runtime. I am doing this as a
 Google employee but using an open source development style as I
