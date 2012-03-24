@@ -254,6 +254,8 @@ class Key(object):
       if not isinstance(kind, str):
           raise TypeError('Key kind must be a string or Model class; '
                           'received %r' % kind)
+      if not id:
+        id = None
       pairs[i] = (kind, id)
     if parent is not None:
       if not isinstance(parent, Key):

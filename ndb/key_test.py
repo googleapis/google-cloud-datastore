@@ -242,6 +242,24 @@ class KeyTests(test_utils.NDBTest):
         self.assertEqual(actual[i] == actual[j], i == j)
         self.assertEqual(actual[i] != actual[j], i != j)
 
+  def testUniqueIncomplete(self):
+    p0 = None
+    p1 = key.Key('bar', 1)
+    for p in p0, p1:
+      a = key.Key('foo', 0, parent=p)
+      b = key.Key('foo', '', parent=p)
+      c = key.Key('foo', None, parent=p)
+      self.assertEqual(a, b)
+      self.assertEqual(b, c)
+      self.assertEqual(c, a)
+      for x in a, b, c:
+        self.assertEqual(x.id(), None)
+        self.assertEqual(x.string_id(), None)
+        self.assertEqual(x.integer_id(), None)
+        self.assertEqual(x.pairs()[-1], ('foo', None))
+        self.assertEqual(x.flat()[-1], None)
+        self.assertEqual(x.urlsafe(), c.urlsafe())
+
   def testPickling(self):
     flat = ['Kind', 1, 'Subkind', 'foobar']
     k = key.Key(flat=flat)
