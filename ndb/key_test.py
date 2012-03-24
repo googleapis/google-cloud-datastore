@@ -227,8 +227,12 @@ class KeyTests(test_utils.NDBTest):
     f = key.Key(app='app1', namespace='ns1', flat=('kind1', 'f'))
     g = key.Key(app='app1', namespace='ns1', flat=('kind2', 'f', 'x', 1))
     h = key.Key(app='app1', namespace='ns1', flat=('kind2', 'f', 'x', 2))
-    actual = sorted([a, b, c, d, e, f, g, h])
-    self.assertEqual(actual, [c, d, e, f, g, h, b, a])
+    input = [a, b, c, d, e, f, g, h]
+    actual = sorted(input)
+    expected = sorted(
+      input,
+      key=lambda k: datastore_types.ReferenceToKeyValue(k.reference()))
+    self.assertEqual(actual, expected)
     for i in range(len(actual)):
       for j in range(len(actual)):
         self.assertEqual(actual[i] < actual[j], i < j)
