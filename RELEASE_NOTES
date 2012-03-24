@@ -7,7 +7,11 @@ Release 1.0.1 (not yet)
 
 ----------------------------------------
 
-Release 1.0 (not yet)
+Release 1.0 (included in SDK 1.6.4)
+
+NDB has now reached status General Availability.
+
+Changes since 0.9.9:
 
 - Query operations can now pass use_cache=False (see issue 156 comment 7).
 - There's now a separate TransactionOptions object.
