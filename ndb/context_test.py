@@ -1,13 +1,18 @@
 """Tests for context.py."""
 
 import logging
+import random
+import socket
+import threading
+import time
 import unittest
 
-from google.appengine.api import datastore_errors
-from google.appengine.api import memcache
-from google.appengine.api import taskqueue
-from google.appengine.datastore import datastore_rpc
-from google.appengine.datastore import datastore_stub_util
+from .google_imports import datastore_errors
+from .google_imports import memcache
+from .google_imports import taskqueue
+from .google_imports import datastore_rpc
+from .google_imports import apiproxy_errors
+from .google_test_imports import datastore_stub_util
 
 from . import context
 from . import eventloop
@@ -46,6 +51,8 @@ class ContextTests(test_utils.NDBTest):
         conn=model.make_connection(default_model=model.Expando),
         auto_batcher_class=MyAutoBatcher)
     tasklets.set_context(self.ctx)
+
+  the_module = context
 
   def testContext_AutoBatcher_Get(self):
     @tasklets.tasklet
@@ -190,7 +197,48 @@ class ContextTests(test_utils.NDBTest):
       self.assertTrue(self.ctx._cache[key] is None)  # Whitebox.
       a = yield self.ctx.get(key1)
       self.assertTrue(a is None)
+      self.ctx.clear_cache()
+      self.assertEqual(self.ctx._cache, {})  # Whitebox.
     foo().check_success()
+
+  def testContext_CacheMemcache(self):
+    # Test that when get() finds the value in memcache, it updates
+    # _cache.
+    class Foo(model.Model):
+      pass
+    ctx = self.ctx
+    ctx.set_cache_policy(False)
+    ctx.set_memcache_policy(False)
+    ent = Foo()
+    key = ent.put()
+    mkey = ctx._memcache_prefix + key.urlsafe()
+    self.assertFalse(key in ctx._cache)
+    self.assertEqual(None, memcache.get(mkey))
+    ctx.set_memcache_policy(True)
+    key.get()
+    self.assertFalse(key in ctx._cache)
+    self.assertNotEqual(None, memcache.get(mkey))
+    eventloop.run()
+    ctx.set_cache_policy(True)
+    key.get()  # Satisfied from memcache
+    self.assertTrue(key in ctx._cache)
+
+  def testContext_CacheMisses(self):
+    # Test that get() caches misses if use_datastore is true but not
+    # if false.  This involves whitebox checks using ctx._cache.
+    # See issue 106.  http://goo.gl/DLiij
+    ctx = self.ctx
+    key = model.Key('Foo', 42)
+    self.assertFalse(key in ctx._cache)
+    ctx.get(key, use_datastore=False).wait()
+    self.assertFalse(key in ctx._cache)
+    ctx.get(key, use_memcache=False).wait()
+    self.assertTrue(key in ctx._cache)
+    self.assertEqual(ctx._cache[key], None)
+    ctx.clear_cache()
+    ctx.get(key).wait()
+    self.assertTrue(key in ctx._cache)
+    self.assertEqual(ctx._cache[key], None)
 
   def testContext_CachePolicy(self):
     def should_cache(unused_key):
@@ -344,17 +392,17 @@ class ContextTests(test_utils.NDBTest):
 
     memcache.flush_all()
 
-    # Test _clear_memcache (it doesn't delete, it locks, like put)
+    # Test _clear_memcache (it deletes the keys)
     self.ctx._clear_memcache([k1, k2]).check_success()
     # Nothing should be in the empty namespace
     assertNone(memcache.get(mk1, namespace=''))
     assertNone(memcache.get(mk2, namespace=''))
-    # Only k1 is found in namespace 'a', as _LOCKED
-    assertLocked(memcache.get(mk1, namespace='a'))
+    # Nothing should be in namespace 'a'
+    assertNone(memcache.get(mk1, namespace='a'))
     assertNone(memcache.get(mk2, namespace='a'))
-    # Only k2 is found in namespace 'b', as _LOCKED
+    # Nothing should be in namespace 'b'
     assertNone(memcache.get(mk1, namespace='b'))
-    assertLocked(memcache.get(mk2, namespace='b'))
+    assertNone(memcache.get(mk2, namespace='b'))
 
   def testContext_Memcache(self):
     @tasklets.tasklet
@@ -480,8 +528,8 @@ class ContextTests(test_utils.NDBTest):
       qry = query.Query(kind='Foo')
       results = yield self.ctx.map_query(qry, callback)
       self.assertEqual(results, [ent1, ent2])
-      self.assertTrue(results[0] is ent1)
-      self.assertTrue(results[1] is ent2)
+      self.assertTrue(results[0] is self.ctx._cache[ent1.key])
+      self.assertTrue(results[1] is self.ctx._cache[ent2.key])
     foo().check_success()
 
   def testContext_AllocateIds(self):
@@ -570,7 +618,7 @@ class ContextTests(test_utils.NDBTest):
   def testContext_MapQuery_Cursors(self):
     qo = query.QueryOptions(produce_cursors=True)
     @tasklets.tasklet
-    def callback(unused_batch, _, ent):
+    def callback(ent):
       return ent.key.pairs()[-1]
     @tasklets.tasklet
     def foo():
@@ -679,57 +727,54 @@ class ContextTests(test_utils.NDBTest):
       raise tasklets.Return(42)
     self.assertRaises(datastore_errors.BadRequestError,
                       self.ctx.transaction(tx).check_success)
-    if hasattr(datastore_rpc.TransactionOptions, 'xg'):
-      # In 1.5.4, XG transactions are not supported
-      res = self.ctx.transaction(tx, xg=True).get_result()
-      self.assertEqual(res, 42)
+    res = self.ctx.transaction(tx, xg=True).get_result()
+    self.assertEqual(res, 42)
 
-  def testContext_GetOrInsert(self):
-    # This also tests Context.transaction()
-    class Mod(model.Model):
-      data = model.StringProperty()
-    @tasklets.tasklet
-    def foo():
-      ent = yield self.ctx.get_or_insert(Mod, 'a', data='hello')
-      self.assertTrue(isinstance(ent, Mod))
-      ent2 = yield self.ctx.get_or_insert(Mod, 'a', data='hello')
-      self.assertEqual(ent2, ent)
-    foo().check_success()
+  def testContext_TransactionMemcache(self):
+    class Foo(model.Model):
+      name = model.StringProperty()
 
-  def testContext_GetOrInsertWithParent(self):
-    # This also tests Context.transaction()
-    class Mod(model.Model):
-      data = model.StringProperty()
-    @tasklets.tasklet
-    def foo():
-      parent = model.Key(flat=('Foo', 1))
-      ent = yield self.ctx.get_or_insert(Mod, 'a', _parent=parent, data='hello')
-      self.assertTrue(isinstance(ent, Mod))
-      ent2 = yield self.ctx.get_or_insert(Mod, 'a', parent=parent, data='hello')
-      self.assertEqual(ent2, ent)
-    foo().check_success()
+    foo1 = Foo(name='foo1')
+    foo2 = Foo(name='foo2')
+    key1 = foo1.put()
+    key2 = foo2.put()
+    skey1 = self.ctx._memcache_prefix + key1.urlsafe()
+    skey2 = self.ctx._memcache_prefix + key2.urlsafe()
 
-  def testAddContextDecorator(self):
-    class Demo(object):
-      @context.toplevel
-      def method(self, arg):
-        return tasklets.get_context(), arg
+    # Be sure nothing is in memcache.
+    self.assertEqual(memcache.get(skey1), None)
+    self.assertEqual(memcache.get(skey2), None)
 
-      @context.toplevel
-      def method2(self, **kwds):
-        return tasklets.get_context(), kwds
-    a = Demo()
-    old_ctx = tasklets.get_context()
-    ctx, arg = a.method(42)
-    self.assertTrue(isinstance(ctx, context.Context))
-    self.assertEqual(arg, 42)
-    self.assertTrue(ctx is not old_ctx)
+    # Be sure nothing is in the context cache.
+    self.ctx.clear_cache()
 
-    old_ctx = tasklets.get_context()
-    ctx, kwds = a.method2(foo='bar', baz='ding')
-    self.assertTrue(isinstance(ctx, context.Context))
-    self.assertEqual(kwds, dict(foo='bar', baz='ding'))
-    self.assertTrue(ctx is not old_ctx)
+    # Run some code in a transaction.
+    def txn():
+      ctx = tasklets.get_context()
+      self.assertTrue(ctx is not self.ctx)
+      f1 = key1.get()
+      f2 = key1.get()
+      f1.name += 'a'
+      f1.put()
+      # Don't put f2.
+      # Verify the state of memcache.
+      self.assertEqual(memcache.get(skey1), context._LOCKED)
+      self.assertEqual(memcache.get(skey2), None)
+    self.ctx.transaction(txn).wait()
+
+    # Verify memcache is cleared.
+    self.assertEqual(memcache.get(skey1), None)
+    self.assertEqual(memcache.get(skey2), None)
+
+    # Clear the context cache.
+    self.ctx.clear_cache()
+
+    # Non-transactional get() updates memcache.
+    f1 = key1.get()
+    f2 = key2.get()
+    eventloop.run()  # Wait for memcache.set() RPCs
+    self.assertNotEqual(memcache.get(skey1), None)
+    self.assertNotEqual(memcache.get(skey2), None)
 
   def testDefaultContextTransaction(self):
     @tasklets.synctasklet
@@ -823,7 +868,7 @@ class ContextTests(test_utils.NDBTest):
     # Verify that it is now in memcache.
     get_fut = self.ctx.get(key)
     ent = get_fut.get_result()
-    self.assertTrue(ent is None,
+    self.assertTrue(ent is not None,
                     'Memcache delete did block memcache set %r' % ent)
 
   def testMemcacheAPI(self):
@@ -889,6 +934,29 @@ class ContextTests(test_utils.NDBTest):
       self.assertEqual(vvvv, [STORED, STORED, NOT_STORED, NOT_STORED])
 
     foo().get_result()
+
+  def testMemcacheErrors(self):
+    # See issue 94.  http://goo.gl/E7OBH
+    # Install an error handler.
+    save_create_rpc = memcache.create_rpc
+    def fake_check_success(*args):
+      raise apiproxy_errors.Error('fake error')
+    def fake_create_rpc(*args, **kwds):
+      rpc = save_create_rpc(*args, **kwds)
+      rpc.check_success = fake_check_success
+      return rpc
+    try:
+      memcache.create_rpc = fake_create_rpc
+      val = self.ctx.memcache_get('key2').get_result()
+      self.assertEqual(val, None)
+      val = self.ctx.memcache_incr('key2').get_result()
+      self.assertEqual(val, None)
+      ok = self.ctx.memcache_set('key2', 'value2').get_result()
+      self.assertFalse(ok)
+      ok = self.ctx.memcache_delete('key2').get_result()
+      self.assertEqual(ok, memcache.DELETE_NETWORK_FAILURE)
+    finally:
+      memcache.create_rpc = save_create_rpc
 
   def testMemcacheNamespaces(self):
     @tasklets.tasklet
@@ -1029,6 +1097,50 @@ class ContextTests(test_utils.NDBTest):
 
     # Check that ndb ignores the corrupt memcache value
     self.assertEqual(ent, key.get())
+
+
+  def start_test_server(self):
+    host = '127.0.0.1'
+    lock = threading.Lock()
+    lock.acquire()
+    s = socket.socket()
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    for i in range(10):
+      port = random.randrange(32768, 60000)
+      try:
+        s.bind((host, port))
+        break
+      except socket.error:
+        continue
+    else:
+      self.fail('Could not find an unused port in 10 tries')
+    def run():
+      s.listen(1)
+      lock.release()  # Signal socket is all set up.
+      c, addr = s.accept()
+      s.close()
+      c.recv(1000)  # Throw away request.
+      c.send('HTTP/1.0 200 Ok\r\n\r\n')  # Emptiest response.
+      c.close()
+    t = threading.Thread(target=run)
+    t.setDaemon(True)
+    t.start()
+    return host, port, lock
+
+  def testUrlFetch(self):
+    self.testbed.init_urlfetch_stub()
+    host, port, lock = self.start_test_server()
+    # Block until socket is set up, or 5 seconds have passed.
+    for i in xrange(500):
+      if lock.acquire(False):
+        break
+      time.sleep(0.01)
+    else:
+      self.fail('Socket was not ready in 5 seconds')
+    fut = self.ctx.urlfetch('http://%s:%d' % (host, port))
+    result = fut.get_result()
+    self.assertEqual(result.status_code, 200)
+    self.assertTrue(isinstance(result.content, str))
 
 
 class ContextFutureCachingTests(test_utils.NDBTest):

@@ -3,11 +3,12 @@
 import sys
 import threading
 
-from . import tasklets
-from . import context
+from ndb import tasklets
+from ndb import eventloop
 
 
 def main():
+  ##sys.stdout.write('_State.__bases__ = %r\n' % (eventloop._State.__bases__,))
   num = 10
   try:
     num = int(sys.argv[1])
@@ -22,10 +23,11 @@ def main():
     t.join()
 
 
-@context.toplevel
-def one_thread(_, num):
-  yield fibonacci(num)
-  ##sys.stdout.write('%d: %d --> %d\n' % (i, num, x))
+@tasklets.toplevel
+def one_thread(i, num):
+  ##sys.stdout.write('eventloop = 0x%x\n' % id(eventloop.get_event_loop()))
+  x = yield fibonacci(num)
+  sys.stdout.write('%d: %d --> %d\n' % (i, num, x))
 
 
 @tasklets.tasklet

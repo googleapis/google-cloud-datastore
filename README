@@ -1,6 +1,9 @@
 Introduction
 ------------
 
+(UPDATE: As of SDK 1.6.4, NDB has reached status General Availability.
+Mentions of its experimental status in this file should be ignored.)
+
 In this project I am developing a new, experimental datastore
 API for the Google App Engine Python runtime. I am doing this as a
 Google employee but using an open source development style as I
@@ -33,26 +36,28 @@ The code is structured into two subdirectories:
   For each module foo.py there's a corresponding foo_test.py which
   contains unit tests for that module.
 
-- demo: This is where demo programs live.  There currently is only
-  one, main.py, which implements a simple guestbook.
+- demo: This is where demo programs live.  Check out guestbook.py and
+  main.py.
+
+The main directory contains some scripts and auxiliary files.
 
 How To
 ------
 
 You need to separately download and install the App Engine Python SDK,
-version 1.5.5 or later.  NOTE: older versions don't work!!!!!!!!!
+version 1.6.4 or later.  NOTE: older versions don't work!!!!!!!!!
 (If you don't know where to find that you are not ready to play with
 this code. :-) Assuming the SDK lives at /usr/local/google_appengine,
 you need to add that directory to your $PYTHONPATH environment
 variable.  You should then be able to run something like this:
 
-  >>> from ndb import context
+  >>> import ndb
 
 If this works your setup is correct.
 
 To run the tests, use
 
-  make test
+  make
 
 To run the tests with coverage, install the coverag.py package from
 http://nedbatchelder.com/code/coverage/ and then use
@@ -62,6 +67,11 @@ http://nedbatchelder.com/code/coverage/ and then use
 To run the demo app on localhost:8080, use
 
   make serve
+
+To run an interactive shell with ndb already imported and some sample
+classes defined, use
+
+  make python
 
 See the Makefile for more details.  For Windows users, the "make.cmd"
 script has similar functionality.

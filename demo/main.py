@@ -16,10 +16,7 @@ from google.appengine.ext.webapp import util
 from google.appengine.datastore import datastore_query
 from google.appengine.datastore import datastore_rpc
 
-from ndb import context
-from ndb import eventloop
-from ndb import model
-from ndb import tasklets
+import ndb
 
 HOME_PAGE = """
 <script>
@@ -33,7 +30,7 @@ function focus() {
   <a href="%(login)s">login</a> |
   <a href="%(logout)s">logout</a>
 
-  <form method=POST action=/>
+  <form method=POST action=/home>
     <!-- TODO: XSRF protection -->
     <input type=text id=body name=body size=60>
     <input type=submit>
@@ -53,40 +50,40 @@ ACCOUNT_PAGE = """
     <input type=text name=nickname size=20 value=%(proposed_nickname)s><br>
     <input type=submit name=%(action)s value="%(action)s Account">
     <input type=submit name=delete value="Delete Account">
-    <a href=/>back to home page</a>
+    <a href=/home>back to home page</a>
   </form>
 </body>
 """
 
 
-class Account(model.Model):
+class Account(ndb.Model):
   """User account."""
 
-  email = model.StringProperty()
-  userid = model.StringProperty()
-  nickname = model.StringProperty()
+  email = ndb.StringProperty()
+  userid = ndb.StringProperty()
+  nickname = ndb.StringProperty()
 
 
-class Message(model.Model):
+class Message(ndb.Model):
   """Guestbook message."""
 
-  body = model.StringProperty()
-  when = model.FloatProperty()
-  userid = model.StringProperty()
+  body = ndb.StringProperty()
+  when = ndb.FloatProperty()
+  userid = ndb.StringProperty()
 
 
-class UrlSummary(model.Model):
+class UrlSummary(ndb.Model):
   """Metadata about a URL."""
 
   MAX_AGE = 60
 
-  url = model.StringProperty()
-  title = model.StringProperty()
-  when = model.FloatProperty()
+  url = ndb.StringProperty()
+  title = ndb.StringProperty()
+  when = ndb.FloatProperty()
 
 
 def account_key(userid):
-  return model.Key(flat=['Account', userid])
+  return ndb.Key(Account, userid)
 
 
 def get_account(userid):
@@ -94,7 +91,7 @@ def get_account(userid):
   return account_key(userid).get_async()
 
 
-@tasklets.tasklet
+@ndb.tasklet
 def get_nickname(userid):
   """Return a Future for a nickname from an account."""
   account = yield get_account(userid)
@@ -102,20 +99,20 @@ def get_nickname(userid):
     nickname = 'Unregistered'
   else:
     nickname = account.nickname or account.email
-  raise tasklets.Return(nickname)
+  raise ndb.Return(nickname)
 
 
 class HomePage(webapp.RequestHandler):
 
-  @context.toplevel
+  @ndb.toplevel
   def get(self):
     nickname = 'Anonymous'
     user = users.get_current_user()
     if user is not None:
       nickname = yield get_nickname(user.user_id())
     values = {'nickname': nickname,
-              'login': users.create_login_url('/'),
-              'logout': users.create_logout_url('/'),
+              'login': users.create_login_url('/home'),
+              'logout': users.create_logout_url('/home'),
               }
     self.response.out.write(HOME_PAGE % values)
     qry, options = self._make_query()
@@ -128,7 +125,7 @@ class HomePage(webapp.RequestHandler):
     options = datastore_query.QueryOptions(batch_size=13, limit=43)
     return qry, options
 
-  @tasklets.tasklet
+  @ndb.tasklet
   def _hp_callback(self, message):
     nickname = 'Anonymous'
     if message.userid:
@@ -143,7 +140,7 @@ class HomePage(webapp.RequestHandler):
       pre = body[:m.start()]
       post = body[m.end():]
       title = ''
-      key = model.Key(flat=[UrlSummary.GetKind(), url])
+      key = ndb.Key(flat=[UrlSummary.GetKind(), url])
       summary = yield key.get_async()
       if not summary or summary.when < time.time() - UrlSummary.MAX_AGE:
         rpc = urlfetch.create_rpc(deadline=0.5)
@@ -172,9 +169,9 @@ class HomePage(webapp.RequestHandler):
                                  escbody)
     if message.when is None:
       message.when = 0
-    raise tasklets.Return((-message.when, text))
+    raise ndb.Return((-message.when, text))
 
-  @context.toplevel
+  @ndb.toplevel
   def post(self):
     # TODO: XSRF protection.
     body = self.request.get('body', '').strip()
@@ -185,12 +182,12 @@ class HomePage(webapp.RequestHandler):
         userid = user.user_id()
       message = Message(body=body, when=time.time(), userid=userid)
       yield message.put_async()
-    self.redirect('/')
+    self.redirect('/home')
 
 
 class AccountPage(webapp.RequestHandler):
 
-  @context.toplevel
+  @ndb.toplevel
   def get(self):
     user = users.get_current_user()
     if not user:
@@ -209,16 +206,16 @@ class AccountPage(webapp.RequestHandler):
     values = {'email': email,
               'nickname': nickname,
               'proposed_nickname': proposed_nickname,
-              'login': users.create_login_url('/'),
-              'logout': users.create_logout_url('/'),
+              'login': users.create_login_url('/home'),
+              'logout': users.create_logout_url('/home'),
               'action': action,
               }
     self.response.out.write(ACCOUNT_PAGE % values)
 
-  @context.toplevel
+  @ndb.toplevel
   def post(self):
     # TODO: XSRF protection.
-    @tasklets.tasklet
+    @ndb.tasklet
     def helper():
       user = users.get_current_user()
       if not user:
@@ -238,11 +235,11 @@ class AccountPage(webapp.RequestHandler):
         account.nickname = nickname
       yield account.put_async()
       self.redirect('/account')
-    yield model.transaction_async(helper)
+    yield ndb.transaction_async(helper)
 
 
 urls = [
-  ('/', HomePage),
+  ('/home', HomePage),
   ('/account', AccountPage),
   ]
 

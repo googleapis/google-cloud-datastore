@@ -14,7 +14,6 @@ import datetime
 
 from google.appengine.ext import testbed
 
-from ndb import model
 from ndb.model import *
 
 
@@ -147,13 +146,7 @@ class CustomProperty(StructuredProperty):
                                          # etc.
                                          )
 
-  def _to_top(self, value):
-    assert isinstance(value, self._modelclass), repr(value)
-    if isinstance(value, self._modelclass):
-      value = self._construct(value)
-    return value
-
-  def _to_bot(self, value):
+  def _to_base_type(self, value):
     assert not isinstance(value, self._modelclass), repr(value)
     if not isinstance(value, self._modelclass):
       newvalue = self._modelclass()
@@ -165,6 +158,12 @@ class CustomProperty(StructuredProperty):
         if attrval is not self.MISSING:
           setattr(newvalue, attrname, attrval)
       value = newvalue
+    return value
+
+  def _from_base_type(self, value):
+    assert isinstance(value, self._modelclass), repr(value)
+    if isinstance(value, self._modelclass):
+      value = self._construct(value)
     return value
 
   # TODO: Not sure what _validate() should do here, since we don't
@@ -190,7 +189,6 @@ class FlexidateProperty(CustomProperty):
   def _validate(self, value):
     if not isinstance(value, Flexidate):
       raise TypeError('expected Flexidate, got %r' % (value,))
-    return value
 
 
 class Actor(Model):

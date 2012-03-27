@@ -5,8 +5,8 @@ import os
 import time
 import unittest
 
-from google.appengine.api import apiproxy_stub_map
-from google.appengine.datastore import datastore_rpc
+from .google_imports import apiproxy_stub_map
+from .google_imports import datastore_rpc
 
 from . import eventloop
 from . import test_utils
@@ -18,6 +18,8 @@ class EventLoopTests(test_utils.NDBTest):
     if eventloop._EVENT_LOOP_KEY in os.environ:
       del os.environ[eventloop._EVENT_LOOP_KEY]
     self.ev = eventloop.get_event_loop()
+
+  the_module = eventloop
 
   def testQueueTasklet(self):
     def f(unused_number, unused_string, unused_a, unused_b): return 1
@@ -131,8 +133,28 @@ class EventLoopTests(test_utils.NDBTest):
     eventloop.run()
     self.assertEqual(calls, [1])
 
+  def testCleanUpStaleEvents(self):
+    # See issue 127.  http://goo.gl/2p5Pn
+    from . import model
+    class M(model.Model): pass
+    M().put()
+    M().put()
+    M().put()
+    # The fetch_page() call leaves an unnecessary but unavoidable RPC
+    # around that is never waited for.  This was causing problems when
+    # it was being garbage-collected in get_event_loop(), especially
+    # with Python 2.5, where GeneratorExit derived from Exception.
+    M.query().fetch_page(2)
+    ev = eventloop.get_event_loop()
+    self.assertEqual(len(ev.rpcs), 1)
+    del os.environ[eventloop._EVENT_LOOP_KEY]
+    ev = eventloop.get_event_loop()  # A new event loop.
+    self.assertEqual(len(ev.rpcs), 0)
+
+
 def main():
   unittest.main()
+
 
 if __name__ == '__main__':
   main()

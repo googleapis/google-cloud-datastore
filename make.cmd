@@ -120,14 +120,14 @@ GOTO end
 
 :setvariables
 IF "%PYTHONFLAGS%"=="" SET PYTHONFLAGS=-Wignore
-SET PYTHONPATH=%GAE%;%GAE%\lib\yaml\lib;%GAE%\lib\webob;%GAE%\lib\fancy_urllib
+SET PYTHONPATH=%GAE%;%GAE%\lib\yaml\lib;%GAE%\lib\webob;%GAE%\lib\fancy_urllib;%GAE%\lib\simplejson
 SET APPCFG="%GAE%\appcfg.py"
 SET DEV_APPSERVER="%GAE%\dev_appserver.py"
 IF "%PORT%"=="" SET PORT=8080
 IF "%ADDRESS%"=="" SET ADDRESS=localhost
 
 :findtarget
-SET TEST_TARGETS=(key, model, query, rpc, eventloop, tasklets, context, thread)
+SET TEST_TARGETS=(key, model, query, metadata, polymodel, stats, rpc, eventloop, tasklets, context, prospective_search, blobstore)
 FOR %%A IN %TEST_TARGETS% DO IF /I "%TARGET%"=="%%A_test" GOTO runtest
 SET RUNTESTS_TARGETS=(test, runtest, runtests)
 FOR %%A IN %RUNTESTS_TARGETS% DO IF /I "%TARGET%"=="%%A" GOTO runtests

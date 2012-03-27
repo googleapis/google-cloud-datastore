@@ -1,6 +1,6 @@
 """Prototype MessageProperty for ProtoRPC.
 
-Run this using 'make msgprop CUSTOM=msgprop'.
+Run this using 'make x CUSTOM=msgprop'.
 
 This requires copying (or symlinking) protorpc/python/protorpc into
 the appengine-ndb-experiment directory (making ndb and the inner
@@ -13,7 +13,7 @@ from google.appengine.ext import testbed
 
 from protorpc import messages
 
-from ndb.model import *
+import ndb
 
 
 def make_model_class(message_type):
@@ -24,15 +24,15 @@ def make_model_class(message_type):
     elif isinstance(field, messages.EnumField):
       prop = EnumProperty(field.type, field.name, repeated=field.repeated)
     elif isinstance(field, messages.BytesField):
-      prop = BlobProperty(field.name, repeated=field.repeated)
+      prop = ndb.BlobProperty(field.name, repeated=field.repeated)
     else:
       # IntegerField, FloatField, BooleanField, StringField.
-      prop = GenericProperty(field.name, repeated=field.repeated)
+      prop = ndb.GenericProperty(field.name, repeated=field.repeated)
     props[field.name] = prop
-  return MetaModel('%s__Model' % message_type.__name__, (Model,), props)
+  return ndb.MetaModel('%s__Model' % message_type.__name__, (ndb.Model,), props)
 
 
-class EnumProperty(StringProperty):
+class EnumProperty(ndb.StringProperty):
 
   def __init__(self, enum_type, name=None, repeated=False):
     self._enum_type = enum_type
@@ -43,16 +43,16 @@ class EnumProperty(StringProperty):
       raise TypeError('Expected a %s instance, got %r instead' %
                       (self._enum_type.__name__, value))
 
-  def _to_bot(self, enum):
+  def _to_base_type(self, enum):
     assert isinstance(enum, self._enum_type), repr(enum)
     return enum.name
 
-  def _to_top(self, val):
+  def _from_base_type(self, val):
     assert isinstance(val, basestring)
     return self._enum_type(val)
 
 
-class MessageProperty(StructuredProperty):
+class MessageProperty(ndb.StructuredProperty):
 
   def __init__(self, message_type, name=None, repeated=False):
     self._message_type = message_type
@@ -69,7 +69,7 @@ class MessageProperty(StructuredProperty):
       raise TypeError('Expected a %s instance, got %r instead' %
                       (self._message_type.__name__, value))
 
-  def _to_bot(self, msg):
+  def _to_base_type(self, msg):
     """Convert a message_type instance to a modelclass instance."""
     assert isinstance(msg, self._message_type), repr(msg)
     ent = self._modelclass()
@@ -78,7 +78,7 @@ class MessageProperty(StructuredProperty):
       setattr(ent, name, val)
     return ent
 
-  def _to_top(self, ent):
+  def _from_base_type(self, ent):
     assert isinstance(ent, self._modelclass), repr(ent)
     msg = self._message_type()
     for name in self._modelclass._properties:
@@ -110,11 +110,11 @@ class Notes(messages.Message):
   notes = messages.MessageField(Note, 1, repeated=True)
 
 
-class DbNote(Model):
+class DbNote(ndb.Model):
   note = MessageProperty(Note)
 
 
-class DbNotes(Model):
+class DbNotes(ndb.Model):
   danotes = MessageProperty(Notes)
 
 
@@ -124,13 +124,17 @@ def main():
   tb.init_datastore_v3_stub()
   tb.init_memcache_stub()
 
+  ctx = ndb.get_context()
+  ctx.set_cache_policy(False)
+  ctx.set_memcache_policy(False)
+
   print DbNotes.danotes
 
   note1 = Note(text='blah', when=int(time.time()))
   print 'Before:', note1
   ent = DbNote(note=note1)
-  ent.put(use_cache=False)
-  print 'After:', ent.key.get(use_cache=False)
+  ent.put()
+  print 'After:', ent.key.get()
 
   print '-'*20
 
@@ -139,20 +143,20 @@ def main():
   print 'Before:', notes
   ent = DbNotes(danotes=notes)
   print 'Entity:', ent
-  ## print ent._to_pb(set_key=False)
-  ent.put(use_cache=False)
+  print ent._to_pb(set_key=False)
+  ent.put()
   pb = ent._to_pb()
   ent2 = DbNotes._from_pb(pb)
-  print 'After:', ent.key.get(use_cache=False)
+  print 'After:', ent.key.get()
 
   print '-'*20
 
   req = GetNotesRequest(on_or_before=42)
-  class M(Model):
+  class M(ndb.Model):
     req = MessageProperty(GetNotesRequest)
   m = M(req=req)
   print m
-  print m.put(use_cache=False).get(use_cache=False)
+  print m.put().get()
 
   tb.deactivate()
 

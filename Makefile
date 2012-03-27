@@ -7,8 +7,8 @@
 
 FLAGS=
 GAE=	/usr/local/google_appengine
-GAEPATH=$(GAE):$(GAE)/lib/yaml/lib:$(GAE)/lib/webob:$(GAE)/lib/fancy_urllib
-TESTS=	`find ndb -name [a-z]\*_test.py`
+GAEPATH=$(GAE):$(GAE)/lib/yaml/lib:$(GAE)/lib/webob:$(GAE)/lib/fancy_urllib:$(GAE)/lib/simplejson
+TESTS=	`find ndb -name [a-z]\*_test.py ! -name ndb_test.py`
 NONTESTS=`find ndb -name [a-z]\*.py ! -name \*_test.py`
 PORT=	8080
 ADDRESS=localhost
@@ -16,15 +16,21 @@ PYTHON= python -Wignore
 APPCFG= $(GAE)/appcfg.py
 DEV_APPSERVER=$(GAE)/dev_appserver.py
 CUSTOM=	custom
+COVERAGE=coverage
+DATASTORE_PATH=/tmp/ndb-dev_appserver.datastore
 
 default: runtests
 
-test:
-	for i in $(TESTS); \
-	do \
-	  echo $$i; \
-	  PYTHONPATH=$(GAEPATH):. $(PYTHON) -m ndb.`basename $$i .py` $(FLAGS); \
-	done
+runtests ndb_test:
+	PYTHONPATH=$(GAEPATH):. $(PYTHON) ndb/ndb_test.py $(FLAGS)
+
+c cov cove cover coverage:
+	PYTHONPATH=$(GAEPATH):. $(COVERAGE) run ndb/ndb_test.py $(FLAGS)
+	$(COVERAGE) html $(NONTESTS)
+	$(COVERAGE) report -m $(NONTESTS)
+	echo "open file://`pwd`/htmlcov/index.html"
+
+test: key_test model_test polymodel_test query_test metadata_test stats_test rpc_test eventloop_test tasklets_test context_test ps_test blobstore_test
 
 key_test:
 	PYTHONPATH=$(GAEPATH):. $(PYTHON) -m ndb.key_test $(FLAGS)
@@ -32,8 +38,17 @@ key_test:
 model_test:
 	PYTHONPATH=$(GAEPATH):. $(PYTHON) -m ndb.model_test $(FLAGS)
 
+polymodel_test:
+	PYTHONPATH=$(GAEPATH):. $(PYTHON) -m ndb.polymodel_test $(FLAGS)
+
 query_test:
 	PYTHONPATH=$(GAEPATH):. $(PYTHON) -m ndb.query_test $(FLAGS)
+
+metadata_test:
+	PYTHONPATH=$(GAEPATH):. $(PYTHON) -m ndb.metadata_test $(FLAGS)
+
+stats_test:
+	PYTHONPATH=$(GAEPATH):. $(PYTHON) -m ndb.stats_test $(FLAGS)
 
 rpc_test:
 	PYTHONPATH=$(GAEPATH):. $(PYTHON) -m ndb.rpc_test $(FLAGS)
@@ -47,38 +62,32 @@ tasklets_test:
 context_test:
 	PYTHONPATH=$(GAEPATH):. $(PYTHON) -m ndb.context_test $(FLAGS)
 
-thread_test:
-	PYTHONPATH=$(GAEPATH):. $(PYTHON) -m ndb.thread_test $(FLAGS)
+ps_test:
+	PYTHONPATH=$(GAEPATH):. $(PYTHON) -m ndb.prospective_search_test $(FLAGS)
 
-runtests:
-	PYTHONPATH=$(GAEPATH):. $(PYTHON) runtests.py $(FLAGS)
-
-c cov cove cover coverage:
-	PYTHONPATH=$(GAEPATH):. coverage run runtests.py $(FLAGS)
-	coverage html $(NONTESTS)
-	coverage report -m $(NONTESTS)
-	echo "open file://`pwd`/htmlcov/index.html"
+blobstore_test:
+	PYTHONPATH=$(GAEPATH):. $(PYTHON) -m ndb.blobstore_test $(FLAGS)
 
 oldcoverage:
-	coverage erase
+	$(COVERAGE) erase
 	for i in $(TESTS); \
 	do \
 	  echo $$i; \
-	  PYTHONPATH=$(GAEPATH):. coverage run -p -m ndb.`basename $$i .py`; \
+	  PYTHONPATH=$(GAEPATH):. $(COVERAGE) run -p -m ndb.`basename $$i .py`; \
 	done
-	coverage combine
-	coverage html $(NONTESTS)
-	coverage report -m $(NONTESTS)
+	$(COVERAGE) combine
+	$(COVERAGE) html $(NONTESTS)
+	$(COVERAGE) report -m $(NONTESTS)
 	echo "open file://`pwd`/htmlcov/index.html"
 
 serve:
-	$(DEV_APPSERVER) . --port $(PORT) --address $(ADDRESS) $(FLAGS)
+	$(PYTHON) $(DEV_APPSERVER) . --port $(PORT) --address $(ADDRESS) $(FLAGS) --datastore_path=$(DATASTORE_PATH)
 
 debug:
-	$(DEV_APPSERVER) . --port $(PORT) --address $(ADDRESS) --debug $(FLAGS)
+	$(PYTHON) $(DEV_APPSERVER) . --port $(PORT) --address $(ADDRESS) --debug $(FLAGS) --datastore_path=$(DATASTORE_PATH)
 
 deploy:
-	$(APPCFG) update . $(FLAGS)
+	$(PYTHON) $(APPCFG) update . $(FLAGS)
 
 bench:
 	PYTHONPATH=$(GAEPATH):. $(PYTHON) bench.py $(FLAGS)
@@ -114,5 +123,8 @@ s stress:
 race:
 	PYTHONPATH=$(GAEPATH):. $(PYTHON) race.py $(FLAGS)
 
-$(CUSTOM):
+mttest:
+	PYTHONPATH=$(GAEPATH):. $(PYTHON) mttest.py $(FLAGS)
+
+x $(CUSTOM):
 	PYTHONPATH=$(GAEPATH):. $(PYTHON) $(CUSTOM).py $(FLAGS)

@@ -4,8 +4,9 @@ import base64
 import pickle
 import unittest
 
-from google.appengine.api import datastore_errors
-from google.appengine.datastore import entity_pb
+from .google_imports import datastore_errors
+from .google_imports import datastore_types
+from .google_imports import entity_pb
 
 from . import eventloop
 from . import key
@@ -15,6 +16,8 @@ from . import test_utils
 
 
 class KeyTests(test_utils.NDBTest):
+
+  the_module = key
 
   def testShort(self):
     k0 = key.Key('Kind', None)
@@ -214,6 +217,48 @@ class KeyTests(test_utils.NDBTest):
     pairs = [(flat[i], flat[i + 1]) for i in xrange(0, len(flat), 2)]
     k = key.Key(flat=flat)
     self.assertEqual(hash(k), hash(tuple(pairs)))
+
+  def testOrdering(self):
+    a = key.Key(app='app2', namespace='ns2', flat=('kind1', 1))
+    b = key.Key(app='app2', namespace='ns1', flat=('kind1', 1))
+    c = key.Key(app='app1', namespace='ns1', flat=('kind1', 1))
+    d = key.Key(app='app1', namespace='ns1', flat=('kind1', 2))
+    e = key.Key(app='app1', namespace='ns1', flat=('kind1', 'e'))
+    f = key.Key(app='app1', namespace='ns1', flat=('kind1', 'f'))
+    g = key.Key(app='app1', namespace='ns1', flat=('kind2', 'f', 'x', 1))
+    h = key.Key(app='app1', namespace='ns1', flat=('kind2', 'f', 'x', 2))
+    input = [a, b, c, d, e, f, g, h]
+    actual = sorted(input)
+    expected = sorted(
+      input,
+      key=lambda k: datastore_types.ReferenceToKeyValue(k.reference()))
+    self.assertEqual(actual, expected)
+    for i in range(len(actual)):
+      for j in range(len(actual)):
+        self.assertEqual(actual[i] < actual[j], i < j)
+        self.assertEqual(actual[i] <= actual[j], i <= j)
+        self.assertEqual(actual[i] > actual[j], i > j)
+        self.assertEqual(actual[i] >= actual[j], i >= j)
+        self.assertEqual(actual[i] == actual[j], i == j)
+        self.assertEqual(actual[i] != actual[j], i != j)
+
+  def testUniqueIncomplete(self):
+    p0 = None
+    p1 = key.Key('bar', 1)
+    for p in p0, p1:
+      a = key.Key('foo', 0, parent=p)
+      b = key.Key('foo', '', parent=p)
+      c = key.Key('foo', None, parent=p)
+      self.assertEqual(a, b)
+      self.assertEqual(b, c)
+      self.assertEqual(c, a)
+      for x in a, b, c:
+        self.assertEqual(x.id(), None)
+        self.assertEqual(x.string_id(), None)
+        self.assertEqual(x.integer_id(), None)
+        self.assertEqual(x.pairs()[-1], ('foo', None))
+        self.assertEqual(x.flat()[-1], None)
+        self.assertEqual(x.urlsafe(), c.urlsafe())
 
   def testPickling(self):
     flat = ['Kind', 1, 'Subkind', 'foobar']
@@ -416,9 +461,18 @@ class KeyTests(test_utils.NDBTest):
     fut = entity.key.get_async()
     self.assertFalse(fut._immediate_callbacks, 'Get hook queued default no-op.')
 
+  def testFromOldKey(self):
+    old_key = datastore_types.Key.from_path('TestKey', 1234)
+    new_key = key.Key.from_old_key(old_key)
+    self.assertEquals(str(old_key), new_key.urlsafe())
+
+    old_key2 = new_key.to_old_key()
+    self.assertEquals(old_key, old_key2)
+
 
 def main():
   unittest.main()
+
 
 if __name__ == '__main__':
   main()
