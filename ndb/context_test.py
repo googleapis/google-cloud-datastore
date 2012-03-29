@@ -12,7 +12,6 @@ from .google_imports import memcache
 from .google_imports import taskqueue
 from .google_imports import datastore_rpc
 from .google_imports import apiproxy_errors
-from .google_test_imports import datastore_stub_util
 
 from . import context
 from . import eventloop
@@ -712,9 +711,7 @@ class ContextTests(test_utils.NDBTest):
   def testContext_TransactionXG(self):
     self.ExpectWarnings()
     # The XG option only works on the HRD datastore
-    ds_stub = self.testbed.get_stub('datastore_v3')
-    hrd_policy = datastore_stub_util.BaseHighReplicationConsistencyPolicy()
-    ds_stub.SetConsistencyPolicy(hrd_policy)
+    self.HRTest()
 
     key1 = model.Key('Foo', 1)
     key2 = model.Key('Foo', 2)

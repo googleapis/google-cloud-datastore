@@ -1,5 +1,6 @@
 Release 1.0.1 (not yet)
 
+- Support entity group metadata queries (requires SDK 1.6.5).
 - Issue 169: Normalize incomplete keys.
 - Issue 166: Make Key orderable.
 - Issue 105: Use yield for memcache_cas() call in Context.get().

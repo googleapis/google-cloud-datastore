@@ -101,6 +101,27 @@ class MetadataTests(test_utils.NDBTest):
                       ('Foo', 'age'), ('Foo', 'name')],
                      [(p.kind_name, p.property_name) for p in res])
 
+  def testEntityGroup(self):
+    """Test for EntityGroup class."""
+    self.HRTest()
+    foo_e = self.Foo(age=11)
+    foo_e.put()
+    child_e = self.Foo(age=22, parent=foo_e.key)
+    child_e.put()
+
+    egfoo_k = metadata.EntityGroup.key_for_entity_group(foo_e.key)
+    self.assertEquals(egfoo_k,
+                      metadata.EntityGroup.key_for_entity_group(child_e.key))
+
+    self.assertTrue(egfoo_k.get().version > 0)
+
+  def testGetEntityGroupVersion(self):
+    """Test for get_entity_group_version function."""
+    self.HRTest()
+    foo_e = self.Foo(age=11)
+    foo_e.put()
+    self.assertTrue(metadata.get_entity_group_version(foo_e.key) > 0)
+
 
 def main():
   unittest.main()
