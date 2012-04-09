@@ -649,6 +649,7 @@ class ContextTests(test_utils.NDBTest):
       self.assertEqual(ent.key.flat(), ('Foo', i + 1))
 
   def testContext_TransactionFailed(self):
+    # XXX Why is this called 'Failed'?  There's no failure here.
     @tasklets.tasklet
     def foo():
       key = model.Key(flat=('Foo', 1))
@@ -772,6 +773,47 @@ class ContextTests(test_utils.NDBTest):
     eventloop.run()  # Wait for memcache.set() RPCs
     self.assertNotEqual(memcache.get(skey1), None)
     self.assertNotEqual(memcache.get(skey2), None)
+
+  def testContext_TransactionCallBackTasklet(self):
+    class Foo(model.Model):
+      n = model.IntegerProperty()
+
+    @tasklets.tasklet
+    def inner_callback():
+      self.assertTrue(tasklets.get_context().in_transaction())
+      x = yield Foo.get_or_insert_async('x', n=0)
+      x.n += 1
+      yield x.put_async()
+      raise tasklets.Return(x)
+
+    # 1. Regular case.
+    x = self.ctx.transaction(inner_callback).get_result()
+    self.assertEqual(x, Foo(n=1, id='x'))
+    x.key.delete()
+
+    # 2. Case for propagation=MANDATORY.
+    def outer_callback():
+      ctx = tasklets.get_context()
+      self.assertTrue(ctx.in_transaction())
+      f = ctx.transaction(
+        inner_callback, propagation=context.TransactionOptions.MANDATORY)
+      x = f.get_result()
+      self.assertEqual(x, Foo(n=1, id='x'))
+      return x
+    x = self.ctx.transaction(outer_callback).get_result()
+    x.key.delete()
+
+    # 3. Case for propagation=ALLOWED.
+    def outer_callback():
+      ctx = tasklets.get_context()
+      self.assertTrue(ctx.in_transaction())
+      f = ctx.transaction(
+        inner_callback, propagation=context.TransactionOptions.ALLOWED)
+      x = f.get_result()
+      self.assertEqual(x, Foo(n=1, id='x'))
+      return x
+    x = self.ctx.transaction(outer_callback).get_result()
+    x.key.delete()
 
   def testDefaultContextTransaction(self):
     @tasklets.synctasklet

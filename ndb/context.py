@@ -819,10 +819,16 @@ class Context(object):
       if not self.in_transaction():
         raise datastore_errors.BadRequestError(
           'Requires an existing transaction.')
-      raise tasklets.Return(callback())
+      result = callback()
+      if isinstance(result, tasklets.Future):
+        result = yield result
+      raise tasklets.Return(result)
     elif propagation == TransactionOptions.ALLOWED:
       if self.in_transaction():
-        raise tasklets.Return(callback())
+        result = callback()
+        if isinstance(result, tasklets.Future):
+          result = yield result
+        raise tasklets.Return(result)
     elif propagation == TransactionOptions.INDEPENDENT:
       while parent.in_transaction():
         parent = parent._parent_context
