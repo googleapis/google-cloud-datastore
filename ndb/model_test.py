@@ -994,6 +994,15 @@ class ModelTests(test_utils.NDBTest):
     self.assertRaises(TypeError, model.KeyProperty, None, RefModel, kind='k')
     self.assertRaises(TypeError, model.KeyProperty, 'n', RefModel, kind='k')
 
+  def testPropertyCreationCounter(self):
+    class MyModel(model.Model):
+      foo = model.StringProperty()
+      bar = model.StringProperty()
+      baz = model.StringProperty()
+    self.assertTrue(MyModel.foo._creation_counter <
+                    MyModel.bar._creation_counter <
+                    MyModel.baz._creation_counter)
+
   def testBlobKeyProperty(self):
     class MyModel(model.Model):
       image = model.BlobKeyProperty()
