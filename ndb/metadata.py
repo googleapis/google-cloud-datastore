@@ -12,8 +12,8 @@ A simplified API is also offered:
     A list of property names for the given kind name.
   ndb.metadata.get_representations_of_kind(kind):
     A dict mapping property names to lists of representation ids.
-  ndb.metadata.get_entity_group_version(entity_or_key):
-    The version of the entity group containing entity_or_key (HRD only).
+  ndb.metadata.get_entity_group_version(key):
+    The version of the entity group containing key (HRD only).
 
 get_kinds(), get_properties_of_kind(), get_representations_of_kind()
 implicitly apply to the current namespace.
@@ -316,9 +316,10 @@ def get_entity_group_version(key):
   Args:
     key: a key for an entity group whose __entity_group__ key you want.
 
-  Returns: The version of the entity group containing key. This version is
-    guaranteed to increase on every change to the entity group. The version may
-    increase even in the absence of user-visible changes to the entity
+  Returns:
+    The version of the entity group containing key. This version is
+    guaranteed to increase on every change to the entity group. The version
+    may increase even in the absence of user-visible changes to the entity
     group. May return None if the entity group was never written to.
 
     On non-HR datatores, this function returns None.
