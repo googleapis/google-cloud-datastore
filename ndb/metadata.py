@@ -35,6 +35,9 @@ __all__ = ['Namespace', 'Kind', 'Property', 'EntityGroup',
 class _BaseMetadata(model.Model):
   """Base class for all metadata models."""
 
+  _use_cache = False
+  _use_memcache = False
+
   KIND_NAME = ''  # Don't instantiate this class; always use a subclass.
 
   @classmethod
