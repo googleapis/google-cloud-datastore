@@ -1140,8 +1140,6 @@ class ContextTests(test_utils.NDBTest):
 
   def start_test_server(self):
     host = '127.0.0.1'
-    lock = threading.Lock()
-    lock.acquire()
     s = socket.socket()
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     for i in range(10):
@@ -1153,9 +1151,8 @@ class ContextTests(test_utils.NDBTest):
         continue
     else:
       self.fail('Could not find an unused port in 10 tries')
+    s.listen(1)
     def run():
-      s.listen(1)
-      lock.release()  # Signal socket is all set up.
       c, addr = s.accept()
       s.close()
       c.recv(1000)  # Throw away request.
@@ -1164,18 +1161,11 @@ class ContextTests(test_utils.NDBTest):
     t = threading.Thread(target=run)
     t.setDaemon(True)
     t.start()
-    return host, port, lock
+    return host, port
 
   def testUrlFetch(self):
     self.testbed.init_urlfetch_stub()
-    host, port, lock = self.start_test_server()
-    # Block until socket is set up, or 5 seconds have passed.
-    for i in xrange(500):
-      if lock.acquire(False):
-        break
-      time.sleep(0.01)
-    else:
-      self.fail('Socket was not ready in 5 seconds')
+    host, port = self.start_test_server()
     fut = self.ctx.urlfetch('http://%s:%d' % (host, port))
     result = fut.get_result()
     self.assertEqual(result.status_code, 200)
