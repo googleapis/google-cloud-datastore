@@ -8,6 +8,7 @@ and other environment variables.
 import logging
 import unittest
 
+from .google_test_imports import datastore_stub_util
 from .google_test_imports import testbed
 
 from . import model
@@ -46,6 +47,11 @@ class NDBTest(unittest.TestCase):
 
     self._logger = logging.getLogger()
     self._old_log_level = self._logger.getEffectiveLevel()
+
+  def HRTest(self):
+    ds_stub = self.testbed.get_stub('datastore_v3')
+    hrd_policy = datastore_stub_util.BaseHighReplicationConsistencyPolicy()
+    ds_stub.SetConsistencyPolicy(hrd_policy)
 
   def ExpectErrors(self):
     if self.DefaultLogging():

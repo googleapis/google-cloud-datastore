@@ -1,7 +1,8 @@
 """Models and helper functions for access to app's datastore metadata.
 
 These entities cannot be created by users, but are created as results of
-__namespace__, __kind__ and __property__ metadata queries.
+__namespace__, __kind__, __property__ and __entity_group__ metadata queries
+or gets.
 
 A simplified API is also offered:
 
@@ -11,23 +12,31 @@ A simplified API is also offered:
     A list of property names for the given kind name.
   ndb.metadata.get_representations_of_kind(kind):
     A dict mapping property names to lists of representation ids.
+  ndb.metadata.get_entity_group_version(entity_or_key):
+    The version of the entity group containing entity_or_key (HRD only).
 
-All but get_namespaces() implicitly apply to the current namespace.
+get_kinds(), get_properties_of_kind(), get_representations_of_kind()
+implicitly apply to the current namespace.
 
-All have optional start and end arguments to limit the query to a
-range of names, such that start <= name < end.
+get_namespaces(), get_kinds(), get_properties_of_kind(),
+get_representations_of_kind() have optional start and end arguments to limit the
+query to a range of names, such that start <= name < end.
 """
 
 from . import model
 
-__all__ = ['Namespace', 'Kind', 'Property',
+__all__ = ['Namespace', 'Kind', 'Property', 'EntityGroup',
            'get_namespaces', 'get_kinds',
            'get_properties_of_kind', 'get_representations_of_kind',
+           'get_entity_group_version',
            ]
 
 
 class _BaseMetadata(model.Model):
   """Base class for all metadata models."""
+
+  _use_cache = False
+  _use_memcache = False
 
   KIND_NAME = ''  # Don't instantiate this class; always use a subclass.
 
@@ -184,6 +193,34 @@ class Property(_BaseMetadata):
       return key.id()
 
 
+class EntityGroup(_BaseMetadata):
+  """Model for __entity_group__ metadata (available in HR datastore only).
+
+  This metadata contains a numeric __version__ property that is guaranteed
+  to increase on every change to the entity group. The version may increase
+  even in the absence of user-visible changes to the entity group. The
+  __entity_group__ entity may not exist if the entity group was never
+  written to.
+  """
+
+  KIND_NAME = '__entity_group__'
+  ID = 1
+
+  version = model.IntegerProperty(name='__version__')
+
+  @classmethod
+  def key_for_entity_group(cls, key):
+    """Return the key for the entity group containing key.
+
+    Args:
+      key: a key for an entity group whose __entity_group__ key you want.
+
+    Returns:
+      The __entity_group__ key for the entity group containing key.
+    """
+    return model.Key(cls.KIND_NAME, cls.ID, parent=key.root())
+
+
 def get_namespaces(start=None, end=None):
   """Return all namespaces in the specified range.
 
@@ -274,3 +311,24 @@ def get_representations_of_kind(kind, start=None, end=None):
     result[property.property_name] = property.property_representation
 
   return result
+
+
+def get_entity_group_version(key):
+  """Return the version of the entity group containing key.
+
+  Args:
+    key: a key for an entity group whose __entity_group__ key you want.
+
+  Returns: The version of the entity group containing key. This version is
+    guaranteed to increase on every change to the entity group. The version may
+    increase even in the absence of user-visible changes to the entity
+    group. May return None if the entity group was never written to.
+
+    On non-HR datatores, this function returns None.
+  """
+
+  eg = EntityGroup.key_for_entity_group(key).get()
+  if eg:
+    return eg.version
+  else:
+    return None

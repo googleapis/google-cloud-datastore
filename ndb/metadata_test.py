@@ -4,8 +4,10 @@ import unittest
 
 from .google_imports import namespace_manager
 
+from . import context
 from . import metadata
 from . import model
+from . import tasklets
 from . import test_utils
 
 
@@ -25,6 +27,9 @@ class MetadataTests(test_utils.NDBTest):
       pass
     self.Ext = Ext
     namespace_manager.set_namespace('')  # Always start in default ns.
+    # Turn on caching to make sure we don't cache metadata
+    opts = context.ContextOptions(use_cache=True, use_memcache=True)
+    tasklets.set_context(tasklets.make_context(config=opts))
 
   the_module = metadata
 
@@ -100,6 +105,30 @@ class MetadataTests(test_utils.NDBTest):
     self.assertEqual([('Ext', 'bar'), ('Ext', 'foo'),
                       ('Foo', 'age'), ('Foo', 'name')],
                      [(p.kind_name, p.property_name) for p in res])
+
+  def testEntityGroup(self):
+    """Test for EntityGroup class."""
+    self.HRTest()
+    foo_e = self.Foo(age=11)
+    foo_e.put()
+    egfoo_k = metadata.EntityGroup.key_for_entity_group(foo_e.key)
+
+    v1 = egfoo_k.get().version
+    self.assertTrue(v1 > 0)
+
+    child_e = self.Foo(age=22, parent=foo_e.key)
+    child_e.put()
+    self.assertEquals(egfoo_k,
+                      metadata.EntityGroup.key_for_entity_group(child_e.key))
+
+    self.assertTrue(egfoo_k.get().version > v1)
+
+  def testGetEntityGroupVersion(self):
+    """Test for get_entity_group_version function."""
+    self.HRTest()
+    foo_e = self.Foo(age=11)
+    foo_e.put()
+    self.assertTrue(metadata.get_entity_group_version(foo_e.key) > 0)
 
 
 def main():

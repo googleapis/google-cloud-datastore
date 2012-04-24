@@ -732,6 +732,8 @@ class Property(ModelAttribute):
   _validator = None
   _verbose_name = None
 
+  __creation_counter_global = 0
+
   _attributes = ['_name', '_indexed', '_repeated', '_required', '_default',
                  '_choices', '_validator', '_verbose_name']
   _positional = 1  # Only name is a positional argument.
@@ -782,6 +784,9 @@ class Property(ModelAttribute):
         raise TypeError('validator must be callable or None; received %r' %
                         validator)
       self._validator = validator
+    # Keep a unique creation counter.
+    Property.__creation_counter_global += 1
+    self._creation_counter = Property.__creation_counter_global
 
   def __repr__(self):
     """Return a compact unambiguous string representation of a property."""
@@ -1611,7 +1616,7 @@ class JsonProperty(BlobProperty):
       import json
     except ImportError:
       import simplejson as json
-    return json.dumps(value, 2)
+    return json.dumps(value)
 
   def _from_base_type(self, value):
     try:

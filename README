@@ -45,7 +45,7 @@ How To
 ------
 
 You need to separately download and install the App Engine Python SDK,
-version 1.6.4 or later.  NOTE: older versions don't work!!!!!!!!!
+version 1.6.5 or later.  NOTE: older versions don't work!!!!!!!!!
 (If you don't know where to find that you are not ready to play with
 this code. :-) Assuming the SDK lives at /usr/local/google_appengine,
 you need to add that directory to your $PYTHONPATH environment
