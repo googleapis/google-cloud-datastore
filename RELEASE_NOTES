@@ -1,6 +1,9 @@
-Release 1.0.1 (not yet)
+Release 1.0.1 (included in SDK 1.6.5)
 
-- Support entity group metadata queries (requires SDK 1.6.5).
+- Support entity group metadata queries.
+- Remov spurious '2' argument from json.dumps().
+- Turn off caching for metadata queries.
+- Issue 175: Add _creation_counter.
 - Issue 169: Normalize incomplete keys.
 - Issue 166: Make Key orderable.
 - Issue 105: Use yield for memcache_cas() call in Context.get().
