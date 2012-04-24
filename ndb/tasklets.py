@@ -67,6 +67,7 @@ import types
 
 from .google_imports import apiproxy_stub_map
 from .google_imports import apiproxy_rpc
+from .google_imports import datastore_errors
 from .google_imports import datastore_rpc
 
 from . import eventloop
@@ -157,6 +158,7 @@ def _init_flow_exceptions():
   """
   global _flow_exceptions
   _flow_exceptions = ()
+  add_flow_exception(datastore_errors.Rollback)
   try:
     from webob import exc
   except ImportError:
