@@ -3032,14 +3032,17 @@ class Model(_NotEqualMixin):
   allocate_ids_async = _allocate_ids_async
 
   @classmethod
+  @utils.positional(3)
   def _get_by_id(cls, id, parent=None, **ctx_options):
     """Returns an instance of Model class by ID.
 
-    This is really just a shorthand for Key(cls, id).get().
+    This is really just a shorthand for Key(cls, id, ...).get().
 
     Args:
       id: A string or integer key ID.
-      parent: Parent key of the model to get.
+      parent: Optional parent key of the model to get.
+      namespace: Optional namespace.
+      app: Optional app ID.
       **ctx_options: Context options.
 
     Returns:
@@ -3049,12 +3052,14 @@ class Model(_NotEqualMixin):
   get_by_id = _get_by_id
 
   @classmethod
-  def _get_by_id_async(cls, id, parent=None, **ctx_options):
-    """Returns an instance of Model class by ID.
+  @utils.positional(3)
+  def _get_by_id_async(cls, id, parent=None, app=None, namespace=None,
+                       **ctx_options):
+    """Returns an instance of Model class by ID (and app, namespace).
 
     This is the asynchronous version of Model._get_by_id().
     """
-    key = Key(cls._get_kind(), id, parent=parent)
+    key = Key(cls._get_kind(), id, parent=parent, app=app, namespace=namespace)
     return key.get_async(**ctx_options)
   get_by_id_async = _get_by_id_async
 

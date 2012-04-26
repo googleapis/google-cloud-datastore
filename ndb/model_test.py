@@ -2507,15 +2507,21 @@ class ModelTests(test_utils.NDBTest):
     res = MyModel.get_by_id(2, parent=model.Key(pairs=[(kind, 1)]))
     self.assertEqual(res, ent3)
 
-    # key name + parent
+    # key name + parent (positional)
     ent4 = MyModel(key=model.Key(pairs=[(kind, 1), (kind, 'bar')]))
     ent4.put()
-    res = MyModel.get_by_id('bar', parent=ent1.key)
+    res = MyModel.get_by_id('bar', ent1.key)
     self.assertEqual(res, ent4)
 
     # None
     res = MyModel.get_by_id('idontexist')
     self.assertEqual(res, None)
+
+    # key id + namespace
+    ent5 = MyModel(key=model.Key(kind, 1, namespace='ns'))
+    ent5.put()
+    res = MyModel.get_by_id(1, namespace='ns')
+    self.assertEqual(res, ent5)
 
     # Invalid parent
     self.assertRaises(datastore_errors.BadValueError, MyModel.get_by_id,
