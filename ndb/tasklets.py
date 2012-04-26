@@ -566,7 +566,7 @@ class MultiFuture(Future):
       mfut.complete()
       fut = mfut
     elif not isinstance(fut, Future):
-      raise TypeError('Expected Future received %r' % fut)
+      raise TypeError('Expected Future, received %s: %r' % (type(fut), fut))
     if self._full:
       raise RuntimeError('MultiFuture cannot add a dependent once complete.')
     self._results.append(fut)
