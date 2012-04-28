@@ -225,6 +225,7 @@ class Context(object):
                       ]
     self._cache = {}
     self._memcache = memcache.Client()
+    self._on_commit_queue = []
 
   # NOTE: The default memcache prefix is altered if an incompatible change is
   # required. Remember to check release notes when using a custom prefix.
@@ -804,7 +805,7 @@ class Context(object):
   def transaction(self, callback, **ctx_options):
     # Will invoke callback() one or more times with the default
     # context set to a new, transactional Context.  Returns a Future.
-    # Callback may be a tasklet.
+    # Callback may be a tasklet; in that case it will be waited on.
     options = _make_ctx_options(ctx_options, TransactionOptions)
     propagation = TransactionOptions.propagation(options)
     if propagation is None:
@@ -855,6 +856,7 @@ class Context(object):
       tctx = parent.__class__(conn=tconn,
                               auto_batcher_class=parent._auto_batcher_class,
                               parent_context=parent)
+      ok = False
       try:
         # Copy memcache policies.  Note that get() will never use
         # memcache in a transaction, but put and delete should do their
@@ -888,8 +890,17 @@ class Context(object):
             parent._cache.update(tctx._cache)
             yield parent._clear_memcache(tctx._cache)
             raise tasklets.Return(result)
+            # The finally clause will run the on-commit queue.
       finally:
         datastore._SetConnection(old_ds_conn)
+        if ok:
+          # Call the callbacks collected in the transaction context's
+          # on-commit queue.  If the transaction failed the queue is
+          # abandoned.  We must do this after the connection has been
+          # restored, but we can't do it after the for-loop because we
+          # leave it by raising tasklets.Return().
+          for on_commit_callback in tctx._on_commit_queue:
+            on_commit_callback()  # This better not raise.
 
     # Out of retries
     raise datastore_errors.TransactionFailedError(
@@ -898,6 +909,28 @@ class Context(object):
   def in_transaction(self):
     """Return whether a transaction is currently active."""
     return isinstance(self._conn, datastore_rpc.TransactionalConnection)
+
+  def call_on_commit(self, callback):
+    """Call a callback upon successful commit of a transaction.
+
+    If not in a transaction, the callback is called immediately.
+
+    In a transaction, multiple callbacks may be registered and will be
+    called once the transaction commits, in the order in which they
+    were registered.  If the transaction fails, the callbacks will not
+    be called.
+
+    If the callback raises an exception, it bubbles up normally.  This
+    means: If the callback is called immediately, any exception it
+    raises will bubble up immediately.  If the call is postponed until
+    commit, remaining callbacks will be skipped and the exception will
+    bubble up through the transaction() call.  (However, the
+    transaction is already committed at that point.)
+    """
+    if not self.in_transaction():
+      callback()
+    else:
+      self._on_commit_queue.append(callback)
 
   def clear_cache(self):
     """Clears the in-memory cache.

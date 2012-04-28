@@ -1,5 +1,6 @@
 Release 1.0.2 (not yet)
 
+- Issue 174: New API: Context.call_on_commit().
 - Issue 179: Rollback is a flow exception.
 - Streamline the threaded test server creation.
 - Fix docstring for get_entity_group_version().
