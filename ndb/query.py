@@ -1306,7 +1306,7 @@ class Query(object):
       if isinstance(proj, basestring):
         fixed.append(proj)
       elif isinstance(proj, model.Property):
-        fixed.append(proj._code_name)
+        fixed.append(proj._name)
       else:
         raise datastore_errors.BadArgumentError(
           'Unexpected projection (%r); should be string or Property')

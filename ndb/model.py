@@ -1174,7 +1174,11 @@ class Property(ModelAttribute):
     resulting value or list of values is both stored back in the
     entity and returned from this method.
     """
-    value = self._retrieve_value(entity, self._default)
+    if entity._partial:
+      # Ignore the default for partial values.
+      value = self._retrieve_value(entity, None)
+    else:
+      value = self._retrieve_value(entity, self._default)
     if self._repeated:
       if value is None:
         value = []

@@ -629,6 +629,10 @@ class ModelTests(test_utils.NDBTest):
     self.assertEqual(ent2._partial, True)
     self.assertEqual(repr(ent2), 'Foo(_partial=True)')
     self.assertRaises(datastore_errors.BadRequestError, ent2.put)
+    ent3 = Foo(_partial=True, id=42)  # Sets the key
+    self.assertEqual(ent3._partial, True)
+    self.assertEqual(repr(ent3), "Foo(key=Key('Foo', 42), _partial=True)")
+    ent3.key.delete()  # No failure
 
   def testQuery(self):
     class MyModel(model.Model):

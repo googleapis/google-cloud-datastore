@@ -261,8 +261,9 @@ class QueryTests(test_utils.NDBTest):
                       lambda: Emp.local == Foo(name='a'))
 
   def testQueryWithProjection(self):
+    self.ExpectWarnings()
     class Foo(model.Model):
-      p = model.IntegerProperty()
+      p = model.IntegerProperty('pp')  # Also check renaming
       q = model.IntegerProperty(required=True)
       r = model.IntegerProperty(repeated=True)
       d = model.IntegerProperty(default=42)
@@ -274,11 +275,46 @@ class QueryTests(test_utils.NDBTest):
     self.assertEqual(ent.p, 1)
     self.assertEqual(ent.q, 2)
     self.assertEqual(ent.r, [])
-    self.assertEqual(ent.d, 42)
-    ents = q.fetch(projection=['p', 'r'])
+    self.assertEqual(ent.d, None)  # The default is ignored!
+    ents = q.fetch(projection=['pp', 'r'])
     self.assertEqual(ents, [Foo(p=1, r=[3], key=key, partial=True),
                             Foo(p=1, r=[4], key=key, partial=True)])
     self.assertRaises(datastore_errors.BadArgumentError, q.get, projection=[42])
+
+  def testQueryWithProjectAllTypes(self):
+    class Foo(model.Model):
+      abool = model.BooleanProperty()
+      aint = model.IntegerProperty()
+      afloat = model.FloatProperty()
+      astring = model.StringProperty()
+      ablob = model.BlobProperty(indexed=True)
+      akey = model.KeyProperty()
+      auser = model.UserProperty()
+      apoint = model.GeoPtProperty()
+      adatetime = model.DateTimeProperty()
+      adate = model.DateProperty()
+      atime = model.TimeProperty()
+    boo = Foo(abool=True,
+              aint=42,
+              afloat=3.14,
+              astring='foo',
+              ablob='bar',
+              akey=model.Key(Foo, 'ref'),
+              auser=users.User('test@example.com'),
+              apoint=model.GeoPt(52.35, 4.9166667),
+              adatetime=datetime.datetime(2012, 5, 1, 8, 19, 42),
+              adate=datetime.date(2012, 5, 1),
+              atime=datetime.time(8, 19, 42),
+              )
+    boo.put()
+    qry = Foo.query()
+    for prop in Foo._properties.itervalues():
+      ent = qry.get(projection=[prop._name])
+      self.assertEqual(getattr(ent, prop._code_name),
+                       getattr(boo, prop._code_name))
+      for otherprop in Foo._properties.itervalues():
+        if otherprop is not prop:
+          self.assertEqual(getattr(ent, otherprop._code_name), None)
 
   def testFilterRepr(self):
     class Employee(model.Model):

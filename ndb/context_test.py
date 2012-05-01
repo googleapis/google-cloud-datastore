@@ -816,6 +816,7 @@ class ContextTests(test_utils.NDBTest):
     x.key.delete()
 
   def testTransaction_OnCommit(self):
+    self.ExpectWarnings()
     class Counter(model.Model):
       count = model.IntegerProperty(default=0)
     @model.transactional
