@@ -235,6 +235,22 @@ class PolyModelTests(test_utils.NDBTest):
     # Test some edge cases.
     self.assertEqual(PolyModel._get_kind(), 'PolyModel')
 
+  def testMixins(self):
+    class Mixin(object):
+      pass
+    class Entity(polymodel.PolyModel):
+      pass
+    class ChildEntity(Entity):
+      pass
+    class RightMixinEntity(Entity, Mixin):
+      pass
+    class LeftMixinEntity(Mixin, Entity):
+      pass
+    self.assertEqual(Entity._get_kind(), 'Entity')
+    self.assertEqual(ChildEntity._get_kind(), 'Entity')
+    self.assertEqual(RightMixinEntity._get_kind(), 'Entity')
+    self.assertEqual(LeftMixinEntity._get_kind(), 'Entity')
+
 
 TOM_PB = """\
 key <
