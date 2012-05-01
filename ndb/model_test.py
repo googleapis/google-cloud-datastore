@@ -617,6 +617,19 @@ class ModelTests(test_utils.NDBTest):
     np = Foo._properties['name']
     self.assertEqual('Full name', np._verbose_name)
 
+  def testPartialEntities(self):
+    class Foo(model.Model):
+      pass
+    ent0 = Foo()
+    self.assertEqual(ent0._partial, False)
+    ent1 = Foo(partial=True)
+    self.assertEqual(ent1._partial, True)
+    self.assertNotEqual(ent0, ent1)
+    ent2 = Foo(_partial=42)
+    self.assertEqual(ent2._partial, True)
+    self.assertEqual(repr(ent2), 'Foo(_partial=True)')
+    self.assertRaises(datastore_errors.BadRequestError, ent2.put)
+
   def testQuery(self):
     class MyModel(model.Model):
       p = model.IntegerProperty()

@@ -260,6 +260,26 @@ class QueryTests(test_utils.NDBTest):
     self.assertRaises(datastore_errors.BadFilterError,
                       lambda: Emp.local == Foo(name='a'))
 
+  def testQueryWithProjection(self):
+    class Foo(model.Model):
+      p = model.IntegerProperty()
+      q = model.IntegerProperty(required=True)
+      r = model.IntegerProperty(repeated=True)
+      d = model.IntegerProperty(default=42)
+
+    key = Foo(p=1, q=2, r=[3, 4]).put()
+    q = Foo.query(Foo.p >= 0)
+    ent = q.get(projection=[Foo.p, 'q'])
+    self.assertTrue(ent._partial)
+    self.assertEqual(ent.p, 1)
+    self.assertEqual(ent.q, 2)
+    self.assertEqual(ent.r, [])
+    self.assertEqual(ent.d, 42)
+    ents = q.fetch(projection=['p', 'r'])
+    self.assertEqual(ents, [Foo(p=1, r=[3], key=key, partial=True),
+                            Foo(p=1, r=[4], key=key, partial=True)])
+    self.assertRaises(datastore_errors.BadArgumentError, q.get, projection=[42])
+
   def testFilterRepr(self):
     class Employee(model.Model):
       name = model.StringProperty()
@@ -1427,6 +1447,13 @@ class QueryTests(test_utils.NDBTest):
     self.assertEqual(['bar', 'foo'], q.analyze())
     q = Foo.gql("WHERE tags = :1 AND name = :foo AND rate = :bar")
     self.assertEqual([1, 'bar', 'foo'], q.analyze())
+
+  def testGqlProjection(self):
+    q = query.gql("SELECT name, tags FROM Foo WHERE name < 'joe' ORDER BY name")
+    self.assertEqual(q.fetch(), [Foo(name='jill', tags=['jack'],
+                                     key=self.jill.key, partial=True),
+                                 Foo(name='jill', tags=['jill'],
+                                     key=self.jill.key, partial=True)])
 
   def testAsyncNamespace(self):
     # Test that async queries pick up the namespace when the

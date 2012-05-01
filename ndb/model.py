@@ -2485,6 +2485,7 @@ class Model(_NotEqualMixin):
   # Defaults for instance variables.
   _entity_key = None
   _values = None
+  _partial = False
 
   # Hardcoded pseudo-property for the key.
   _key = ModelKey()
@@ -2519,6 +2520,7 @@ class Model(_NotEqualMixin):
     app = get_arg(kwds, 'app')
     namespace = get_arg(kwds, 'namespace')
     parent = get_arg(kwds, 'parent')
+    self._partial = bool(get_arg(kwds, 'partial'))
     if key is not None:
       if (id is not None or parent is not None or
           app is not None or namespace is not None):
@@ -2614,6 +2616,8 @@ class Model(_NotEqualMixin):
     args.sort()
     if self._key is not None:
       args.insert(0, 'key=%r' % self._key)
+    if self._partial:
+      args.append('_partial=True')
     s = '%s(%s)' % (self.__class__.__name__, ', '.join(args))
     return s
 
@@ -2649,14 +2653,17 @@ class Model(_NotEqualMixin):
     """
     raise TypeError('Model is not immutable')
 
+  # TODO: Reject __lt__, __le__, __gt__, __ge__.
+
   def __eq__(self, other):
     """Compare two entities of the same class for equality."""
     if other.__class__ is not self.__class__:
       return NotImplemented
-    # It's okay to use private names -- we're the same class
     if self._key != other._key:
       # TODO: If one key is None and the other is an explicit
       # incomplete key of the simplest form, this should be OK.
+      return False
+    if self._partial != other._partial:
       return False
     return self._equivalent(other)
 
@@ -2732,6 +2739,8 @@ class Model(_NotEqualMixin):
     unindexed_properties = pb.raw_property_list()
     for plist in [indexed_properties, unindexed_properties]:
       for p in plist:
+        if p.meaning() == entity_pb.Property.INDEX_VALUE:
+          ent._partial = True
         prop = ent._get_property_for(p, plist is indexed_properties)
         prop._deserialize(ent, p)
 
@@ -2907,6 +2916,8 @@ class Model(_NotEqualMixin):
 
     This is the asynchronous version of Model._put().
     """
+    if self._partial:
+      raise datastore_errors.BadRequestError('Cannot put a partial entity')
     from . import tasklets
     ctx = tasklets.get_context()
     self._prepare_for_put()
