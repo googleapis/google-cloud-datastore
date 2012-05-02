@@ -617,24 +617,33 @@ class ModelTests(test_utils.NDBTest):
     np = Foo._properties['name']
     self.assertEqual('Full name', np._verbose_name)
 
-  def testPartialEntities(self):
+  def testProjectedEntities(self):
     class Foo(model.Model):
       a = model.StringProperty()
       b = model.StringProperty()
+
     ent0 = Foo()
     self.assertEqual(ent0._projection, ())
+
     ent1 = Foo(projection=('a',))
     self.assertEqual(ent1._projection, ('a',))
     self.assertNotEqual(ent0, ent1)
+    self.assertEqual(ent1.a, None)
+    self.assertRaises(model.UnprojectedPropertyError, lambda: ent1.b)
+    self.assertRaises(model.ReadonlyPropertyError, setattr, ent1, 'a', 'a')
+    self.assertRaises(model.ReadonlyPropertyError, setattr, ent1, 'b', 'b')
+
     ent2 = Foo(_projection=['a'])
     self.assertEqual(ent2._projection, ('a',))
     self.assertEqual(repr(ent2), "Foo(_projection=('a',))")
     self.assertRaises(datastore_errors.BadRequestError, ent2.put)
+
     ent3 = Foo(_projection=('a',), id=42)  # Sets the key
     self.assertEqual(ent3._projection, ('a',))
     self.assertEqual(repr(ent3),
                      "Foo(key=Key('Foo', 42), _projection=('a',))")
     ent3.key.delete()  # No failure
+
     # Another one that differs only in projection.
     ent4 = Foo(_projection=('a', 'b'), id=42)
     self.assertEqual(ent4._projection, ('a', 'b'))

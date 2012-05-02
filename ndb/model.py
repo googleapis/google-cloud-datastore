@@ -329,6 +329,15 @@ class KindError(datastore_errors.BadValueError):
 class ComputedPropertyError(datastore_errors.Error):
   """Raised when attempting to assign a value to a computed property."""
 
+
+class UnprojectedPropertyError(datastore_errors.Error):
+  """Raised when getting a property value that's not in the projection."""
+
+
+class ReadonlyPropertyError(datastore_errors.Error):
+  """Raised when setting a property value if there is a projection."""
+
+
 # Various imported limits.
 _MAX_LONG = key_module._MAX_LONG
 _MAX_STRING_LENGTH = datastore_types._MAX_STRING_LENGTH
@@ -977,6 +986,9 @@ class Property(ModelAttribute):
     This performs validation first.  For a repeated Property the value
     should be a list.
     """
+    if entity._projection:
+      raise ReadonlyPropertyError(
+        'You cannot set property values of a projection entity')
     if self._repeated:
       if not isinstance(value, (list, tuple, set, frozenset)):
         raise datastore_errors.BadValueError('Expected list or tuple, got %r' %
@@ -1175,6 +1187,9 @@ class Property(ModelAttribute):
     entity and returned from this method.
     """
     if entity._projection:
+      if self._name not in entity._projection:
+        raise UnprojectedPropertyError(
+          'Property %s is not in the projection' % (self._name,))
       # Ignore the default for projected entities.
       value = self._retrieve_value(entity, None)
     else:
@@ -2426,6 +2441,8 @@ class ComputedProperty(GenericProperty):
     raise ComputedPropertyError("Cannot assign to a ComputedProperty")
 
   def _get_value(self, entity):
+    if entity._projection and self._name in entity._projection:
+      return super(ComputedProperty, self)._get_value(entity)
     value = self._func(entity)
     self._store_value(entity, value)
     return value
@@ -2524,7 +2541,7 @@ class Model(_NotEqualMixin):
     app = get_arg(kwds, 'app')
     namespace = get_arg(kwds, 'namespace')
     parent = get_arg(kwds, 'parent')
-    self._projection = tuple(get_arg(kwds, 'projection') or ())
+    projection = tuple(get_arg(kwds, 'projection') or ())
     if key is not None:
       if (id is not None or parent is not None or
           app is not None or namespace is not None):
@@ -2538,6 +2555,8 @@ class Model(_NotEqualMixin):
                       parent=parent, app=app, namespace=namespace)
     self._values = {}
     self._set_attributes(kwds)
+    # Set the projection last, otherwise it will prevent _set_attributes().
+    self._projection = projection
 
   @classmethod
   def __get_arg(cls, kwds, kwd):
@@ -2667,8 +2686,6 @@ class Model(_NotEqualMixin):
       # TODO: If one key is None and the other is an explicit
       # incomplete key of the simplest form, this should be OK.
       return False
-    if self._projection != other._projection:
-      return False
     return self._equivalent(other)
 
   def _equivalent(self, other):
@@ -2677,6 +2694,8 @@ class Model(_NotEqualMixin):
       raise NotImplementedError('Cannot compare different model classes. '
                                 '%s is not %s' % (self.__class__.__name__,
                                                   other.__class_.__name__))
+    if self._projection != other._projection:
+      return False
     # It's all about determining inequality early.
     if len(self._properties) != len(other._properties):
       return False  # Can only happen for Expandos.
@@ -2684,6 +2703,8 @@ class Model(_NotEqualMixin):
     their_prop_names = set(other._properties.iterkeys())
     if my_prop_names != their_prop_names:
       return False  # Again, only possible for Expandos.
+    if self._projection:
+      my_prop_names = set(self._projection)
     for name in my_prop_names:
       my_value = self._properties[name]._get_value(self)
       their_value = other._properties[name]._get_value(other)

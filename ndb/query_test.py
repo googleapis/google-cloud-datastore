@@ -260,7 +260,7 @@ class QueryTests(test_utils.NDBTest):
     self.assertRaises(datastore_errors.BadFilterError,
                       lambda: Emp.local == Foo(name='a'))
 
-  def testQueryWithProjection(self):
+  def testProjectionQuery(self):
     self.ExpectWarnings()
     class Foo(model.Model):
       p = model.IntegerProperty('pp')  # Also check renaming
@@ -274,14 +274,14 @@ class QueryTests(test_utils.NDBTest):
     self.assertEqual(ent._projection, ('pp', 'q'))
     self.assertEqual(ent.p, 1)
     self.assertEqual(ent.q, 2)
-    self.assertEqual(ent.r, [])
-    self.assertEqual(ent.d, None)  # The default is ignored!
+    self.assertRaises(model.UnprojectedPropertyError, lambda: ent.r)
+    self.assertRaises(model.UnprojectedPropertyError, lambda: ent.d)
     ents = q.fetch(projection=['pp', 'r'])
     self.assertEqual(ents, [Foo(p=1, r=[3], key=key, projection=('pp', 'r')),
                             Foo(p=1, r=[4], key=key, projection=['pp', 'r'])])
     self.assertRaises(datastore_errors.BadArgumentError, q.get, projection=[42])
 
-  def testQueryWithProjectAllTypes(self):
+  def testProjectionQuery_AllTypes(self):
     class Foo(model.Model):
       abool = model.BooleanProperty()
       aint = model.IntegerProperty()
@@ -314,7 +314,29 @@ class QueryTests(test_utils.NDBTest):
                        getattr(boo, prop._code_name))
       for otherprop in Foo._properties.itervalues():
         if otherprop is not prop:
-          self.assertEqual(getattr(ent, otherprop._code_name), None)
+          self.assertRaises(model.UnprojectedPropertyError,
+                            getattr, ent, otherprop._code_name)
+
+  def testProjectionQuery_ComputedProperties(self):
+    class Foo(model.Model):
+      a = model.StringProperty()
+      b = model.StringProperty()
+      c = model.ComputedProperty(lambda ent: '<%s.%s>' % (ent.a, ent.b))
+      d = model.ComputedProperty(lambda ent: '<%s>' % (ent.a,))
+    foo = Foo(a='a', b='b')
+    foo.put()
+    self.assertEqual((foo.a, foo.b, foo.c, foo.d), ('a', 'b', '<a.b>', '<a>'))
+    qry = Foo.query()
+    x = qry.get(projection=['a', 'b'])
+    self.assertEqual((x.a, x.b, x.c, x.d), ('a', 'b', '<a.b>', '<a>'))
+    y = qry.get(projection=['a'])
+    self.assertEqual((y.a, y.d), ('a', '<a>'))
+    self.assertRaises(model.UnprojectedPropertyError, lambda: y.b)
+    self.assertRaises(model.UnprojectedPropertyError, lambda: y.c)
+    z = qry.get(projection=['b'])
+    self.assertEqual((z.b,), ('b',))
+    p = qry.get(projection=['c', 'd'])
+    self.assertEqual((p.c, p.d), ('<a.b>', '<a>'))
 
   def testFilterRepr(self):
     class Employee(model.Model):
@@ -1486,7 +1508,8 @@ class QueryTests(test_utils.NDBTest):
 
   def testGqlProjection(self):
     q = query.gql("SELECT name, tags FROM Foo WHERE name < 'joe' ORDER BY name")
-    self.assertEqual(q.fetch(), [Foo(name='jill', tags=['jack'],
+    answer = q.fetch()
+    self.assertEqual(answer,    [Foo(name='jill', tags=['jack'],
                                      key=self.jill.key,
                                      projection=['name', 'tags']),
                                  Foo(name='jill', tags=['jill'],
