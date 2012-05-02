@@ -326,16 +326,16 @@ class KindError(datastore_errors.BadValueError):
   """
 
 
-class ComputedPropertyError(datastore_errors.Error):
-  """Raised when attempting to assign a value to a computed property."""
-
-
 class UnprojectedPropertyError(datastore_errors.Error):
   """Raised when getting a property value that's not in the projection."""
 
 
 class ReadonlyPropertyError(datastore_errors.Error):
-  """Raised when setting a property value if there is a projection."""
+  """Raised when attempting to set a property value that is read-only."""
+
+
+class ComputedPropertyError(ReadonlyPropertyError):
+  """Raised when attempting to set a value to a computed property."""
 
 
 # Various imported limits.
@@ -1190,10 +1190,7 @@ class Property(ModelAttribute):
       if self._name not in entity._projection:
         raise UnprojectedPropertyError(
           'Property %s is not in the projection' % (self._name,))
-      # Ignore the default for projected entities.
-      value = self._retrieve_value(entity, None)
-    else:
-      value = self._retrieve_value(entity, self._default)
+    value = self._retrieve_value(entity, self._default)
     if self._repeated:
       if value is None:
         value = []
@@ -2441,6 +2438,16 @@ class ComputedProperty(GenericProperty):
     raise ComputedPropertyError("Cannot assign to a ComputedProperty")
 
   def _get_value(self, entity):
+    # About projections and computed properties: if the computed
+    # property itself is in the projection, don't recompute it; this
+    # prevents raising UnprojectedPropertyError if one of the
+    # dependents is not in the projection.  However, if the computed
+    # property is not in the projection, compute it normally -- its
+    # dependents may all be in the projection, and it may be useful to
+    # access the computed value without having it in the projection.
+    # In this case, if any of the dependents is not in the projection,
+    # accessing it in the computation function will raise
+    # UnprojectedPropertyError which will just bubble up.
     if entity._projection and self._name in entity._projection:
       return super(ComputedProperty, self)._get_value(entity)
     value = self._func(entity)
@@ -2541,7 +2548,7 @@ class Model(_NotEqualMixin):
     app = get_arg(kwds, 'app')
     namespace = get_arg(kwds, 'namespace')
     parent = get_arg(kwds, 'parent')
-    projection = tuple(get_arg(kwds, 'projection') or ())
+    projection = get_arg(kwds, 'projection')
     if key is not None:
       if (id is not None or parent is not None or
           app is not None or namespace is not None):
@@ -2556,7 +2563,8 @@ class Model(_NotEqualMixin):
     self._values = {}
     self._set_attributes(kwds)
     # Set the projection last, otherwise it will prevent _set_attributes().
-    self._projection = projection
+    if projection:
+      self._projection = tuple(projection)
 
   @classmethod
   def __get_arg(cls, kwds, kwd):

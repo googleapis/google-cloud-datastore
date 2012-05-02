@@ -1508,8 +1508,7 @@ class QueryTests(test_utils.NDBTest):
 
   def testGqlProjection(self):
     q = query.gql("SELECT name, tags FROM Foo WHERE name < 'joe' ORDER BY name")
-    answer = q.fetch()
-    self.assertEqual(answer,    [Foo(name='jill', tags=['jack'],
+    self.assertEqual(q.fetch(), [Foo(name='jill', tags=['jack'],
                                      key=self.jill.key,
                                      projection=['name', 'tags']),
                                  Foo(name='jill', tags=['jill'],

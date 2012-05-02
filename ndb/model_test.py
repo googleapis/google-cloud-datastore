@@ -618,7 +618,7 @@ class ModelTests(test_utils.NDBTest):
     self.assertEqual('Full name', np._verbose_name)
 
   def testProjectedEntities(self):
-    class Foo(model.Model):
+    class Foo(model.Expando):
       a = model.StringProperty()
       b = model.StringProperty()
 
@@ -629,9 +629,15 @@ class ModelTests(test_utils.NDBTest):
     self.assertEqual(ent1._projection, ('a',))
     self.assertNotEqual(ent0, ent1)
     self.assertEqual(ent1.a, None)
+    ent2 = Foo(projection=['a'])
+    self.assertEqual(ent2._projection, ('a',))
+    self.assertEqual(ent1, ent2)
+    self.assertRaises(TypeError, Foo, projection=42)
     self.assertRaises(model.UnprojectedPropertyError, lambda: ent1.b)
     self.assertRaises(model.ReadonlyPropertyError, setattr, ent1, 'a', 'a')
     self.assertRaises(model.ReadonlyPropertyError, setattr, ent1, 'b', 'b')
+    # Dynamic property creation should fail also:
+    self.assertRaises(model.ReadonlyPropertyError, setattr, ent1, 'c', 'c')
 
     ent2 = Foo(_projection=['a'])
     self.assertEqual(ent2._projection, ('a',))
