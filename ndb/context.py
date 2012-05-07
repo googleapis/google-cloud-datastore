@@ -1031,7 +1031,7 @@ class Context(object):
       A Future (!) whose return value is the value retrieved from
       memcache, or None.
     """
-    if not isinstance(key, str):
+    if not isinstance(key, basestring):
       raise TypeError('key must be a string; received %r' % key)
     if not isinstance(for_cas, bool):
       raise TypeError('for_cas must be a bool; received %r' % for_cas)
@@ -1051,7 +1051,7 @@ class Context(object):
                              use_cache=use_cache)
 
   def memcache_set(self, key, value, time=0, namespace=None, use_cache=False):
-    if not isinstance(key, str):
+    if not isinstance(key, basestring):
       raise TypeError('key must be a string; received %r' % key)
     if not isinstance(time, (int, long)):
       raise TypeError('time must be a number; received %r' % time)
@@ -1065,7 +1065,7 @@ class Context(object):
       return batcher.add((key, value), options)
 
   def memcache_add(self, key, value, time=0, namespace=None):
-    if not isinstance(key, str):
+    if not isinstance(key, basestring):
       raise TypeError('key must be a string; received %r' % key)
     if not isinstance(time, (int, long)):
       raise TypeError('time must be a number; received %r' % time)
@@ -1075,7 +1075,7 @@ class Context(object):
                                           ('add', time, namespace))
 
   def memcache_replace(self, key, value, time=0, namespace=None):
-    if not isinstance(key, str):
+    if not isinstance(key, basestring):
       raise TypeError('key must be a string; received %r' % key)
     if not isinstance(time, (int, long)):
       raise TypeError('time must be a number; received %r' % time)
@@ -1085,7 +1085,7 @@ class Context(object):
                                           ('replace', time, namespace))
 
   def memcache_cas(self, key, value, time=0, namespace=None):
-    if not isinstance(key, str):
+    if not isinstance(key, basestring):
       raise TypeError('key must be a string; received %r' % key)
     if not isinstance(time, (int, long)):
       raise TypeError('time must be a number; received %r' % time)
@@ -1095,7 +1095,7 @@ class Context(object):
                                           ('cas', time, namespace))
 
   def memcache_delete(self, key, seconds=0, namespace=None):
-    if not isinstance(key, str):
+    if not isinstance(key, basestring):
       raise TypeError('key must be a string; received %r' % key)
     if not isinstance(seconds, (int, long)):
       raise TypeError('seconds must be a number; received %r' % seconds)
@@ -1104,7 +1104,7 @@ class Context(object):
     return self._memcache_del_batcher.add(key, (seconds, namespace))
 
   def memcache_incr(self, key, delta=1, initial_value=None, namespace=None):
-    if not isinstance(key, str):
+    if not isinstance(key, basestring):
       raise TypeError('key must be a string; received %r' % key)
     if not isinstance(delta, (int, long)):
       raise TypeError('delta must be a number; received %r' % delta)
@@ -1117,7 +1117,7 @@ class Context(object):
                                           (initial_value, namespace))
 
   def memcache_decr(self, key, delta=1, initial_value=None, namespace=None):
-    if not isinstance(key, str):
+    if not isinstance(key, basestring):
       raise TypeError('key must be a string; received %r' % key)
     if not isinstance(delta, (int, long)):
       raise TypeError('delta must be a number; received %r' % delta)

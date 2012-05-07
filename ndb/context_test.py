@@ -967,7 +967,7 @@ class ContextTests(test_utils.NDBTest):
     def foo():
       ctx = tasklets.get_context()
       k1 = 'k1'
-      k2 = 'k2'
+      k2 = u'k2'
       vv = yield ctx.memcache_get(k1), ctx.memcache_get(k2)
       self.assertEqual(vv, [None, None])
       v1 = '24'
@@ -1011,7 +1011,7 @@ class ContextTests(test_utils.NDBTest):
     def foo():
       c1 = context.Context()
       c2 = context.Context()
-      k1 = 'k1'
+      k1 = u'k1'
       k2 = 'k2'
       yield c1.memcache_set(k1, 'a'), c1.memcache_set(k2, 'b')
       vv = yield c2.memcache_get(k1), c2.memcache_get(k2)
@@ -1053,7 +1053,7 @@ class ContextTests(test_utils.NDBTest):
     def foo():
       k1 = 'k1'
       k2 = 'k2'
-      ns = 'ns'
+      ns = u'ns'
 
       # Write two values in the namespace
       s1, s2 = yield (self.ctx.memcache_set(k1, 42, namespace=ns),
