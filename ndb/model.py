@@ -1186,10 +1186,6 @@ class Property(ModelAttribute):
     resulting value or list of values is both stored back in the
     entity and returned from this method.
     """
-    if entity._projection:
-      if self._name not in entity._projection:
-        raise UnprojectedPropertyError(
-          'Property %s is not in the projection' % (self._name,))
     value = self._retrieve_value(entity, self._default)
     if self._repeated:
       if value is None:
@@ -1211,6 +1207,10 @@ class Property(ModelAttribute):
     For a repeated Property this initializes the value to an empty
     list if it is not set.
     """
+    if entity._projection:
+      if self._name not in entity._projection:
+        raise UnprojectedPropertyError(
+          'Property %s is not in the projection' % (self._name,))
     return self._get_user_value(entity)
 
   def _delete_value(self, entity):
@@ -1995,6 +1995,14 @@ class StructuredProperty(_StructuredGetForDictMixin):
                         'properties of its own.' % self._name)
     self._modelclass = modelclass
 
+  def _get_value(self, entity):
+    """Override _get_value() to *not* raise UnprojectedPropertyError."""
+    value = self._get_user_value(entity)
+    if value is None and entity._projection:
+      # Invoke super _get_value() to raise the proper exception.
+      return super(StructuredProperty, self)._get_value(entity)
+    return value
+
   def __getattr__(self, attrname):
     """Dynamically get a subproperty."""
     # Optimistically try to use the dict key.
@@ -2714,6 +2722,8 @@ class Model(_NotEqualMixin):
     if self._projection:
       my_prop_names = set(self._projection)
     for name in my_prop_names:
+      if '.' in name:
+        name, _ = name.split('.', 1)
       my_value = self._properties[name]._get_value(self)
       their_value = other._properties[name]._get_value(other)
       if my_value != their_value:
@@ -2777,9 +2787,25 @@ class Model(_NotEqualMixin):
           projection.append(p.name())
         prop = ent._get_property_for(p, plist is indexed_properties)
         prop._deserialize(ent, p)
-    ent._projection = tuple(projection)
 
+    ent._set_projection(projection)
     return ent
+
+  def _set_projection(self, projection):
+    self._projection = tuple(projection)
+    by_prefix = {}
+    for propname in projection:
+      if '.' in propname:
+        head, tail = propname.split('.', 1)
+        if head in by_prefix:
+          by_prefix[head].append(tail)
+        else:
+          by_prefix[head] = [tail]
+    for propname, proj in by_prefix.iteritems():
+      prop = self._properties.get(propname)
+      subval = prop._get_base_value_unwrapped_as_list(self)
+      for item in subval:
+        item._set_projection(proj)
 
   def _get_property_for(self, p, indexed=True, depth=0):
     """Internal helper to get the Property for a protobuf-level property."""

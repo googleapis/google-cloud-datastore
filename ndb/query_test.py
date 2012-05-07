@@ -338,6 +338,83 @@ class QueryTests(test_utils.NDBTest):
     p = qry.get(projection=['c', 'd'])
     self.assertEqual((p.c, p.d), ('<a.b>', '<a>'))
 
+  def testProjectionQuery_StructuredProperties(self):
+    class Inner(model.Model):
+      foo = model.StringProperty()
+      bar = model.StringProperty()
+      beh = model.StringProperty()
+    class Middle(model.Model):
+      baz = model.StringProperty()
+      inner = model.StructuredProperty(Inner)
+      inners = model.StructuredProperty(Inner, repeated=True)
+    class Outer(model.Model):
+      name = model.StringProperty()
+      middle = model.StructuredProperty(Middle, 'mid')
+    one = Outer(name='one',
+                middle=Middle(baz='one',
+                              inner=Inner(foo='foo', bar='bar'),
+                              inners=[Inner(foo='a', bar='b'),
+                                      Inner(foo='c', bar='d')]))
+    one.put()
+    two = Outer(name='two',
+                middle=Middle(baz='two',
+                              inner=Inner(foo='x', bar='y'),
+                              inners=[Inner(foo='p', bar='q')]))
+    two.put()
+    q = Outer.query()
+
+    [x, y] = q.fetch(projection=[Outer.name, Outer.middle.baz])
+    self.assertEqual(x.middle.baz, 'one')
+    self.assertEqual(x.middle._projection, ('baz',))
+    self.assertEqual(x,
+                     Outer(key=one.key, name='one',
+                           middle=Middle(baz='one', projection=['baz']),
+                           projection=['mid.baz', 'name']))
+    self.assertEqual(y,
+                     Outer(key=two.key, name='two',
+                           middle=Middle(baz='two', projection=['baz']),
+                           projection=['mid.baz', 'name']))
+    self.assertRaises(model.UnprojectedPropertyError, lambda: x.middle.inner)
+    self.assertRaises(model.ReadonlyPropertyError,
+                      setattr, x, 'middle', None)
+    self.assertRaises(model.ReadonlyPropertyError,
+                      setattr, x, 'middle', x.middle)
+    self.assertRaises(model.ReadonlyPropertyError,
+                      setattr, x.middle, 'inner', None)
+    self.assertRaises(model.ReadonlyPropertyError,
+                      setattr, x.middle, 'inner',
+                      Inner(foo='', projection=['foo']))
+
+    x = q.get(projection=[Outer.middle.inner.foo, 'mid.inner.bar'])
+    self.assertEqual(x.middle.inner.foo, 'foo')
+    self.assertEqual(x.middle.inner._projection, ('bar', 'foo'))
+    self.assertEqual(x.middle._projection, ('inner.bar', 'inner.foo'))
+    self.assertEqual(x._projection, ('mid.inner.bar', 'mid.inner.foo'))
+    self.assertEqual(x,
+                     Outer(key=one.key,
+                           projection=['mid.inner.bar', 'mid.inner.foo'],
+                           middle=Middle(projection=['inner.bar', 'inner.foo'],
+                                         inner=Inner(projection=['bar', 'foo'],
+                                                     foo='foo', bar='bar'))))
+    self.assertRaises(model.UnprojectedPropertyError,
+                      lambda: x.middle.inner.beh)
+    self.assertRaises(model.ReadonlyPropertyError,
+                      setattr, x.middle.inner, 'foo', '')
+    self.assertRaises(model.ReadonlyPropertyError,
+                      setattr, x.middle.inner, 'beh', '')
+
+    xs = q.fetch(projection=[Outer.middle.inners.foo])
+    self.assertEqual(xs[0],
+                     Outer(key=one.key,
+                           middle=Middle(inners=[Inner(foo='a',
+                                                       _projection=('foo',))],
+                                         _projection=('inners.foo',)),
+                           _projection=('mid.inners.foo',)))
+    self.assertEqual(len(xs), 3)
+    for x, foo in zip(xs, ['a', 'c', 'p']):
+      self.assertEqual(len(x.middle.inners), 1)
+      self.assertEqual(x.middle.inners[0].foo, foo)
+
   def testFilterRepr(self):
     class Employee(model.Model):
       name = model.StringProperty()
