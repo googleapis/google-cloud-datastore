@@ -617,6 +617,46 @@ class ModelTests(test_utils.NDBTest):
     np = Foo._properties['name']
     self.assertEqual('Full name', np._verbose_name)
 
+  def testProjectedEntities(self):
+    class Foo(model.Expando):
+      a = model.StringProperty()
+      b = model.StringProperty()
+
+    ent0 = Foo()
+    self.assertEqual(ent0._projection, ())
+
+    ent1 = Foo(projection=('a',))
+    self.assertEqual(ent1._projection, ('a',))
+    self.assertNotEqual(ent0, ent1)
+    self.assertEqual(ent1.a, None)
+    ent2 = Foo(projection=['a'])
+    self.assertEqual(ent2._projection, ('a',))
+    self.assertEqual(ent1, ent2)
+    self.assertRaises(TypeError, Foo, projection=42)
+    self.assertRaises(model.UnprojectedPropertyError, lambda: ent1.b)
+    self.assertRaises(model.ReadonlyPropertyError, setattr, ent1, 'a', 'a')
+    self.assertRaises(model.ReadonlyPropertyError, setattr, ent1, 'b', 'b')
+    # Dynamic property creation should fail also:
+    self.assertRaises(model.ReadonlyPropertyError, setattr, ent1, 'c', 'c')
+
+    ent2 = Foo(_projection=['a'])
+    self.assertEqual(ent2._projection, ('a',))
+    self.assertEqual(repr(ent2), "Foo(_projection=('a',))")
+    self.assertRaises(datastore_errors.BadRequestError, ent2.put)
+
+    ent3 = Foo(_projection=('a',), id=42)  # Sets the key
+    self.assertEqual(ent3._projection, ('a',))
+    self.assertEqual(repr(ent3),
+                     "Foo(key=Key('Foo', 42), _projection=('a',))")
+    ent3.key.delete()  # No failure
+
+    # Another one that differs only in projection.
+    ent4 = Foo(_projection=('a', 'b'), id=42)
+    self.assertEqual(ent4._projection, ('a', 'b'))
+    self.assertEqual(repr(ent4),
+                     "Foo(key=Key('Foo', 42), _projection=('a', 'b'))")
+    self.assertNotEqual(ent3, ent4)
+
   def testQuery(self):
     class MyModel(model.Model):
       p = model.IntegerProperty()
@@ -2507,15 +2547,21 @@ class ModelTests(test_utils.NDBTest):
     res = MyModel.get_by_id(2, parent=model.Key(pairs=[(kind, 1)]))
     self.assertEqual(res, ent3)
 
-    # key name + parent
+    # key name + parent (positional)
     ent4 = MyModel(key=model.Key(pairs=[(kind, 1), (kind, 'bar')]))
     ent4.put()
-    res = MyModel.get_by_id('bar', parent=ent1.key)
+    res = MyModel.get_by_id('bar', ent1.key)
     self.assertEqual(res, ent4)
 
     # None
     res = MyModel.get_by_id('idontexist')
     self.assertEqual(res, None)
+
+    # key id + namespace
+    ent5 = MyModel(key=model.Key(kind, 1, namespace='ns'))
+    ent5.put()
+    res = MyModel.get_by_id(1, namespace='ns')
+    self.assertEqual(res, ent5)
 
     # Invalid parent
     self.assertRaises(datastore_errors.BadValueError, MyModel.get_by_id,

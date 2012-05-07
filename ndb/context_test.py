@@ -815,6 +815,57 @@ class ContextTests(test_utils.NDBTest):
     x = self.ctx.transaction(outer_callback).get_result()
     x.key.delete()
 
+  def testTransaction_OnCommit(self):
+    self.ExpectWarnings()
+    class Counter(model.Model):
+      count = model.IntegerProperty(default=0)
+    @model.transactional
+    def trans1(fail=False, bad=None):
+      tasklets.get_context().call_on_commit(lambda: log.append('A'))
+      c = key.get()
+      c.count += 1
+      c.put()
+      if bad is not None:
+        tasklets.get_context().call_on_commit(bad)
+      tasklets.get_context().call_on_commit(lambda: log.append('B'))
+      if fail:
+        raise model.Rollback
+    # Successful transaction.
+    key = Counter().put()
+    log = []
+    trans1()
+    self.assertEqual(key.get().count, 1)
+    self.assertEqual(log, ['A', 'B'])
+    # Failing transaction.
+    key = Counter().put()
+    log = []
+    trans1(fail=True)
+    self.assertEqual(key.get().count, 0)
+    self.assertEqual(log, [])
+    # Raising callable in transaction.
+    key = Counter().put()
+    log = []
+    self.assertRaises(ZeroDivisionError, trans1, bad=lambda: 1/0)
+    self.assertEqual(key.get().count, 1)
+    self.assertEqual(log, ['A'])
+    # Bad callable in transaction.
+    key = Counter().put()
+    log = []
+    self.assertRaises(TypeError, trans1, bad=42)
+    self.assertEqual(key.get().count, 1)
+    self.assertEqual(log, ['A'])
+    # No transaction.
+    log = []
+    tasklets.get_context().call_on_commit(lambda: log.append('C'))
+    self.assertEqual(log, ['C'])
+    # Raising callable outside transaction.
+    log = []
+    self.assertRaises(ZeroDivisionError,
+                      tasklets.get_context().call_on_commit, lambda: 1/0)
+    # Bad callable outside transaction.
+    log = []
+    self.assertRaises(TypeError, tasklets.get_context().call_on_commit, 42)
+
   def testDefaultContextTransaction(self):
     @tasklets.synctasklet
     def outer():
@@ -916,7 +967,7 @@ class ContextTests(test_utils.NDBTest):
     def foo():
       ctx = tasklets.get_context()
       k1 = 'k1'
-      k2 = 'k2'
+      k2 = u'k2'
       vv = yield ctx.memcache_get(k1), ctx.memcache_get(k2)
       self.assertEqual(vv, [None, None])
       v1 = '24'
@@ -960,7 +1011,7 @@ class ContextTests(test_utils.NDBTest):
     def foo():
       c1 = context.Context()
       c2 = context.Context()
-      k1 = 'k1'
+      k1 = u'k1'
       k2 = 'k2'
       yield c1.memcache_set(k1, 'a'), c1.memcache_set(k2, 'b')
       vv = yield c2.memcache_get(k1), c2.memcache_get(k2)
@@ -1002,7 +1053,7 @@ class ContextTests(test_utils.NDBTest):
     def foo():
       k1 = 'k1'
       k2 = 'k2'
-      ns = 'ns'
+      ns = u'ns'
 
       # Write two values in the namespace
       s1, s2 = yield (self.ctx.memcache_set(k1, 42, namespace=ns),

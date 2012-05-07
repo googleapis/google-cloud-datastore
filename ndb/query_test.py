@@ -260,6 +260,161 @@ class QueryTests(test_utils.NDBTest):
     self.assertRaises(datastore_errors.BadFilterError,
                       lambda: Emp.local == Foo(name='a'))
 
+  def testProjectionQuery(self):
+    self.ExpectWarnings()
+    class Foo(model.Model):
+      p = model.IntegerProperty('pp')  # Also check renaming
+      q = model.IntegerProperty(required=True)
+      r = model.IntegerProperty(repeated=True)
+      d = model.IntegerProperty(default=42)
+
+    key = Foo(p=1, q=2, r=[3, 4]).put()
+    q = Foo.query(Foo.p >= 0)
+    ent = q.get(projection=[Foo.p, 'q'])
+    self.assertEqual(ent._projection, ('pp', 'q'))
+    self.assertEqual(ent.p, 1)
+    self.assertEqual(ent.q, 2)
+    self.assertRaises(model.UnprojectedPropertyError, lambda: ent.r)
+    self.assertRaises(model.UnprojectedPropertyError, lambda: ent.d)
+    ents = q.fetch(projection=['pp', 'r'])
+    self.assertEqual(ents, [Foo(p=1, r=[3], key=key, projection=('pp', 'r')),
+                            Foo(p=1, r=[4], key=key, projection=['pp', 'r'])])
+    self.assertRaises(datastore_errors.BadArgumentError, q.get, projection=[42])
+
+  def testProjectionQuery_AllTypes(self):
+    class Foo(model.Model):
+      abool = model.BooleanProperty()
+      aint = model.IntegerProperty()
+      afloat = model.FloatProperty()
+      astring = model.StringProperty()
+      ablob = model.BlobProperty(indexed=True)
+      akey = model.KeyProperty()
+      auser = model.UserProperty()
+      apoint = model.GeoPtProperty()
+      adatetime = model.DateTimeProperty()
+      adate = model.DateProperty()
+      atime = model.TimeProperty()
+    boo = Foo(abool=True,
+              aint=42,
+              afloat=3.14,
+              astring='foo',
+              ablob='bar',
+              akey=model.Key(Foo, 'ref'),
+              auser=users.User('test@example.com'),
+              apoint=model.GeoPt(52.35, 4.9166667),
+              adatetime=datetime.datetime(2012, 5, 1, 8, 19, 42),
+              adate=datetime.date(2012, 5, 1),
+              atime=datetime.time(8, 19, 42),
+              )
+    boo.put()
+    qry = Foo.query()
+    for prop in Foo._properties.itervalues():
+      ent = qry.get(projection=[prop._name])
+      self.assertEqual(getattr(ent, prop._code_name),
+                       getattr(boo, prop._code_name))
+      for otherprop in Foo._properties.itervalues():
+        if otherprop is not prop:
+          self.assertRaises(model.UnprojectedPropertyError,
+                            getattr, ent, otherprop._code_name)
+
+  def testProjectionQuery_ComputedProperties(self):
+    class Foo(model.Model):
+      a = model.StringProperty()
+      b = model.StringProperty()
+      c = model.ComputedProperty(lambda ent: '<%s.%s>' % (ent.a, ent.b))
+      d = model.ComputedProperty(lambda ent: '<%s>' % (ent.a,))
+    foo = Foo(a='a', b='b')
+    foo.put()
+    self.assertEqual((foo.a, foo.b, foo.c, foo.d), ('a', 'b', '<a.b>', '<a>'))
+    qry = Foo.query()
+    x = qry.get(projection=['a', 'b'])
+    self.assertEqual((x.a, x.b, x.c, x.d), ('a', 'b', '<a.b>', '<a>'))
+    y = qry.get(projection=['a'])
+    self.assertEqual((y.a, y.d), ('a', '<a>'))
+    self.assertRaises(model.UnprojectedPropertyError, lambda: y.b)
+    self.assertRaises(model.UnprojectedPropertyError, lambda: y.c)
+    z = qry.get(projection=['b'])
+    self.assertEqual((z.b,), ('b',))
+    p = qry.get(projection=['c', 'd'])
+    self.assertEqual((p.c, p.d), ('<a.b>', '<a>'))
+
+  def testProjectionQuery_StructuredProperties(self):
+    class Inner(model.Model):
+      foo = model.StringProperty()
+      bar = model.StringProperty()
+      beh = model.StringProperty()
+    class Middle(model.Model):
+      baz = model.StringProperty()
+      inner = model.StructuredProperty(Inner)
+      inners = model.StructuredProperty(Inner, repeated=True)
+    class Outer(model.Model):
+      name = model.StringProperty()
+      middle = model.StructuredProperty(Middle, 'mid')
+    one = Outer(name='one',
+                middle=Middle(baz='one',
+                              inner=Inner(foo='foo', bar='bar'),
+                              inners=[Inner(foo='a', bar='b'),
+                                      Inner(foo='c', bar='d')]))
+    one.put()
+    two = Outer(name='two',
+                middle=Middle(baz='two',
+                              inner=Inner(foo='x', bar='y'),
+                              inners=[Inner(foo='p', bar='q')]))
+    two.put()
+    q = Outer.query()
+
+    [x, y] = q.fetch(projection=[Outer.name, Outer.middle.baz])
+    self.assertEqual(x.middle.baz, 'one')
+    self.assertEqual(x.middle._projection, ('baz',))
+    self.assertEqual(x,
+                     Outer(key=one.key, name='one',
+                           middle=Middle(baz='one', projection=['baz']),
+                           projection=['mid.baz', 'name']))
+    self.assertEqual(y,
+                     Outer(key=two.key, name='two',
+                           middle=Middle(baz='two', projection=['baz']),
+                           projection=['mid.baz', 'name']))
+    self.assertRaises(model.UnprojectedPropertyError, lambda: x.middle.inner)
+    self.assertRaises(model.ReadonlyPropertyError,
+                      setattr, x, 'middle', None)
+    self.assertRaises(model.ReadonlyPropertyError,
+                      setattr, x, 'middle', x.middle)
+    self.assertRaises(model.ReadonlyPropertyError,
+                      setattr, x.middle, 'inner', None)
+    self.assertRaises(model.ReadonlyPropertyError,
+                      setattr, x.middle, 'inner',
+                      Inner(foo='', projection=['foo']))
+
+    x = q.get(projection=[Outer.middle.inner.foo, 'mid.inner.bar'])
+    self.assertEqual(x.middle.inner.foo, 'foo')
+    self.assertEqual(x.middle.inner._projection, ('bar', 'foo'))
+    self.assertEqual(x.middle._projection, ('inner.bar', 'inner.foo'))
+    self.assertEqual(x._projection, ('mid.inner.bar', 'mid.inner.foo'))
+    self.assertEqual(x,
+                     Outer(key=one.key,
+                           projection=['mid.inner.bar', 'mid.inner.foo'],
+                           middle=Middle(projection=['inner.bar', 'inner.foo'],
+                                         inner=Inner(projection=['bar', 'foo'],
+                                                     foo='foo', bar='bar'))))
+    self.assertRaises(model.UnprojectedPropertyError,
+                      lambda: x.middle.inner.beh)
+    self.assertRaises(model.ReadonlyPropertyError,
+                      setattr, x.middle.inner, 'foo', '')
+    self.assertRaises(model.ReadonlyPropertyError,
+                      setattr, x.middle.inner, 'beh', '')
+
+    xs = q.fetch(projection=[Outer.middle.inners.foo])
+    self.assertEqual(xs[0],
+                     Outer(key=one.key,
+                           middle=Middle(inners=[Inner(foo='a',
+                                                       _projection=('foo',))],
+                                         _projection=('inners.foo',)),
+                           _projection=('mid.inners.foo',)))
+    self.assertEqual(len(xs), 3)
+    for x, foo in zip(xs, ['a', 'c', 'p']):
+      self.assertEqual(len(x.middle.inners), 1)
+      self.assertEqual(x.middle.inners[0].foo, foo)
+
   def testFilterRepr(self):
     class Employee(model.Model):
       name = model.StringProperty()
@@ -1427,6 +1582,15 @@ class QueryTests(test_utils.NDBTest):
     self.assertEqual(['bar', 'foo'], q.analyze())
     q = Foo.gql("WHERE tags = :1 AND name = :foo AND rate = :bar")
     self.assertEqual([1, 'bar', 'foo'], q.analyze())
+
+  def testGqlProjection(self):
+    q = query.gql("SELECT name, tags FROM Foo WHERE name < 'joe' ORDER BY name")
+    self.assertEqual(q.fetch(), [Foo(name='jill', tags=['jack'],
+                                     key=self.jill.key,
+                                     projection=['name', 'tags']),
+                                 Foo(name='jill', tags=['jill'],
+                                     key=self.jill.key,
+                                     projection=('name', 'tags'))])
 
   def testAsyncNamespace(self):
     # Test that async queries pick up the namespace when the

@@ -1293,10 +1293,24 @@ class Query(object):
       if 'config' in q_options:
         raise TypeError('You cannot use config= and options= at the same time')
       q_options['config'] = q_options.pop('options')
+    if q_options.get('projection'):
+      q_options['projection'] = self._fix_projection(q_options['projection'])
     options = QueryOptions(**q_options)
     if self.default_options is not None:
       options = self.default_options.merge(options)
     return options
+
+  def _fix_projection(self, projections):
+    fixed = []
+    for proj in projections:
+      if isinstance(proj, basestring):
+        fixed.append(proj)
+      elif isinstance(proj, model.Property):
+        fixed.append(proj._name)
+      else:
+        raise datastore_errors.BadArgumentError(
+          'Unexpected projection (%r); should be string or Property')
+    return fixed
 
   def analyze(self):
     """Return a list giving the parameters required by a query."""
@@ -1425,7 +1439,9 @@ def _gql(query_string, query_class=Query):
   keys_only = gql_qry._keys_only
   if not keys_only:
     keys_only = None
-  options = QueryOptions(offset=offset, limit=limit, keys_only=keys_only)
+  projection = gql_qry.projection()
+  options = QueryOptions(offset=offset, limit=limit, keys_only=keys_only,
+                         projection=projection)
   qry = query_class(kind=kind,
                     ancestor=ancestor,
                     filters=filters,

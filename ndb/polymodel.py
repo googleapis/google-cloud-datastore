@@ -224,9 +224,8 @@ class PolyModel(model.Model):
     """
     bases = []
     for base in cls.mro():  # pragma: no branch
-      if not hasattr(base, '_get_hierarchy'):
-        break
-      bases.append(base)
+      if hasattr(base, '_get_hierarchy'):
+        bases.append(base)
     del bases[-1]  # Delete PolyModel itself
     bases.reverse()
     return bases

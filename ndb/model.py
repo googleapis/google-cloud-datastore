@@ -326,8 +326,17 @@ class KindError(datastore_errors.BadValueError):
   """
 
 
-class ComputedPropertyError(datastore_errors.Error):
-  """Raised when attempting to assign a value to a computed property."""
+class UnprojectedPropertyError(datastore_errors.Error):
+  """Raised when getting a property value that's not in the projection."""
+
+
+class ReadonlyPropertyError(datastore_errors.Error):
+  """Raised when attempting to set a property value that is read-only."""
+
+
+class ComputedPropertyError(ReadonlyPropertyError):
+  """Raised when attempting to set a value to a computed property."""
+
 
 # Various imported limits.
 _MAX_LONG = key_module._MAX_LONG
@@ -977,6 +986,9 @@ class Property(ModelAttribute):
     This performs validation first.  For a repeated Property the value
     should be a list.
     """
+    if entity._projection:
+      raise ReadonlyPropertyError(
+        'You cannot set property values of a projection entity')
     if self._repeated:
       if not isinstance(value, (list, tuple, set, frozenset)):
         raise datastore_errors.BadValueError('Expected list or tuple, got %r' %
@@ -1195,6 +1207,10 @@ class Property(ModelAttribute):
     For a repeated Property this initializes the value to an empty
     list if it is not set.
     """
+    if entity._projection:
+      if self._name not in entity._projection:
+        raise UnprojectedPropertyError(
+          'Property %s is not in the projection' % (self._name,))
     return self._get_user_value(entity)
 
   def _delete_value(self, entity):
@@ -1979,6 +1995,14 @@ class StructuredProperty(_StructuredGetForDictMixin):
                         'properties of its own.' % self._name)
     self._modelclass = modelclass
 
+  def _get_value(self, entity):
+    """Override _get_value() to *not* raise UnprojectedPropertyError."""
+    value = self._get_user_value(entity)
+    if value is None and entity._projection:
+      # Invoke super _get_value() to raise the proper exception.
+      return super(StructuredProperty, self)._get_value(entity)
+    return value
+
   def __getattr__(self, attrname):
     """Dynamically get a subproperty."""
     # Optimistically try to use the dict key.
@@ -2422,6 +2446,18 @@ class ComputedProperty(GenericProperty):
     raise ComputedPropertyError("Cannot assign to a ComputedProperty")
 
   def _get_value(self, entity):
+    # About projections and computed properties: if the computed
+    # property itself is in the projection, don't recompute it; this
+    # prevents raising UnprojectedPropertyError if one of the
+    # dependents is not in the projection.  However, if the computed
+    # property is not in the projection, compute it normally -- its
+    # dependents may all be in the projection, and it may be useful to
+    # access the computed value without having it in the projection.
+    # In this case, if any of the dependents is not in the projection,
+    # accessing it in the computation function will raise
+    # UnprojectedPropertyError which will just bubble up.
+    if entity._projection and self._name in entity._projection:
+      return super(ComputedProperty, self)._get_value(entity)
     value = self._func(entity)
     self._store_value(entity, value)
     return value
@@ -2485,6 +2521,7 @@ class Model(_NotEqualMixin):
   # Defaults for instance variables.
   _entity_key = None
   _values = None
+  _projection = ()  # Tuple of names of projected properties.
 
   # Hardcoded pseudo-property for the key.
   _key = ModelKey()
@@ -2519,6 +2556,7 @@ class Model(_NotEqualMixin):
     app = get_arg(kwds, 'app')
     namespace = get_arg(kwds, 'namespace')
     parent = get_arg(kwds, 'parent')
+    projection = get_arg(kwds, 'projection')
     if key is not None:
       if (id is not None or parent is not None or
           app is not None or namespace is not None):
@@ -2532,6 +2570,9 @@ class Model(_NotEqualMixin):
                       parent=parent, app=app, namespace=namespace)
     self._values = {}
     self._set_attributes(kwds)
+    # Set the projection last, otherwise it will prevent _set_attributes().
+    if projection:
+      self._projection = tuple(projection)
 
   @classmethod
   def __get_arg(cls, kwds, kwd):
@@ -2614,6 +2655,8 @@ class Model(_NotEqualMixin):
     args.sort()
     if self._key is not None:
       args.insert(0, 'key=%r' % self._key)
+    if self._projection:
+      args.append('_projection=%r' % (self._projection,))
     s = '%s(%s)' % (self.__class__.__name__, ', '.join(args))
     return s
 
@@ -2649,11 +2692,12 @@ class Model(_NotEqualMixin):
     """
     raise TypeError('Model is not immutable')
 
+  # TODO: Reject __lt__, __le__, __gt__, __ge__.
+
   def __eq__(self, other):
     """Compare two entities of the same class for equality."""
     if other.__class__ is not self.__class__:
       return NotImplemented
-    # It's okay to use private names -- we're the same class
     if self._key != other._key:
       # TODO: If one key is None and the other is an explicit
       # incomplete key of the simplest form, this should be OK.
@@ -2666,6 +2710,8 @@ class Model(_NotEqualMixin):
       raise NotImplementedError('Cannot compare different model classes. '
                                 '%s is not %s' % (self.__class__.__name__,
                                                   other.__class_.__name__))
+    if self._projection != other._projection:
+      return False
     # It's all about determining inequality early.
     if len(self._properties) != len(other._properties):
       return False  # Can only happen for Expandos.
@@ -2673,7 +2719,11 @@ class Model(_NotEqualMixin):
     their_prop_names = set(other._properties.iterkeys())
     if my_prop_names != their_prop_names:
       return False  # Again, only possible for Expandos.
+    if self._projection:
+      my_prop_names = set(self._projection)
     for name in my_prop_names:
+      if '.' in name:
+        name, _ = name.split('.', 1)
       my_value = self._properties[name]._get_value(self)
       their_value = other._properties[name]._get_value(other)
       if my_value != their_value:
@@ -2730,12 +2780,32 @@ class Model(_NotEqualMixin):
 
     indexed_properties = pb.property_list()
     unindexed_properties = pb.raw_property_list()
+    projection = []
     for plist in [indexed_properties, unindexed_properties]:
       for p in plist:
+        if p.meaning() == entity_pb.Property.INDEX_VALUE:
+          projection.append(p.name())
         prop = ent._get_property_for(p, plist is indexed_properties)
         prop._deserialize(ent, p)
 
+    ent._set_projection(projection)
     return ent
+
+  def _set_projection(self, projection):
+    self._projection = tuple(projection)
+    by_prefix = {}
+    for propname in projection:
+      if '.' in propname:
+        head, tail = propname.split('.', 1)
+        if head in by_prefix:
+          by_prefix[head].append(tail)
+        else:
+          by_prefix[head] = [tail]
+    for propname, proj in by_prefix.iteritems():
+      prop = self._properties.get(propname)
+      subval = prop._get_base_value_unwrapped_as_list(self)
+      for item in subval:
+        item._set_projection(proj)
 
   def _get_property_for(self, p, indexed=True, depth=0):
     """Internal helper to get the Property for a protobuf-level property."""
@@ -2907,6 +2977,8 @@ class Model(_NotEqualMixin):
 
     This is the asynchronous version of Model._put().
     """
+    if self._projection:
+      raise datastore_errors.BadRequestError('Cannot put a partial entity')
     from . import tasklets
     ctx = tasklets.get_context()
     self._prepare_for_put()
@@ -3032,14 +3104,17 @@ class Model(_NotEqualMixin):
   allocate_ids_async = _allocate_ids_async
 
   @classmethod
+  @utils.positional(3)
   def _get_by_id(cls, id, parent=None, **ctx_options):
     """Returns an instance of Model class by ID.
 
-    This is really just a shorthand for Key(cls, id).get().
+    This is really just a shorthand for Key(cls, id, ...).get().
 
     Args:
       id: A string or integer key ID.
-      parent: Parent key of the model to get.
+      parent: Optional parent key of the model to get.
+      namespace: Optional namespace.
+      app: Optional app ID.
       **ctx_options: Context options.
 
     Returns:
@@ -3049,12 +3124,14 @@ class Model(_NotEqualMixin):
   get_by_id = _get_by_id
 
   @classmethod
-  def _get_by_id_async(cls, id, parent=None, **ctx_options):
-    """Returns an instance of Model class by ID.
+  @utils.positional(3)
+  def _get_by_id_async(cls, id, parent=None, app=None, namespace=None,
+                       **ctx_options):
+    """Returns an instance of Model class by ID (and app, namespace).
 
     This is the asynchronous version of Model._get_by_id().
     """
-    key = Key(cls._get_kind(), id, parent=parent)
+    key = Key(cls._get_kind(), id, parent=parent, app=app, namespace=namespace)
     return key.get_async(**ctx_options)
   get_by_id_async = _get_by_id_async
 
