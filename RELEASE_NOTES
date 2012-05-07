@@ -1,5 +1,6 @@
 Release 1.0.2 (not yet)
 
+- Keys for Context.memcache_*() calls can now be unicode.
 - Issue 181: Projection queries.
 - Issue 183: Fix mixin issue with polymodel.
 - Issue 174: New API: Context.call_on_commit().
