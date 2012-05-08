@@ -10,6 +10,7 @@ import unittest
 from .google_imports import datastore_errors
 from .google_imports import datastore_types
 from .google_imports import db
+from .google_imports import entity_pb
 from .google_imports import memcache
 from .google_imports import namespace_manager
 from .google_imports import users
@@ -1973,6 +1974,8 @@ class ModelTests(test_utils.NDBTest):
     self.assertEqual(Address.city._get_value(a), 'Mountain View')
 
     pb = p._to_pb()
+    self.assertEqual(pb.raw_property(0).meaning(),
+                     entity_pb.Property.ENTITY_PROTO)
     # TODO: Validate pb
 
     # Check we can enable and disable compression and have old data still

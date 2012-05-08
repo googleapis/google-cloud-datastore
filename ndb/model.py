@@ -2251,6 +2251,9 @@ class LocalStructuredProperty(_StructuredGetForDictMixin, BlobProperty):
       else:
         value._prepare_for_put()
 
+  def _db_set_uncompressed_meaning(self, p):
+    p.set_meaning(entity_pb.Property.ENTITY_PROTO)
+
 
 class GenericProperty(Property):
   """A Property whose value can be (almost) any basic type.
