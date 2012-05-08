@@ -2311,7 +2311,8 @@ class GenericProperty(Property):
       elif meaning == entity_pb.Property.BLOB:
         if p.meaning_uri() == _MEANING_URI_COMPRESSED:
           sval = _CompressedValue(sval)
-      elif meaning != entity_pb.Property.BYTESTRING:
+      elif (meaning != entity_pb.Property.BYTESTRING and
+            meaning != entity_pb.Property.ENTITY_PROTO):
         try:
           sval.decode('ascii')
           # If this passes, don't return unicode.

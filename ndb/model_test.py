@@ -2274,6 +2274,19 @@ class ModelTests(test_utils.NDBTest):
     self.assertFalse(b._properties['foo']._indexed)
     self.assertFalse(b._properties['bar']._indexed)
 
+  def testExpandoLocalStructuredProperty(self):
+    class Inner(model.Model):
+      name = model.StringProperty()
+    class Outer(model.Model):
+      inner = model.LocalStructuredProperty(Inner)
+    x = Outer(inner=Inner(name='x'))
+    key = x.put()
+    class Outer(model.Expando):
+      pass
+    y = key.get()
+    pb = x.inner._to_pb(set_key=False)
+    self.assertEqual(y.inner, pb.SerializePartialToString())
+
   def testGenericPropertyCompressedRefusesIndexed(self):
     self.assertRaises(NotImplementedError,
                       model.GenericProperty, compressed=True, indexed=True)
