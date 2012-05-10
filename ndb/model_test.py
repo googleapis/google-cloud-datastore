@@ -1986,6 +1986,7 @@ class ModelTests(test_utils.NDBTest):
     self.assertEqual(p.name, 'Google')
     self.assertEqual(p.address.street, '1600 Amphitheatre')
     self.assertEqual(p.address.city, 'Mountain View')
+    self.assertEqual(p.address.key, None)
     self.assertEqual(p.address, a)
     self.assertEqual(repr(Person.address),
                      "LocalStructuredProperty(Address, 'address', "
@@ -2102,6 +2103,109 @@ class ModelTests(test_utils.NDBTest):
     y = k.get()
     self.assertTrue(x is not y)
     self.assertEqual(x, y)
+
+  def testLocalStructuredPropertyWithoutKey(self):
+    class Inner(model.Model):
+      pass
+    class Outer(model.Model):
+      inner = model.LocalStructuredProperty(Inner, keep_keys=False)
+    outer1 = Outer(inner=Inner(key=model.Key(Inner, None)))
+    key1 = outer1.put()
+    self.assertEqual(outer1.inner.key, None)
+    outer2 = Outer(inner=Inner(id=42))
+    key2 = outer2.put()
+    self.assertEqual(outer2.inner.key, None)
+
+    # Redefine the class with keep_keys=True; no key is loaded.
+    class Outer(model.Model):
+      inner = model.LocalStructuredProperty(Inner, keep_keys=True)
+    other1 = key1.get()
+    self.assertEqual(other1.inner.key, None)
+    other2 = key2.get()
+    self.assertEqual(other2.inner.key, None)
+
+  def testLocalStructuredPropertyWithKey(self):
+    class Inner(model.Model):
+      pass
+    class Outer(model.Model):
+      inner = model.LocalStructuredProperty(Inner, keep_keys=True)
+    outer1 = Outer(inner=Inner())
+    key1 = outer1.put()  # This forces an incomplete key on inner
+    self.assertEqual(outer1.inner.key.id(), None)
+    outer2 = Outer(inner=Inner(id=42))
+    key2 = outer2.put()
+    self.assertEqual(outer2.inner.key.id(), 42)
+
+    # Check that incomplete and complete keys are read back.
+    x1 = key1.get()
+    self.assertEqual(x1.inner.key.id(), None)  # Incomplete key is kept
+    x2 = key2.get()
+    self.assertEqual(x2.inner.key.id(), 42)
+    self.assertNotEqual(x1.inner, x2.inner)  # Different key -> unequal
+
+    # Redefine the class without keep_keys.
+    class Outer(model.Model):
+      inner = model.LocalStructuredProperty(Inner)
+    a1 = key1.get()
+    self.assertEqual(a1.inner.key, None)  # Incomplete key is dropped
+    a2 = key2.get()
+    self.assertEqual(a2.inner.key, None)  # Complete key is dropped, too
+
+    # Now read this back using a GenericProperty.
+    class Outer(model.Model):
+      inner = model.GenericProperty()
+    b1 = key1.get()
+    self.assertEqual(b1.inner.key.id(), None)  # Incomplete key is kept
+    b2 = key2.get()
+    self.assertEqual(b2.inner.key.id(), 42)
+
+    # A write/read cycle should preserve the inner key.
+    b2.put()
+    b2 = key2.get()
+    self.assertEqual(b2.inner.key.id(), 42)
+
+    # Finally, write back a2 (!) and read it back; the inner key is lost.
+    a2.put()
+    b2 = key2.get()
+    self.assertEqual(b2.inner.key, None)
+
+  def testLocalStructuredPropertyKeyDisagreement(self):
+    class Inner(model.Model):
+      pass
+    class Outer(model.Model):
+      inner = model.LocalStructuredProperty(Inner, keep_keys=True)
+    outer1 = Outer(inner=Inner())
+    outer2 = Outer(inner=Inner(id=42))
+    key1 = outer1.put()
+    key2 = outer2.put()
+    self.assertEqual(outer1.inner.key, model.Key(Inner, None))
+    self.assertEqual(outer2.inner.key, model.Key(Inner, 42))
+
+    # This is a dead end.
+    class AnotherInner(model.Model):
+      pass
+    class Outer(model.Model):
+      inner = model.LocalStructuredProperty(AnotherInner, keep_keys=True)
+    other1 = key1.get()
+    self.assertRaises(model.KindError, lambda: other1.inner)
+    self.assertRaises(model.KindError, other1.put)
+    other2 = key2.get()
+    self.assertRaises(model.KindError, lambda: other2.inner)
+    self.assertRaises(model.KindError, other2.put)
+
+    # This works.
+    class YetAnotherInner(model.Model):
+      pass
+    class Outer(model.Model):
+      inner = model.LocalStructuredProperty(YetAnotherInner, keep_keys=False)
+    another1 = key1.get()
+    self.assertTrue(isinstance(another1.inner, YetAnotherInner))
+    self.assertEqual(another1.inner.key, None)
+    another1.put()
+    another2 = key2.get()
+    self.assertTrue(isinstance(another2.inner, YetAnotherInner))
+    self.assertEqual(another2.inner.key, None)
+    another2.put()
 
   def testEmptyList(self):
     class Person(model.Model):
@@ -2284,8 +2388,63 @@ class ModelTests(test_utils.NDBTest):
     class Outer(model.Expando):
       pass
     y = key.get()
-    pb = x.inner._to_pb(set_key=False)
-    self.assertEqual(y.inner, pb.SerializePartialToString())
+    self.assertEqual(y.inner, model.Expando(name='x'))
+    y.inner.name = 'x2'
+    y.put()
+    z = key.get()
+    self.assertEqual(z.inner, model.Expando(name='x2'))
+    z.inner = '42'
+    z.put()
+    u = key.get()
+    self.assertEqual(u.inner, '42')
+
+  def testExpandoLocalStructuredPropertyKeepKeys(self):
+    class Inner(model.Model):
+      name = model.StringProperty()
+    class Outer(model.Model):
+      inner = model.LocalStructuredProperty(Inner, keep_keys=True)
+    x = Outer(inner=Inner(name='x'))
+    key = x.put()
+    class Outer(model.Expando):
+      pass
+    y = key.get()
+    self.assertEqual(y.inner, Inner(name='x', key=model.Key(Inner, None)))
+    y.inner.name = 'x2'
+    y.put()
+    z = key.get()
+    self.assertEqual(z.inner, Inner(name='x2', key=model.Key(Inner, None)))
+
+    # Remove Inner from the kind map.  We'll get inner back as Expando.
+    del model.Model._kind_map['Inner']
+    w = key.get()
+    self.assertEqual(w.inner, model.Expando(name='x2',
+                                            key=model.Key('Inner', None)))
+
+    # Restore Inner in the kind map.
+    model.Model._kind_map['Inner'] = Inner
+
+    # It should be possible to replace an entity with a non-entity.
+    z.inner = '42'
+    z.put()
+    u = key.get()
+    self.assertEqual(u.inner, '42')
+
+  def testExpandoLocalStructuredPropertyBadKey(self):
+    class Inner(model.Model):
+      name = model.StringProperty()
+    class Outer(model.Model):
+      inner = model.LocalStructuredProperty(Inner, keep_keys=True)
+    x = Outer(inner=Inner(name='x'))
+    pb = x._to_pb()
+    v = pb.raw_property(0).value()
+    sval = v.stringvalue()
+    inner_pb = entity_pb.EntityProto()
+    inner_pb.MergePartialFromString(sval)
+    inner_pb.key().path().clear_element()
+    sval = inner_pb.SerializePartialToString()
+    v.set_stringvalue(sval)
+    y = Outer._from_pb(pb)
+    self.assertEqual(y.inner, Inner(name='x'))
 
   def testGenericPropertyCompressedRefusesIndexed(self):
     self.assertRaises(NotImplementedError,

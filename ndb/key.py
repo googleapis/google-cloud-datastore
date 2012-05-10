@@ -641,7 +641,7 @@ def _ConstructReference(cls, pairs=None, flat=None,
     if serialized:
       reference = _ReferenceFromSerialized(serialized)
     if not reference.path().element_size():
-      raise RuntimeError('Key reference path has no element size (%r, %r, %r).'
+      raise RuntimeError('Key reference has no path or elements (%r, %r, %r).'
                          % (urlsafe, serialized, str(reference)))
     # TODO: ensure that each element has a type and either an id or a name
     if not serialized:

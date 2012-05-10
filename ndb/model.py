@@ -540,7 +540,7 @@ class ModelAdapter(datastore_rpc.AbstractAdapter):
   def pb_to_entity(self, pb):
     key = None
     kind = None
-    if pb.has_key():
+    if pb.key().path().element_size():
       key = Key(reference=pb.key())
       kind = key.kind()
     modelclass = Model._kind_map.get(kind, self.default_model)
@@ -1984,7 +1984,7 @@ class StructuredProperty(_StructuredGetForDictMixin):
   _modelclass = None
 
   _attributes = ['_modelclass'] + Property._attributes
-  _positional = Property._positional + 1  # Add modelclass as positional arg.
+  _positional = 1 + Property._positional  # Add modelclass as positional arg.
 
   @utils.positional(1 + _positional)
   def __init__(self, modelclass, name=None, **kwds):
@@ -2208,12 +2208,15 @@ class LocalStructuredProperty(_StructuredGetForDictMixin, BlobProperty):
 
   _indexed = False
   _modelclass = None
+  _keep_keys = False
 
-  _attributes = ['_modelclass'] + BlobProperty._attributes
-  _positional = BlobProperty._positional + 1  # Add modelclass as positional.
+  _attributes = ['_modelclass'] + BlobProperty._attributes + ['_keep_keys']
+  _positional = 1 + BlobProperty._positional  # Add modelclass as positional.
 
   @utils.positional(1 + _positional)
-  def __init__(self, modelclass, name=None, compressed=False, **kwds):
+  def __init__(self, modelclass,
+               name=None, compressed=False, keep_keys=False,
+               **kwds):
     super(LocalStructuredProperty, self).__init__(name=name,
                                                   compressed=compressed,
                                                   **kwds)
@@ -2221,6 +2224,7 @@ class LocalStructuredProperty(_StructuredGetForDictMixin, BlobProperty):
       raise NotImplementedError('Cannot index LocalStructuredProperty %s.' %
                                 self._name)
     self._modelclass = modelclass
+    self._keep_keys = keep_keys
 
   def _validate(self, value):
     if not isinstance(value, self._modelclass):
@@ -2229,14 +2233,16 @@ class LocalStructuredProperty(_StructuredGetForDictMixin, BlobProperty):
 
   def _to_base_type(self, value):
     if isinstance(value, self._modelclass):
-      pb = value._to_pb(set_key=False)
+      pb = value._to_pb(set_key=self._keep_keys)
       return pb.SerializePartialToString()
 
   def _from_base_type(self, value):
     if not isinstance(value, self._modelclass):
       pb = entity_pb.EntityProto()
       pb.MergePartialFromString(value)
-      return self._modelclass._from_pb(pb, set_key=False)
+      if not self._keep_keys:
+        pb.clear_key()
+      return self._modelclass._from_pb(pb)
 
   def _prepare_for_put(self, entity):
     # TODO: Using _get_user_value() here makes it impossible to
@@ -2311,8 +2317,16 @@ class GenericProperty(Property):
       elif meaning == entity_pb.Property.BLOB:
         if p.meaning_uri() == _MEANING_URI_COMPRESSED:
           sval = _CompressedValue(sval)
-      elif (meaning != entity_pb.Property.BYTESTRING and
-            meaning != entity_pb.Property.ENTITY_PROTO):
+      elif meaning == entity_pb.Property.ENTITY_PROTO:
+        # NOTE: This is only used for uncompressed LocalStructuredProperties.
+        pb = entity_pb.EntityProto()
+        pb.MergePartialFromString(sval)
+        modelclass = Expando
+        if pb.key().path().element_size():
+          kind = pb.key().path().element(-1).type()
+          modelclass = Model._kind_map.get(kind, modelclass)
+        sval = modelclass._from_pb(pb)
+      elif meaning != entity_pb.Property.BYTESTRING:
         try:
           sval.decode('ascii')
           # If this passes, don't return unicode.
@@ -2395,6 +2409,12 @@ class GenericProperty(Property):
     elif isinstance(value, BlobKey):
       v.set_stringvalue(str(value))
       p.set_meaning(entity_pb.Property.BLOBKEY)
+    elif isinstance(value, Model):
+      set_key = value._key is not None
+      pb = value._to_pb(set_key=set_key)
+      value = pb.SerializePartialToString()
+      v.set_stringvalue(value)
+      p.set_meaning(entity_pb.Property.ENTITY_PROTO)
     elif isinstance(value, _CompressedValue):
       value = value.z_val
       v.set_stringvalue(value)
@@ -2776,7 +2796,7 @@ class Model(_NotEqualMixin):
       ent = cls()
 
     # A key passed in overrides a key in the pb.
-    if key is None and pb.has_key():
+    if key is None and pb.key().path().element_size():
       key = Key(reference=pb.key())
     # If set_key is not set, skip a trivial incomplete key.
     if key is not None and (set_key or key.id() or key.parent()):
