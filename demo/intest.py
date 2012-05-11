@@ -1,8 +1,7 @@
 from google.appengine.ext import webapp
 from google.appengine.ext.webapp import util
 
-from ndb.model import *
-from ndb.query import *
+from ndb import *
 
 class M(Model):
  name = StringProperty()

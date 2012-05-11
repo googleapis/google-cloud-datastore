@@ -2,7 +2,7 @@
   <library name="Google App Engine SDK">
     <CLASSES>
       <root url="file:///usr/local/google_appengine" />
-      <root url="file:///usr/local/google_appengine/lib/django" />
+      <root url="file:///usr/local/google_appengine/lib/django_1_2" />
     </CLASSES>
     <SOURCES />
   </library>

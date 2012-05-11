@@ -1,54 +1,23 @@
-"""Test utlities for writing NDB tests.
+"""Test utilities for writing NDB tests.
 
 Useful set of utilities for correctly setting up the appengine testing
 environment.  Functions and test-case base classes that configure stubs
 and other environment variables.
 """
 
-import os
 import logging
 import unittest
 
-from google.appengine.api import apiproxy_stub_map
-from google.appengine.api import datastore_file_stub
-from ndb import memcache
-from google.appengine.api.memcache import memcache_stub
-from google.appengine.api import taskqueue
-from google.appengine.api.taskqueue import taskqueue_stub
+from .google_test_imports import datastore_stub_util
+from .google_test_imports import testbed
 
 from . import model
 from . import tasklets
 from . import eventloop
 
 
-def set_up_basic_stubs(app_id):
-  """Set up a basic set of stubs.
-
-  Configures datastore and memcache stubs for testing.
-
-  Args:
-    app_id: Application ID to configure stubs with.
-
-  Returns:
-    Dictionary mapping stub name to stub.
-  """
-  apiproxy_stub_map.apiproxy = apiproxy_stub_map.APIProxyStubMap()
-  ds_stub = datastore_file_stub.DatastoreFileStub(app_id, None)
-  apiproxy_stub_map.apiproxy.RegisterStub('datastore_v3', ds_stub)
-  mc_stub = memcache_stub.MemcacheServiceStub()
-  apiproxy_stub_map.apiproxy.RegisterStub('memcache', mc_stub)
-  tq_stub = taskqueue_stub.TaskQueueServiceStub()
-  apiproxy_stub_map.apiproxy.RegisterStub('taskqueue', tq_stub)
-
-  return {
-    'datastore': ds_stub,
-    'memcache': mc_stub,
-    'taskqueue': tq_stub,
-  }
-
-
-class DatastoreTest(unittest.TestCase):
-  """Base class for tests that actually interact with the (stub) Datastore.
+class NDBTest(unittest.TestCase):
+  """Base class for tests that interact with API stubs or create Models.
 
   NOTE: Care must be used when working with model classes using this test
   class.  The kind-map is reset on each iteration.  The general practice
@@ -56,7 +25,6 @@ class DatastoreTest(unittest.TestCase):
   calling this classes setUp method.
   """
 
-  # Override this in sub-classes to configure alternate application ids.
   APP_ID = '_'
 
   def setUp(self):
@@ -65,20 +33,40 @@ class DatastoreTest(unittest.TestCase):
     Configures basic environment variables, stubs and creates a default
     connection.
     """
-    os.environ['APPLICATION_ID'] = self.APP_ID
-    # Set the defeault AUTH_DOMAIN, otherwise datastore_file_stub.py
-    # can't compare User objects.
-    os.environ['AUTH_DOMAIN'] = 'example.com'
-
-    self.set_up_stubs()
+    self.testbed = testbed.Testbed()
+    self.testbed.setup_env(app_id=self.APP_ID)
+    self.testbed.activate()
+    self.testbed.init_datastore_v3_stub()
+    self.testbed.init_memcache_stub()
+    self.testbed.init_taskqueue_stub()
 
     self.conn = model.make_connection()
 
     self.ResetKindMap()
     self.SetupContextCache()
 
+    self._logger = logging.getLogger()
+    self._old_log_level = self._logger.getEffectiveLevel()
+
+  def HRTest(self):
+    ds_stub = self.testbed.get_stub('datastore_v3')
+    hrd_policy = datastore_stub_util.BaseHighReplicationConsistencyPolicy()
+    ds_stub.SetConsistencyPolicy(hrd_policy)
+
+  def ExpectErrors(self):
+    if self.DefaultLogging():
+      self._logger.setLevel(logging.CRITICAL)
+
+  def ExpectWarnings(self):
+    if self.DefaultLogging():
+      self._logger.setLevel(logging.ERROR)
+
+  def DefaultLogging(self):
+    return self._old_log_level == logging.WARNING
+
   def tearDown(self):
     """Tear down test framework."""
+    self._logger.setLevel(self._old_log_level)
     ev = eventloop.get_event_loop()
     stragglers = 0
     while ev.run1():
@@ -87,20 +75,7 @@ class DatastoreTest(unittest.TestCase):
       logging.info('Processed %d straggler events after test completed',
                    stragglers)
     self.ResetKindMap()
-    self.datastore_stub.Clear()
-    self.memcache_stub.MakeSyncCall('memcache', 'FlushAll',
-                                    memcache.MemcacheFlushRequest(),
-                                    memcache.MemcacheFlushResponse())
-    for q in self.taskqueue_stub.GetQueues():
-      self.taskqueue_stub.FlushQueue(q['name'])
-
-  def set_up_stubs(self):
-    """Set up basic stubs using classes default application id.
-
-    Set attributes on tests for each stub created.
-    """
-    for name, value in set_up_basic_stubs(self.APP_ID).iteritems():
-      setattr(self, name + '_stub', value)
+    self.testbed.deactivate()
 
   def ResetKindMap(self):
     model.Model._reset_kind_map()
@@ -112,6 +87,33 @@ class DatastoreTest(unittest.TestCase):
     is to disable it to avoid misleading test results. Override this when
     needed.
     """
-    ctx = tasklets.get_context()
+    ctx = tasklets.make_default_context()
+    tasklets.set_context(ctx)
     ctx.set_cache_policy(False)
     ctx.set_memcache_policy(False)
+
+  # Set to the module under test to check its __all__ for inconsistencies.
+  the_module = None
+
+  def testAllVariableIsConsistent(self):
+    if self.the_module is None:
+      return
+    modname = self.the_module.__name__
+    undefined = []
+    for name in self.the_module.__all__:
+      if not hasattr(self.the_module, name):
+        undefined.append(name)
+    self.assertFalse(undefined,
+                     '%s.__all__ has some names that are not defined: %s' %
+                     (modname, undefined))
+    module_type = type(self.the_module)
+    unlisted = []
+    for name in dir(self.the_module):
+      if not name.startswith('_'):
+        obj = getattr(self.the_module, name)
+        if not isinstance(obj, module_type):
+          if name not in self.the_module.__all__:
+            unlisted.append(name)
+    self.assertFalse(unlisted,
+                     '%s defines some names that are not in __all__: %s' %
+                     (modname, unlisted))

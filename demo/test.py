@@ -2,20 +2,22 @@
 
 import time
 
-from demo.main import model, context, tasklets, Message, Account, account_key
+import ndb
+
+from demo.main import Message, Account, account_key
 
 
-class LogRecord(model.Model):
-  timestamp = model.FloatProperty()
+class LogRecord(ndb.Model):
+  timestamp = ndb.FloatProperty()
 
 
-@context.toplevel
+@ndb.toplevel
 def main():
   print 'Content-type: text/plain'
   print
   qry = Message.query().order(-Message.when)
   for msg in qry:
-    print time.ctime(msg.when), repr(msg.body)
+    print time.ctime(msg.when or 0), repr(msg.body)
     if msg.userid is None:
       print '  * Anonymous'
     else:

@@ -8,7 +8,7 @@ uniquely designate a (possible) entity in the App Engine datastore:
 - a list of one or more (kind, id) pairs where kind is a string and id
   is either a string or an integer.
 
-The appication id must always be part of the key, but since most
+The application id must always be part of the key, but since most
 applications can only access their own entities, it defaults to the
 current application id and you rarely need to worry about it.  It must
 not be empty.
@@ -34,7 +34,7 @@ The id is either a string or an integer.  When the id is a string, the
 application is in control of how it assigns ids: For example, if you
 could use an email address as the id for Account entities.
 
-To use integer ids, you must let the datastore choose a uniqe id for
+To use integer ids, you must let the datastore choose a unique id for
 an entity when it is first inserted into the datastore.  You can set
 the id to None to represent the key for an entity that hasn't yet been
 inserted into the datastore.  The final key (including the assigned
@@ -45,8 +45,8 @@ A key for which the id of the last (kind, id) pair is set to None is
 called an incomplete key.  Such keys can only be used to insert
 entities into the datastore.
 
-A key with exactly one (kind, id) pair is called a toplevel key or a
-root key.  Toplevel keys are also used as entity groups, which play a
+A key with exactly one (kind, id) pair is called a top level key or a
+root key.  Top level keys are also used as entity groups, which play a
 role in transaction management.
 
 If there is more than one (kind, id) pair, all but the last pair
@@ -57,6 +57,7 @@ Other constraints:
 
 - Kinds and string ids must not be empty and must be at most 500 bytes
   long (after UTF-8 encoding, if given as Python unicode objects).
+  NOTE: This is defined as a module level constant _MAX_KEYPART_BYTES.
 
 - Integer ids must be at least 1 and less than 2**63.
 
@@ -69,17 +70,20 @@ namespace=''.
 
 __author__ = 'guido@google.com (Guido van Rossum)'
 
-# TODO: Change asserts to better exceptions.
-
 import base64
 import os
 
-from google.appengine.api import datastore_errors
-from google.appengine.api import namespace_manager
-from google.appengine.datastore import datastore_rpc
-from google.appengine.datastore import entity_pb
+from .google_imports import datastore_errors
+from .google_imports import datastore_types
+from .google_imports import namespace_manager
+from .google_imports import entity_pb
+
+from . import utils
 
 __all__ = ['Key']
+
+_MAX_LONG = 2L ** 63  # Use 2L, see issue 65.  http://goo.gl/ELczz
+_MAX_KEYPART_BYTES = 500
 
 
 class Key(object):
@@ -95,7 +99,7 @@ class Key(object):
   - Key(pairs=[(kind1, id1), (kind2, id2), ...])
   - Key(flat=[kind1, id1, kind2, id2, ...])
 
-  Either of the above constructor forms can additional pass in another
+  Either of the above constructor forms can additionally pass in another
   key using parent=<key>.  The (kind, id) pairs of the parent key are
   inserted before the (kind, id) pairs passed explicitly.
 
@@ -118,7 +122,7 @@ class Key(object):
   If a Reference is passed (using one of reference, serialized or
   urlsafe), the args and namespace keywords must match what is already
   present in the Reference (after decoding if necessary).  The parent
-  keyword cannot be combined with a Refence in any form.
+  keyword cannot be combined with a Reference in any form.
 
 
   Keys are immutable, which means that a Key object cannot be modified
@@ -184,23 +188,102 @@ class Key(object):
   Subclassing Key is best avoided; it would be hard to get right.
   """
 
-  __slots__ = ['__reference', '__pairs']
+  __slots__ = ['__reference', '__pairs', '__app', '__namespace']
 
   def __new__(cls, *_args, **kwargs):
     """Constructor.  See the class docstring for arguments."""
     if _args:
       if len(_args) == 1 and isinstance(_args[0], dict):
-        # For pickling only: one positional argument is allowed,
-        # giving a dict specifying the keyword arguments.
-        assert not kwargs
+        if kwargs:
+          raise TypeError('Key() takes no keyword arguments when a dict is the '
+                          'the first and only non-keyword argument (for '
+                          'unpickling).')
         kwargs = _args[0]
       else:
-        assert 'flat' not in kwargs
+        if 'flat' in kwargs:
+          raise TypeError('Key() with positional arguments '
+                          'cannot accept flat as a keyword argument.')
         kwargs['flat'] = _args
     self = super(Key, cls).__new__(cls)
-    self.__reference = _ConstructReference(cls, **kwargs)
-    self.__pairs = None
+    # Either __reference or (__pairs, __app, __namespace) must be set.
+    # Either one fully specifies a key; if both are set they must be
+    # consistent with each other.
+    if 'reference' in kwargs or 'serialized' in kwargs or 'urlsafe' in kwargs:
+      self.__reference = _ConstructReference(cls, **kwargs)
+      self.__pairs = None
+      self.__app = None
+      self.__namespace = None
+    elif 'pairs' in kwargs or 'flat' in kwargs:
+      self.__reference = None
+      (self.__pairs,
+       self.__app,
+       self.__namespace) = self._parse_from_args(**kwargs)
+    else:
+      raise TypeError('Key() cannot create a Key instance without arguments.')
     return self
+
+  @staticmethod
+  def _parse_from_args(pairs=None, flat=None, app=None, namespace=None,
+                       parent=None):
+    if flat:
+      if pairs is not None:
+        raise TypeError('Key() cannot accept both flat and pairs arguments.')
+      if len(flat) % 2:
+        raise ValueError('Key() must have an even number of positional '
+                         'arguments.')
+      pairs = [(flat[i], flat[i + 1]) for i in xrange(0, len(flat), 2)]
+    else:
+      pairs = list(pairs)
+    if not pairs:
+      raise TypeError('Key must consist of at least one pair.')
+    for i, (kind, id) in enumerate(pairs):
+      if isinstance(id, unicode):
+        id = id.encode('utf8')
+      elif id is None:
+        if i + 1 < len(pairs):
+          raise datastore_errors.BadArgumentError(
+            'Incomplete Key entry must be last')
+      else:
+        if not isinstance(id, (int, long, str)):
+          raise TypeError('Key id must be a string or a number; received %r' %
+                          id)
+      if isinstance(kind, type):
+        kind = kind._get_kind()
+      if isinstance(kind, unicode):
+        kind = kind.encode('utf8')
+      if not isinstance(kind, str):
+          raise TypeError('Key kind must be a string or Model class; '
+                          'received %r' % kind)
+      if not id:
+        id = None
+      pairs[i] = (kind, id)
+    if parent is not None:
+      if not isinstance(parent, Key):
+        raise datastore_errors.BadValueError(
+            'Expected Key instance, got %r' % parent)
+      if not parent.id():
+        raise datastore_errors.BadArgumentError(
+          'Parent cannot have incomplete key')
+      pairs[:0] = parent.pairs()
+      if app:
+        if app != parent.app():
+          raise ValueError('Cannot specify a different app %r '
+                           'than the parent app %r' %
+                           (app, parent.app()))
+      else:
+        app = parent.app()
+      if namespace is not None:
+        if namespace != parent.namespace():
+          raise ValueError('Cannot specify a different namespace %r '
+                           'than the parent namespace %r' %
+                           (namespace, parent.namespace()))
+      else:
+        namespace = parent.namespace()
+    if not app:
+      app = _DefaultAppId()
+    if namespace is None:
+      namespace = _DefaultNamespace()
+    return tuple(pairs), app, namespace
 
   def __repr__(self):
     """String representation, used by str() and repr().
@@ -214,7 +297,8 @@ class Key(object):
       if not item:
         args.append('None')
       elif isinstance(item, basestring):
-        assert isinstance(item, str)  # No unicode should make it here.
+        if not isinstance(item, str):
+          raise TypeError('Key item is not an 8-bit string %r' % item)
         args.append(repr(item))
       else:
         args.append(str(item))
@@ -236,6 +320,8 @@ class Key(object):
 
   def __eq__(self, other):
     """Equality comparison operation."""
+    # This does not use __tuple() because it is usually enough to
+    # compare pairs(), and we're performance-conscious here.
     if not isinstance(other, Key):
       return NotImplemented
     return (tuple(self.pairs()) == tuple(other.pairs()) and
@@ -248,6 +334,34 @@ class Key(object):
       return NotImplemented
     return not self.__eq__(other)
 
+  def __tuple(self):
+    """Helper to return an orderable tuple."""
+    return (self.app(), self.namespace(), self.pairs())
+
+  def __lt__(self, other):
+    """Less than ordering."""
+    if not isinstance(other, Key):
+      return NotImplemented
+    return self.__tuple() < other.__tuple()
+
+  def __le__(self, other):
+    """Less than or equal ordering."""
+    if not isinstance(other, Key):
+      return NotImplemented
+    return self.__tuple() <= other.__tuple()
+
+  def __gt__(self, other):
+    """Greater than ordering."""
+    if not isinstance(other, Key):
+      return NotImplemented
+    return self.__tuple() > other.__tuple()
+
+  def __ge__(self, other):
+    """Greater than or equal ordering."""
+    if not isinstance(other, Key):
+      return NotImplemented
+    return self.__tuple() >= other.__tuple()
+
   def __getstate__(self):
     """Private API used for pickling."""
     return ({'pairs': list(self.pairs()),
@@ -256,11 +370,17 @@ class Key(object):
 
   def __setstate__(self, state):
     """Private API used for pickling."""
-    assert len(state) == 1
+    if len(state) != 1:
+      raise TypeError('Invalid state length, expected 1; received %i' %
+                      len(state))
     kwargs = state[0]
-    assert isinstance(kwargs, dict)
-    self.__reference = _ConstructReference(self.__class__, **kwargs)
+    if not isinstance(kwargs, dict):
+      raise TypeError('Key accepts a dict of keyword arguments as state; '
+                      'received %r' % kwargs)
+    self.__reference = None
     self.__pairs = kwargs['pairs']
+    self.__app = kwargs['app']
+    self.__namespace = kwargs['namespace']
 
   def __getnewargs__(self):
     """Private API used for pickling."""
@@ -287,11 +407,15 @@ class Key(object):
 
   def namespace(self):
     """Return the namespace."""
-    return self.__reference.name_space()
+    if self.__namespace is None:
+      self.__namespace = self.__reference.name_space()
+    return self.__namespace
 
   def app(self):
     """Return the application id."""
-    return self.__reference.app()
+    if self.__app is None:
+      self.__app = self.__reference.app()
+    return self.__app
 
   def id(self):
     """Return the string or integer id in the last (kind, id) pair, if any.
@@ -299,6 +423,8 @@ class Key(object):
     Returns:
       A string or integer id, or None if the key is incomplete.
     """
+    if self.__pairs:
+      return self.__pairs[-1][1]
     elem = self.__reference.path().element(-1)
     return elem.name() or elem.id() or None
 
@@ -308,6 +434,11 @@ class Key(object):
     Returns:
       A string id, or None if the key has an integer id or is incomplete.
     """
+    if self.__reference is None:
+      id = self.id()
+      if not isinstance(id, basestring):
+        id = None
+      return id
     elem = self.__reference.path().element(-1)
     return elem.name() or None
 
@@ -317,6 +448,11 @@ class Key(object):
     Returns:
       An integer id, or None if the key has a string id or is incomplete.
     """
+    if self.__reference is None:
+      id = self.id()
+      if not isinstance(id, (int, long)):
+        id = None
+      return id
     elem = self.__reference.path().element(-1)
     return elem.id() or None
 
@@ -328,12 +464,12 @@ class Key(object):
       for elem in self.__reference.path().element_list():
         kind = elem.type()
         if elem.has_id():
-          idorname = elem.id()
+          id_or_name = elem.id()
         else:
-          idorname = elem.name()
-        if not idorname:
-          idorname = None
-        tup = (kind, idorname)
+          id_or_name = elem.name()
+        if not id_or_name:
+          id_or_name = None
+        tup = (kind, id_or_name)
         pairs.append(tup)
       self.__pairs = pairs = tuple(pairs)
     return pairs
@@ -351,6 +487,8 @@ class Key(object):
 
     This is the kind from the last (kind, id) pair.
     """
+    if self.__pairs:
+      return self.__pairs[-1][0]
     return self.__reference.path().element(-1).type()
 
   def reference(self):
@@ -361,11 +499,16 @@ class Key(object):
 
     NOTE: The caller should not mutate the return value.
     """
+    if self.__reference is None:
+      self.__reference = _ConstructReference(self.__class__,
+                                             pairs=self.__pairs,
+                                             app=self.__app,
+                                             namespace=self.__namespace)
     return self.__reference
 
   def serialized(self):
     """Return a serialized Reference object for this Key."""
-    return self.__reference.Encode()
+    return self.reference().Encode()
 
   def urlsafe(self):
     """Return a url-safe string encoding this Key's Reference.
@@ -375,7 +518,7 @@ class Key(object):
     Admin Console.
     """
     # This is 3-4x faster than urlsafe_b64decode()
-    urlsafe = base64.b64encode(self.__reference.Encode())
+    urlsafe = base64.b64encode(self.reference().Encode())
     return urlsafe.rstrip('=').replace('+', '-').replace('/', '_')
 
   # Datastore API using the default context.
@@ -394,8 +537,18 @@ class Key(object):
     If no such entity exists, a Future is still returned, and the
     Future's eventual return result be None.
     """
-    from . import tasklets
-    return tasklets.get_context().get(self, **ctx_options)
+    from . import model, tasklets
+    ctx = tasklets.get_context()
+    cls = model.Model._kind_map.get(self.kind())
+    if cls:
+      cls._pre_get_hook(self)
+    fut = ctx.get(self, **ctx_options)
+    if cls:
+      post_hook = cls._post_get_hook
+      if not cls._is_default_hook(model.Model._default_post_get_hook,
+                                  post_hook):
+        fut.add_immediate_callback(post_hook, self, fut)
+    return fut
 
   def delete(self, **ctx_options):
     """Synchronously delete the entity for this Key.
@@ -414,63 +567,98 @@ class Key(object):
     """
     from . import tasklets, model
     ctx = tasklets.get_context()
-    cls = model.Model._get_kind_map().get(self.kind())
-    if cls is not None:
-      cls._maybe_delete_fetch_all_memcache(ctx)
-    return ctx.delete(self, **ctx_options)
+    cls = model.Model._kind_map.get(self.kind())
+    if cls:
+      cls._pre_delete_hook(self)
+    fut = ctx.delete(self, **ctx_options)
+    if cls:
+      post_hook = cls._post_delete_hook
+      if not cls._is_default_hook(model.Model._default_post_delete_hook,
+                                  post_hook):
+        fut.add_immediate_callback(post_hook, self, fut)
+    return fut
+
+  @classmethod
+  def from_old_key(cls, old_key):
+    return cls(urlsafe=str(old_key))
+
+  def to_old_key(self):
+    return datastore_types.Key(encoded=self.urlsafe())
 
 
 # The remaining functions in this module are private.
+# TODO: Conform to PEP 8 naming, e.g. _construct_reference() etc.
 
-@datastore_rpc._positional(1)
+@utils.positional(1)
 def _ConstructReference(cls, pairs=None, flat=None,
                         reference=None, serialized=None, urlsafe=None,
                         app=None, namespace=None, parent=None):
   """Construct a Reference; the signature is the same as for Key."""
-  assert cls is Key
-  howmany = (bool(pairs) + bool(flat) +
-             bool(reference) + bool(serialized) + bool(urlsafe))
-  assert howmany == 1
+  if cls is not Key:
+    raise TypeError('Cannot construct Key reference on non-Key class; '
+                    'received %r' % cls)
+  if (bool(pairs) + bool(flat) + bool(reference) + bool(serialized) +
+      bool(urlsafe)) != 1:
+    raise TypeError('Cannot construct Key reference from incompatible keyword '
+                    'arguments.')
   if flat or pairs:
     if flat:
-      assert len(flat) % 2 == 0
-      pairs = [(flat[i], flat[i+1]) for i in xrange(0, len(flat), 2)]
-    assert pairs
+      if len(flat) % 2:
+        raise TypeError('_ConstructReference() must have an even number of '
+                        'positional arguments.')
+      pairs = [(flat[i], flat[i + 1]) for i in xrange(0, len(flat), 2)]
+    elif parent is not None:
+      pairs = list(pairs)
+    if not pairs:
+      raise TypeError('Key references must consist of at least one pair.')
     if parent is not None:
       if not isinstance(parent, Key):
         raise datastore_errors.BadValueError(
             'Expected Key instance, got %r' % parent)
       pairs[:0] = parent.pairs()
       if app:
-        assert app == parent.app(), (app, parent.app())
+        if app != parent.app():
+          raise ValueError('Cannot specify a different app %r '
+                           'than the parent app %r' %
+                           (app, parent.app()))
       else:
         app = parent.app()
       if namespace is not None:
-        assert namespace == parent.namespace(), (namespace,
-                                                 parent.namespace())
+        if namespace != parent.namespace():
+          raise ValueError('Cannot specify a different namespace %r '
+                           'than the parent namespace %r' %
+                           (namespace, parent.namespace()))
       else:
         namespace = parent.namespace()
     reference = _ReferenceFromPairs(pairs, app=app, namespace=namespace)
   else:
-    # You can't combine parent= with reference=, serialized= or urlsafe=.
-    assert parent is None
+    if parent is not None:
+      raise TypeError('Key reference cannot be constructed when the parent '
+                      'argument is combined with either reference, serialized '
+                      'or urlsafe arguments.')
     if urlsafe:
       serialized = _DecodeUrlSafe(urlsafe)
     if serialized:
       reference = _ReferenceFromSerialized(serialized)
-    assert reference.path().element_size(), (urlsafe, serialized,
-                                             str(reference))
-    # TODO: assert that each element has a type and either an id or a name
+    if not reference.path().element_size():
+      raise RuntimeError('Key reference path has no element size (%r, %r, %r).'
+                         % (urlsafe, serialized, str(reference)))
+    # TODO: ensure that each element has a type and either an id or a name
     if not serialized:
       reference = _ReferenceFromReference(reference)
     # You needn't specify app= or namespace= together with reference=,
     # serialized= or urlsafe=, but if you do, their values must match
     # what is already in the reference.
     if app is not None:
-      assert app == reference.app(), (app, reference.app())
+      if app != reference.app():
+        raise RuntimeError('Key reference constructed uses a different app %r '
+                           'than the one specified %r' %
+                           (reference.app(), app))
     if namespace is not None:
-      assert namespace == reference.name_space(), (namespace,
-                                                   reference.name_space())
+      if namespace != reference.name_space():
+        raise RuntimeError('Key reference constructed uses a different '
+                           'namespace %r than the one specified %r' %
+                           (reference.name_space(), namespace))
   return reference
 
 
@@ -489,32 +677,73 @@ def _ReferenceFromPairs(pairs, reference=None, app=None, namespace=None):
     if last:
       raise datastore_errors.BadArgumentError(
           'Incomplete Key entry must be last')
-    if not isinstance(kind, basestring):
-      if isinstance(kind, type):
+    t = type(kind)
+    if t is str:
+      pass
+    elif t is unicode:
+      kind = kind.encode('utf8')
+    else:
+      if issubclass(t, type):
         # Late import to avoid cycles.
         from .model import Model
         modelclass = kind
-        assert issubclass(modelclass, Model), repr(modelclass)
+        if not issubclass(modelclass, Model):
+          raise TypeError('Key kind must be either a string or subclass of '
+                          'Model; received %r' % modelclass)
         kind = modelclass._get_kind()
-      assert isinstance(kind, basestring), repr(kind)
-    if isinstance(kind, unicode):
-      kind = kind.encode('utf8')
-    assert 1 <= len(kind) <= 500
+        t = type(kind)
+      if t is str:
+        pass
+      elif t is unicode:
+        kind = kind.encode('utf8')
+      elif issubclass(t, str):
+        pass
+      elif issubclass(t, unicode):
+        kind = kind.encode('utf8')
+      else:
+        raise TypeError('Key kind must be either a string or subclass of Model;'
+                        ' received %r' % kind)
+    if not (1 <= len(kind) <= _MAX_KEYPART_BYTES):
+      raise ValueError('Key kind string must be a non-empty string up to %i'
+                       'bytes; received %s' %
+                       (_MAX_KEYPART_BYTES, kind))
     elem = path.add_element()
     elem.set_type(kind)
-    if isinstance(idorname, (int, long)):
-      assert 1 <= idorname < 2**63
+    t = type(idorname)
+    if t is int or t is long:
+      if not (1 <= idorname < _MAX_LONG):
+        raise ValueError('Key id number is too long; received %i' % idorname)
       elem.set_id(idorname)
-    elif isinstance(idorname, basestring):
-      if isinstance(idorname, unicode):
-        idorname = idorname.encode('utf8')
-      assert 1 <= len(idorname) <= 500
+    elif t is str:
+      if not (1 <= len(idorname) <= _MAX_KEYPART_BYTES):
+        raise ValueError('Key name strings must be non-empty strings up to %i '
+                         'bytes; received %s' %
+                         (_MAX_KEYPART_BYTES, idorname))
+      elem.set_name(idorname)
+    elif t is unicode:
+      idorname = idorname.encode('utf8')
+      if not (1 <= len(idorname) <= _MAX_KEYPART_BYTES):
+        raise ValueError('Key name unicode strings must be non-empty strings up'
+                         ' to %i bytes; received %s' %
+                         (_MAX_KEYPART_BYTES, idorname))
       elem.set_name(idorname)
     elif idorname is None:
       elem.set_id(0)
       last = True
+    elif issubclass(t, (int, long)):
+      if not (1 <= idorname < _MAX_LONG):
+        raise ValueError('Key id number is too long; received %i' % idorname)
+      elem.set_id(idorname)
+    elif issubclass(t, basestring):
+      if issubclass(t, unicode):
+        idorname = idorname.encode('utf8')
+      if not (1 <= len(idorname) <= _MAX_KEYPART_BYTES):
+        raise ValueError('Key name strings must be non-empty strings up to %i '
+                         'bytes; received %s' % (_MAX_KEYPART_BYTES, idorname))
+      elem.set_name(idorname)
     else:
-      assert False, 'bad idorname (%r)' % (idorname,)
+      raise TypeError('id must be either a numeric id or a string name; '
+                      'received %r' % idorname)
   # An empty app id means to use the default app id.
   if not app:
     app = _DefaultAppId()
@@ -538,8 +767,9 @@ def _ReferenceFromReference(reference):
 
 def _ReferenceFromSerialized(serialized):
   """Construct a Reference from a serialized Reference."""
-  assert isinstance(serialized, basestring)
-  if isinstance(serialized, unicode):
+  if not isinstance(serialized, basestring):
+    raise TypeError('serialized must be a string; received %r' % serialized)
+  elif isinstance(serialized, unicode):
     serialized = serialized.encode('utf8')
   return entity_pb.Reference(serialized)
 
@@ -549,7 +779,8 @@ def _DecodeUrlSafe(urlsafe):
 
   This returns the decoded string.
   """
-  assert isinstance(urlsafe, basestring)
+  if not isinstance(urlsafe, basestring):
+    raise TypeError('urlsafe must be a string; received %r' % urlsafe)
   if isinstance(urlsafe, unicode):
     urlsafe = urlsafe.encode('utf8')
   mod = len(urlsafe) % 4

@@ -23,27 +23,27 @@ def bench1(n):
   b = key.Key('Foo', 42, 'Bar', 1, 'Hopla', 'lala')
   assert a is not b
   assert a == b
-  for i in xrange(n):
+  for _ in xrange(n):
     a == b
     hash(a)
 
 
 def bench2(n):
   """Benchmark Key creation."""
-  for i in xrange(n):
+  for _ in xrange(n):
     key.Key('Foo', 42, 'Bar', 1, 'Hopla', 'lala')
 
 
 def bench3(n):
   """Benchmark Key creation with parent."""
   p = key.Key('Foo', 42, 'Bar', 1)
-  for i in xrange(n):
+  for _ in xrange(n):
     key.Key('Hopla', 'lala', parent=p)
 
 
 def bench(n):
   """Toplevel benchmark function."""
-  return bench1(n)
+  return bench3(n)
 
 
 def main():

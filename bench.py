@@ -33,7 +33,7 @@ def bench(n):
   futs = []
   for i in range(n):
     fut = fibonacci(i)
-  futs.append(fut)
+    futs.append(fut)
   eventloop.run()
   for fut in futs:
     fut.check_success()

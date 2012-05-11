@@ -38,7 +38,7 @@ Calling a tasklet automatically schedules it with the event loop:
   def main():
     f = main_tasklet()
     eventloop.run()  # Run until no tasklets left to do
-    assert f.done()
+    f.done()  # Returns True
 
 As a special feature, if the wrapped function is not a generator
 function, its return value is returned via the Future.  This makes the
@@ -63,19 +63,28 @@ import collections
 import logging
 import os
 import sys
-import threading
 import types
 
-from google.appengine.api.apiproxy_stub_map import UserRPC
-from google.appengine.api.apiproxy_rpc import RPC
+from .google_imports import apiproxy_stub_map
+from .google_imports import apiproxy_rpc
+from .google_imports import datastore_errors
+from .google_imports import datastore_rpc
 
-from google.appengine.datastore import datastore_rpc
-from . import eventloop, utils
+from . import eventloop
+from . import utils
 
-logging_debug = utils.logging_debug
+__all__ = ['Return', 'tasklet', 'synctasklet', 'toplevel', 'sleep',
+           'add_flow_exception', 'get_return_value',
+           'get_context', 'set_context',
+           'make_default_context', 'make_context',
+           'Future', 'MultiFuture', 'QueueFuture', 'SerialQueueFuture',
+           'ReducingFuture',
+           ]
+
+_logging_debug = utils.logging_debug
 
 
-def is_generator(obj):
+def _is_generator(obj):
   """Helper to test for a generator object.
 
   NOTE: This tests for the (iterable) object returned by calling a
@@ -84,7 +93,7 @@ def is_generator(obj):
   return isinstance(obj, types.GeneratorType)
 
 
-class _State(threading.local):
+class _State(utils.threading_local):
   """Hold thread-local state."""
 
   current_context = None
@@ -94,35 +103,71 @@ class _State(threading.local):
     self.all_pending = set()
 
   def add_pending(self, fut):
-    logging_debug('all_pending: add %s', fut)
+    _logging_debug('all_pending: add %s', fut)
     self.all_pending.add(fut)
 
   def remove_pending(self, fut, status='success'):
     if fut in self.all_pending:
-      logging_debug('all_pending: %s: remove %s', status, fut)
+      _logging_debug('all_pending: %s: remove %s', status, fut)
       self.all_pending.remove(fut)
     else:
-      logging_debug('all_pending: %s: not found %s', status, fut)
+      _logging_debug('all_pending: %s: not found %s', status, fut)
 
   def clear_all_pending(self):
     if self.all_pending:
       logging.info('all_pending: clear %s', self.all_pending)
       self.all_pending.clear()
     else:
-      logging_debug('all_pending: clear no-op')
+      _logging_debug('all_pending: clear no-op')
 
   def dump_all_pending(self, verbose=False):
-    all = []
+    pending = []
     for fut in self.all_pending:
       if verbose:
         line = fut.dump() + ('\n' + '-'*40)
       else:
         line = fut.dump_stack()
-      all.append(line)
-    return '\n'.join(all)
+      pending.append(line)
+    return '\n'.join(pending)
 
 
 _state = _State()
+
+
+# Tuple of exceptions that should not be logged (except in debug mode).
+_flow_exceptions = ()
+
+
+def add_flow_exception(exc):
+  """Add an exception that should not be logged.
+
+  The argument must be a subclass of Exception.
+  """
+  global _flow_exceptions
+  if not isinstance(exc, type) or not issubclass(exc, Exception):
+    raise TypeError('Expected an Exception subclass, got %r' % (exc,))
+  as_set = set(_flow_exceptions)
+  as_set.add(exc)
+  _flow_exceptions = tuple(as_set)
+
+
+def _init_flow_exceptions():
+  """Internal helper to initialize _flow_exceptions.
+
+  This automatically adds webob.exc.HTTPException, if it can be imported.
+  """
+  global _flow_exceptions
+  _flow_exceptions = ()
+  add_flow_exception(datastore_errors.Rollback)
+  try:
+    from webob import exc
+  except ImportError:
+    pass
+  else:
+    add_flow_exception(exc.HTTPException)
+
+
+_init_flow_exceptions()
 
 
 class Future(object):
@@ -138,9 +183,9 @@ class Future(object):
   # TODO: Compare to Monocle's much simpler Callback class.
 
   # Constants for state property.
-  IDLE = RPC.IDLE  # Not yet running (unused)
-  RUNNING = RPC.RUNNING  # Not yet completed.
-  FINISHING = RPC.FINISHING  # Completed.
+  IDLE = apiproxy_rpc.RPC.IDLE  # Not yet running (unused)
+  RUNNING = apiproxy_rpc.RPC.RUNNING  # Not yet completed.
+  FINISHING = apiproxy_rpc.RPC.FINISHING  # Completed.
 
   # XXX Add docstrings to all methods.  Separate PEP 3148 API from RPC API.
 
@@ -160,6 +205,7 @@ class Future(object):
     self._exception = None
     self._traceback = None
     self._callbacks = []
+    self._immediate_callbacks = []
     _state.add_pending(self)
     self._next = None  # Links suspended Futures together in a stack.
 
@@ -170,20 +216,20 @@ class Future(object):
     if self._done:
       if self._exception is not None:
         state = 'exception %s: %s' % (self._exception.__class__.__name__,
-                                   self._exception)
+                                      self._exception)
       else:
         state = 'result %r' % (self._result,)
     else:
       state = 'pending'
     line = '?'
     for line in self._where:
-      if 'ndb/tasklets.py' not in line:
+      if 'tasklets.py' not in line:
         break
     if self._info:
-      line += ' for %s;' % self._info
+      line += ' for %s' % self._info
     if self._geninfo:
-      line += ' %s;' % self._geninfo
-    return '<%s %x created by %s %s>' % (
+      line += ' %s' % self._geninfo
+    return '<%s %x created by %s; %s>' % (
       self.__class__.__name__, id(self), line, state)
 
   def dump(self):
@@ -204,21 +250,34 @@ class Future(object):
     else:
       self._callbacks.append((callback, args, kwds))
 
+  def add_immediate_callback(self, callback, *args, **kwds):
+    if self._done:
+      callback(*args, **kwds)
+    else:
+      self._immediate_callbacks.append((callback, args, kwds))
+
   def set_result(self, result):
-    assert not self._done
+    if self._done:
+      raise RuntimeError('Result cannot be set twice.')
     self._result = result
     self._done = True
     _state.remove_pending(self)
-    for callback, args, kwds  in self._callbacks:
+    for callback, args, kwds in self._immediate_callbacks:
+      callback(*args, **kwds)
+    for callback, args, kwds in self._callbacks:
       eventloop.queue_call(None, callback, *args, **kwds)
 
   def set_exception(self, exc, tb=None):
-    assert isinstance(exc, BaseException)
-    assert not self._done
+    if not isinstance(exc, BaseException):
+      raise TypeError('exc must be an Exception; received %r' % exc)
+    if self._done:
+      raise RuntimeError('Exception cannot be set twice.')
     self._exception = exc
     self._traceback = tb
     self._done = True
     _state.remove_pending(self, status='fail')
+    for callback, args, kwds in self._immediate_callbacks:
+      callback(*args, **kwds)
     for callback, args, kwds in self._callbacks:
       eventloop.queue_call(None, callback, *args, **kwds)
 
@@ -242,7 +301,7 @@ class Future(object):
       if not ev.run1():
         logging.info('Deadlock in %s', self)
         logging.info('All pending Futures:\n%s', _state.dump_all_pending())
-        logging_debug('All pending Futures (verbose):\n%s',
+        _logging_debug('All pending Futures (verbose):\n%s',
                       _state.dump_all_pending(verbose=True))
         self.set_exception(RuntimeError('Deadlock waiting for %s' % self))
 
@@ -267,10 +326,10 @@ class Future(object):
   @classmethod
   def wait_any(cls, futures):
     # TODO: Flatten MultiRpcs.
-    all = set(futures)
+    waiting_on = set(futures)
     ev = eventloop.get_event_loop()
-    while all:
-      for f in all:
+    while waiting_on:
+      for f in waiting_on:
         if f.state == cls.FINISHING:
           return f
       ev.run1()
@@ -280,10 +339,10 @@ class Future(object):
   @classmethod
   def wait_all(cls, futures):
     # TODO: Flatten MultiRpcs.
-    all = set(futures)
+    waiting_on = set(futures)
     ev = eventloop.get_event_loop()
-    while all:
-      all = set(f for f in all if f.state == cls.RUNNING)
+    while waiting_on:
+      waiting_on = set(f for f in waiting_on if f.state == cls.RUNNING)
       ev.run1()
 
   def _help_tasklet_along(self, gen, val=None, exc=None, tb=None):
@@ -295,11 +354,11 @@ class Future(object):
       try:
         set_context(self._context)
         if exc is not None:
-          logging_debug('Throwing %s(%s) into %s',
+          _logging_debug('Throwing %s(%s) into %s',
                         exc.__class__.__name__, exc, info)
           value = gen.throw(exc.__class__, exc, tb)
         else:
-          logging_debug('Sending %r to %s', val, info)
+          _logging_debug('Sending %r to %s', val, info)
           value = gen.send(val)
           self._context = get_context()
       finally:
@@ -307,52 +366,77 @@ class Future(object):
 
     except StopIteration, err:
       result = get_return_value(err)
-      logging_debug('%s returned %r', info, result)
+      _logging_debug('%s returned %r', info, result)
       self.set_result(result)
       return
 
+    except GeneratorExit:
+      # In Python 2.5, this derives from Exception, but we don't want
+      # to handle it like other Exception instances.  So we catch and
+      # re-raise it immediately.  See issue 127.  http://goo.gl/2p5Pn
+      # TODO: Remove when Python 2.5 is no longer supported.
+      raise
+
     except Exception, err:
       _, _, tb = sys.exc_info()
-      logging.warning('%s raised %s(%s)',
-                      info, err.__class__.__name__, err,
-                      exc_info=(logging.getLogger().level <= logging.INFO))
+      if isinstance(err, _flow_exceptions):
+        # Flow exceptions aren't logged except in "heavy debug" mode,
+        # and then only at DEBUG level, without a traceback.
+        _logging_debug('%s raised %s(%s)',
+                      info, err.__class__.__name__, err)
+      elif utils.DEBUG and logging.getLogger().level < logging.DEBUG:
+        # In "heavy debug" mode, log a warning with traceback.
+        # (This is the same condition as used in utils.logging_debug().)
+        logging.warning('%s raised %s(%s)',
+                        info, err.__class__.__name__, err, exc_info=True)
+      else:
+        # Otherwise, log a warning without a traceback.
+        logging.warning('%s raised %s(%s)', info, err.__class__.__name__, err)
       self.set_exception(err, tb)
       return
 
     else:
-      logging_debug('%s yielded %r', info, value)
-      if isinstance(value, (UserRPC, datastore_rpc.MultiRpc)):
+      _logging_debug('%s yielded %r', info, value)
+      if isinstance(value, (apiproxy_stub_map.UserRPC,
+                            datastore_rpc.MultiRpc)):
         # TODO: Tail recursion if the RPC is already complete.
         eventloop.queue_rpc(value, self._on_rpc_completion, value, gen)
         return
       if isinstance(value, Future):
         # TODO: Tail recursion if the Future is already done.
-        assert not self._next, self._next
+        if self._next:
+          raise RuntimeError('Future has already completed yet next is %r' %
+                             self._next)
         self._next = value
         self._geninfo = utils.gen_info(gen)
-        logging_debug('%s is now blocked waiting for %s', self, value)
+        _logging_debug('%s is now blocked waiting for %s', self, value)
         value.add_callback(self._on_future_completion, value, gen)
         return
       if isinstance(value, (tuple, list)):
         # Arrange for yield to return a list of results (not Futures).
-        info = 'multi-yield from ' + utils.gen_info(gen)
+        info = 'multi-yield from %s' % utils.gen_info(gen)
         mfut = MultiFuture(info)
         try:
           for subfuture in value:
             mfut.add_dependent(subfuture)
           mfut.complete()
+        except GeneratorExit:
+          raise
         except Exception, err:
           _, _, tb = sys.exc_info()
           mfut.set_exception(err, tb)
         mfut.add_callback(self._on_future_completion, mfut, gen)
         return
-      if is_generator(value):
-        assert False  # TODO: emulate PEP 380 here?
-      assert False  # A tasklet shouldn't yield plain values.
+      if _is_generator(value):
+        # TODO: emulate PEP 380 here?
+        raise NotImplementedError('Cannot defer to another generator.')
+      raise RuntimeError('A tasklet should not yield plain values.')
 
   def _on_rpc_completion(self, rpc, gen):
     try:
       result = rpc.get_result()
+    except GeneratorExit:
+      raise
     except Exception, err:
       _, _, tb = sys.exc_info()
       self._help_tasklet_along(gen, exc=err, tb=tb)
@@ -363,7 +447,7 @@ class Future(object):
     if self._next is future:
       self._next = None
       self._geninfo = None
-      logging_debug('%s is no longer blocked waiting for %s', self, future)
+      _logging_debug('%s is no longer blocked waiting for %s', self, future)
     exc = future.get_exception()
     if exc is not None:
       self._help_tasklet_along(gen, exc=exc, tb=future.get_traceback())
@@ -438,7 +522,8 @@ class MultiFuture(Future):
   # TODO: Maybe rename this method, since completion of a Future/RPC
   # already means something else.  But to what?
   def complete(self):
-    assert not self._full
+    if self._full:
+      raise RuntimeError('MultiFuture cannot complete twice.')
     self._full = True
     if not self._dependents:
       self._finish()
@@ -449,11 +534,17 @@ class MultiFuture(Future):
     super(MultiFuture, self).set_exception(exc, tb)
 
   def _finish(self):
-    assert self._full
-    assert not self._dependents
-    assert not self._done
+    if not self._full:
+      raise RuntimeError('MultiFuture cannot finish until completed.')
+    if self._dependents:
+      raise RuntimeError('MultiFuture cannot finish whilst waiting for '
+                         'dependents %r' % self._dependents)
+    if self._done:
+      raise RuntimeError('MultiFuture done before finishing.')
     try:
       result = [r.get_result() for r in self._results]
+    except GeneratorExit:
+      raise
     except Exception, err:
       _, _, tb = sys.exc_info()
       self.set_exception(err, tb)
@@ -469,8 +560,15 @@ class MultiFuture(Future):
     self.add_dependent(fut)
 
   def add_dependent(self, fut):
-    assert isinstance(fut, Future), repr(fut)
-    assert not self._full
+    if isinstance(fut, list):
+      mfut = MultiFuture()
+      map(mfut.add_dependent, fut)
+      mfut.complete()
+      fut = mfut
+    elif not isinstance(fut, Future):
+      raise TypeError('Expected Future, received %s: %r' % (type(fut), fut))
+    if self._full:
+      raise RuntimeError('MultiFuture cannot add a dependent once complete.')
     self._results.append(fut)
     if fut not in self._dependents:
       self._dependents.add(fut)
@@ -515,7 +613,8 @@ class QueueFuture(Future):
   # TODO: __repr__
 
   def complete(self):
-    assert not self._full
+    if self._full:
+      raise RuntimeError('MultiFuture cannot complete twice.')
     self._full = True
     if not self._dependents:
       self.set_result(None)
@@ -536,14 +635,17 @@ class QueueFuture(Future):
     self.add_dependent(fut)
 
   def add_dependent(self, fut):
-    assert isinstance(fut, Future)
-    assert not self._full
+    if not isinstance(fut, Future):
+      raise TypeError('fut must be a Future instance; received %r' % fut)
+    if self._full:
+      raise RuntimeError('QueueFuture add dependent once complete.')
     if fut not in self._dependents:
       self._dependents.add(fut)
       fut.add_callback(self._signal_dependent_done, fut)
 
   def _signal_dependent_done(self, fut):
-    assert fut.done()
+    if not fut.done():
+      raise RuntimeError('Future not done before signalling dependant done.')
     self._dependents.remove(fut)
     exc = fut.get_exception()
     tb = fut.get_traceback()
@@ -560,7 +662,8 @@ class QueueFuture(Future):
       self._mark_finished()
 
   def _mark_finished(self):
-    assert self._done
+    if not self.done():
+      raise RuntimeError('Future not done before marking as finished.')
     while self._waiting:
       waiter = self._waiting.popleft()
       self._pass_eof(waiter)
@@ -577,7 +680,8 @@ class QueueFuture(Future):
     return fut
 
   def _pass_eof(self, fut):
-    assert self._done
+    if not self._done:
+      raise RuntimeError('QueueFuture cannot pass EOF until done.')
     exc = self.get_exception()
     if exc is not None:
       tb = self.get_traceback()
@@ -656,7 +760,8 @@ class SerialQueueFuture(Future):
   # TODO: __repr__
 
   def complete(self):
-    assert not self._full
+    if self._full:
+      raise RuntimeError('SerialQueueFuture cannot complete twice.')
     self._full = True
     while self._waiting:
       waiter = self._waiting.popleft()
@@ -684,8 +789,11 @@ class SerialQueueFuture(Future):
     self.add_dependent(fut)
 
   def add_dependent(self, fut):
-    assert isinstance(fut, Future)
-    assert not self._full
+    if not isinstance(fut, Future):
+      raise TypeError('fut must be a Future instance; received %r' % fut)
+    if self._full:
+      raise RuntimeError('SerialQueueFuture cannot add dependent '
+                         'once complete.')
     if self._waiting:
       waiter = self._waiting.popleft()
       fut.add_callback(_transfer_result, fut, waiter)
@@ -701,8 +809,8 @@ class SerialQueueFuture(Future):
     else:
       fut = Future()
       if self._full:
-        assert self._done  # Else, self._queue should be non-empty.
-        err = None
+        if not self._done:
+          raise RuntimeError('self._queue should be non-empty.')
         err = self.get_exception()
         if err is not None:
           tb = self.get_traceback()
@@ -752,7 +860,8 @@ class ReducingFuture(Future):
   # TODO: __repr__
 
   def complete(self):
-    assert not self._full
+    if self._full:
+      raise RuntimeError('ReducingFuture cannot complete twice.')
     self._full = True
     if not self._dependents:
       self._mark_finished()
@@ -771,22 +880,27 @@ class ReducingFuture(Future):
     self.add_dependent(fut)
 
   def add_dependent(self, fut):
-    assert not self._full
+    if self._full:
+      raise RuntimeError('ReducingFuture cannot add dependent once complete.')
     self._internal_add_dependent(fut)
 
   def _internal_add_dependent(self, fut):
-    assert isinstance(fut, Future)
+    if not isinstance(fut, Future):
+      raise TypeError('fut must be a Future; received %r' % fut)
     if fut not in self._dependents:
       self._dependents.add(fut)
       fut.add_callback(self._signal_dependent_done, fut)
 
   def _signal_dependent_done(self, fut):
-    assert fut.done()
+    if not fut.done():
+      raise RuntimeError('Future not done before signalling dependant done.')
     self._dependents.remove(fut)
     if self._done:
       return  # Already done.
     try:
       val = fut.get_result()
+    except GeneratorExit:
+      raise
     except Exception, err:
       _, _, tb = sys.exc_info()
       self.set_exception(err, tb)
@@ -797,6 +911,8 @@ class ReducingFuture(Future):
       self._queue.clear()
       try:
         nval = self._reducer(todo)
+      except GeneratorExit:
+        raise
       except Exception, err:
         _, _, tb = sys.exc_info()
         self.set_exception(err, tb)
@@ -818,6 +934,8 @@ class ReducingFuture(Future):
       self._queue.clear()
       try:
         nval = self._reducer(todo)
+      except GeneratorExit:
+        raise
       except Exception, err:
         _, _, tb = sys.exc_info()
         self.set_exception(err, tb)
@@ -848,6 +966,7 @@ def get_return_value(err):
     result = err.args
   return result
 
+
 def tasklet(func):
   # XXX Docstring
 
@@ -867,13 +986,14 @@ def tasklet(func):
       # Just in case the function is not a generator but still uses
       # the "raise Return(...)" idiom, we'll extract the return value.
       result = get_return_value(err)
-    if is_generator(result):
+    if _is_generator(result):
       eventloop.queue_call(None, fut._help_tasklet_along, result)
     else:
       fut.set_result(result)
     return fut
 
   return tasklet_wrapper
+
 
 def synctasklet(func):
   """Decorator to run a function as a tasklet when called.
@@ -890,9 +1010,33 @@ def synctasklet(func):
   return synctasklet_wrapper
 
 
+def toplevel(func):
+  """A sync tasklet that sets a fresh default Context.
+
+  Use this for toplevel view functions such as
+  webapp.RequestHandler.get() or Django view functions.
+  """
+  @utils.wrapping(func)
+  def add_context_wrapper(*args, **kwds):
+    __ndb_debug__ = utils.func_info(func)
+    _state.clear_all_pending()
+    # Create and install a new context.
+    ctx = make_default_context()
+    try:
+      set_context(ctx)
+      return synctasklet(func)(*args, **kwds)
+    finally:
+      set_context(None)
+      ctx.flush().check_success()
+      eventloop.run()  # Ensure writes are flushed, etc.
+  return add_context_wrapper
+
+
 _CONTEXT_KEY = '__CONTEXT__'
 
+
 def get_context():
+  # XXX Docstring
   ctx = None
   if os.getenv(_CONTEXT_KEY):
     ctx = _state.current_context
@@ -901,13 +1045,24 @@ def get_context():
     set_context(ctx)
   return ctx
 
+
 def make_default_context():
-  import context  # Late import to deal with circular imports.
-  return context.Context()
+  # XXX Docstring
+  return make_context()
+
+
+@utils.positional(0)
+def make_context(conn=None, config=None):
+  # XXX Docstring
+  from . import context  # Late import to deal with circular imports.
+  return context.Context(conn=conn, config=config)
+
 
 def set_context(new_context):
+  # XXX Docstring
   os.environ[_CONTEXT_KEY] = '1'
   _state.current_context = new_context
+
 
 # TODO: Rework the following into documentation.
 

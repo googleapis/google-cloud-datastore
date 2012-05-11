@@ -3,10 +3,12 @@
 import sys
 import threading
 
-from . import tasklets, context
+from ndb import tasklets
+from ndb import eventloop
 
 
 def main():
+  ##sys.stdout.write('_State.__bases__ = %r\n' % (eventloop._State.__bases__,))
   num = 10
   try:
     num = int(sys.argv[1])
@@ -21,10 +23,11 @@ def main():
     t.join()
 
 
-@context.toplevel
+@tasklets.toplevel
 def one_thread(i, num):
+  ##sys.stdout.write('eventloop = 0x%x\n' % id(eventloop.get_event_loop()))
   x = yield fibonacci(num)
-  ##sys.stdout.write('%d: %d --> %d\n' % (i, num, x))
+  sys.stdout.write('%d: %d --> %d\n' % (i, num, x))
 
 
 @tasklets.tasklet
@@ -32,8 +35,8 @@ def fibonacci(n):
   """A recursive Fibonacci to exercise task switching."""
   if n <= 1:
     raise tasklets.Return(n)
-  a = yield fibonacci(n-1)
-  b = yield fibonacci(n-2)
+  a = yield fibonacci(n - 1)
+  b = yield fibonacci(n - 2)
   raise tasklets.Return(a + b)
 
 

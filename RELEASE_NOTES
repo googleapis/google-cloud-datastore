@@ -1,0 +1,221 @@
+Release 1.0.2 (not yet)
+
+- Keys for Context.memcache_*() calls can now be unicode.
+- Issue 181: Projection queries.
+- Issue 183: Fix mixin issue with polymodel.
+- Issue 174: New API: Context.call_on_commit().
+- Issue 182: Add optional app and namespace args to get_by_id*().
+- Issue 179: Rollback is a flow exception.
+- Streamline the threaded test server creation.
+- Fix docstring for get_entity_group_version().
+- Transaction callback may be a tasklet in all propagation modes.
+
+----------------------------------------
+
+Release 1.0.1 (included in SDK 1.6.5)
+
+- Support entity group metadata queries.
+- Remove spurious '2' argument from json.dumps().
+- Turn off caching for metadata queries.
+- Issue 175: Add _creation_counter.
+- Issue 169: Normalize incomplete keys.
+- Issue 166: Make Key orderable.
+- Issue 105: Use yield for memcache_cas() call in Context.get().
+- Issue 168: Fix namespace for async queries.
+
+----------------------------------------
+
+Release 1.0 (included in SDK 1.6.4)
+
+NDB has now reached status General Availability.
+
+Changes since 0.9.9:
+
+- Query operations can now pass use_cache=False (see issue 156 comment 7).
+- There's now a separate TransactionOptions object.
+- Add support for transaction propagation options (SDK 1.6.4).
+
+----------------------------------------
+
+Release 0.9.9
+
+- Issue 164: Reduce log spam for exceptions in production.
+- Issue 159: Make Model.__init__() signature more robust.
+- Issue 163: String/TextProperty should not allow writing non-UTF-8 text.
+- Issue 139: Enforce size limits for indexed text/blob properties.
+- Issue 158: Support GenericProperty(compressed=True).
+- Issue 156: Changed query cache policy (again).
+- Issue 162: Raise an error on attempting to create a nested transaction.
+- Issue 161: Make get_or_insert() use existing transaction if one exist.
+- Fixed index_list() tests (were broken due to a last-minute runtime change).
+
+----------------------------------------
+
+Release 0.9.8 (included in SDK 1.6.3)
+
+Final tweaks:
+
+- Issue 149: Add get_indexes() API.
+- Issue 152: Made @utils.wrapping() more robust.
+- Moved @context.toplevel to @tasklets.toplevel.
+- Made GQL honor the default_model in the adapter.
+- Added demo/dataviewer.py.
+- Added tasklets.make_context().
+- Refactored imports to localize Google dependencies in one file.
+- Refactored (old) test target in Makefile.
+- Moved runtests.py to ndb/ndb_test.py.
+
+----------------------------------------
+
+Release 0.9.7
+
+Noteworthy fixes and features:
+
+- Issue 114: Add full GQL support.
+- Issue 144: Full Blobstore API.
+- The @transactional decorator now supports options, e.g.:
+  @transactional(retries=1, xg=True).
+- If the value for a StructuredProperty is None, an explicit None
+  is written and can be queried for.
+- New demo: guestbook.py.
+- Added __all__ to all modules.
+- Issue 145: Fix threading use in tests.
+
+----------------------------------------
+
+Release 0.9.6 (included in SDK 1.6.2)
+
+Features, speedups and bugfixes.
+
+- Issue 141: Speed up fetch(), especially for keys_only=True.
+- Issue 140: Fix query for recursive structured property.
+- Issue 138: Fix for subproperty=None in repeated structured property.
+- Issue 125: Support prospective search API.
+- Issue 108: Remove get_or_insert() from Context.
+- Issue 117 (again): Improve cache/query interaction.
+- Explicit batch_size sets default for prefetch_size.
+- Add urlfetch support to Context.
+- Issue 111: Allow specifying a kind for KeyProperty.
+- Issue 129: FilterNode should convert new Key to old Key.
+- Add support for BlobKey in Expando (an old TODO).
+- Issue 132: Use either json or simplejson in JsonProperty.
+- Issue 131: Suppress debug messages about threading.local.
+
+----------------------------------------
+
+Release 0.9.5
+
+Various minor issues fixed over the holidays.
+
+- Issue 63: Add PickleProperty, JsonProperty.
+- Improve type check for ancestor parameter to query().
+- Fix kind-less ancestor queries.
+- Issue 121: Do not die on *StructProperty equal to None.
+- Issue 119: Pre-compute the subclass when deserializing PolyModel.
+- Issue 123: Support custom property inside repeated StructuredProperty.
+- Issue 117: Simplify policy for updating cache with query results.
+- Issue 124: Don't log webob exceptions at alarming levels.
+- Issue 126: Improve repr() of Futures.
+- Issue 127: Fix Deadlock error in code that doesn't use @context.toplevel.
+
+----------------------------------------
+
+Release 0.9.4
+
+A pretty significant release, but not 1.0 since we're still in
+experimental mode.
+
+New features:
+
+- Issue 35: Added PolyModel class.
+- Added Django middleware to automatically manage the Context.
+- Killed Model._get_kind_map(). Use Model._kind_map instead.
+- issue 110: Add auto_current_user[_add] to UserProperty.
+- Issue 113: Add datastore statistics.
+- Make _validate() composable, add _to_base_type() and _from_base_type().
+  See section "Writing Property Subclasses" in the docs.
+- Issue 93: Add metadata queries.
+- Issue 99: Add Model._to_dict().
+- Issue 102: You can now do "from ndb import *" to import Model, all
+  Property subclasses, etc.  (Also issue 109.)
+- Issue 100: Add verbose_name property attribute.
+- Issue 97: Add to_old_key() and from_old_key() Key methods.
+
+Bugs fixed:
+
+- Issue 107: Delete instead of lock memcache after transaction.
+- Issue 106: Cache datastore misses in Context cache.
+- Fix a caching bug where a memcache hit would not be cached in the
+  Context cache.
+- Raise TypeError, not ValueError, in some cases.
+- Issue 44: Only use threading.local when needed.
+- Issue 104: Fix exception in Context.clear_cache().
+- Issue 98: Make sure get_or_insert() calls hooks.
+- Issue 95: Make sure get_by_id() calls hooks.
+
+----------------------------------------
+
+Release 0.9.3 (included in SDK 1.6.1)
+
+Two bugfixes:
+
+- Fixes issue 94 (tracebacks when memcache returns network errors).
+- Fixes issue 92 (logging too verbose).
+
+----------------------------------------
+
+Release 0.9.2
+
+This release contains several bugfixes and minor improvements:
+
+- Reject queries for unindexed properties.
+- Fix issue 91: with use_datastore=False, .put() would not overwrite
+  an existing value in memcache.
+- Fix issue 19: more robust get_or_insert() signature.
+- Fix issue 87: bug in whole-structure property queries.
+- Fix repr() of AND node to actually say AND(...).  (It said OR(...)!)
+- Support whole-structure matching for nested structures.
+- The repr() of a model class now shows the list of properties.
+- Fix the repr() of an Expando read back from the datastore.
+- Optimization: when reading an entity, don't read the key twice.
+- Add some new tests; test-related Makefile changes.
+- Various minor cleanups and refactorings, typo fixes, etc.
+- Fix ndb.__version__.
+
+----------------------------------------
+
+Release 0.9.1 (included in SDK 1.6.0)
+
+This release contains two bugfixes for release 0.9:
+
+- issue 83: ComputedProperty inside repeated StructuredProperty blows up
+- issue 85: Python 2.7 runtime raises incorrect "RuntimeError: Result cannot be set twice"
+
+----------------------------------------
+
+Release 0.9
+
+NOTE: When switching from 0.8 (or back), you must clear memcache!
+
+Most important changes since 0.8:
+
+- Improved consistency in memcache integration
+- Improved behavior of auto-batching through idle callbacks
+- Reduced size of entities written by memcache integration
+
+Bugs fixed:
+- Issue 73: use namespace from key for caching
+- Issue 77: support querying for prop==None, prop!=None
+- Issue 76: fix corner case in repr(entity)
+- Issue 78: preserve namespace in .filter() and .order()
+- Issue 81: make Context.flush() more effective
+- Issue 75: optional validation for model keys
+- Fixed IN operator for KeyProperty, None and more
+
+Other changes:
+- A ComputedProperty can now be marked repeated=True;
+  the function must return a list in this case
+- Replaced asserts with better exceptions
+- General code cleanup
+- Added ndb.__version__ variable (set to '0.9')
+- Improved test runners etc.
