@@ -1991,8 +1991,10 @@ class StructuredProperty(_StructuredGetForDictMixin):
     super(StructuredProperty, self).__init__(name=name, **kwds)
     if self._repeated:
       if modelclass._has_repeated:
-        raise TypeError('Cannot repeat StructuredProperty %s that has repeated '
-                        'properties of its own.' % self._name)
+        raise TypeError('This StructuredProperty cannot use repeated=True '
+                        'because its model class (%s) contains repeated '
+                        'properties (directly or indirectly).' %
+                        modelclass.__name__)
     self._modelclass = modelclass
 
   def _get_value(self, entity):
@@ -2928,7 +2930,9 @@ class Model(_NotEqualMixin):
                           'temporary Model instance values.' % name)
         attr._fix_up(cls, name)
         if isinstance(attr, Property):
-          if attr._repeated:
+          if (attr._repeated or
+              (isinstance(attr, StructuredProperty) and
+               attr._modelclass._has_repeated)):
             cls._has_repeated = True
           cls._properties[attr._name] = attr
     cls._update_kind_map()

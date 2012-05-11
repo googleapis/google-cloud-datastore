@@ -1,5 +1,6 @@
 Release 1.0.2 (not yet)
 
+- Issue 186: Added an error for indirectly nested repeat in StructuredProperty.
 - Use a unique 'meaning' for LocalStructuredProperty.
 - Keys for Context.memcache_*() calls can now be unicode.
 - Issue 181: Projection queries.

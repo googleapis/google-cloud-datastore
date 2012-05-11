@@ -1554,9 +1554,20 @@ class ModelTests(test_utils.NDBTest):
 
   def testCannotMultipleInMultiple(self):
     class Inner(model.Model):
-      innerval = model.StringProperty(repeated=True)
+      tags = model.StringProperty(repeated=True)
     self.assertRaises(TypeError,
                       model.StructuredProperty, Inner, repeated=True)
+    class Outer(model.Model):
+      inner = model.StructuredProperty(Inner)
+    self.assertRaises(TypeError,
+                      model.StructuredProperty, Outer, repeated=True)
+    try:
+      model.StructuredProperty(Outer, repeated=True)
+    except TypeError, err:
+      self.assertEqual(str(err),
+                       'This StructuredProperty cannot use repeated=True '
+                       'because its model class (Outer) '
+                       'contains repeated properties (directly or indirectly).')
 
   def testNullProperties(self):
     class Address(model.Model):
