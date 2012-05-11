@@ -1923,7 +1923,6 @@ class DateProperty(DateTimeProperty):
     if not isinstance(value, datetime.date):
       raise datastore_errors.BadValueError('Expected date, got %r' %
                                            (value,))
-    return value
 
   def _to_base_type(self, value):
     assert isinstance(value, datetime.date), repr(value)
