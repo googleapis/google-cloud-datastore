@@ -1,12 +1,17 @@
-Release 1.0.2 (not yet)
+Release 1.0.3 (future)
 
 - Issue 186: Added an error for indirectly nested repeat in StructuredProperty.
-- Use a unique 'meaning' for LocalStructuredProperty.
 - Keys for Context.memcache_*() calls can now be unicode.
 - Issue 181: Projection queries.
-- Issue 183: Fix mixin issue with polymodel.
 - Issue 174: New API: Context.call_on_commit().
 - Issue 182: Add optional app and namespace args to get_by_id*().
+
+----------------------------------------
+
+Release 1.0.2 (included in SDK 1.6.6 prerelease)
+
+- Use a unique 'meaning' for LocalStructuredProperty.
+- Issue 183: Fix mixin issue with polymodel.
 - Issue 179: Rollback is a flow exception.
 - Streamline the threaded test server creation.
 - Fix docstring for get_entity_group_version().
