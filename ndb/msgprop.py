@@ -71,9 +71,11 @@ class MessageProperty(model.StructuredProperty):
         raise ValueError('Message class %s does not have a field named %s' %
                          (message_type.__name__, field_name))
       if isinstance(field_descr, messages.EnumField):
-        field_prop = EnumProperty(field_descr.type, field_name)
+        field_prop = EnumProperty(field_descr.type, field_name,
+                                  repeated=field_descr.repeated)
       else:
-        field_prop = model.GenericProperty(field_name)
+        field_prop = model.GenericProperty(field_name,
+                                           repeated=field_descr.repeated)
       setattr(_MessageClass, field_name, field_prop)
     _MessageClass._fix_up_properties()
     super(MessageProperty, self).__init__(_MessageClass, name,

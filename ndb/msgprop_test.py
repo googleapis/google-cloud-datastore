@@ -160,9 +160,28 @@ class MessagePropertyTests(test_utils.NDBTest):
     self.assertEqual(Storage.query(Storage.greet.color < Color.RED).fetch(),
                      [s2])
 
+  def testRepeatedIndexedField(self):
+    class AltGreeting(messages.Message):
+      lines = messages.StringField(1, repeated=True)
+      when = messages.IntegerField(2)
+    class Store(model.Model):
+      altg = msgprop.MessageProperty(AltGreeting, indexed_fields=['lines'])
+    s1 = Store(altg=AltGreeting(lines=['foo', 'bar'], when=123))
+    s1.put()
+    s2 = Store(altg=AltGreeting(lines=['baz', 'bletch'], when=456))
+    s2.put()
+    res = Store.query(Store.altg.lines == 'foo').fetch()
+    self.assertEqual(res, [s1])
+
+  def testRepeatedIndexedFieldInRepeatedMessageProperty(self):
+    class AltGreeting(messages.Message):
+      lines = messages.StringField(1, repeated=True)
+      when = messages.IntegerField(2)
+    self.assertRaises(TypeError, msgprop.MessageProperty,
+                      AltGreeting, indexed_fields=['lines'], repeated=True)
+
+
   # TODO:
-  # - MessageProperty for Message class with repeated field, indexed
-  # - Errors for MessageProperty(X, repeated=True) if X has repeated field
   # - nested Message and index nested fields, possibly repeated
   # - Errors for nested repetitions
 
