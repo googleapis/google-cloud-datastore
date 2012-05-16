@@ -9,6 +9,12 @@ from . import msgprop
 from . import test_utils
 
 
+class Color(messages.Enum):
+  RED = 620
+  GREEN = 495
+  BLUE = 450
+
+
 SAMPLE_PB = r"""key <
   app: "_"
   path <
@@ -46,14 +52,15 @@ class MessagePropertyTests(test_utils.NDBTest):
 
   def setUp(self):
     super(MessagePropertyTests, self).setUp()
-    global Greeting, Storage
+    global Greeting
     class Greeting(messages.Message):
       text = messages.StringField(1, required=True)
       when = messages.IntegerField(2)
-    class Storage(model.Model):
-      greet = msgprop.MessageProperty(Greeting, indexed_fields=['text'])
+      color = messages.EnumField(Color, 3)
 
   def testBasics(self):
+    class Storage(model.Model):
+      greet = msgprop.MessageProperty(Greeting, indexed_fields=['text'])
     greet = Greeting(text='abc', when=123)
     store = Storage(greet=greet)
     key = store.put()
@@ -67,6 +74,8 @@ class MessagePropertyTests(test_utils.NDBTest):
     self.assertEqual(str(result._to_pb()), SAMPLE_PB)
 
   def testQuery(self):
+    class Storage(model.Model):
+      greet = msgprop.MessageProperty(Greeting, indexed_fields=['text'])
     greet1 = Greeting(text='abc', when=123)
     store1 = Storage(greet=greet1)
     store1.put()
@@ -78,6 +87,9 @@ class MessagePropertyTests(test_utils.NDBTest):
     self.assertRaises(AttributeError, lambda: Storage.greet.when)
 
   def testErrors(self):
+    class Storage(model.Model):
+      greet = msgprop.MessageProperty(Greeting, indexed_fields=['text'])
+
     # Call MessageProperty(x) where x is not a Message class.
     self.assertRaises(TypeError, msgprop.MessageProperty, Storage)
     self.assertRaises(TypeError, msgprop.MessageProperty, 42)
@@ -134,10 +146,25 @@ class MessagePropertyTests(test_utils.NDBTest):
     res = StoreSeveral.query(StoreSeveral.greets.when == 123).fetch()
     self.assertEqual(res, [s1, s2])
 
+  def testIndexedEnumField(self):
+    class Storage(model.Model):
+      greet = msgprop.MessageProperty(Greeting, indexed_fields=['color'])
+    gred = Greeting(text='red', color=Color.RED)
+    gblue = Greeting(text='blue', color=Color.BLUE)
+    s1 = Storage(greet=gred)
+    s1.put()
+    s2 = Storage(greet=gblue)
+    s2.put()
+    self.assertEqual(Storage.query(Storage.greet.color == Color.RED).fetch(),
+                     [s1])
+    self.assertEqual(Storage.query(Storage.greet.color < Color.RED).fetch(),
+                     [s2])
+
   # TODO:
   # - MessageProperty for Message class with repeated field, indexed
-  # - Enums (string or int?)
+  # - Errors for MessageProperty(X, repeated=True) if X has repeated field
   # - nested Message and index nested fields, possibly repeated
+  # - Errors for nested repetitions
 
 
 def main():

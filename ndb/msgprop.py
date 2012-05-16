@@ -12,6 +12,34 @@ protocols_registry = remote.Protocols.new_default()
 default_protocol = 'protojson'  # While protobuf is faster, json is clearer.
 
 
+class EnumProperty(model.IntegerProperty):
+  """Enums are represented in the datastore as integers.
+
+  While this is less user-friendly in the Datastore viewer, it matches
+  the representation of enums in the protobuf serialization (although
+  not in JSON), and it allows renaming enum values without requiring
+  changes to values already stored in the Datastore.
+  """
+
+  @utils.positional(3)
+  def __init__(self, enum_type, name=None, repeated=False):
+    self._enum_type = enum_type
+    super(EnumProperty, self).__init__(name, repeated=repeated)
+
+  def _validate(self, value):
+    if not isinstance(value, self._enum_type):
+      raise TypeError('Expected a %s instance, got %r instead' %
+                      (self._enum_type.__name__, value))
+
+  def _to_base_type(self, enum):
+    assert isinstance(enum, self._enum_type), repr(enum)
+    return enum.number
+
+  def _from_base_type(self, val):
+    assert isinstance(val, basestring)
+    return self._enum_type(number=val)
+
+
 class MessageProperty(model.StructuredProperty):
 
   _message_type = None
@@ -38,11 +66,14 @@ class MessageProperty(model.StructuredProperty):
       blob_ = model.BlobProperty('__%s__' % self._protocol_name)
     for field_name in self._indexed_fields:
       try:
-        message_type.field_by_name(field_name)
+        field_descr = message_type.field_by_name(field_name)
       except KeyError:
         raise ValueError('Message class %s does not have a field named %s' %
                          (message_type.__name__, field_name))
-      field_prop = model.GenericProperty(field_name)
+      if isinstance(field_descr, messages.EnumField):
+        field_prop = EnumProperty(field_descr.type, field_name)
+      else:
+        field_prop = model.GenericProperty(field_name)
       setattr(_MessageClass, field_name, field_prop)
     _MessageClass._fix_up_properties()
     super(MessageProperty, self).__init__(_MessageClass, name,
