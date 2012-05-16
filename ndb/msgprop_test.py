@@ -75,7 +75,7 @@ class MessagePropertyTests(test_utils.NDBTest):
     store2.put()
     q = Storage.query(Storage.greet.text == 'abc')
     self.assertEqual(q.fetch(), [store1])
-    self.assertRaises(AttributeError, lambda: Storage.greet.when == 123)
+    self.assertRaises(AttributeError, lambda: Storage.greet.when)
 
   def testErrors(self):
     # Call MessageProperty(x) where x is not a Message class.
@@ -95,8 +95,46 @@ class MessagePropertyTests(test_utils.NDBTest):
     # Set a MessageProperty value to a non-Message instance.
     self.assertRaises(TypeError, Storage, greet=42)
 
+  def testNothingIndexed(self):
+    class Store(model.Model):
+      gr = msgprop.MessageProperty(Greeting)
+    gr = Greeting(text='abc', when=123)
+    st = Store(gr=gr)
+    st.put()
+    self.assertEqual(Store.query().fetch(), [st])
+    self.assertRaises(AttributeError, lambda: Store.gr.when)
+
+  def testForceProtocol(self):
+    class Store(model.Model):
+      gr = msgprop.MessageProperty(Greeting, protocol='protobuf')
+    gr = Greeting(text='abc', when=123)
+    st = Store(gr=gr)
+    st.put()
+    self.assertEqual(Store.query().fetch(), [st])
+
+  def testRepeatedMessageProperty(self):
+    class StoreSeveral(model.Model):
+      greets = msgprop.MessageProperty(Greeting, repeated=True,
+                                       # Duplicate field name should be no-op.
+                                       indexed_fields=['text', 'when', 'text'])
+    ga = Greeting(text='abc', when=123)
+    gb = Greeting(text='abc', when=456)
+    gc = Greeting(text='def', when=123)
+    gd = Greeting(text='def', when=456)
+    s1 = StoreSeveral(greets=[ga, gb])
+    k1 = s1.put()
+    s2 = StoreSeveral(greets=[gc, gd])
+    k2 = s2.put()
+    res1 = k1.get()
+    self.assertEqual(res1, s1)
+    self.assertFalse(res1 is s1)
+    self.assertEqual(res1.greets, [ga, gb])
+    res = StoreSeveral.query(StoreSeveral.greets.text == 'abc').fetch()
+    self.assertEqual(res, [s1])
+    res = StoreSeveral.query(StoreSeveral.greets.when == 123).fetch()
+    self.assertEqual(res, [s1, s2])
+
   # TODO:
-  # - repeated MessageProperty
   # - MessageProperty for Message class with repeated field, indexed
   # - Enums (string or int?)
   # - nested Message and index nested fields, possibly repeated

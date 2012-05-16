@@ -20,7 +20,7 @@ class MessageProperty(model.StructuredProperty):
   _protocol_impl = None
 
   @utils.positional(3)
-  def __init__(self, message_type, name=None,
+  def __init__(self, message_type, name=None, repeated=False,
                indexed_fields=None,
                protocol=None):
     if not (isinstance(message_type, type) and
@@ -43,10 +43,10 @@ class MessageProperty(model.StructuredProperty):
         raise ValueError('Message class %s does not have a field named %s' %
                          (message_type.__name__, field_name))
       field_prop = model.GenericProperty(field_name)
-      if field_name not in _MessageClass._properties:  # Skip duplicates
-        setattr(_MessageClass, field_name, field_prop)
+      setattr(_MessageClass, field_name, field_prop)
     _MessageClass._fix_up_properties()
-    super(MessageProperty, self).__init__(_MessageClass, name)
+    super(MessageProperty, self).__init__(_MessageClass, name,
+                                          repeated=repeated)
 
   def _validate(self, msg):
     if not isinstance(msg, self._message_type):
