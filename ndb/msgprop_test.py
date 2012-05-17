@@ -7,7 +7,6 @@ from protorpc import messages
 from . import model
 from . import msgprop
 from . import test_utils
-from .google_imports import datastore_errors
 
 
 class Color(messages.Enum):
@@ -190,8 +189,8 @@ class MessagePropertyTests(test_utils.NDBTest):
     bg = BytesGreeting(data='\xff', when=123)
     st = Store(greet=bg)
     st.put()
-    self.assertRaises(datastore_errors.BadFilterError,
-                      lambda: Store.greet.data == '\xff')
+    res = Store.query(Store.greet.data == '\xff').fetch()
+    self.assertEqual(res, [st])
 
   # TODO:
   # - nested Message and index nested fields, possibly repeated

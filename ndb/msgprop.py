@@ -77,7 +77,8 @@ class MessageProperty(model.StructuredProperty):
         field_prop = EnumProperty(field_descr.type, field_name,
                                   repeated=field_descr.repeated)
       elif isinstance(field_descr, messages.BytesField):
-        field_prop = model.BlobProperty(field_name,
+        # Force indexed=True.
+        field_prop = model.BlobProperty(field_name, indexed=True,
                                         repeated=field_descr.repeated)
       else:
         field_prop = model.GenericProperty(field_name,
