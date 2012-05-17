@@ -14,77 +14,7 @@ from google.appengine.ext import testbed
 from protorpc import messages
 
 import ndb
-
-
-def make_model_class(message_type):
-  props = {}
-  for field in message_type.all_fields():
-    if isinstance(field, messages.MessageField):
-      prop = MessageProperty(field.type, field.name, repeated=field.repeated)
-    elif isinstance(field, messages.EnumField):
-      prop = EnumProperty(field.type, field.name, repeated=field.repeated)
-    elif isinstance(field, messages.BytesField):
-      prop = ndb.BlobProperty(field.name, repeated=field.repeated)
-    else:
-      # IntegerField, FloatField, BooleanField, StringField.
-      prop = ndb.GenericProperty(field.name, repeated=field.repeated)
-    props[field.name] = prop
-  return ndb.MetaModel('%s__Model' % message_type.__name__, (ndb.Model,), props)
-
-
-class EnumProperty(ndb.StringProperty):
-
-  def __init__(self, enum_type, name=None, repeated=False):
-    self._enum_type = enum_type
-    super(EnumProperty, self).__init__(name, repeated=repeated)
-
-  def _validate(self, value):
-    if not isinstance(value, self._enum_type):
-      raise TypeError('Expected a %s instance, got %r instead' %
-                      (self._enum_type.__name__, value))
-
-  def _to_base_type(self, enum):
-    assert isinstance(enum, self._enum_type), repr(enum)
-    return enum.name
-
-  def _from_base_type(self, val):
-    assert isinstance(val, basestring)
-    return self._enum_type(val)
-
-
-class MessageProperty(ndb.StructuredProperty):
-
-  def __init__(self, message_type, name=None, repeated=False):
-    self._message_type = message_type
-    modelclass = make_model_class(message_type)
-    super(MessageProperty, self).__init__(modelclass, name, repeated=repeated)
-
-  def __repr__(self):
-    return '%s(%s, %r, repeated=%r)' % (self.__class__.__name__,
-                                        self._message_type.__name__,
-                                        self._name, self._repeated)
-
-  def _validate(self, value):
-    if not isinstance(value, self._message_type):
-      raise TypeError('Expected a %s instance, got %r instead' %
-                      (self._message_type.__name__, value))
-
-  def _to_base_type(self, msg):
-    """Convert a message_type instance to a modelclass instance."""
-    assert isinstance(msg, self._message_type), repr(msg)
-    ent = self._modelclass()
-    for name in self._modelclass._properties:
-      val = getattr(msg, name)
-      setattr(ent, name, val)
-    return ent
-
-  def _from_base_type(self, ent):
-    assert isinstance(ent, self._modelclass), repr(ent)
-    msg = self._message_type()
-    for name in self._modelclass._properties:
-      val = getattr(ent, name)
-      setattr(msg, name, val)
-    return msg
+from ndb.msgprop import MessageProperty
 
 
 # Example classes from protorpc/demos/guestbook/server/
