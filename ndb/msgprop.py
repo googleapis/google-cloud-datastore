@@ -8,6 +8,7 @@ from . import utils
 
 __all__ = ['MessageProperty']
 
+# TODO: Use new methods that Rafe will send me.
 protocols_registry = remote.Protocols.new_default()
 default_protocol = 'protojson'  # While protobuf is faster, json is clearer.
 
@@ -20,6 +21,7 @@ class EnumProperty(model.IntegerProperty):
   not in JSON), and it allows renaming enum values without requiring
   changes to values already stored in the Datastore.
   """
+  # TODO: Consider making the int-vs-str decision an option.
 
   @utils.positional(3)
   def __init__(self, enum_type, name=None, repeated=False):
@@ -58,6 +60,7 @@ class MessageProperty(model.StructuredProperty):
     if indexed_fields is not None:
       # TODO: Check they are all strings naming fields
       self._indexed_fields = tuple(indexed_fields)
+    # NOTE: Otherwise the class default i.e. (), prevails.
     if protocol is None:
       protocol = default_protocol
     self._protocol_name = protocol
