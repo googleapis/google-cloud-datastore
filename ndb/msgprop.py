@@ -34,11 +34,11 @@ class EnumProperty(model.IntegerProperty):
                       (self._enum_type.__name__, value))
 
   def _to_base_type(self, enum):
-    assert isinstance(enum, self._enum_type), repr(enum)
+    assert isinstance(enum, self._enum_type), repr(enum)  # XXX
     return enum.number
 
   def _from_base_type(self, val):
-    assert isinstance(val, basestring)
+    assert isinstance(val, basestring)  # XXX
     return self._enum_type(number=val)
 
 
@@ -67,14 +67,22 @@ def _make_model_class(message_type, indexed_fields, **props):
   analyzed = _analyze_indexed_fields(indexed_fields)
   for field_name, sub_fields in analyzed.iteritems():
     assert field_name not in props  # XXX
-    field = message_type.field_by_name(field_name)
+    try:
+      field = message_type.field_by_name(field_name)
+    except KeyError:
+      raise ValueError('Message type %s has no field named %s' %
+                       (message_type.__name__, field_name))
     if isinstance(field, messages.MessageField):
-      assert sub_fields  # XXX
+      if not sub_fields:
+        raise ValueError(
+          'MessageField %s cannot be indexed, only sub-fields' % field_name)
       sub_model_class = _make_model_class(field.type, sub_fields)
       prop = model.StructuredProperty(sub_model_class, field_name,
                                       repeated=field.repeated)
     else:
-      assert sub_fields is None  # XXX
+      if sub_fields is not None:
+        raise ValueError(
+          'Unstructured field %s cannot have indexed sub-fields' % field_name)
       if isinstance(field, messages.EnumField):
         prop = EnumProperty(field.type, field_name, repeated=field.repeated)
       elif isinstance(field, messages.BytesField):
@@ -137,10 +145,13 @@ class MessageProperty(model.StructuredProperty):
 def _message_to_entity(msg, modelclass):
   ent = modelclass()
   for prop_name, prop in modelclass._properties.iteritems():
-    if prop._code_name == 'blob_':
+    if prop._code_name == 'blob_':  # TODO: Devise a cleaner test.
       continue  # That's taken care of later.
     value = getattr(msg, prop_name)
-    if isinstance(prop, model.StructuredProperty):
-      value = _message_to_entity(value, prop._modelclass)
+    if value is not None and isinstance(prop, model.StructuredProperty):
+      if prop._repeated:
+        value = [_message_to_entity(v, prop._modelclass) for v in value]
+      else:
+        value = _message_to_entity(value, prop._modelclass)
     setattr(ent, prop_name, value)
   return ent

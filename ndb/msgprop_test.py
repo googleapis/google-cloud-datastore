@@ -99,12 +99,14 @@ class MessagePropertyTests(test_utils.NDBTest):
 
     # Call MessageProperty(Greeting, indexed_fields=x) where x
     # includes invalid field names.
-    self.assertRaises(KeyError, msgprop.MessageProperty,
+    self.assertRaises(ValueError, msgprop.MessageProperty,
                       Greeting, indexed_fields=['text', 'nope'])
     self.assertRaises(TypeError, msgprop.MessageProperty,
                       Greeting, indexed_fields=['text', 42])
     self.assertRaises(TypeError, msgprop.MessageProperty,
                       Greeting, indexed_fields=['text', None])
+    self.assertRaises(ValueError, msgprop.MessageProperty,
+                      Greeting, indexed_fields=['text', 'text'])  # Duplicate.
 
     # Set a MessageProperty value to a non-Message instance.
     self.assertRaises(TypeError, Storage, greet=42)
@@ -211,13 +213,86 @@ class MessagePropertyTests(test_utils.NDBTest):
     res = Store.query(Store.outer.inner.greet.text == 'abc').fetch()
     self.assertEqual(res, [st])
 
+  def testNestedMessageFieldIsNone(self):
+    class Outer(messages.Message):
+      greeting = messages.MessageField(Greeting, 1)
+    class Store(model.Model):
+      outer = msgprop.MessageProperty(Outer, indexed_fields=['greeting.text'])
+    outer1 = Outer(greeting=None)
+    store1 = Store(outer=outer1)
+    store1.put()
+    res = Store.query(Store.outer.greeting.text == 'abc').fetch()
+    self.assertEqual(res, [])
+
+  def testRepeatedNestedMessageField(self):
+    class Outer(messages.Message):
+      greeting = messages.MessageField(Greeting, 1)
+      extra = messages.IntegerField(2)
+    class Store(model.Model):
+      outers = msgprop.MessageProperty(Outer, repeated=True,
+                                       indexed_fields=['greeting.text'])
+    gr1 = Greeting(text='abc', when=123)
+    gr2 = Greeting(text='def', when=456)
+    outer1 = Outer(greeting=gr1, extra=1)
+    outer2 = Outer(greeting=gr2, extra=2)
+    store1 = Store(outers=[outer1])
+    store1.put()
+    store2 = Store(outers=[outer2])
+    store2.put()
+    store3 = Store(outers=[outer1, outer2])
+    store3.put()
+    res = Store.query(Store.outers.greeting.text == 'abc').fetch()
+    self.assertEqual(res, [store1, store3])
+
+  def testNestedRepeatedMessageField(self):
+    class Outer(messages.Message):
+      greetings = messages.MessageField(Greeting, 1, repeated=True)
+      extra = messages.IntegerField(2)
+    class Store(model.Model):
+      outer = msgprop.MessageProperty(Outer, indexed_fields=['greetings.text',
+                                                             'extra'])
+    gr1 = Greeting(text='abc', when=123)
+    gr2 = Greeting(text='def', when=456)
+    outer1 = Outer(greetings=[gr1], extra=1)
+    outer2 = Outer(greetings=[gr2], extra=2)
+    outer3 = Outer(greetings=[gr1, gr2], extra=3)
+    store1 = Store(outer=outer1)
+    store1.put()
+    store2 = Store(outer=outer2)
+    store2.put()
+    store3 = Store(outer=outer3)
+    store3.put()
+    res = Store.query(Store.outer.greetings.text == 'abc').fetch()
+    self.assertEqual(res, [store1, store3])
+
+  def testNestedFieldErrors(self):
+    class Outer(messages.Message):
+      greetings = messages.MessageField(Greeting, 1, repeated=True)
+      extra = messages.IntegerField(2)
+    # Parent/child conflicts.
+    self.assertRaises(ValueError, msgprop.MessageProperty,
+                      Outer, indexed_fields=['greetings.text', 'greetings'])
+    self.assertRaises(ValueError, msgprop.MessageProperty,
+                      Outer, indexed_fields=['greetings', 'greetings.text'])
+    # Duplicate inner field.
+    self.assertRaises(ValueError, msgprop.MessageProperty,
+                      Outer, indexed_fields=['greetings.text',
+                                             'greetings.text'])
+    # Can't index MessageField.
+    self.assertRaises(ValueError, msgprop.MessageProperty,
+                      Outer, indexed_fields=['greetings'])
+    # Can't specify subfields for non-MessageField.
+    self.assertRaises(ValueError, msgprop.MessageProperty,
+                      Outer, indexed_fields=['extra.foobar'])
+    # Non-existent subfield.
+    self.assertRaises(ValueError, msgprop.MessageProperty,
+                      Outer, indexed_fields=['greetings.foobar'])
+
   # TODO:
-  # - nested Message repeated
   # - errors for nested repetitions
-  # - test errors for duplicate field names
   # - explicit tests for EnumProperty
-  # - remove asserts from msgprop.py
-  # - use protorpc from SDK
+  # - remove the last few asserts from msgprop.py
+  # - elaborate docstrings
   # - code review
 
 
