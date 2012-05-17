@@ -97,11 +97,11 @@ class MessagePropertyTests(test_utils.NDBTest):
 
     # Call MessageProperty(Greeting, indexed_fields=x) where x
     # includes invalid field names.
-    self.assertRaises(ValueError, msgprop.MessageProperty,
+    self.assertRaises(KeyError, msgprop.MessageProperty,
                       Greeting, indexed_fields=['text', 'nope'])
-    self.assertRaises(ValueError, msgprop.MessageProperty,
+    self.assertRaises(TypeError, msgprop.MessageProperty,
                       Greeting, indexed_fields=['text', 42])
-    self.assertRaises(ValueError, msgprop.MessageProperty,
+    self.assertRaises(TypeError, msgprop.MessageProperty,
                       Greeting, indexed_fields=['text', None])
 
     # Set a MessageProperty value to a non-Message instance.
@@ -127,8 +127,7 @@ class MessagePropertyTests(test_utils.NDBTest):
   def testRepeatedMessageProperty(self):
     class StoreSeveral(model.Model):
       greets = msgprop.MessageProperty(Greeting, repeated=True,
-                                       # Duplicate field name should be no-op.
-                                       indexed_fields=['text', 'when', 'text'])
+                                       indexed_fields=['text', 'when'])
     ga = Greeting(text='abc', when=123)
     gb = Greeting(text='abc', when=456)
     gc = Greeting(text='def', when=123)
@@ -192,9 +191,34 @@ class MessagePropertyTests(test_utils.NDBTest):
     res = Store.query(Store.greet.data == '\xff').fetch()
     self.assertEqual(res, [st])
 
+  def testNestedMessageField(self):
+    class Inner(messages.Message):
+      count = messages.IntegerField(1)
+      greet = messages.MessageField(Greeting, 2)
+    class Outer(messages.Message):
+      inner = messages.MessageField(Inner, 1)
+      extra = messages.StringField(2)
+    class Store(model.Model):
+      outer = msgprop.MessageProperty(Outer,
+                                      indexed_fields=['inner.greet.text'])
+    greet = Greeting(text='abc', when=123)
+    inner = Inner(count=42, greet=greet)
+    outer = Outer(inner=inner)
+    st = Store(outer=outer)
+    st.put()
+    res = Store.query(Store.outer.inner.greet.text == 'abc').fetch()
+    self.assertEqual(res, [st])
+
   # TODO:
-  # - nested Message and index nested fields, possibly repeated
-  # - Errors for nested repetitions
+  # - nested Message repeated
+  # - errors for nested repetitions
+  # - test errors for duplicate field names
+  # - explicit tests for EnumProperty
+  # - configure __all__ test
+  # - remove asserts from msgprop.py
+  # - rewrite toplevel msgprop.py to use this, delete msgp.py
+  # - use protorpc from SDK
+  # - code review
 
 
 def main():

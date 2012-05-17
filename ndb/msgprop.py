@@ -42,6 +42,101 @@ class EnumProperty(model.IntegerProperty):
     return self._enum_type(number=val)
 
 
+def _analyze_indexed_fields(indexed_fields):
+  result = {}
+  for field_name in indexed_fields:
+    if not isinstance(field_name, basestring):
+      raise TypeError('Field names must be strings; got %r' % (field_name,))
+    if '.' not in field_name:
+      if field_name in result:
+        raise ValueError('Duplicate field name %s' % field_name)
+      result[field_name] = None
+    else:
+      head, tail = field_name.split('.', 1)
+      if head not in result:
+        result[head] = [tail]
+      elif result[head] is None:
+        raise ValueError('Field name %s conflicts with ancestor %s' %
+                         (field_name, head))
+      else:
+        result[head].append(tail)
+  for head, tails in result.iteritems():
+    if tails is not None:
+      result[head] = _analyze_indexed_fields(tails)
+  return result
+
+
+def _make_model_class(message_type, analyzed, extra_props=None):
+  props = {}
+  if extra_props is not None:
+    props.update(extra_props)
+  for field_name, sub_analyzed in analyzed.iteritems():
+    assert field_name not in props  # XXX
+    field = message_type.field_by_name(field_name)
+    if isinstance(field, messages.MessageField):
+      assert sub_analyzed  # XXX
+      sub_model_class = _make_model_class(field.type, sub_analyzed)
+      prop = model.StructuredProperty(sub_model_class, field_name,
+                                      repeated=field.repeated)
+    elif isinstance(field, messages.EnumField):
+      prop = EnumProperty(field.type, field_name, repeated=field.repeated)
+    elif isinstance(field, messages.BytesField):
+      prop = model.BlobProperty(field_name,
+                                repeated=field.repeated, indexed=True)
+    else:
+      # IntegerField, FloatField, BooleanField, StringField.
+      prop = model.GenericProperty(field_name, repeated=field.repeated)
+    props[field_name] = prop
+  return model.MetaModel('_%s__Model' % message_type.__name__,
+                         (model.Model,), props)
+
+
+def _alt_analyze_indexed_fields(indexed_fields):
+  result = {}
+  for field_name in indexed_fields:
+    if not isinstance(field_name, basestring):
+      raise TypeError('Field names must be strings; got %r' % (field_name,))
+    if '.' not in field_name:
+      if field_name in result:
+        raise ValueError('Duplicate field name %s' % field_name)
+      result[field_name] = None
+    else:
+      head, tail = field_name.split('.', 1)
+      if head not in result:
+        result[head] = [tail]
+      elif result[head] is None:
+        raise ValueError('Field name %s conflicts with ancestor %s' %
+                         (field_name, head))
+      else:
+        result[head].append(tail)
+  return result
+
+
+def _alt_make_model_class(message_type, indexed_fields, **props):
+  analyzed = _alt_analyze_indexed_fields(indexed_fields)
+  for field_name, sub_fields in analyzed.iteritems():
+    assert field_name not in props  # XXX
+    field = message_type.field_by_name(field_name)
+    if isinstance(field, messages.MessageField):
+      assert sub_fields  # XXX
+      sub_model_class = _alt_make_model_class(field.type, sub_fields)
+      prop = model.StructuredProperty(sub_model_class, field_name,
+                                      repeated=field.repeated)
+    else:
+      assert sub_fields is None
+      if isinstance(field, messages.EnumField):
+        prop = EnumProperty(field.type, field_name, repeated=field.repeated)
+      elif isinstance(field, messages.BytesField):
+        prop = model.BlobProperty(field_name,
+                                  repeated=field.repeated, indexed=True)
+      else:
+        # IntegerField, FloatField, BooleanField, StringField.
+        prop = model.GenericProperty(field_name, repeated=field.repeated)
+    props[field_name] = prop
+  return model.MetaModel('_%s__Model' % message_type.__name__,
+                         (model.Model,), props)
+
+
 class MessageProperty(model.StructuredProperty):
 
   _message_type = None
@@ -65,27 +160,10 @@ class MessageProperty(model.StructuredProperty):
       protocol = default_protocol
     self._protocol_name = protocol
     self._protocol_impl = protocols_registry.lookup_by_name(protocol)
-    class _MessageClass(model.Expando):
-      blob_ = model.BlobProperty('__%s__' % self._protocol_name)
-    for field_name in self._indexed_fields:
-      try:
-        field_descr = message_type.field_by_name(field_name)
-      except KeyError:
-        raise ValueError('Message class %s does not have a field named %s' %
-                         (message_type.__name__, field_name))
-      if isinstance(field_descr, messages.EnumField):
-        field_prop = EnumProperty(field_descr.type, field_name,
-                                  repeated=field_descr.repeated)
-      elif isinstance(field_descr, messages.BytesField):
-        # Force indexed=True.
-        field_prop = model.BlobProperty(field_name, indexed=True,
-                                        repeated=field_descr.repeated)
-      else:
-        field_prop = model.GenericProperty(field_name,
-                                           repeated=field_descr.repeated)
-      setattr(_MessageClass, field_name, field_prop)
-    _MessageClass._fix_up_properties()
-    super(MessageProperty, self).__init__(_MessageClass, name,
+    blob_prop = model.BlobProperty('__%s__' % self._protocol_name)
+    message_class = _alt_make_model_class(message_type, self._indexed_fields,
+                                          blob_=blob_prop)
+    super(MessageProperty, self).__init__(message_class, name,
                                           repeated=repeated)
 
   def _validate(self, msg):
@@ -95,13 +173,23 @@ class MessageProperty(model.StructuredProperty):
                       self._code_name or self._name)
 
   def _to_base_type(self, msg):
-    ent = self._modelclass()
+    ent = _message_to_entity(msg, self._modelclass)
     ent.blob_ = self._protocol_impl.encode_message(msg)
-    for field_name in self._indexed_fields:
-      field_value = getattr(msg, field_name)
-      setattr(ent, field_name, field_value)
     return ent
 
   def _from_base_type(self, ent):
     msg = self._protocol_impl.decode_message(self._message_type, ent.blob_)
     return msg
+
+
+# Helper for _to_base_type().
+def _message_to_entity(msg, modelclass):
+  ent = modelclass()
+  for prop_name, prop in modelclass._properties.iteritems():
+    if prop._code_name == 'blob_':
+      continue  # That's taken care of later.
+    value = getattr(msg, prop_name)
+    if isinstance(prop, model.StructuredProperty):
+      value = _message_to_entity(value, prop._modelclass)
+    setattr(ent, prop_name, value)
+  return ent
