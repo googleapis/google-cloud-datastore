@@ -50,6 +50,8 @@ raw_property <
 
 class MessagePropertyTests(test_utils.NDBTest):
 
+  the_module = msgprop
+
   def setUp(self):
     super(MessagePropertyTests, self).setUp()
     global Greeting
@@ -214,9 +216,7 @@ class MessagePropertyTests(test_utils.NDBTest):
   # - errors for nested repetitions
   # - test errors for duplicate field names
   # - explicit tests for EnumProperty
-  # - configure __all__ test
   # - remove asserts from msgprop.py
-  # - rewrite toplevel msgprop.py to use this, delete msgp.py
   # - use protorpc from SDK
   # - code review
 

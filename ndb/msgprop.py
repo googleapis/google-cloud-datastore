@@ -6,11 +6,11 @@ from protorpc import remote
 from . import model
 from . import utils
 
-__all__ = ['MessageProperty']
+__all__ = ['MessageProperty', 'EnumProperty']
 
 # TODO: Use new methods that Rafe will send me.
-protocols_registry = remote.Protocols.new_default()
-default_protocol = 'protojson'  # While protobuf is faster, json is clearer.
+_protocols_registry = remote.Protocols.new_default()
+_default_protocol = 'protojson'  # While protobuf is faster, json is clearer.
 
 
 class EnumProperty(model.IntegerProperty):
@@ -60,70 +60,21 @@ def _analyze_indexed_fields(indexed_fields):
                          (field_name, head))
       else:
         result[head].append(tail)
-  for head, tails in result.iteritems():
-    if tails is not None:
-      result[head] = _analyze_indexed_fields(tails)
   return result
 
 
-def _make_model_class(message_type, analyzed, extra_props=None):
-  props = {}
-  if extra_props is not None:
-    props.update(extra_props)
-  for field_name, sub_analyzed in analyzed.iteritems():
-    assert field_name not in props  # XXX
-    field = message_type.field_by_name(field_name)
-    if isinstance(field, messages.MessageField):
-      assert sub_analyzed  # XXX
-      sub_model_class = _make_model_class(field.type, sub_analyzed)
-      prop = model.StructuredProperty(sub_model_class, field_name,
-                                      repeated=field.repeated)
-    elif isinstance(field, messages.EnumField):
-      prop = EnumProperty(field.type, field_name, repeated=field.repeated)
-    elif isinstance(field, messages.BytesField):
-      prop = model.BlobProperty(field_name,
-                                repeated=field.repeated, indexed=True)
-    else:
-      # IntegerField, FloatField, BooleanField, StringField.
-      prop = model.GenericProperty(field_name, repeated=field.repeated)
-    props[field_name] = prop
-  return model.MetaModel('_%s__Model' % message_type.__name__,
-                         (model.Model,), props)
-
-
-def _alt_analyze_indexed_fields(indexed_fields):
-  result = {}
-  for field_name in indexed_fields:
-    if not isinstance(field_name, basestring):
-      raise TypeError('Field names must be strings; got %r' % (field_name,))
-    if '.' not in field_name:
-      if field_name in result:
-        raise ValueError('Duplicate field name %s' % field_name)
-      result[field_name] = None
-    else:
-      head, tail = field_name.split('.', 1)
-      if head not in result:
-        result[head] = [tail]
-      elif result[head] is None:
-        raise ValueError('Field name %s conflicts with ancestor %s' %
-                         (field_name, head))
-      else:
-        result[head].append(tail)
-  return result
-
-
-def _alt_make_model_class(message_type, indexed_fields, **props):
-  analyzed = _alt_analyze_indexed_fields(indexed_fields)
+def _make_model_class(message_type, indexed_fields, **props):
+  analyzed = _analyze_indexed_fields(indexed_fields)
   for field_name, sub_fields in analyzed.iteritems():
     assert field_name not in props  # XXX
     field = message_type.field_by_name(field_name)
     if isinstance(field, messages.MessageField):
       assert sub_fields  # XXX
-      sub_model_class = _alt_make_model_class(field.type, sub_fields)
+      sub_model_class = _make_model_class(field.type, sub_fields)
       prop = model.StructuredProperty(sub_model_class, field_name,
                                       repeated=field.repeated)
     else:
-      assert sub_fields is None
+      assert sub_fields is None  # XXX
       if isinstance(field, messages.EnumField):
         prop = EnumProperty(field.type, field_name, repeated=field.repeated)
       elif isinstance(field, messages.BytesField):
@@ -157,12 +108,12 @@ class MessageProperty(model.StructuredProperty):
       self._indexed_fields = tuple(indexed_fields)
     # NOTE: Otherwise the class default i.e. (), prevails.
     if protocol is None:
-      protocol = default_protocol
+      protocol = _default_protocol
     self._protocol_name = protocol
-    self._protocol_impl = protocols_registry.lookup_by_name(protocol)
+    self._protocol_impl = _protocols_registry.lookup_by_name(protocol)
     blob_prop = model.BlobProperty('__%s__' % self._protocol_name)
-    message_class = _alt_make_model_class(message_type, self._indexed_fields,
-                                          blob_=blob_prop)
+    message_class = _make_model_class(message_type, self._indexed_fields,
+                                      blob_=blob_prop)
     super(MessageProperty, self).__init__(message_class, name,
                                           repeated=repeated)
 
