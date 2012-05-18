@@ -288,8 +288,22 @@ class MessagePropertyTests(test_utils.NDBTest):
     self.assertRaises(ValueError, msgprop.MessageProperty,
                       Outer, indexed_fields=['greetings.foobar'])
 
+  def testDoubleNestedRepeatErrors(self):
+    class Inner(messages.Message):
+      greets = messages.MessageField(Greeting, 1, repeated=True)
+    class Outer(messages.Message):
+      inner = messages.MessageField(Inner, 1)
+      inners = messages.MessageField(Inner, 2, repeated=True)
+    msgprop.MessageProperty(Inner, repeated=True)  # Should not fail
+    msgprop.MessageProperty(Outer, repeated=True)  # Should not fail
+    self.assertRaises(TypeError, msgprop.MessageProperty, Inner,
+                      repeated=True, indexed_fields=['greets.text'])
+    self.assertRaises(TypeError, msgprop.MessageProperty, Outer,
+                      indexed_fields=['inners.greets.text'])
+    self.assertRaises(TypeError, msgprop.MessageProperty, Outer,
+                       repeated=True, indexed_fields=['inner.greets.text'])
+
   # TODO:
-  # - errors for nested repetitions
   # - explicit tests for EnumProperty
   # - remove the last few asserts from msgprop.py
   # - elaborate docstrings
