@@ -28,14 +28,15 @@ class EnumProperty(model.IntegerProperty):
   # TODO: Consider making the int-vs-str decision an option.
 
   @utils.positional(3)
-  def __init__(self, enum_type, name=None, repeated=False,
-               default=None, choices=None, required=False):
+  def __init__(self, enum_type, name=None, repeated=None, indexed=None,
+               default=None, choices=None, required=None):
     self._enum_type = enum_type
     if default is not None:
       self._validate(default)
     if choices is not None:
       map(self._validate, choices)
-    super(EnumProperty, self).__init__(name, repeated=repeated, default=default,
+    super(EnumProperty, self).__init__(name, repeated=repeated,
+                                       indexed=indexed, default=default,
                                        choices=choices, required=required)
 
   def _validate(self, value):
@@ -115,8 +116,7 @@ class MessageProperty(model.StructuredProperty):
 
   @utils.positional(3)
   def __init__(self, message_type, name=None, repeated=False,
-               indexed_fields=None,
-               protocol=None):
+               indexed_fields=None, protocol=None):
     if not (isinstance(message_type, type) and
             issubclass(message_type, messages.Message)):
       raise TypeError('MessageProperty argument must be a Message subclass')

@@ -317,6 +317,12 @@ class MsgPropTests(test_utils.NDBTest):
     self.assertEqual(res, [foo1])
     res = Foo.query(Foo.colors == Color.RED).fetch()
     self.assertEqual(res, [foo1, foo2])
+    class FooBar(model.Model):
+      color = msgprop.EnumProperty(Color, indexed=False)
+    foobar1 = FooBar(color=Color.RED)
+    foobar1.put()
+    self.assertRaises(datastore_errors.BadFilterError,
+                      lambda: FooBar.color == Color.RED)
     # Test some errors.
     self.assertRaises(datastore_errors.BadValueError,
                       Foo, color=Color.BLUE)  # Not in choices
