@@ -28,16 +28,14 @@ class EnumProperty(model.IntegerProperty):
   # TODO: Consider making the int-vs-str decision an option.
 
   @utils.positional(3)
-  def __init__(self, enum_type, name=None, repeated=None, indexed=None,
-               default=None, choices=None, required=None):
+  def __init__(self, enum_type, name=None, default=None, choices=None, **kwds):
     self._enum_type = enum_type
     if default is not None:
       self._validate(default)
     if choices is not None:
       map(self._validate, choices)
-    super(EnumProperty, self).__init__(name, repeated=repeated,
-                                       indexed=indexed, default=default,
-                                       choices=choices, required=required)
+    super(EnumProperty, self).__init__(name, default=default,
+                                       choices=choices, **kwds)
 
   def _validate(self, value):
     if not isinstance(value, self._enum_type):
@@ -115,8 +113,8 @@ class MessageProperty(model.StructuredProperty):
   _protocol_impl = None
 
   @utils.positional(3)
-  def __init__(self, message_type, name=None, repeated=False,
-               indexed_fields=None, protocol=None):
+  def __init__(self, message_type, name=None,
+               indexed_fields=None, protocol=None, **kwds):
     if not (isinstance(message_type, type) and
             issubclass(message_type, messages.Message)):
       raise TypeError('MessageProperty argument must be a Message subclass')
@@ -132,8 +130,7 @@ class MessageProperty(model.StructuredProperty):
     blob_prop = model.BlobProperty('__%s__' % self._protocol_name)
     message_class = _make_model_class(message_type, self._indexed_fields,
                                       blob_=blob_prop)
-    super(MessageProperty, self).__init__(message_class, name,
-                                          repeated=repeated)
+    super(MessageProperty, self).__init__(message_class, name, **kwds)
 
   def _validate(self, msg):
     if not isinstance(msg, self._message_type):

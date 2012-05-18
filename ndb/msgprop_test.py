@@ -63,7 +63,9 @@ class MsgPropTests(test_utils.NDBTest):
 
   def testBasics(self):
     class Storage(model.Model):
-      greet = msgprop.MessageProperty(Greeting, indexed_fields=['text'])
+      greet = msgprop.MessageProperty(Greeting, indexed_fields=['text'],
+                                      verbose_name='The Greeting')
+    self.assertEqual(Storage.greet._verbose_name, 'The Greeting')
     greet = Greeting(text='abc', when=123)
     store = Storage(greet=greet)
     key = store.put()
@@ -75,6 +77,18 @@ class MsgPropTests(test_utils.NDBTest):
     self.assertEqual(result,
                      Storage(greet=Greeting(when=123, text='abc'), key=key))
     self.assertEqual(str(result._to_pb()), SAMPLE_PB)
+
+  def testValidator(self):
+    logs = []
+    def validator(prop, value):
+      logs.append((prop, value))
+      return value
+    class Storage(model.Model):
+      greet = msgprop.MessageProperty(Greeting, indexed_fields=['text'],
+                                      validator=validator)
+    greet = Greeting(text='abc', when=123)
+    store = Storage(greet=greet)
+    self.assertEqual(logs, [(Storage.greet, greet)])
 
   def testQuery(self):
     class Storage(model.Model):
@@ -318,8 +332,12 @@ class MsgPropTests(test_utils.NDBTest):
     res = Foo.query(Foo.colors == Color.RED).fetch()
     self.assertEqual(res, [foo1, foo2])
     class FooBar(model.Model):
-      color = msgprop.EnumProperty(Color, indexed=False)
+      color = msgprop.EnumProperty(Color, indexed=False,
+                                   verbose_name='The Color String',
+                                   validator=lambda prop, val: Color.BLUE)
+    self.assertEqual(FooBar.color._verbose_name, 'The Color String')
     foobar1 = FooBar(color=Color.RED)
+    self.assertEqual(foobar1.color, Color.BLUE)  # Tests the validator
     foobar1.put()
     self.assertRaises(datastore_errors.BadFilterError,
                       lambda: FooBar.color == Color.RED)
