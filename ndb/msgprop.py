@@ -27,7 +27,13 @@ class EnumProperty(model.IntegerProperty):
   """
   # TODO: Consider making the int-vs-str decision an option.
 
-  @utils.positional(3)
+  _enum_type = None
+
+  # Insert enum_type as an initial positional argument.
+  _attributes = ['_enum_type'] + model.IntegerProperty._attributes
+  _positional = 1 + model.IntegerProperty._positional
+
+  @utils.positional(1 + _positional)
   def __init__(self, enum_type, name=None, default=None, choices=None, **kwds):
     self._enum_type = enum_type
     if default is not None:
@@ -112,7 +118,11 @@ class MessageProperty(model.StructuredProperty):
   _protocol_name = None
   _protocol_impl = None
 
-  @utils.positional(3)
+  # *Replace* first positional argument with _message_type, since the
+  # _modelclass attribute is synthetic.
+  _attributes = ['_message_type'] + model.StructuredProperty._attributes[1:]
+
+  @utils.positional(1 + model.StructuredProperty._positional)
   def __init__(self, message_type, name=None,
                indexed_fields=None, protocol=None, **kwds):
     if not (isinstance(message_type, type) and
