@@ -1,5 +1,6 @@
 Release 1.0.3 (future)
 
+- Issue 185: Added msgprop module with MessageProperty for ProtoRPC.
 - Issue 186: Added an error for indirectly nested repeat in StructuredProperty.
 - Keys for Context.memcache_*() calls can now be unicode.
 - Issue 181: Projection queries.
