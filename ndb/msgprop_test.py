@@ -7,6 +7,7 @@ from protorpc import messages
 from . import model
 from . import msgprop
 from . import test_utils
+from .google_imports import datastore_errors
 
 
 class Color(messages.Enum):
@@ -48,12 +49,12 @@ raw_property <
 """
 
 
-class MessagePropertyTests(test_utils.NDBTest):
+class MsgPropTests(test_utils.NDBTest):
 
   the_module = msgprop
 
   def setUp(self):
-    super(MessagePropertyTests, self).setUp()
+    super(MsgPropTests, self).setUp()
     global Greeting
     class Greeting(messages.Message):
       text = messages.StringField(1, required=True)
@@ -303,11 +304,42 @@ class MessagePropertyTests(test_utils.NDBTest):
     self.assertRaises(TypeError, msgprop.MessageProperty, Outer,
                        repeated=True, indexed_fields=['inner.greets.text'])
 
-  # TODO:
-  # - explicit tests for EnumProperty
-  # - remove the last few asserts from msgprop.py
-  # - elaborate docstrings
-  # - code review
+  def testEnumProperty(self):
+    class Foo(model.Model):
+      color = msgprop.EnumProperty(Color, default=Color.RED,
+                                   choices=[Color.RED, Color.GREEN])
+      colors = msgprop.EnumProperty(Color, repeated=True)
+    foo1 = Foo(colors=[Color.RED, Color.GREEN])
+    foo1.put()
+    foo2 = Foo(color=Color.GREEN, colors=[Color.RED, Color.BLUE])
+    foo2.put()
+    res = Foo.query(Foo.color == Color.RED).fetch()
+    self.assertEqual(res, [foo1])
+    res = Foo.query(Foo.colors == Color.RED).fetch()
+    self.assertEqual(res, [foo1, foo2])
+    # Test some errors.
+    self.assertRaises(datastore_errors.BadValueError,
+                      Foo, color=Color.BLUE)  # Not in choices
+    self.assertRaises(TypeError, Foo, color='RED')  # Not an enum
+    self.assertRaises(TypeError, Foo, color=620)  # Not an enum
+    # Invalid default
+    self.assertRaises(TypeError, msgprop.EnumProperty, Color, default=42)
+    # Invalid choice
+    self.assertRaises(TypeError, msgprop.EnumProperty, Color, choices=[42])
+    foo2.colors.append(42)
+    self.ExpectWarnings()
+    self.assertRaises(TypeError, foo2.put)  # Late-stage validation
+    class Bar(model.Model):
+      color = msgprop.EnumProperty(Color, required=True)
+    bar1 = Bar()
+    self.assertRaises(datastore_errors.BadValueError, bar1.put)  # Missing value
+
+  def testPropertyNameConflict(self):
+    class MyMsg(messages.Message):
+      blob_ = messages.StringField(1)
+    msgprop.MessageProperty(MyMsg)  # Should be okay
+    self.assertRaises(ValueError, msgprop.MessageProperty,
+                      MyMsg, indexed_fields=['blob_'])
 
 
 def main():

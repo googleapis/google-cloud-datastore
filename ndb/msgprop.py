@@ -1,5 +1,9 @@
 """MessageProperty -- a property storing ProtoRPC Message objects."""
 
+# TODO:
+# - elaborate docstrings
+# - code review
+
 from protorpc import messages
 from protorpc import remote
 
@@ -8,7 +12,7 @@ from . import utils
 
 __all__ = ['MessageProperty', 'EnumProperty']
 
-# TODO: Use new methods that Rafe will send me.
+# TODO: Use ProtoRPC's global Protocols instance once it is in the SDK.
 _protocols_registry = remote.Protocols.new_default()
 _default_protocol = 'protojson'  # While protobuf is faster, json is clearer.
 
@@ -24,9 +28,15 @@ class EnumProperty(model.IntegerProperty):
   # TODO: Consider making the int-vs-str decision an option.
 
   @utils.positional(3)
-  def __init__(self, enum_type, name=None, repeated=False):
+  def __init__(self, enum_type, name=None, repeated=False,
+               default=None, choices=None, required=False):
     self._enum_type = enum_type
-    super(EnumProperty, self).__init__(name, repeated=repeated)
+    if default is not None:
+      self._validate(default)
+    if choices is not None:
+      map(self._validate, choices)
+    super(EnumProperty, self).__init__(name, repeated=repeated, default=default,
+                                       choices=choices, required=required)
 
   def _validate(self, value):
     if not isinstance(value, self._enum_type):
@@ -34,12 +44,10 @@ class EnumProperty(model.IntegerProperty):
                       (self._enum_type.__name__, value))
 
   def _to_base_type(self, enum):
-    assert isinstance(enum, self._enum_type), repr(enum)  # XXX
     return enum.number
 
   def _from_base_type(self, val):
-    assert isinstance(val, basestring)  # XXX
-    return self._enum_type(number=val)
+    return self._enum_type(val)
 
 
 def _analyze_indexed_fields(indexed_fields):
@@ -66,7 +74,9 @@ def _analyze_indexed_fields(indexed_fields):
 def _make_model_class(message_type, indexed_fields, **props):
   analyzed = _analyze_indexed_fields(indexed_fields)
   for field_name, sub_fields in analyzed.iteritems():
-    assert field_name not in props  # XXX
+    if field_name in props:
+      # TODO: Solve this without reserving 'blob_'.
+      raise ValueError('field name %s is reserved' % field_name)
     try:
       field = message_type.field_by_name(field_name)
     except KeyError:
