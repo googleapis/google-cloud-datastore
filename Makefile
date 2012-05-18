@@ -7,7 +7,7 @@
 
 FLAGS=
 GAE=	/usr/local/google_appengine
-GAEPATH=$(GAE):$(GAE)/lib/yaml/lib:$(GAE)/lib/webob:$(GAE)/lib/fancy_urllib:$(GAE)/lib/simplejson
+GAEPATH=$(GAE):$(GAE)/lib/yaml/lib:$(GAE)/lib/webob:$(GAE)/lib/fancy_urllib:$(GAE)/lib/simplejson:$(GAE)/lib/protorpc
 TESTS=	`find ndb -name [a-z]\*_test.py ! -name ndb_test.py`
 NONTESTS=`find ndb -name [a-z]\*.py ! -name \*_test.py`
 PORT=	8080
@@ -30,10 +30,13 @@ c cov cove cover coverage:
 	$(COVERAGE) report -m $(NONTESTS)
 	echo "open file://`pwd`/htmlcov/index.html"
 
-test: key_test model_test polymodel_test query_test metadata_test stats_test rpc_test eventloop_test tasklets_test context_test ps_test blobstore_test
+test: key_test msgprop_test model_test polymodel_test query_test metadata_test stats_test rpc_test eventloop_test tasklets_test context_test ps_test blobstore_test
 
 key_test:
 	PYTHONPATH=$(GAEPATH):. $(PYTHON) -m ndb.key_test $(FLAGS)
+
+msgprop_test:
+	PYTHONPATH=$(GAEPATH):. $(PYTHON) -m ndb.msgprop_test $(FLAGS)
 
 model_test:
 	PYTHONPATH=$(GAEPATH):. $(PYTHON) -m ndb.model_test $(FLAGS)
