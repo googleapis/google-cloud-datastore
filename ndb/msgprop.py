@@ -14,7 +14,7 @@ __all__ = ['MessageProperty', 'EnumProperty']
 
 # TODO: Use ProtoRPC's global Protocols instance once it is in the SDK.
 _protocols_registry = remote.Protocols.new_default()
-_default_protocol = 'protojson'  # While protobuf is faster, json is clearer.
+_default_protocol = 'protobuf'
 
 
 class EnumProperty(model.IntegerProperty):
@@ -154,7 +154,22 @@ class MessageProperty(model.StructuredProperty):
     return ent
 
   def _from_base_type(self, ent):
-    msg = self._protocol_impl.decode_message(self._message_type, ent.blob_)
+    blob = ent.blob_
+    if blob is not None:
+      protocol = self._protocol_impl
+    else:
+      protocol = None
+      for name in _protocols_registry.names:
+        key = '__%s__' % name
+        if key in ent._values:
+          blob = ent._values[key]
+          if isinstance(blob, model._BaseValue):
+            blob = blob.b_val
+          protocol = _protocols_registry.lookup_by_name(name)
+          break
+    if blob is None or protocol is None:
+      return None
+    msg = protocol.decode_message(self._message_type, blob)
     return msg
 
 

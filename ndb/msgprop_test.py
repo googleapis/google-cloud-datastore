@@ -40,9 +40,9 @@ property <
 >
 raw_property <
   meaning: 14
-  name: "greet.__protojson__"
+  name: "greet.__protobuf__"
   value <
-    stringValue: "{\"text\": \"abc\", \"when\": 123}"
+    stringValue: "\n\003abc\020{"
   >
   multiple: false
 >
@@ -375,6 +375,17 @@ class MsgPropTests(test_utils.NDBTest):
     msgprop.MessageProperty(MyMsg)  # Should be okay
     self.assertRaises(ValueError, msgprop.MessageProperty,
                       MyMsg, indexed_fields=['blob_'])
+
+  def testProtocolChange(self):
+    class Storage(model.Model):
+      greeting = msgprop.MessageProperty(Greeting, protocol='protobuf')
+    greet1 = Greeting(text='abc', when=123)
+    store1 = Storage(greeting=greet1)
+    key1 = store1.put()
+    class Storage(model.Model):
+      greeting = msgprop.MessageProperty(Greeting, protocol='protojson')
+    store2 = key1.get()
+    self.assertEqual(store2.greeting, greet1)
 
 
 def main():

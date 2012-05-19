@@ -1,10 +1,6 @@
 """Prototype MessageProperty for ProtoRPC.
 
 Run this using 'make x CUSTOM=msgprop'.
-
-This requires copying (or symlinking) protorpc/python/protorpc into
-the appengine-ndb-experiment directory (making ndb and the inner
-protorpc directory siblings).
 """
 
 import time
