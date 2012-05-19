@@ -387,6 +387,23 @@ class MsgPropTests(test_utils.NDBTest):
     store2 = key1.get()
     self.assertEqual(store2.greeting, greet1)
 
+  def testProjectionQueries(self):
+    class Wrapper(messages.Message):
+      greet = messages.MessageField(Greeting, 1)
+    class Storage(model.Model):
+      wrap = msgprop.MessageProperty(Wrapper, indexed_fields=['greet.text',
+                                                              'greet.when'])
+    gr1 = Greeting(text='abc', when=123)
+    wr1 = Wrapper(greet=gr1)
+    st1 = Storage(wrap=wr1)
+    st1.put()
+    res1 = Storage.query().get(projection=['wrap.greet.text',
+                                           Storage.wrap.greet.when])
+    self.assertNotEqual(res1, st1)
+    self.assertEqual(res1.wrap, st1.wrap)
+    res2 = Storage.query().get(projection=['wrap.greet.text'])
+    self.assertEqual(res2.wrap, Wrapper(greet=Greeting(text='abc')))
+
 
 def main():
   unittest.main()

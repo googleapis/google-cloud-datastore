@@ -154,10 +154,15 @@ class MessageProperty(model.StructuredProperty):
     return ent
 
   def _from_base_type(self, ent):
+    if ent._projection:
+      # Projection query result.  Reconstitute the message from the fields.
+      return _projected_entity_to_message(ent, self._message_type)
+
     blob = ent.blob_
     if blob is not None:
       protocol = self._protocol_impl
     else:
+      # Perhaps it was written using a different protocol.
       protocol = None
       for name in _protocols_registry.names:
         key = '__%s__' % name
@@ -168,7 +173,7 @@ class MessageProperty(model.StructuredProperty):
           protocol = _protocols_registry.lookup_by_name(name)
           break
     if blob is None or protocol is None:
-      return None
+      return None  # This will reveal the underlying dummy model.
     msg = protocol.decode_message(self._message_type, blob)
     return msg
 
@@ -187,3 +192,20 @@ def _message_to_entity(msg, modelclass):
         value = _message_to_entity(value, prop._modelclass)
     setattr(ent, prop_name, value)
   return ent
+
+
+# Helper for _from_base_type().
+def _projected_entity_to_message(ent, message_type):
+  msg = message_type()
+  analyzed = _analyze_indexed_fields(ent._projection)
+  for name, sublist in analyzed.iteritems():
+    prop = ent._properties[name]
+    val = prop._get_value(ent)
+    if sublist:
+      assert isinstance(prop, model.StructuredProperty)
+      assert isinstance(val, prop._modelclass)
+      field = message_type.field_by_name(name)
+      assert isinstance(field, messages.MessageField)
+      val = _projected_entity_to_message(val, field.type)
+    setattr(msg, name, val)
+  return msg
