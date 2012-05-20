@@ -90,12 +90,21 @@ class MsgPropTests(test_utils.NDBTest):
     store = Storage(greet=greet)
     self.assertEqual(logs, [(Storage.greet, greet)])
 
-  def testRepr(self):
-    greet = msgprop.MessageProperty(Greeting, 'foo')
-    self.assertEqual(repr(greet), "MessageProperty(Greeting, 'foo')")
+  def testReprMessageProperty(self):
+    greet1 = msgprop.MessageProperty(Greeting, 'foo')
+    self.assertEqual(repr(greet1), "MessageProperty(Greeting, 'foo')")
+    greet2 = msgprop.MessageProperty(Greeting, 'foo', protocol='protojson')
+    self.assertEqual(repr(greet2),
+                     "MessageProperty(Greeting, 'foo', protocol='protojson')")
+    greet3 = msgprop.MessageProperty(Greeting, 'foo', indexed_fields=['text'])
+    self.assertEqual(
+      repr(greet3),
+      "MessageProperty(Greeting, 'foo', indexed_fields=('text',))")
     greets = msgprop.MessageProperty(Greeting, 'foo', repeated=True)
     self.assertEqual(repr(greets),
                      "MessageProperty(Greeting, 'foo', repeated=True)")
+
+  def testReprEnumProperty(self):
     color = msgprop.EnumProperty(Color, 'bar')
     self.assertEqual(repr(color), "EnumProperty(Color, 'bar')")
     colors = msgprop.EnumProperty(Color, 'bar', repeated=True)

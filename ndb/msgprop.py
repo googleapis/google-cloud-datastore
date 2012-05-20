@@ -115,12 +115,13 @@ class MessageProperty(model.StructuredProperty):
 
   _message_type = None
   _indexed_fields = ()
-  _protocol_name = None
+  _protocol = _default_protocol
   _protocol_impl = None
 
   # *Replace* first positional argument with _message_type, since the
   # _modelclass attribute is synthetic.
-  _attributes = ['_message_type'] + model.StructuredProperty._attributes[1:]
+  _attributes = (['_message_type'] + model.StructuredProperty._attributes[1:] +
+                 ['_indexed_fields', '_protocol'])
 
   @utils.positional(1 + model.StructuredProperty._positional)
   def __init__(self, message_type, name=None,
@@ -135,9 +136,9 @@ class MessageProperty(model.StructuredProperty):
     # NOTE: Otherwise the class default i.e. (), prevails.
     if protocol is None:
       protocol = _default_protocol
-    self._protocol_name = protocol
+    self._protocol = protocol
     self._protocol_impl = _protocols_registry.lookup_by_name(protocol)
-    blob_prop = model.BlobProperty('__%s__' % self._protocol_name)
+    blob_prop = model.BlobProperty('__%s__' % self._protocol)
     message_class = _make_model_class(message_type, self._indexed_fields,
                                       blob_=blob_prop)
     super(MessageProperty, self).__init__(message_class, name, **kwds)
