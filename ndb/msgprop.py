@@ -1,7 +1,116 @@
-"""MessageProperty -- a property storing ProtoRPC Message objects."""
+"""MessageProperty -- a property storing ProtoRPC Message objects.
+
+Basic usage:
+
+Let's assume you have a protorpc.Message subclass, like this:
+
+  from protorpc import messages
+
+  class Note(messages.Message):
+    text = messages.StringField(1, required=True)
+    when = messages.IntegerField(2)
+
+Now suppose you'd like to store Notes in the datastore.  Create a
+model class to hold your notes, as follows:
+
+  from google.appengine.ext import ndb
+  from google.appengine.ext.ndb import msgprop
+
+  class NoteStore(ndb.Model):
+    note = msgprop.MessageProperty(Note)
+    name = ndb.StringProperty()
+
+(The class name, 'NoteStore', and the property name, 'note', are yours
+to choose.)
+
+To store, a Note message, create a NoteStore entity and write it:
+
+  ns = NoteStore(note=my_note, name='foo')
+  key = ns.put()
+
+To later retrieve the Note, read the NoteStore entity back:
+
+  ns = key.get()
+  my_note = ns.note
+
+The MessageProperty class has many of the usual Property options:
+  - name: optional datastore name
+  - repeated: if True, stores a list of message values
+  - required: if True, the message value cannot be None
+  - default: optional default message value to store
+  - choices: optional list of allowed choices (must all be messages)
+  - validator: optional function to validate message values
+  - verbose_name: optional long name for the property
+
+However, MessageProperty does not support the 'indexed' option.
+Instead, you can specify a list of field names that will be indexed,
+like this:
+
+  class MyStore(ndb.Model):
+    author = ndb.StringProperty()
+    note = msgprop.MessageProperty(Note, indexed_fields=['text', 'when'])
+
+Now you can query for field values, like this:
+
+  stores = MyStore.query(MyStore.note.when >= 123).fetch()
+
+Note the similarity with StructuredProperty -- in fact,
+MessageProperty inherits from StructuredProperty.  The main difference
+is that StructuredProperty takes an Model subclass instead of a
+protorpc.messages.Message subclass; and StructuredProperty doesn't
+index any fields by default.
+
+It works for nested messages (using MessageField) as well:
+
+  class Notes(messages.Message):
+    notes = messages.MessageField(Note, 1, repeated=True)
+
+  class MyNotesStore(ndb.Model):
+    author = ndb.StringProperty()
+    foo = msgprop.MessageProperty(Notes,
+                                 indexed_fields=['notes.text, 'notes.when'])
+
+And given this value for indexed_fields, in this example you can also
+query for subfields:
+
+  stores = MyNoteStore.query(MyNoteStore.foo.notes.when < 123).fetch()
+
+There is also an EnumProperty, which can be used to store a
+messages.Enum value without wrapping it in a Message object.  Example:
+
+  class Color(messages.Enum):
+    RED = 620
+    GREEN = 495
+    BLUE = 450
+
+  class Part(ndb.Model):
+    name = ndb.StringProperty()
+    color = msgprop.EnumProperty(Color, required=True)
+
+  p1 = Part(name='foo', color=Color.RED)
+  key1 = p1.put()
+  ...
+  p2 = key1.get()
+  print p2.name, p2.color  # prints "foo RED"
+    
+The EnumProperty stores the value as an integer; in fact, EnumProperty
+is a subclass of IntegerProperty.  This is handy to know, since it
+implies that you can rename your enum values without having to modify
+already-stored entities, but you cannot renumber them.
+
+The EnumProperty supports the following standard options:
+  - name
+  - indexed
+  - repeated
+  - required
+  - default
+  - choices
+  - validator
+  - verbose_name
+"""
 
 # TODO:
-# - elaborate docstrings
+# - docstrings for all public classes and methods
 # - code review
 
 from protorpc import messages
