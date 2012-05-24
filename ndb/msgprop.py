@@ -75,6 +75,14 @@ query for subfields:
 
   stores = MyNoteStore.query(MyNoteStore.foo.notes.when < 123).fetch()
 
+A final option for MessageProperty is 'protocol'.  This lets you
+specify how the message object is serialized to the datastore.  The
+values are protocol names as used by protorpc.remote.Protocols class.
+Supported protocol names are 'protobuf' and 'protojson'; the default
+is 'protobuf'.  (In the future this will use the global protocols
+registry that is being added to protorpc; then any registered protocol
+name will be acceptable.)
+
 There is also an EnumProperty, which can be used to store a
 messages.Enum value without wrapping it in a Message object.  Example:
 
@@ -110,7 +118,6 @@ The EnumProperty supports the following standard options:
 """
 
 # TODO:
-# - docstrings for all public classes and methods
 # - code review
 
 from protorpc import messages
@@ -144,6 +151,15 @@ class EnumProperty(model.IntegerProperty):
 
   @utils.positional(1 + _positional)
   def __init__(self, enum_type, name=None, default=None, choices=None, **kwds):
+    """Constructor.
+
+    Args:
+      enum_type: A subclass of protorpc.messages.Enum.
+      name: Optional datastore name (defaults to the property name).
+
+    Additional keywords arguments specify the same options as
+    supported by IntegerProperty.
+    """
     self._enum_type = enum_type
     if default is not None:
       self._validate(default)
@@ -153,18 +169,47 @@ class EnumProperty(model.IntegerProperty):
                                        choices=choices, **kwds)
 
   def _validate(self, value):
+    """Validate an Enum value.
+
+    Raises:
+      TypeError if the value is not an instance of self._enum_type.
+    """
     if not isinstance(value, self._enum_type):
       raise TypeError('Expected a %s instance, got %r instead' %
                       (self._enum_type.__name__, value))
 
   def _to_base_type(self, enum):
+    """Convert an Enum value to a base type (integer) value."""
     return enum.number
 
   def _from_base_type(self, val):
+    """Convert a base type (integer) value to an Enum value."""
     return self._enum_type(val)
 
 
 def _analyze_indexed_fields(indexed_fields):
+  """Internal helper to check a list of indexed fields.
+
+  Args:
+    indexed_fields: A list of names, possibly dotted names.
+
+  Returns:
+    A dict whose keys are undotted names.  For each undotted name in
+    the argument, the dict contains that undotted name as a key with
+    None as a value.  For each dotted name in the argument, the dict
+    contains the first component as a key with a list of remainders as
+    values.
+
+  Example:
+    If the argument is ['foo.bar.baz', 'bar', 'foo.bletch'], the return
+    value is {'foo': ['bar.baz', 'bletch'], 'bar': None}.
+
+  Raises:
+    TypeError if an argument is not a string.
+    ValueError for duplicate arguments and for conflicting arguments
+      (when an undotted name also appears as the first component of
+      a dotted name).
+  """
   result = {}
   for field_name in indexed_fields:
     if not isinstance(field_name, basestring):
@@ -186,6 +231,26 @@ def _analyze_indexed_fields(indexed_fields):
 
 
 def _make_model_class(message_type, indexed_fields, **props):
+  """Construct a Model subclass corresponding to a Message subclass.
+
+  Args:
+    message_type: A Message subclass.
+    indexed_fields: A list of dotted and undotted field names.
+    **props: Additional properties with which to seed the class.
+
+  Returns:
+    A Model subclass whose properties correspond to those fields of
+    message_type whose field name is listed in indexed_fields, plus
+    the properties specified by the **props arguments.  For dotted
+    field names, a StructuredProperty is generated using a Model
+    subclass created by a recursive call.
+
+  Raises:
+    Whatever _analyze_indexed_fields() raises.
+    ValueError if a field name conflicts with a name in **props.
+    ValueError if a field name is not valid field of message_type.
+    ValueError if an undotted field name designates a MessageField.
+  """
   analyzed = _analyze_indexed_fields(indexed_fields)
   for field_name, sub_fields in analyzed.iteritems():
     if field_name in props:
@@ -221,6 +286,13 @@ def _make_model_class(message_type, indexed_fields, **props):
 
 
 class MessageProperty(model.StructuredProperty):
+  """Messages are represented in the datastore as structured properties.
+
+  By default, the structured property has a single subproperty
+  containing the serialized message.  This property is named 'blob_'
+  in Python but __<protocol>__ in the Datastore, where <protocol> is
+  the value of the protocol argument (default 'protobuf').
+  """
 
   _message_type = None
   _indexed_fields = ()
@@ -235,6 +307,17 @@ class MessageProperty(model.StructuredProperty):
   @utils.positional(1 + model.StructuredProperty._positional)
   def __init__(self, message_type, name=None,
                indexed_fields=None, protocol=None, **kwds):
+    """Constructor.
+
+    Args:
+      message_tyoe: A subclass of protorpc.messages.Message.
+      name: Optional datastore name (defaults to the property name).
+      indexed_fields: Optional list of dotted and undotted field names.
+      protocol: Optional protocol name default 'protobuf'.
+
+    Additional keywords arguments specify the same options as
+    supported by StructuredProperty, except 'indexed'.
+    """
     if not (isinstance(message_type, type) and
             issubclass(message_type, messages.Message)):
       raise TypeError('MessageProperty argument must be a Message subclass')
@@ -253,17 +336,24 @@ class MessageProperty(model.StructuredProperty):
     super(MessageProperty, self).__init__(message_class, name, **kwds)
 
   def _validate(self, msg):
+    """Validate an Enum value.
+
+    Raises:
+      TypeError if the value is not an instance of self._message_type.
+    """
     if not isinstance(msg, self._message_type):
       raise TypeError('Expected a %s instance for %s property',
                       self._message_type.__name__,
                       self._code_name or self._name)
 
   def _to_base_type(self, msg):
+    """Convert a Message value to a Model instance (entity)."""
     ent = _message_to_entity(msg, self._modelclass)
     ent.blob_ = self._protocol_impl.encode_message(msg)
     return ent
 
   def _from_base_type(self, ent):
+    """Convert a Model instance (entity) to a Message value."""
     if ent._projection:
       # Projection query result.  Reconstitute the message from the fields.
       return _projected_entity_to_message(ent, self._message_type)
@@ -288,8 +378,16 @@ class MessageProperty(model.StructuredProperty):
     return msg
 
 
-# Helper for _to_base_type().
 def _message_to_entity(msg, modelclass):
+  """Recursive helper for _to_base_type() to convert a message to an entity.
+
+  Args:
+    msg: A Message instance.
+    modelclass: A Model subclass.
+
+  Returns:
+    An instance of modelclass.
+  """
   ent = modelclass()
   for prop_name, prop in modelclass._properties.iteritems():
     if prop._code_name == 'blob_':  # TODO: Devise a cleaner test.
@@ -304,8 +402,16 @@ def _message_to_entity(msg, modelclass):
   return ent
 
 
-# Helper for _from_base_type().
 def _projected_entity_to_message(ent, message_type):
+  """Recursive helper for _from_base_type() to convert an entity to a message.
+
+  Args:
+    ent: A Model instance.
+    message_type: A Message subclass.
+
+  Returns:
+    An instance of message_type.
+  """
   msg = message_type()
   analyzed = _analyze_indexed_fields(ent._projection)
   for name, sublist in analyzed.iteritems():
