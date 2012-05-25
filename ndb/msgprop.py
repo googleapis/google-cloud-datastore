@@ -100,7 +100,7 @@ messages.Enum value without wrapping it in a Message object.  Example:
   ...
   p2 = key1.get()
   print p2.name, p2.color  # prints "foo RED"
-    
+
 The EnumProperty stores the value as an integer; in fact, EnumProperty
 is a subclass of IntegerProperty.  This is handy to know, since it
 implies that you can rename your enum values without having to modify
@@ -116,9 +116,6 @@ The EnumProperty supports the following standard options:
   - validator
   - verbose_name
 """
-
-# TODO:
-# - code review
 
 from protorpc import messages
 from protorpc import remote
@@ -141,7 +138,6 @@ class EnumProperty(model.IntegerProperty):
   not in JSON), and it allows renaming enum values without requiring
   changes to values already stored in the Datastore.
   """
-  # TODO: Consider making the int-vs-str decision an option.
 
   _enum_type = None
 
@@ -192,6 +188,10 @@ def _analyze_indexed_fields(indexed_fields):
 
   Args:
     indexed_fields: A list of names, possibly dotted names.
+
+  (A dotted name is a string containing names separated by dots,
+  e.g. 'foo.bar.baz'.  An undotted name is a string containing no
+  dots, e.g. 'foo'.)
 
   Returns:
     A dict whose keys are undotted names.  For each undotted name in
@@ -323,7 +323,7 @@ class MessageProperty(model.StructuredProperty):
       raise TypeError('MessageProperty argument must be a Message subclass')
     self._message_type = message_type
     if indexed_fields is not None:
-      # TODO: Check they are all strings naming fields
+      # TODO: Check they are all strings naming fields.
       self._indexed_fields = tuple(indexed_fields)
     # NOTE: Otherwise the class default i.e. (), prevails.
     if protocol is None:
