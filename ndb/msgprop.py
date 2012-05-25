@@ -417,11 +417,16 @@ def _projected_entity_to_message(ent, message_type):
   for name, sublist in analyzed.iteritems():
     prop = ent._properties[name]
     val = prop._get_value(ent)
+    assert isinstance(prop, model.StructuredProperty) == bool(sublist)
     if sublist:
-      assert isinstance(prop, model.StructuredProperty)
-      assert isinstance(val, prop._modelclass)
       field = message_type.field_by_name(name)
       assert isinstance(field, messages.MessageField)
-      val = _projected_entity_to_message(val, field.type)
+      assert prop._repeated == field.repeated
+      if prop._repeated:
+        assert isinstance(val, list)
+        val = [_projected_entity_to_message(v, field.type) for v in val]
+      else:
+        assert isinstance(val, prop._modelclass)
+        val = _projected_entity_to_message(val, field.type)
     setattr(msg, name, val)
   return msg

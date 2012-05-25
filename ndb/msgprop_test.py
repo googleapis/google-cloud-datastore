@@ -413,6 +413,23 @@ class MsgPropTests(test_utils.NDBTest):
     res2 = Storage.query().get(projection=['wrap.greet.text'])
     self.assertEqual(res2.wrap, Wrapper(greet=Greeting(text='abc')))
 
+  def testProjectionQueriesRepeatedField(self):
+    class Wrapper(messages.Message):
+      greets = messages.MessageField(Greeting, 1, repeated=True)
+    class Storage(model.Model):
+      wrap = msgprop.MessageProperty(Wrapper, indexed_fields=['greets.text',
+                                                              'greets.when'])
+    gr1 = Greeting(text='abc', when=123)
+    wr1 = Wrapper(greets=[gr1])
+    st1 = Storage(wrap=wr1)
+    st1.put()
+    res1 = Storage.query().get(projection=['wrap.greets.text',
+                                           Storage.wrap.greets.when])
+    self.assertNotEqual(res1, st1)
+    self.assertEqual(res1.wrap, st1.wrap)
+    res2 = Storage.query().get(projection=['wrap.greets.text'])
+    self.assertEqual(res2.wrap, Wrapper(greets=[Greeting(text='abc')]))
+
 
 def main():
   unittest.main()
