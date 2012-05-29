@@ -68,7 +68,7 @@ It works for nested messages (using MessageField) as well:
   class MyNotesStore(ndb.Model):
     author = ndb.StringProperty()
     foo = msgprop.MessageProperty(Notes,
-                                 indexed_fields=['notes.text, 'notes.when'])
+                                  indexed_fields=['notes.text, 'notes.when'])
 
 And given this value for indexed_fields, in this example you can also
 query for subfields:
@@ -254,7 +254,6 @@ def _make_model_class(message_type, indexed_fields, **props):
   analyzed = _analyze_indexed_fields(indexed_fields)
   for field_name, sub_fields in analyzed.iteritems():
     if field_name in props:
-      # TODO: Solve this without reserving 'blob_'.
       raise ValueError('field name %s is reserved' % field_name)
     try:
       field = message_type.field_by_name(field_name)
@@ -331,6 +330,7 @@ class MessageProperty(model.StructuredProperty):
     self._protocol = protocol
     self._protocol_impl = _protocols_registry.lookup_by_name(protocol)
     blob_prop = model.BlobProperty('__%s__' % self._protocol)
+    # TODO: Solve this without reserving 'blob_'.
     message_class = _make_model_class(message_type, self._indexed_fields,
                                       blob_=blob_prop)
     super(MessageProperty, self).__init__(message_class, name, **kwds)
