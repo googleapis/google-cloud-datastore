@@ -2895,7 +2895,10 @@ class Model(_NotEqualMixin):
         continue
       if exclude is not None and name in exclude:
         continue
-      values[name] = prop._get_for_dict(self)
+      try:
+        values[name] = prop._get_for_dict(self)
+      except UnprojectedPropertyError:
+        pass  # Ignore unprojected properties rather than failing.
     return values
   to_dict = _to_dict
 

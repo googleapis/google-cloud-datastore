@@ -658,6 +658,26 @@ class ModelTests(test_utils.NDBTest):
                      "Foo(key=Key('Foo', 42), _projection=('a', 'b'))")
     self.assertNotEqual(ent3, ent4)
 
+  def testProjectionToDict(self):
+    class Foo(model.Model):
+      bar = model.StringProperty()
+      baz = model.StringProperty('bletch', repeated=True)
+    foo1 = Foo(bar='bar1', baz=['baz1'])
+    foo1.put()
+    foo2 = Foo.query().get(projection=['bar'])
+    self.assertEqual(foo2._to_dict(), {'bar': 'bar1'})
+    foo3 = Foo.query().get(projection=[Foo.baz])
+    self.assertEqual(foo3._to_dict(), {'baz': ['baz1']})
+    class Bar(model.Model):
+      foo = model.StructuredProperty(Foo)
+      baz = model.StringProperty()
+    bar1 = Bar(foo=foo1, baz='baz2')
+    bar1.put()
+    bar2 = Bar.query().get(projection=['foo.bar'])
+    self.assertEqual(bar2.to_dict(), {'foo': {'bar': 'bar1'}})
+    bar3 = Bar.query().get(projection=['baz'])
+    self.assertEqual(bar3.to_dict(), {'baz': 'baz2'})
+
   def testQuery(self):
     class MyModel(model.Model):
       p = model.IntegerProperty()
