@@ -2898,7 +2898,7 @@ class Model(_NotEqualMixin):
       try:
         values[name] = prop._get_for_dict(self)
       except UnprojectedPropertyError:
-        pass
+        pass  # Ignore unprojected properties rather than failing.
     return values
   to_dict = _to_dict
 
