@@ -4187,6 +4187,42 @@ class CacheTests(test_utils.NDBTest):
     self.assertEqual(copy.wrap[0].range, None)
     self.assertEqual(copy.wrap[1].range, IntRangeModel(first=0, last=10))
 
+  def testTransactionsCachingAndQueries(self):
+    # Prompted by a doc question and this (outdated) thread:
+    # https://groups.google.com/forum/?fromgroups#!topic/appengine-ndb-discuss/idxsAZNHsqI
+    class Root(model.Model):
+      pass
+    class Foo(model.Model):
+      name = model.StringProperty()
+    root = Root()
+    root.put()
+    foo1 = Foo(name='foo1', parent=root.key)
+    foo1.put()
+    @model.transactional
+    def txn1():
+      foo2 = foo1.key.get()
+      assert foo2.name == 'foo1'
+      foo2.name = 'foo2'
+      foo2.put()
+      foo3 = foo1.key.get(use_cache=False)
+      foos = Foo.query(ancestor=root.key).fetch(use_cache=False)
+      assert foo1 == foo3 == foos[0]
+      assert foo1 != foo2
+      raise model.Rollback
+    @model.transactional
+    def txn2():
+      foo2 = foo1.key.get()
+      assert foo2.name == 'foo1'
+      foo2.name = 'foo2'
+      foo2.put()
+      foo3 = foo1.key.get(use_cache=True)
+      foos = Foo.query(ancestor=root.key).fetch(use_cache=True)
+      assert foo2 == foo3 == foos[0]
+      assert foo1 != foo2
+      raise model.Rollback
+    txn1()
+    txn2()
+
 
 def main():
   unittest.main()
