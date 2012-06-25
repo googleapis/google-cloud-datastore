@@ -280,6 +280,10 @@ class QueryTests(test_utils.NDBTest):
     self.assertEqual(ents, [Foo(p=1, r=[3], key=key, projection=('pp', 'r')),
                             Foo(p=1, r=[4], key=key, projection=['pp', 'r'])])
     self.assertRaises(datastore_errors.BadArgumentError, q.get, projection=[42])
+    self.assertRaises(model.BadProjectionError, q.get, projection=['wot'])
+    # Make sure a string isn't taken for its constituent characters.
+    self.assertTrue(q.get(projection=['q', 'r', 'd']))  # This is valid.
+    self.assertRaises(model.BadProjectionError, q.get, projection='qrd')
 
   def testProjectionQuery_AllTypes(self):
     class Foo(model.Model):

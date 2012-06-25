@@ -678,6 +678,33 @@ class ModelTests(test_utils.NDBTest):
     bar3 = Bar.query().get(projection=['baz'])
     self.assertEqual(bar3.to_dict(), {'baz': 'baz2'})
 
+  def testBadProjectionErrorRaised(self):
+    # Note: Projections are not checked on entity construction;
+    # only on queries.
+    class Inner(model.Model):
+      name = model.StringProperty()
+      rank = model.IntegerProperty()
+    q = Inner.query()
+    q.fetch(projection=['name', 'rank'])
+    self.assertRaises(model.BadProjectionError,
+                      q.fetch, projection=['name.foo'])
+    self.assertRaises(model.BadProjectionError,
+                      q.fetch, projection=['booh'])
+    class Outer(model.Expando):
+      inner = model.StructuredProperty(Inner)
+      blob = model.BlobProperty()
+      tag = model.StringProperty()
+    q = Outer.query()
+    q.fetch(projection=['tag', 'inner.name', 'inner.rank', 'whatever'])
+    self.assertRaises(model.BadProjectionError,
+                      q.fetch, projection=['inner'])
+    self.assertRaises(model.BadProjectionError,
+                      q.fetch, projection=['inner.name.foo'])
+    self.assertRaises(model.BadProjectionError,
+                      q.fetch, projection=['inner.booh'])
+    self.assertRaises(model.BadProjectionError,
+                      q.fetch, projection=['blob'])
+
   def testQuery(self):
     class MyModel(model.Model):
       p = model.IntegerProperty()
