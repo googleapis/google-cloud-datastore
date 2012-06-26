@@ -1301,6 +1301,8 @@ class Query(object):
     return options
 
   def _fix_projection(self, projections):
+    if not isinstance(projections, (list, tuple)):
+      projections = [projections]  # It will be type-checked below.
     fixed = []
     for proj in projections:
       if isinstance(proj, basestring):
@@ -1310,6 +1312,9 @@ class Query(object):
       else:
         raise datastore_errors.BadArgumentError(
           'Unexpected projection (%r); should be string or Property')
+    modelclass = model.Model._kind_map.get(self.__kind)
+    if modelclass is not None:
+      modelclass._check_projections(fixed)
     return fixed
 
   def analyze(self):

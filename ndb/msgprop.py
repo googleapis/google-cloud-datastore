@@ -2,7 +2,7 @@
 
 Basic usage:
 
-Let's assume you have a protorpc.Message subclass, like this:
+Let's assume you have a protorpc.messages.Message subclass, like this:
 
   from protorpc import messages
 

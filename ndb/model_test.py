@@ -678,6 +678,33 @@ class ModelTests(test_utils.NDBTest):
     bar3 = Bar.query().get(projection=['baz'])
     self.assertEqual(bar3.to_dict(), {'baz': 'baz2'})
 
+  def testBadProjectionErrorRaised(self):
+    # Note: Projections are not checked on entity construction;
+    # only on queries.
+    class Inner(model.Model):
+      name = model.StringProperty()
+      rank = model.IntegerProperty()
+    q = Inner.query()
+    q.fetch(projection=['name', 'rank'])
+    self.assertRaises(model.BadProjectionError,
+                      q.fetch, projection=['name.foo'])
+    self.assertRaises(model.BadProjectionError,
+                      q.fetch, projection=['booh'])
+    class Outer(model.Expando):
+      inner = model.StructuredProperty(Inner)
+      blob = model.BlobProperty()
+      tag = model.StringProperty()
+    q = Outer.query()
+    q.fetch(projection=['tag', 'inner.name', 'inner.rank', 'whatever'])
+    self.assertRaises(model.BadProjectionError,
+                      q.fetch, projection=['inner'])
+    self.assertRaises(model.BadProjectionError,
+                      q.fetch, projection=['inner.name.foo'])
+    self.assertRaises(model.BadProjectionError,
+                      q.fetch, projection=['inner.booh'])
+    self.assertRaises(model.BadProjectionError,
+                      q.fetch, projection=['blob'])
+
   def testQuery(self):
     class MyModel(model.Model):
       p = model.IntegerProperty()
@@ -4186,6 +4213,42 @@ class CacheTests(test_utils.NDBTest):
     copy = q.get()
     self.assertEqual(copy.wrap[0].range, None)
     self.assertEqual(copy.wrap[1].range, IntRangeModel(first=0, last=10))
+
+  def testTransactionsCachingAndQueries(self):
+    # Prompted by a doc question and this (outdated) thread:
+    # https://groups.google.com/forum/?fromgroups#!topic/appengine-ndb-discuss/idxsAZNHsqI
+    class Root(model.Model):
+      pass
+    class Foo(model.Model):
+      name = model.StringProperty()
+    root = Root()
+    root.put()
+    foo1 = Foo(name='foo1', parent=root.key)
+    foo1.put()
+    @model.transactional
+    def txn1():
+      foo2 = foo1.key.get()
+      assert foo2.name == 'foo1'
+      foo2.name = 'foo2'
+      foo2.put()
+      foo3 = foo1.key.get(use_cache=False)
+      foos = Foo.query(ancestor=root.key).fetch(use_cache=False)
+      assert foo1 == foo3 == foos[0]
+      assert foo1 != foo2
+      raise model.Rollback
+    @model.transactional
+    def txn2():
+      foo2 = foo1.key.get()
+      assert foo2.name == 'foo1'
+      foo2.name = 'foo2'
+      foo2.put()
+      foo3 = foo1.key.get(use_cache=True)
+      foos = Foo.query(ancestor=root.key).fetch(use_cache=True)
+      assert foo2 == foo3 == foos[0]
+      assert foo1 != foo2
+      raise model.Rollback
+    txn1()
+    txn2()
 
 
 def main():

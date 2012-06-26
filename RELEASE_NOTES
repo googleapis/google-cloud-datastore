@@ -1,3 +1,10 @@
+Release 1.0.4 (future)
+
+- Issue 189: Reject projecting on unindexed or undefined properties.
+- Issue 190: Tasklets preserve the default namespace when spawned.
+
+----------------------------------------
+
 Release 1.0.3 (included in SDK 1.7.0)
 
 Major new features:
