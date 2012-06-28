@@ -1313,7 +1313,7 @@ class Property(ModelAttribute):
       BadProjectionError if this property is not indexed or if a
       subproperty is specified.  (StructuredProperty overrides this
       method to handle subprpoperties.)
-    """      
+    """
     if not self._indexed:
       raise BadProjectionError('Projecting on unindexed property %s' %
                                self._name)
