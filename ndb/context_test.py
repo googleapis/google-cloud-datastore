@@ -1222,6 +1222,33 @@ class ContextTests(test_utils.NDBTest):
     self.assertEqual(result.status_code, 200)
     self.assertTrue(isinstance(result.content, str))
 
+  def testTooBigForMemcache(self):
+    class Blobby(model.Model):
+      _use_memcache = True
+      _use_cache = False
+      blob = model.BlobProperty()
+    small = Blobby(blob='x')
+    huge = Blobby(blob='x'*1000000)  # Fits in datastore, nit in memcache
+    originals = [small, huge]
+    keys = model.put_multi(originals)
+    copies = model.get_multi(keys)
+    self.assertEqual(copies, originals)  # Just to be sure
+    memcache_copies = model.get_multi(keys, use_datastore=False)
+    # Check that the small value did make it to memcache.
+    self.assertEqual(memcache_copies, [small, None])
+
+    # Test different path through the code when using use_datastore=False.
+    Blobby._use_datastore = False
+    small.key = model.Key(Blobby, "small")
+    huge.key = model.Key(Blobby, "huge")
+    # Create two Futures; this forces the AutoBatcher to combine the two.
+    fsmall = small.put_async()
+    fhuge = huge.put_async()
+    self.assertEqual(small.key, fsmall.get_result())
+    self.assertRaises(ValueError, fhuge.get_result)
+    self.assertEqual(small, small.key.get())
+    self.assertEqual(None, huge.key.get())
+
 
 class ContextFutureCachingTests(test_utils.NDBTest):
   # See issue 62.  http://goo.gl/5zLkK

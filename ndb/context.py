@@ -642,12 +642,18 @@ class Context(object):
       if use_memcache and mvalue != _LOCKED:
         # Don't serialize the key since it's already the memcache key.
         pbs = entity._to_pb(set_key=False).SerializePartialToString()
-        timeout = self._get_memcache_timeout(key, options)
-        # Don't use fire-and-forget -- for users who forget
-        # @ndb.toplevel, it's too painful to diagnose why their simple
-        # code using a single synchronous call doesn't seem to use
-        # memcache.  See issue 105.  http://goo.gl/JQZxp
-        yield self.memcache_cas(mkey, pbs, time=timeout, namespace=ns)
+        # Don't attempt to write to memcache if too big.  Note that we
+        # use LBYL ("look before you leap") because a multi-value
+        # memcache operation would fail for all entities rather than
+        # for just the one that's too big.  (Also, the AutoBatcher
+        # class doesn't pass back exceptions very well.)
+        if len(pbs) <= memcache.MAX_VALUE_SIZE:
+          timeout = self._get_memcache_timeout(key, options)
+          # Don't use fire-and-forget -- for users who forget
+          # @ndb.toplevel, it's too painful to diagnose why their simple
+          # code using a single synchronous call doesn't seem to use
+          # memcache.  See issue 105.  http://goo.gl/JQZxp
+          yield self.memcache_cas(mkey, pbs, time=timeout, namespace=ns)
 
     if use_cache:
       # Cache hit or miss.  NOTE: In this case it is okay to cache a
@@ -679,6 +685,12 @@ class Context(object):
                                   namespace=ns, use_cache=True)
         else:
           pbs = entity._to_pb(set_key=False).SerializePartialToString()
+          # If the byte string to be written is too long for memcache,
+          # raise ValueError.  (See LBYL explanation in get().)
+          if len(pbs) > memcache.MAX_VALUE_SIZE:
+            raise ValueError('Values may not be more than %d bytes in length; '
+                             'received %d bytes' % (memcache.MAX_VALUE_SIZE,
+                                                    len(pbs)))
           timeout = self._get_memcache_timeout(key, options)
           yield self.memcache_set(mkey, pbs, time=timeout, namespace=ns)
 
