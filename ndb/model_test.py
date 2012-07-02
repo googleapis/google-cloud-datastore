@@ -16,6 +16,11 @@ from .google_imports import namespace_manager
 from .google_imports import users
 from .google_test_imports import datastore_stub_util
 
+try:
+  import json
+except ImportError:
+  import simplejson as json
+
 from . import context
 from . import eventloop
 from . import key
@@ -1801,6 +1806,37 @@ class ModelTests(test_utils.NDBTest):
       city = model.StringProperty('City')
     a = Address(street='345 Spear', city='SF')
     self.assertEqual(repr(a), "Address(city='SF', street='345 Spear')")
+
+  def testModelRepr_HugeProperty(self):
+    class Biggy(model.Model):
+      blob = model.BlobProperty()
+      text = model.TextProperty()
+    small = Biggy(blob='xyz', text=u'abc')
+    self.assertEqual(repr(small), "Biggy(blob='xyz', text=u'abc')")
+    large = Biggy(blob='x'*500, text='a'*500)
+    self.assertEqual(repr(large),
+                     "Biggy(blob='%s', text='%s')" % ('x'*500, 'a'*500))
+    huge = Biggy(blob='x'*1000, text='a'*1000)
+    self.assertEqual(repr(huge),
+                     "Biggy(blob='%s...', text='%s...')" % ('x'*499, 'a'*499))
+
+  def testModelRepr_CustomRepr(self):
+    # Demonstrate how to override a property's repr.
+    class MyJsonProperty(model.JsonProperty):
+      def _value_to_repr(self, value):
+        val = self._opt_call_from_base_type(value)
+        return json.dumps(val, indent=2)
+    class Jumpy(model.Model):
+      jsn = MyJsonProperty()
+    jump = Jumpy(jsn={'a': 123, 'b': ['xyz', 'pqr']})
+    self.assertEqual(repr(jump),
+                     'Jumpy(jsn={\n'
+                     '  "a": 123, \n'
+                     '  "b": [\n'
+                     '    "xyz", \n'
+                     '    "pqr"\n'
+                     '  ]\n'
+                     '})')
 
   def testModel_RenameAlias(self):
     class Person(model.Model):

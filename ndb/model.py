@@ -1070,6 +1070,14 @@ class Property(ModelAttribute):
       value = self._call_from_base_type(value.b_val)
     return value
 
+  def _value_to_repr(self, value):
+    """Turn a value (base or not) into its repr().
+
+    This exists so that property classes can override it separately.
+    """
+    val = self._opt_call_from_base_type(value)
+    return repr(val)
+
   def _opt_call_to_base_type(self, value):
     """Call _to_base_type() if necessary.
 
@@ -1491,6 +1499,16 @@ class BlobProperty(Property):
       # TODO: Allow this, but only allow == and IN comparisons?
       raise NotImplementedError('BlobProperty %s cannot be compressed and '
                                 'indexed at the same time.' % self._name)
+
+  def _value_to_repr(self, value):
+    long_repr = super(BlobProperty, self)._value_to_repr(value)
+    # Note that we may truncate even if the value is shorter than
+    # _MAX_STRING_LENGTH; e.g. if it contains many \xXX or \uUUUU
+    # escapes.
+    if len(long_repr) > _MAX_STRING_LENGTH + 4:
+      # Truncate, assuming the final character is the closing quote.
+      long_repr = long_repr[:_MAX_STRING_LENGTH] + '...' + long_repr[-1]
+    return long_repr
 
   def _validate(self, value):
     if not isinstance(value, str):
@@ -2710,10 +2728,16 @@ class Model(_NotEqualMixin):
         # effect on what's contained in the entity.  Printing a value
         # should not change it!
         if prop._repeated:
-          val = [prop._opt_call_from_base_type(v) for v in val]
+          vals = [prop._value_to_repr(v) for v in val]
+          if vals:
+            vals[0] = '[' + vals[0]
+            vals[-1] = vals[-1] + ']'
+            val = ', '.join(vals)
+          else:
+            val = '[]'
         elif val is not None:
-          val = prop._opt_call_from_base_type(val)
-        args.append('%s=%r' % (prop._code_name, val))
+          val = prop._value_to_repr(val)
+        args.append('%s=%s' % (prop._code_name, val))
     args.sort()
     if self._key is not None:
       args.insert(0, 'key=%r' % self._key)
