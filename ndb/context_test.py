@@ -1238,6 +1238,7 @@ class ContextTests(test_utils.NDBTest):
     self.assertEqual(memcache_copies, [small, None])
 
     # Test different path through the code when using use_datastore=False.
+    self.ExpectWarnings()
     Blobby._use_datastore = False
     small.key = model.Key(Blobby, "small")
     huge.key = model.Key(Blobby, "huge")
