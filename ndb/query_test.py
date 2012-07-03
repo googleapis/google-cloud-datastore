@@ -50,6 +50,20 @@ class QueryTests(test_utils.NDBTest):
     res = list(q)
     self.assertEqual(res, [self.moe, self.joe, self.jill])
 
+  def testQueryError(self):
+    self.assertRaises(TypeError, query.Query,
+                      ancestor=query.ParameterizedFunction('user',
+                                                           query.Parameter(1)))
+    self.assertRaises(TypeError, query.Query, ancestor=42)
+    self.assertRaises(ValueError, query.Query, ancestor=model.Key('X', None))
+    self.assertRaises(TypeError, query.Query,
+                      ancestor=model.Key('X', 1), app='another')
+    self.assertRaises(TypeError, query.Query,
+                      ancestor=model.Key('X', 1), namespace='another')
+    self.assertRaises(TypeError, query.Query, filters=42)
+    self.assertRaises(TypeError, query.Query, orders=42)
+    self.assertRaises(TypeError, query.Query, default_options=42)
+
   def testQueryAttributes(self):
     q = query.Query(kind='Foo')
     self.assertEqual(q.kind, 'Foo')
@@ -91,6 +105,11 @@ class QueryTests(test_utils.NDBTest):
     # App and namespace.
     q3 = Foo.query(app='a', namespace='ns')
     self.assertEqual(repr(q3), "Query(kind='Foo', app='a', namespace='ns')")
+    # default_options.
+    q4 = Foo.query(default_options=query.QueryOptions(limit=3))
+    self.assertEqual(
+      repr(q4),
+      "Query(kind='Foo', default_options=QueryOptions(limit=3))")
 
   def testRunToQueue(self):
     qry = Foo.query()
@@ -1595,6 +1614,10 @@ class QueryTests(test_utils.NDBTest):
                                  Foo(name='jill', tags=['jill'],
                                      key=self.jill.key,
                                      projection=('name', 'tags'))])
+
+  def testGqlBadProjection(self):
+    self.assertRaises(model.BadProjectionError,
+                      query.gql, "SELECT qqq FROM Foo")
 
   def testAsyncNamespace(self):
     # Test that async queries pick up the namespace when the
