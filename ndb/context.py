@@ -126,7 +126,7 @@ class AutoBatcher(object):
     fut = self._todo_tasklet(todo, options)
     self._running.append(fut)
     # Add a callback when we're done.
-    fut.add_callback(self._finished_callback, fut)
+    fut.add_callback(self._finished_callback, fut, todo)
 
   def _on_idle(self):
     if not self.action():
@@ -165,9 +165,14 @@ class AutoBatcher(object):
     self.run_queue(options, todo)
     return True
 
-  def _finished_callback(self, fut):
+  def _finished_callback(self, fut, todo):
     self._running.remove(fut)
-    fut.check_success()
+    err = fut.get_exception()
+    if err is not None:
+      tb = fut.get_traceback()
+      for (f, _) in todo:
+        if not f.done():
+          f.set_exception(err, tb)
 
   @tasklets.tasklet
   def flush(self):
