@@ -164,6 +164,27 @@ class ContextTests(test_utils.NDBTest):
       self.assertEqual(name, '_put_tasklet')
       self.assertTrue(len(todo) in (24, 25))
 
+  def testContext_AutoBatcher_Errors(self):
+    # Test that errors are properly distributed over all Futures.
+    self.ExpectWarnings()
+    class Blobby(model.Model):
+      blob = model.BlobProperty()
+    ent1 = Blobby()
+    ent2 = Blobby(blob='x'*2000000)
+    fut1 = self.ctx.put(ent1)
+    fut2 = self.ctx.put(ent2)  # Error
+    err1 = fut1.get_exception()
+    err2 = fut2.get_exception()
+    self.assertTrue(isinstance(err1, apiproxy_errors.RequestTooLargeError))
+    self.assertTrue(err1 is err2)
+    # Try memcache as well (different tasklet, different error).
+    fut1 = self.ctx.memcache_set('key1', 'x')
+    fut2 = self.ctx.memcache_set('key2', 'x'*1000001)
+    err1 = fut1.get_exception()
+    err2 = fut1.get_exception()
+    self.assertTrue(isinstance(err1, ValueError))
+    self.assertTrue(err1 is err2)
+
   def testContext_MultiRpc(self):
     # This test really tests the proper handling of MultiRpc by
     # queue_rpc() in eventloop.py.  It's easier to test from here, and
@@ -1221,6 +1242,34 @@ class ContextTests(test_utils.NDBTest):
     result = fut.get_result()
     self.assertEqual(result.status_code, 200)
     self.assertTrue(isinstance(result.content, str))
+
+  def testTooBigForMemcache(self):
+    class Blobby(model.Model):
+      _use_memcache = True
+      _use_cache = False
+      blob = model.BlobProperty()
+    small = Blobby(blob='x')
+    huge = Blobby(blob='x'*1000000)  # Fits in datastore, not in memcache
+    originals = [small, huge]
+    keys = model.put_multi(originals)
+    copies = model.get_multi(keys)
+    self.assertEqual(copies, originals)  # Just to be sure
+    memcache_copies = model.get_multi(keys, use_datastore=False)
+    # Check that the small value did make it to memcache.
+    self.assertEqual(memcache_copies, [small, None])
+
+    # Test different path through the code when using use_datastore=False.
+    self.ExpectWarnings()
+    Blobby._use_datastore = False
+    small.key = model.Key(Blobby, "small")
+    huge.key = model.Key(Blobby, "huge")
+    # Create two Futures; this forces the AutoBatcher to combine the two.
+    fsmall = small.put_async()
+    fhuge = huge.put_async()
+    self.assertEqual(small.key, fsmall.get_result())
+    self.assertRaises(ValueError, fhuge.get_result)
+    self.assertEqual(small, small.key.get())
+    self.assertEqual(None, huge.key.get())
 
 
 class ContextFutureCachingTests(test_utils.NDBTest):

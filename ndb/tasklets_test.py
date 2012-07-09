@@ -7,6 +7,8 @@ import sys
 import time
 import unittest
 
+from .google_imports import namespace_manager
+
 from . import context
 from . import eventloop
 from . import model
@@ -699,6 +701,27 @@ class TaskletTests(test_utils.NDBTest):
     self.assertTrue(isinstance(ctx, context.Context))
     self.assertEqual(kwds, dict(foo='bar', baz='ding'))
     self.assertTrue(ctx is not old_ctx)
+
+  def testStickyDefaultNamespace(self):
+    class Employee(model.Model):
+      name = model.StringProperty()
+    @tasklets.tasklet
+    def create_async(name):
+      emp = Employee(name=name)
+      self.assertEqual(namespace_manager.get_namespace(), 'before')
+      fut = emp.put_async()
+      namespace_manager.set_namespace('inner1')
+      key = yield fut
+      self.assertEqual(key.namespace(), 'before')
+      self.assertEqual(namespace_manager.get_namespace(), 'inner1')
+      namespace_manager.set_namespace('inner2')
+      raise tasklets.Return(key)
+    namespace_manager.set_namespace('before')
+    fut = create_async('name')
+    namespace_manager.set_namespace('after')
+    key = fut.get_result()
+    self.assertEqual(key.namespace(), 'before')
+    self.assertEqual(namespace_manager.get_namespace(), 'after')
 
 
 class TracebackTests(test_utils.NDBTest):

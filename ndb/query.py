@@ -133,6 +133,7 @@ import itertools
 import sys
 
 from .google_imports import datastore_errors
+from .google_imports import datastore_rpc
 from .google_imports import datastore_types
 from .google_imports import datastore_query
 from .google_imports import namespace_manager
@@ -802,6 +803,10 @@ class Query(object):
       if not isinstance(orders, datastore_query.Order):
         raise TypeError('orders must be an Order instance or None; received %r'
                         % orders)
+    if default_options is not None:
+      if not isinstance(default_options, datastore_rpc.BaseConfiguration):
+        raise TypeError('default_options must be a Configuration or None; '
+                        'received %r' % default_options)
     self.__kind = kind  # String
     self.__ancestor = ancestor  # Key
     self.__filters = filters  # None or Node subclass
@@ -809,6 +814,13 @@ class Query(object):
     self.__app = app
     self.__namespace = namespace
     self.__default_options = default_options
+    # Check the projection in the default options.  (This is done as a
+    # side effect of calling _fix_projection(); it's done late because
+    # that function expects self to be completely initialized.)
+    if kind is not None and default_options is not None:
+      default_projection = QueryOptions.projection(default_options)
+      if default_projection is not None:
+        self._fix_projection(default_projection)
 
   def __repr__(self):
     args = []
@@ -1301,6 +1313,8 @@ class Query(object):
     return options
 
   def _fix_projection(self, projections):
+    if not isinstance(projections, (list, tuple)):
+      projections = [projections]  # It will be type-checked below.
     fixed = []
     for proj in projections:
       if isinstance(proj, basestring):
@@ -1310,6 +1324,9 @@ class Query(object):
       else:
         raise datastore_errors.BadArgumentError(
           'Unexpected projection (%r); should be string or Property')
+    modelclass = model.Model._kind_map.get(self.__kind)
+    if modelclass is not None:
+      modelclass._check_projections(fixed)
     return fixed
 
   def analyze(self):

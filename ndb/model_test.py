@@ -16,6 +16,11 @@ from .google_imports import namespace_manager
 from .google_imports import users
 from .google_test_imports import datastore_stub_util
 
+try:
+  import json
+except ImportError:
+  import simplejson as json
+
 from . import context
 from . import eventloop
 from . import key
@@ -677,6 +682,33 @@ class ModelTests(test_utils.NDBTest):
     self.assertEqual(bar2.to_dict(), {'foo': {'bar': 'bar1'}})
     bar3 = Bar.query().get(projection=['baz'])
     self.assertEqual(bar3.to_dict(), {'baz': 'baz2'})
+
+  def testBadProjectionErrorRaised(self):
+    # Note: Projections are not checked on entity construction;
+    # only on queries.
+    class Inner(model.Model):
+      name = model.StringProperty()
+      rank = model.IntegerProperty()
+    q = Inner.query()
+    q.fetch(projection=['name', 'rank'])
+    self.assertRaises(model.BadProjectionError,
+                      q.fetch, projection=['name.foo'])
+    self.assertRaises(model.BadProjectionError,
+                      q.fetch, projection=['booh'])
+    class Outer(model.Expando):
+      inner = model.StructuredProperty(Inner)
+      blob = model.BlobProperty()
+      tag = model.StringProperty()
+    q = Outer.query()
+    q.fetch(projection=['tag', 'inner.name', 'inner.rank', 'whatever'])
+    self.assertRaises(model.BadProjectionError,
+                      q.fetch, projection=['inner'])
+    self.assertRaises(model.BadProjectionError,
+                      q.fetch, projection=['inner.name.foo'])
+    self.assertRaises(model.BadProjectionError,
+                      q.fetch, projection=['inner.booh'])
+    self.assertRaises(model.BadProjectionError,
+                      q.fetch, projection=['blob'])
 
   def testQuery(self):
     class MyModel(model.Model):
@@ -1774,6 +1806,37 @@ class ModelTests(test_utils.NDBTest):
       city = model.StringProperty('City')
     a = Address(street='345 Spear', city='SF')
     self.assertEqual(repr(a), "Address(city='SF', street='345 Spear')")
+
+  def testModelRepr_HugeProperty(self):
+    class Biggy(model.Model):
+      blob = model.BlobProperty()
+      text = model.TextProperty()
+    small = Biggy(blob='xyz', text=u'abc')
+    self.assertEqual(repr(small), "Biggy(blob='xyz', text=u'abc')")
+    large = Biggy(blob='x'*500, text='a'*500)
+    self.assertEqual(repr(large),
+                     "Biggy(blob='%s', text='%s')" % ('x'*500, 'a'*500))
+    huge = Biggy(blob='x'*1000, text='a'*1000)
+    self.assertEqual(repr(huge),
+                     "Biggy(blob='%s...', text='%s...')" % ('x'*499, 'a'*499))
+
+  def testModelRepr_CustomRepr(self):
+    # Demonstrate how to override a property's repr.
+    class MyJsonProperty(model.JsonProperty):
+      def _value_to_repr(self, value):
+        val = self._opt_call_from_base_type(value)
+        return json.dumps(val, indent=2)
+    class Jumpy(model.Model):
+      jsn = MyJsonProperty()
+    jump = Jumpy(jsn={'a': 123, 'b': ['xyz', 'pqr']})
+    self.assertEqual(repr(jump),
+                     'Jumpy(jsn={\n'
+                     '  "a": 123, \n'
+                     '  "b": [\n'
+                     '    "xyz", \n'
+                     '    "pqr"\n'
+                     '  ]\n'
+                     '})')
 
   def testModel_RenameAlias(self):
     class Person(model.Model):
@@ -4186,6 +4249,42 @@ class CacheTests(test_utils.NDBTest):
     copy = q.get()
     self.assertEqual(copy.wrap[0].range, None)
     self.assertEqual(copy.wrap[1].range, IntRangeModel(first=0, last=10))
+
+  def testTransactionsCachingAndQueries(self):
+    # Prompted by a doc question and this (outdated) thread:
+    # https://groups.google.com/forum/?fromgroups#!topic/appengine-ndb-discuss/idxsAZNHsqI
+    class Root(model.Model):
+      pass
+    class Foo(model.Model):
+      name = model.StringProperty()
+    root = Root()
+    root.put()
+    foo1 = Foo(name='foo1', parent=root.key)
+    foo1.put()
+    @model.transactional
+    def txn1():
+      foo2 = foo1.key.get()
+      assert foo2.name == 'foo1'
+      foo2.name = 'foo2'
+      foo2.put()
+      foo3 = foo1.key.get(use_cache=False)
+      foos = Foo.query(ancestor=root.key).fetch(use_cache=False)
+      assert foo1 == foo3 == foos[0]
+      assert foo1 != foo2
+      raise model.Rollback
+    @model.transactional
+    def txn2():
+      foo2 = foo1.key.get()
+      assert foo2.name == 'foo1'
+      foo2.name = 'foo2'
+      foo2.put()
+      foo3 = foo1.key.get(use_cache=True)
+      foos = Foo.query(ancestor=root.key).fetch(use_cache=True)
+      assert foo2 == foo3 == foos[0]
+      assert foo1 != foo2
+      raise model.Rollback
+    txn1()
+    txn2()
 
 
 def main():

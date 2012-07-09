@@ -1,3 +1,13 @@
+Release 1.0.4 (future)
+
+- Issue 196: AutoBatcher should pass errors through Futures properly.
+- Issue 193: Don't try to put entities > 1000000 in memcache.
+- Issue 192: Override repr() to avoid huge representations.
+- Issues 189, 194: Reject projecting on unindexed or undefined properties.
+- Issue 190: Tasklets should preserve the default namespace when spawned.
+
+----------------------------------------
+
 Release 1.0.3 (included in SDK 1.7.0)
 
 Major new features:

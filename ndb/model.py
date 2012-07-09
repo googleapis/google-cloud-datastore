@@ -326,6 +326,10 @@ class KindError(datastore_errors.BadValueError):
   """
 
 
+class BadProjectionError(datastore_errors.Error):
+  """Raised when a property name used as a projection is invalid."""
+
+
 class UnprojectedPropertyError(datastore_errors.Error):
   """Raised when getting a property value that's not in the projection."""
 
@@ -1066,6 +1070,17 @@ class Property(ModelAttribute):
       value = self._call_from_base_type(value.b_val)
     return value
 
+  def _value_to_repr(self, value):
+    """Turn a value (base or not) into its repr().
+
+    This exists so that property classes can override it separately.
+    """
+    # Manually apply _from_base_type() so as not to have a side
+    # effect on what's contained in the entity.  Printing a value
+    # should not change it!
+    val = self._opt_call_from_base_type(value)
+    return repr(val)
+
   def _opt_call_to_base_type(self, value):
     """Call _to_base_type() if necessary.
 
@@ -1299,6 +1314,25 @@ class Property(ModelAttribute):
   def _prepare_for_put(self, entity):
     pass
 
+  def _check_projection(self, rest=None):
+    """Helper to check whether this property can be used as a projection.
+
+    Args:
+      rest: Optional subproperty to check, of the form 'name1.name2...nameN'.
+
+    Raises:
+      BadProjectionError if this property is not indexed or if a
+      subproperty is specified.  (StructuredProperty overrides this
+      method to handle subprpoperties.)
+    """
+    if not self._indexed:
+      raise BadProjectionError('Projecting on unindexed property %s' %
+                               self._name)
+    if rest:
+      raise BadProjectionError('Projecting on subproperty %s.%s '
+                               'but %s is not a structured property' %
+                               (self._name, rest, self._name))
+
   def _get_for_dict(self, entity):
     """Retrieve the value like _get_value(), processed for _to_dict().
 
@@ -1468,6 +1502,16 @@ class BlobProperty(Property):
       # TODO: Allow this, but only allow == and IN comparisons?
       raise NotImplementedError('BlobProperty %s cannot be compressed and '
                                 'indexed at the same time.' % self._name)
+
+  def _value_to_repr(self, value):
+    long_repr = super(BlobProperty, self)._value_to_repr(value)
+    # Note that we may truncate even if the value is shorter than
+    # _MAX_STRING_LENGTH; e.g. if it contains many \xXX or \uUUUU
+    # escapes.
+    if len(long_repr) > _MAX_STRING_LENGTH + 4:
+      # Truncate, assuming the final character is the closing quote.
+      long_repr = long_repr[:_MAX_STRING_LENGTH] + '...' + long_repr[-1]
+    return long_repr
 
   def _validate(self, value):
     if not isinstance(value, str):
@@ -2196,6 +2240,19 @@ class StructuredProperty(_StructuredGetForDictMixin):
       if value is not None:
         value._prepare_for_put()
 
+  def _check_projection(self, rest=None):
+    """Override for Model._check_projection().
+
+    Raises:
+      BadProjectionError if no subproperty is specified or if something
+      is wrong with the subproperty.
+    """
+    if not rest:
+      raise BadProjectionError('Projecting on structured property %s '
+                               'requires a subproperty' %
+                               self._name)
+    self._modelclass._check_projections([rest])
+
 
 class LocalStructuredProperty(_StructuredGetForDictMixin, BlobProperty):
   """Substructure that is serialized to an opaque blob.
@@ -2670,14 +2727,19 @@ class Model(_NotEqualMixin):
     for prop in self._properties.itervalues():
       if prop._has_value(self):
         val = prop._retrieve_value(self)
-        # Manually apply _from_base_type() so as not to have a side
-        # effect on what's contained in the entity.  Printing a value
-        # should not change it!
-        if prop._repeated:
-          val = [prop._opt_call_from_base_type(v) for v in val]
-        elif val is not None:
-          val = prop._opt_call_from_base_type(val)
-        args.append('%s=%r' % (prop._code_name, val))
+        if val is None:
+          rep = 'None'
+        elif prop._repeated:
+          reprs = [prop._value_to_repr(v) for v in val]
+          if reprs:
+            reprs[0] = '[' + reprs[0]
+            reprs[-1] = reprs[-1] + ']'
+            rep = ', '.join(reprs)
+          else:
+            rep = '[]'
+        else:
+          rep = prop._value_to_repr(val)
+        args.append('%s=%s' % (prop._code_name, rep))
     args.sort()
     if self._key is not None:
       args.insert(0, 'key=%r' % self._key)
@@ -2949,6 +3011,46 @@ class Model(_NotEqualMixin):
     if self._properties:
       for prop in self._properties.itervalues():
         prop._prepare_for_put(self)
+
+  @classmethod
+  def _check_projections(cls, projections):
+    """Helper to check that a list of projections is valid for this class.
+
+    Called from query.py.
+
+    Args:
+      projections: List or tuple of projections -- each being a string
+        giving a property name, possibly containing dots (to address
+        subproperties of structured properties).
+
+    Raises:
+      BadProjectionError if one of the properties is invalid.
+      AssertionError if the argument is not a list or tuple of strings.
+    """
+    assert isinstance(projections, (list, tuple)), repr(projections)
+    for name in projections:
+      assert isinstance(name, basestring), repr(name)
+      if '.' in name:
+        name, rest = name.split('.', 1)
+      else:
+        rest = None
+      prop = cls._properties.get(name)
+      if prop is None:
+        cls._unknown_projection(name)
+      else:
+        prop._check_projection(rest)
+
+  @classmethod
+  def _unknown_projection(cls, name):
+    """Helper to raise an exception for an unknown property name.
+
+    This is called by _check_projections().  It is overridden by
+    Expando, where this is a no-op.
+
+    Raises:
+      BadProjectionError.
+    """
+    raise BadProjectionError('Projecting on unknown property %s' % name)
 
   def _validate_key(self, key):
     """Validation for _key attribute (designed to be overridden).
@@ -3249,6 +3351,11 @@ class Expando(Model):
   def _set_attributes(self, kwds):
     for name, value in kwds.iteritems():
       setattr(self, name, value)
+
+  @classmethod
+  def _unknown_projection(cls, name):
+    # It is not an error to project on an unknown Expando property.
+    pass
 
   def __getattr__(self, name):
     if name.startswith('_'):
