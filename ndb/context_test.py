@@ -1249,7 +1249,7 @@ class ContextTests(test_utils.NDBTest):
       _use_cache = False
       blob = model.BlobProperty()
     small = Blobby(blob='x')
-    huge = Blobby(blob='x'*1000000)  # Fits in datastore, nit in memcache
+    huge = Blobby(blob='x'*1000000)  # Fits in datastore, not in memcache
     originals = [small, huge]
     keys = model.put_multi(originals)
     copies = model.get_multi(keys)

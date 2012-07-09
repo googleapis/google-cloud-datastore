@@ -1075,6 +1075,9 @@ class Property(ModelAttribute):
 
     This exists so that property classes can override it separately.
     """
+    # Manually apply _from_base_type() so as not to have a side
+    # effect on what's contained in the entity.  Printing a value
+    # should not change it!
     val = self._opt_call_from_base_type(value)
     return repr(val)
 
@@ -2724,20 +2727,19 @@ class Model(_NotEqualMixin):
     for prop in self._properties.itervalues():
       if prop._has_value(self):
         val = prop._retrieve_value(self)
-        # Manually apply _from_base_type() so as not to have a side
-        # effect on what's contained in the entity.  Printing a value
-        # should not change it!
-        if prop._repeated:
-          vals = [prop._value_to_repr(v) for v in val]
-          if vals:
-            vals[0] = '[' + vals[0]
-            vals[-1] = vals[-1] + ']'
-            val = ', '.join(vals)
+        if val is None:
+          rep = 'None'
+        elif prop._repeated:
+          reprs = [prop._value_to_repr(v) for v in val]
+          if reprs:
+            reprs[0] = '[' + reprs[0]
+            reprs[-1] = reprs[-1] + ']'
+            rep = ', '.join(reprs)
           else:
-            val = '[]'
-        elif val is not None:
-          val = prop._value_to_repr(val)
-        args.append('%s=%s' % (prop._code_name, val))
+            rep = '[]'
+        else:
+          rep = prop._value_to_repr(val)
+        args.append('%s=%s' % (prop._code_name, rep))
     args.sort()
     if self._key is not None:
       args.insert(0, 'key=%r' % self._key)
