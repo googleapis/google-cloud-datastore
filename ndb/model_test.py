@@ -2247,7 +2247,7 @@ class ModelTests(test_utils.NDBTest):
 
     # Now read this back using a GenericProperty.
     class Outer(model.Model):
-      inner = model.GenericProperty()
+      inner = model.GenericProperty(indexed=False)
     b1 = key1.get()
     self.assertEqual(b1.inner.key.id(), None)  # Incomplete key is kept
     b2 = key2.get()
