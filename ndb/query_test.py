@@ -1566,7 +1566,7 @@ class QueryTests(test_utils.NDBTest):
     self.assertEqual([self.joe, self.jill, self.moe], results)
 
   def testGqlSubclass(self):
-    # You can pass gql() a subclass of Query and it'll use that.
+    # You can pass _gql() a subclass of Query and it'll use that.
     class MyQuery(query.Query):
       pass
     q = query._gql("SELECT * FROM Foo WHERE name = :1", query_class=MyQuery)
@@ -1618,6 +1618,10 @@ class QueryTests(test_utils.NDBTest):
   def testGqlBadProjection(self):
     self.assertRaises(model.BadProjectionError,
                       query.gql, "SELECT qqq FROM Foo")
+
+  def testGqlBadKind(self):
+    self.assertRaises(model.KindError,
+                      query.gql, "SELECT * FROM Whatever")
 
   def testAsyncNamespace(self):
     # Test that async queries pick up the namespace when the

@@ -1412,7 +1412,7 @@ def _gql(query_string, query_class=Query):
     default_model = ctx._conn.adapter.default_model
     modelclass = model.Model._kind_map.get(kind, default_model)
     if modelclass is None:
-      raise datastore_errors.BadQueryError(
+      raise model.KindError(
         "No model class found for kind %r. Did you forget to import it?" %
         (kind,))
   ancestor = None
