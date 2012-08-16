@@ -257,11 +257,13 @@ class PolyModelTests(test_utils.NDBTest):
     class A(polymodel.PolyModel): pass
     class B(A): pass
     class C(A): pass
-    B().put()
-    C().put()
-    self.assertEqual(query.gql('SELECT * FROM A').count(), 2)
-    self.assertEqual(B.gql('').count(), 1)
-    self.assertEqual(query.gql('SELECT * FROM B').count(), 1)
+    b = B()
+    b.put()
+    c = C()
+    c.put()
+    self.assertEqual(query.gql('SELECT * FROM A').fetch(), [b, c])
+    self.assertEqual(B.gql('').fetch(), [b])
+    self.assertEqual(query.gql('SELECT * FROM B').fetch(), [b])
 
 
 TOM_PB = """\
