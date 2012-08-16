@@ -1,4 +1,4 @@
-Release 1.0.4 (future)
+Release 1.0.4 (included in SDK 1.7.1)
 
 - Issue 196: AutoBatcher should pass errors through Futures properly.
 - Issue 193: Don't try to put entities > 1000000 in memcache.
