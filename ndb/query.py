@@ -1406,18 +1406,26 @@ def _gql(query_string, query_class=Query):
   gql_qry = gql.GQL(query_string)
   kind = gql_qry.kind()
   if kind is None:
+    # The query must be lacking a "FROM <kind>" class.  Let Expando
+    # stand in for the model class (it won't actually be used to
+    # construct the results).
     modelclass = model.Expando
   else:
-    ctx = tasklets.get_context()
-    default_model = ctx._conn.adapter.default_model
-    modelclass = model.Model._kind_map.get(kind, default_model)
+    modelclass = model.Model._kind_map.get(kind)
     if modelclass is None:
-      raise model.KindError(
-        "No model class found for kind %r. Did you forget to import it?" %
-        (kind,))
+      # If the Adapter has a default model, use it; raise KindError otherwise.
+      ctx = tasklets.get_context()
+      modelclass = ctx._conn.adapter.default_model
+      if modelclass is None:
+        raise model.KindError(
+          "No model class found for kind %r. Did you forget to import it?" %
+          (kind,))
+    else:
+      # Adjust kind to the model class's kind (for PolyModel).
+      kind = modelclass._get_kind()
   ancestor = None
   flt = gql_qry.filters()
-  filters = []
+  filters = list(modelclass._default_filters())
   for name_op in sorted(flt):
     name, op = name_op
     values = flt[name_op]

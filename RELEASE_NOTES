@@ -1,5 +1,6 @@
 Release 1.0.5 (future)
 
+- Issue 199: Fix GQL for PolyModel.
 - Issue 200: gql() should raise KindError for unknown kind.
 
 ----------------------------------------

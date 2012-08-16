@@ -2758,6 +2758,27 @@ class Model(_NotEqualMixin):
     return cls.__name__
 
   @classmethod
+  def _class_name(cls):
+    """A hook for polymodel to override.
+
+    For regular models and expandos this is just an alias for
+    _get_kind().  For PolyModel subclasses, it returns the class name
+    (as set in the 'class' attribute thereof), whereas _get_kind()
+    returns the kind (the class name of the root class of a specific
+    PolyModel hierarchy).
+    """
+    return cls._get_kind()
+
+  @classmethod
+  def _default_filters(cls):
+    """Return an iterable of filters that are always to be applied.
+
+    This is used by PolyModel to quietly insert a filter for the
+    current class name.
+    """
+    return ()
+
+  @classmethod
   def _reset_kind_map(cls):
     """Clear the kind map.  Useful for testing."""
     # Preserve "system" kinds, like __namespace__
@@ -3080,8 +3101,8 @@ class Model(_NotEqualMixin):
     # TODO: Disallow non-empty args and filter=.
     from .query import Query  # Import late to avoid circular imports.
     qry = Query(kind=cls._get_kind(), **kwds)
-    if args:
-      qry = qry.filter(*args)
+    qry = qry.filter(*cls._default_filters())
+    qry = qry.filter(*args)
     return qry
   query = _query
 
@@ -3089,7 +3110,7 @@ class Model(_NotEqualMixin):
   def _gql(cls, query_string, *args, **kwds):
     """Run a GQL query."""
     from .query import gql  # Import late to avoid circular imports.
-    return gql('SELECT * FROM %s %s' % (cls._get_kind(), query_string),
+    return gql('SELECT * FROM %s %s' % (cls._class_name(), query_string),
                *args, **kwds)
   gql = _gql
 

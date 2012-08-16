@@ -11,6 +11,7 @@ from .google_imports import datastore_types
 
 from . import polymodel
 from . import model
+from . import query
 from . import test_utils
 
 
@@ -250,6 +251,17 @@ class PolyModelTests(test_utils.NDBTest):
     self.assertEqual(ChildEntity._get_kind(), 'Entity')
     self.assertEqual(RightMixinEntity._get_kind(), 'Entity')
     self.assertEqual(LeftMixinEntity._get_kind(), 'Entity')
+
+  def testGql(self):
+    # See issue 199.
+    class A(polymodel.PolyModel): pass
+    class B(A): pass
+    class C(A): pass
+    B().put()
+    C().put()
+    self.assertEqual(query.gql('SELECT * FROM A').count(), 2)
+    self.assertEqual(B.gql('').count(), 1)
+    self.assertEqual(query.gql('SELECT * FROM B').count(), 1)
 
 
 TOM_PB = """\

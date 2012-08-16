@@ -152,12 +152,15 @@ class PolyModel(model.Model):
     """Override; called by Model._fix_up_properties().
 
     Update the kind map as well as the class map, except for PolyModel
-    itself.
+    itself (its class key is empty).  Note that the kind map will
+    contain entries for all classes in a PolyModel hierarchy; they all
+    have the same kind, but different class names.  PolyModel class
+    names, like regular Model class names, must be globally unique.
     """
-    bases = cls._get_hierarchy()
-    if bases:
-      cls._kind_map[cls._get_kind()] = bases[0]
-      cls._class_map[tuple(cls._class_key())] = cls
+    cls._kind_map[cls._class_name()] = cls
+    class_key = cls._class_key()
+    if class_key:
+      cls._class_map[tuple(class_key)] = cls
 
   @classmethod
   def _from_pb(cls, pb, set_key=True, ent=None, key=None):
@@ -205,6 +208,8 @@ class PolyModel(model.Model):
   def _class_name(cls):
     """Return the class name.
 
+    This overrides Model._class_name() which is an alias for _get_kind().
+
     This is overridable in case you want to use a different class
     name.  The main use case is probably to maintain backwards
     compatibility with datastore contents after renaming a class.
@@ -231,14 +236,5 @@ class PolyModel(model.Model):
     return bases
 
   @classmethod
-  def _query(cls, *args, **kwds):
-    """Override.
-
-    This inserts an implicit filter on the class property.
-    """
-    qry = super(PolyModel, cls)._query(**kwds)
-    qry = qry.filter(cls.class_ == cls._class_name())
-    if args:
-      qry = qry.filter(*args)
-    return qry
-  query = _query
+  def _default_filters(cls):
+    return (cls.class_ == cls._class_name(),)
