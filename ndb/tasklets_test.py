@@ -764,12 +764,20 @@ class TracebackTests(test_utils.NDBTest):
       self.fail('Expected RuntimeError not raised')
 
   @tasklets.synctasklet
-  def testYieldError(self):
-    self.ExpectWarnings()
+  def provoke_yield_error(self):
     @tasklets.tasklet
     def bad_user_code():
       yield 'abc'
     yield bad_user_code()
+
+  def testYieldError(self):
+    try:
+      self.provoke_yield_error()
+    except RuntimeError, err:
+      self.assertTrue(re.match(
+        "A tasklet should not yield a plain value: "
+        ".*bad_user_code.*yielded 'abc'$",
+        str(err)))
 
 
 def main():
