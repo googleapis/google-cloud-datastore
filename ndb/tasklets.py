@@ -435,7 +435,8 @@ class Future(object):
       if _is_generator(value):
         # TODO: emulate PEP 380 here?
         raise NotImplementedError('Cannot defer to another generator.')
-      raise RuntimeError('A tasklet should not yield plain values.')
+      raise RuntimeError('A tasklet should not yield a plain value: '
+                         '%.200s yielded %.200r' % (info, value))
 
   def _on_rpc_completion(self, rpc, ns, gen):
     try:

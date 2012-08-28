@@ -763,6 +763,14 @@ class TracebackTests(test_utils.NDBTest):
     else:
       self.fail('Expected RuntimeError not raised')
 
+  @tasklets.synctasklet
+  def testYieldError(self):
+    self.ExpectWarnings()
+    @tasklets.tasklet
+    def bad_user_code():
+      yield 'abc'
+    yield bad_user_code()
+
 
 def main():
   unittest.main()
