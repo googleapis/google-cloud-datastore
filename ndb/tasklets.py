@@ -9,12 +9,13 @@ that RPC to complete.
 
 The @tasklet decorator wraps generator function so that when it is
 called, a Future is returned while the generator is executed by the
-event loop.  For example:
+event loop.  Within the tasklet, any yield of a Future waits for and
+returns the Future's result.  For example:
 
   @tasklet
   def foo():
     a = yield <some Future>
-    c = yield <another Future>
+    b = yield <another Future>
     raise Return(a + b)
 
   def main():
