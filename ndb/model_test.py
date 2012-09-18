@@ -463,6 +463,11 @@ class ModelTests(test_utils.NDBTest):
 
   the_module = model
 
+  def testConstruct(self):
+    self.assertRaises(TypeError,
+                      model.Model,
+                      'Unsupported positional argument')
+
   def testKey(self):
     m = model.Model()
     self.assertEqual(m.key, None)

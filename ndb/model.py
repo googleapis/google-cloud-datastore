@@ -2632,6 +2632,8 @@ class Model(_NotEqualMixin):
     through the constructor, but can be assigned to entity attributes
     after the entity has been created.
     """
+    if len(args) > 1:
+      raise TypeError('Model constructor takes no positional arguments.')
     (self,) = args
     get_arg = self.__get_arg
     key = get_arg(kwds, 'key')
