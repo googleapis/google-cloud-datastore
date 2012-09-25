@@ -68,6 +68,7 @@ import types
 
 from .google_imports import apiproxy_stub_map
 from .google_imports import apiproxy_rpc
+from .google_imports import datastore
 from .google_imports import datastore_errors
 from .google_imports import datastore_rpc
 from .google_imports import namespace_manager
@@ -347,16 +348,20 @@ class Future(object):
       waiting_on = set(f for f in waiting_on if f.state == cls.RUNNING)
       ev.run1()
 
-  def _help_tasklet_along(self, ns, gen, val=None, exc=None, tb=None):
+  def _help_tasklet_along(self, ns, conn, gen, val=None, exc=None, tb=None):
     # XXX Docstring
     info = utils.gen_info(gen)
     __ndb_debug__ = info
     try:
       save_context = get_context()
       save_namespace = namespace_manager.get_namespace()
+      save_connection = datastore._GetConnection()
       try:
         set_context(self._context)
-        namespace_manager.set_namespace(ns)
+        if ns != save_namespace:
+          namespace_manager.set_namespace(ns)
+        if conn is not save_connection:
+          datastore._SetConnection(conn)
         if exc is not None:
           _logging_debug('Throwing %s(%s) into %s',
                         exc.__class__.__name__, exc, info)
@@ -367,8 +372,12 @@ class Future(object):
           self._context = get_context()
       finally:
         ns = namespace_manager.get_namespace()
+        conn = datastore._GetConnection()
         set_context(save_context)
-        namespace_manager.set_namespace(save_namespace)
+        if save_namespace != ns:
+          namespace_manager.set_namespace(save_namespace)
+        if save_context is not conn:
+          datastore._SetConnection(save_connection)
 
     except StopIteration, err:
       result = get_return_value(err)
@@ -406,7 +415,8 @@ class Future(object):
       if isinstance(value, (apiproxy_stub_map.UserRPC,
                             datastore_rpc.MultiRpc)):
         # TODO: Tail recursion if the RPC is already complete.
-        eventloop.queue_rpc(value, self._on_rpc_completion, value, ns, gen)
+        eventloop.queue_rpc(value, self._on_rpc_completion,
+                            value, ns, conn, gen)
         return
       if isinstance(value, Future):
         # TODO: Tail recursion if the Future is already done.
@@ -416,7 +426,7 @@ class Future(object):
         self._next = value
         self._geninfo = utils.gen_info(gen)
         _logging_debug('%s is now blocked waiting for %s', self, value)
-        value.add_callback(self._on_future_completion, value, ns, gen)
+        value.add_callback(self._on_future_completion, value, ns, conn, gen)
         return
       if isinstance(value, (tuple, list)):
         # Arrange for yield to return a list of results (not Futures).
@@ -431,7 +441,7 @@ class Future(object):
         except Exception, err:
           _, _, tb = sys.exc_info()
           mfut.set_exception(err, tb)
-        mfut.add_callback(self._on_future_completion, mfut, ns, gen)
+        mfut.add_callback(self._on_future_completion, mfut, ns, conn, gen)
         return
       if _is_generator(value):
         # TODO: emulate PEP 380 here?
@@ -439,28 +449,29 @@ class Future(object):
       raise RuntimeError('A tasklet should not yield a plain value: '
                          '%.200s yielded %.200r' % (info, value))
 
-  def _on_rpc_completion(self, rpc, ns, gen):
+  def _on_rpc_completion(self, rpc, ns, conn, gen):
     try:
       result = rpc.get_result()
     except GeneratorExit:
       raise
     except Exception, err:
       _, _, tb = sys.exc_info()
-      self._help_tasklet_along(ns, gen, exc=err, tb=tb)
+      self._help_tasklet_along(ns, conn, gen, exc=err, tb=tb)
     else:
-      self._help_tasklet_along(ns, gen, result)
+      self._help_tasklet_along(ns, conn, gen, result)
 
-  def _on_future_completion(self, future, ns, gen):
+  def _on_future_completion(self, future, ns, conn, gen):
     if self._next is future:
       self._next = None
       self._geninfo = None
       _logging_debug('%s is no longer blocked waiting for %s', self, future)
     exc = future.get_exception()
     if exc is not None:
-      self._help_tasklet_along(ns, gen, exc=exc, tb=future.get_traceback())
+      self._help_tasklet_along(ns, conn, gen,
+                               exc=exc, tb=future.get_traceback())
     else:
       val = future.get_result()  # This won't raise an exception.
-      self._help_tasklet_along(ns, gen, val)
+      self._help_tasklet_along(ns, conn, gen, val)
 
 def sleep(dt):
   """Public function to sleep some time.
@@ -995,7 +1006,8 @@ def tasklet(func):
       result = get_return_value(err)
     if _is_generator(result):
       ns = namespace_manager.get_namespace()
-      eventloop.queue_call(None, fut._help_tasklet_along, ns, result)
+      conn = datastore._GetConnection()
+      eventloop.queue_call(None, fut._help_tasklet_along, ns, conn, result)
     else:
       fut.set_result(result)
     return fut
