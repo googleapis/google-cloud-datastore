@@ -1673,6 +1673,28 @@ class QueryTests(test_utils.NDBTest):
       self.assertEqual(res, [barney, willy])
       self.assertEqual(more, False)
 
+  def testHugeOffset(self):
+    # Sadly, this test is slow because it creates 3300 entities.
+    # I don't know of a way to test this behavior without creating
+    # 1000s of entities (the original code had a secondary bug that
+    # only showed up for 2000+ entities).
+    ndb = model
+    class M(ndb.Model):
+      a = ndb.IntegerProperty()
+    ms = [M(a=i, id='%04d' % i) for i in range(3300)]
+    ks = ndb.put_multi(ms)
+    q = M.query().order(M.a)
+    xs = q.fetch(1, offset=999)
+    self.assertEqual(xs, ms[999:1000])
+    xs = q.fetch(1, offset=1000)
+    self.assertEqual(xs, ms[1000:1001])
+    xs = q.fetch(1, offset=1001)
+    self.assertEqual(xs, ms[1001:1002])
+    xs = q.fetch(1, offset=2001)
+    self.assertEqual(xs, ms[2001:2002])
+    xs = q.fetch(1, offset=3001)
+    self.assertEqual(xs, ms[3001:3002])
+
 
 def main():
   unittest.main()
