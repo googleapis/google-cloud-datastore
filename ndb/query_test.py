@@ -1674,27 +1674,31 @@ class QueryTests(test_utils.NDBTest):
       self.assertEqual(more, False)
 
   def testHugeOffset(self):
-    # Sadly, this test is slow because it creates 3300 entities.
-    # I don't know of a way to test this behavior without creating
-    # 1000s of entities (the original code had a secondary bug that
-    # only showed up for 2000+ entities).
-    ndb = model
-    class M(ndb.Model):
-      a = ndb.IntegerProperty()
-    ms = [M(a=i, id='%04d' % i) for i in range(3300)]
-    ks = ndb.put_multi(ms)
-    q = M.query().order(M.a)
-    xs = q.fetch(1, offset=999)
-    self.assertEqual(xs, ms[999:1000])
-    xs = q.fetch(1, offset=1000)
-    self.assertEqual(xs, ms[1000:1001])
-    xs = q.fetch(1, offset=1001)
-    self.assertEqual(xs, ms[1001:1002])
-    xs = q.fetch(1, offset=2001)
-    self.assertEqual(xs, ms[2001:2002])
-    xs = q.fetch(1, offset=3001)
-    self.assertEqual(xs, ms[3001:3002])
-
+    # See issue 210.  http://goo.gl/EDfHa
+    # Vastly reduce _MAX_QUERY_OFFSET since otherwise the test spends
+    # several seconds creating enough entities to reproduce the problem.
+    save_max_query_offset = datastore_stub_util._MAX_QUERY_OFFSET
+    try:
+      datastore_stub_util._MAX_QUERY_OFFSET = 10
+      ndb = model
+      class M(ndb.Model):
+        a = ndb.IntegerProperty()
+      ms = [M(a=i, id='%04d' % i) for i in range(33)]
+      ks = ndb.put_multi(ms)
+      q = M.query().order(M.a)
+      xs = q.fetch(1, offset=9)
+      self.assertEqual(xs, ms[9:10])
+      xs = q.fetch(1, offset=10)
+      self.assertEqual(xs, ms[10:11])
+      xs = q.fetch(1, offset=11)
+      self.assertEqual(xs, ms[11:12])
+      xs = q.fetch(1, offset=21)
+      self.assertEqual(xs, ms[21:22])
+      xs = q.fetch(1, offset=31)
+      self.assertEqual(xs, ms[31:32])
+    finally:
+      datastore_stub_util._MAX_QUERY_OFFSET = save_max_query_offset
+      
 
 def main():
   unittest.main()
