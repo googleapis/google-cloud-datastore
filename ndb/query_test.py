@@ -1698,7 +1698,7 @@ class QueryTests(test_utils.NDBTest):
       self.assertEqual(xs, ms[31:32])
     finally:
       datastore_stub_util._MAX_QUERY_OFFSET = save_max_query_offset
-      
+
 
 def main():
   unittest.main()

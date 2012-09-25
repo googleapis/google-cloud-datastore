@@ -920,8 +920,7 @@ class Query(object):
     while rpc is not None:
       batch = yield rpc
       if (batch.skipped_results and
-          isinstance(options, datastore_query.FetchOptions) and
-          options.offset):
+          datastore_query.FetchOptions.offset(options)):
         offset = options.offset - batch.skipped_results
         options = datastore_query.FetchOptions(offset=offset, config=options)
       rpc = batch.next_batch_async(options)
