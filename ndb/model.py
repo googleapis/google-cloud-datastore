@@ -2134,6 +2134,9 @@ class StructuredProperty(_StructuredGetForDictMixin):
   IN = _IN
 
   def _validate(self, value):
+    if isinstance(value, dict):
+      # A dict is assumed to be the result of a _to_dict() call.
+      return self._modelclass(**value)
     if not isinstance(value, self._modelclass):
       raise datastore_errors.BadValueError('Expected %s instance, got %r' %
                                            (self._modelclass.__name__, value))

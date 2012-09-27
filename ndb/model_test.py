@@ -4255,6 +4255,29 @@ class CacheTests(test_utils.NDBTest):
     self.assertEqual(copy.wrap[0].range, None)
     self.assertEqual(copy.wrap[1].range, IntRangeModel(first=0, last=10))
 
+  def testStructuredPropertyFromDict(self):
+    # See issue 207.  http://goo.gl/IQXS6
+    class Address(model.Model):
+      street = model.StringProperty()
+      city = model.StringProperty()
+    class AddressList(model.Model):
+      addresses = model.StructuredProperty(Address, repeated=True)
+      backup = model.StructuredProperty(Address)
+    class Person(model.Model):
+      name = model.StringProperty()
+      home = model.StructuredProperty(Address)
+      alist = model.StructuredProperty(AddressList)
+      blist = model.StructuredProperty(AddressList)
+    joe = Person(name='Joe',
+                 home=Address(street='Main', city='Springfield'),
+                 alist=AddressList(addresses=[Address(street='A', city='B'),
+                                              Address(street='C', city='D')],
+                                   backup=Address(street='X', city='Y')),
+                 blist=AddressList(addresses=[Address(street='E', city='F')]))
+    data = joe._to_dict()
+    new_joe = Person(**data)
+    self.assertEqual(new_joe, joe)
+
   def testTransactionsCachingAndQueries(self):
     # Prompted by a doc question and this (outdated) thread:
     # https://groups.google.com/forum/?fromgroups#!topic/appengine-ndb-discuss/idxsAZNHsqI
