@@ -4267,13 +4267,14 @@ class CacheTests(test_utils.NDBTest):
       name = model.StringProperty()
       home = model.StructuredProperty(Address)
       alist = model.StructuredProperty(AddressList)
-      blist = model.StructuredProperty(AddressList)
+      blist = model.LocalStructuredProperty(AddressList)
     joe = Person(name='Joe',
                  home=Address(street='Main', city='Springfield'),
                  alist=AddressList(addresses=[Address(street='A', city='B'),
                                               Address(street='C', city='D')],
                                    backup=Address(street='X', city='Y')),
-                 blist=AddressList(addresses=[Address(street='E', city='F')]))
+                 blist=AddressList(addresses=[Address(street='E', city='F')],
+                                   backup=None))
     data = joe._to_dict()
     new_joe = Person(**data)
     self.assertEqual(new_joe, joe)
