@@ -7,11 +7,12 @@ import threading
 import time
 import unittest
 
+from .google_imports import apiproxy_errors
+from .google_imports import datastore
 from .google_imports import datastore_errors
+from .google_imports import datastore_rpc
 from .google_imports import memcache
 from .google_imports import taskqueue
-from .google_imports import datastore_rpc
-from .google_imports import apiproxy_errors
 
 from . import context
 from . import eventloop
@@ -1270,6 +1271,35 @@ class ContextTests(test_utils.NDBTest):
     self.assertRaises(ValueError, fhuge.get_result)
     self.assertEqual(small, small.key.get())
     self.assertEqual(None, huge.key.get())
+
+  def testDatastoreConnectionIsRestored(self):
+    # See issue 209.  http://goo.gl/7TEyM
+    class TestData(model.Model):
+      pass
+    @tasklets.tasklet
+    def txn():
+      conn1 = datastore._GetConnection()
+      self.assertTrue(
+        isinstance(conn1, datastore_rpc.TransactionalConnection), conn1)
+      yield TestData().put_async()
+      conn2 = datastore._GetConnection()
+      self.assertEqual(conn1, conn2)
+    @tasklets.synctasklet
+    def many_txns():
+      # Exactly how many transactions are needed to make this fail
+      # appears to be random.  With 100 it always seems to fail
+      # (unless the bug is fixed).
+      conn_a = datastore._GetConnection()
+      ts = [model.transaction_async(txn) for i in range(100)]
+      conn_b = datastore._GetConnection()
+      self.assertEqual(conn_a, conn_b)
+      yield ts
+      conn_c = datastore._GetConnection()
+      self.assertEqual(conn_b, conn_c)
+    conn_before = datastore._GetConnection()
+    many_txns()
+    conn_after = datastore._GetConnection()
+    self.assertEqual(conn_before, conn_after)
 
 
 class ContextFutureCachingTests(test_utils.NDBTest):

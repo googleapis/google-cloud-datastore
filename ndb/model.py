@@ -339,7 +339,7 @@ class ReadonlyPropertyError(datastore_errors.Error):
 
 
 class ComputedPropertyError(ReadonlyPropertyError):
-  """Raised when attempting to set a value to a computed property."""
+  """Raised when attempting to set a value to or delete a computed property."""
 
 
 # Various imported limits.
@@ -1339,6 +1339,16 @@ class Property(ModelAttribute):
     Property subclasses can override this if they want the dictionary
     returned by entity._to_dict() to contain a different value.  The
     main use case is StructuredProperty and LocalStructuredProperty.
+
+    NOTES:
+
+    - If you override _get_for_dict() to return a different type, you
+      must override _validate() to accept values of that type and
+      convert them back to the original type.
+
+    - If you override _get_for_dict(), you must handle repeated values
+      and None correctly.  (See _StructuredGetForDictMixin for an
+      example.)  However, _validate() does not need to handle these.
     """
     return self._get_value(entity)
 
@@ -2006,6 +2016,13 @@ class _StructuredGetForDictMixin(Property):
   The behavior here is that sub-entities are converted to dictionaries
   by calling to_dict() on them (also doing the right thing for
   repeated properties).
+
+  NOTE: Even though the _validate() method in StructuredProperty and
+  LocalStructuredProperty are identical, they cannot be moved into
+  this shared base class.  The reason is subtle: _validate() is not a
+  regular method, but treated specially by _call_to_base_type() and
+  _call_shallow_validation(), and the class where it occurs matters
+  if it also defines _to_base_type().
   """
 
   def _get_for_dict(self, entity):
@@ -2134,6 +2151,9 @@ class StructuredProperty(_StructuredGetForDictMixin):
   IN = _IN
 
   def _validate(self, value):
+    if isinstance(value, dict):
+      # A dict is assumed to be the result of a _to_dict() call.
+      return self._modelclass(**value)
     if not isinstance(value, self._modelclass):
       raise datastore_errors.BadValueError('Expected %s instance, got %r' %
                                            (self._modelclass.__name__, value))
@@ -2286,6 +2306,9 @@ class LocalStructuredProperty(_StructuredGetForDictMixin, BlobProperty):
     self._keep_keys = keep_keys
 
   def _validate(self, value):
+    if isinstance(value, dict):
+      # A dict is assumed to be the result of a _to_dict() call.
+      return self._modelclass(**value)
     if not isinstance(value, self._modelclass):
       raise datastore_errors.BadValueError('Expected %s instance, got %r' %
                                            (self._modelclass.__name__, value))
@@ -2528,6 +2551,9 @@ class ComputedProperty(GenericProperty):
   def _set_value(self, entity, value):
     raise ComputedPropertyError("Cannot assign to a ComputedProperty")
 
+  def _delete_value(self, entity):
+    raise ComputedPropertyError("Cannot delete a ComputedProperty")
+
   def _get_value(self, entity):
     # About projections and computed properties: if the computed
     # property itself is in the projection, don't recompute it; this
@@ -2632,6 +2658,8 @@ class Model(_NotEqualMixin):
     through the constructor, but can be assigned to entity attributes
     after the entity has been created.
     """
+    if len(args) > 1:
+      raise TypeError('Model constructor takes no positional arguments.')
     (self,) = args
     get_arg = self.__get_arg
     key = get_arg(kwds, 'key')

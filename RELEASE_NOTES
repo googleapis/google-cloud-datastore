@@ -1,3 +1,14 @@
+Release 1.0.7 (future)
+
+- Issue 213: PolyModel root class query should not filter on 'class'.
+
+Release 1.0.6 (slated for SDK 1.7.3)
+
+- Issue 207: Convert dicts into structured properties automatically.
+- Issue 209: Save/restore datastore connection around tasklet switches.
+- Issue 210: Fix fetch() with offset > 1000.
+- Improve error message when calling Model() with positional argument(s).
+
 Release 1.0.5 (included in SDK 1.7.2)
 
 - Issue 204: Improve message for tasklet plain value error.

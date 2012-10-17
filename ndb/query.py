@@ -919,6 +919,10 @@ class Query(object):
     rpc = dsquery.run_async(conn, options)
     while rpc is not None:
       batch = yield rpc
+      if (batch.skipped_results and
+          datastore_query.FetchOptions.offset(options)):
+        offset = options.offset - batch.skipped_results
+        options = datastore_query.FetchOptions(offset=offset, config=options)
       rpc = batch.next_batch_async(options)
       for result in batch.results:
         result = ctx._update_cache_from_query_result(result, options)

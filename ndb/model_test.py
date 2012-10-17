@@ -463,6 +463,11 @@ class ModelTests(test_utils.NDBTest):
 
   the_module = model
 
+  def testConstruct(self):
+    self.assertRaises(TypeError,
+                      model.Model,
+                      'Unsupported positional argument')
+
   def testKey(self):
     m = model.Model()
     self.assertEqual(m.key, None)
@@ -2617,6 +2622,14 @@ class ModelTests(test_utils.NDBTest):
     self.assertEqual(m.length, 6)
     self.assertEqual(m.computed_hash, hash('Foobar'))
 
+    self.assertRaises(model.ComputedPropertyError, m.__delattr__, 'name_lower')
+    try:
+      del m.name_lower
+    except model.ComputedPropertyError:
+      pass
+    else:
+      self.fail('A ComputedProperty cannot be deleted.')
+
     func = lambda unused_ent: None
     self.assertRaises(TypeError, model.ComputedProperty, func,
                       choices=('foo', 'bar'))
@@ -4249,6 +4262,30 @@ class CacheTests(test_utils.NDBTest):
     copy = q.get()
     self.assertEqual(copy.wrap[0].range, None)
     self.assertEqual(copy.wrap[1].range, IntRangeModel(first=0, last=10))
+
+  def testStructuredPropertyFromDict(self):
+    # See issue 207.  http://goo.gl/IQXS6
+    class Address(model.Model):
+      street = model.StringProperty()
+      city = model.StringProperty()
+    class AddressList(model.Model):
+      addresses = model.StructuredProperty(Address, repeated=True)
+      backup = model.StructuredProperty(Address)
+    class Person(model.Model):
+      name = model.StringProperty()
+      home = model.StructuredProperty(Address)
+      alist = model.StructuredProperty(AddressList)
+      blist = model.LocalStructuredProperty(AddressList)
+    joe = Person(name='Joe',
+                 home=Address(street='Main', city='Springfield'),
+                 alist=AddressList(addresses=[Address(street='A', city='B'),
+                                              Address(street='C', city='D')],
+                                   backup=Address(street='X', city='Y')),
+                 blist=AddressList(addresses=[Address(street='E', city='F')],
+                                   backup=None))
+    data = joe._to_dict()
+    new_joe = Person(**data)
+    self.assertEqual(new_joe, joe)
 
   def testTransactionsCachingAndQueries(self):
     # Prompted by a doc question and this (outdated) thread:
