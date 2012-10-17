@@ -120,7 +120,7 @@ GOTO end
 
 :setvariables
 IF "%PYTHONFLAGS%"=="" SET PYTHONFLAGS=-Wignore
-SET PYTHONPATH=%GAE%;%GAE%\lib\yaml\lib;%GAE%\lib\webob;%GAE%\lib\fancy_urllib;%GAE%\lib\simplejson
+SET PYTHONPATH=%GAE%;%GAE%\lib\yaml\lib;%GAE%\lib\webob;%GAE%\lib\fancy_urllib;%GAE%\lib\simplejson;%GAE%\lib\protorpc
 SET APPCFG="%GAE%\appcfg.py"
 SET DEV_APPSERVER="%GAE%\dev_appserver.py"
 IF "%PORT%"=="" SET PORT=8080
