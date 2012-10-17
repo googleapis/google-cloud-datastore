@@ -2622,6 +2622,14 @@ class ModelTests(test_utils.NDBTest):
     self.assertEqual(m.length, 6)
     self.assertEqual(m.computed_hash, hash('Foobar'))
 
+    self.assertRaises(model.ComputedPropertyError, m.__delattr__, 'name_lower')
+    try:
+      del m.name_lower
+    except model.ComputedPropertyError:
+      pass
+    else:
+      self.fail('A ComputedProperty cannot be deleted.')
+
     func = lambda unused_ent: None
     self.assertRaises(TypeError, model.ComputedProperty, func,
                       choices=('foo', 'bar'))
