@@ -339,7 +339,7 @@ class ReadonlyPropertyError(datastore_errors.Error):
 
 
 class ComputedPropertyError(ReadonlyPropertyError):
-  """Raised when attempting to set a value to a computed property."""
+  """Raised when attempting to set a value to or delete a computed property."""
 
 
 # Various imported limits.
@@ -2550,6 +2550,9 @@ class ComputedProperty(GenericProperty):
 
   def _set_value(self, entity, value):
     raise ComputedPropertyError("Cannot assign to a ComputedProperty")
+
+  def _delete_value(self, entity):
+    raise ComputedPropertyError("Cannot delete a ComputedProperty")
 
   def _get_value(self, entity):
     # About projections and computed properties: if the computed
