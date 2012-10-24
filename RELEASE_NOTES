@@ -1,5 +1,6 @@
 Release 1.0.7 (future)
 
+- Issue 188: Add an option to set a separate deadline for memcache calls.
 - Issue 217: Explicitly disallow deleting ComputedProperty.
 - Issue 213: PolyModel root class query should not filter on 'class'.
 
