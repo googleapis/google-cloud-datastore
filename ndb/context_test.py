@@ -1210,6 +1210,95 @@ class ContextTests(test_utils.NDBTest):
     # Check that ndb ignores the corrupt memcache value
     self.assertEqual(ent, key.get())
 
+  def testMemcacheRpcDeadline(self):
+    # This just verifies that create_rpc() is called with the correct
+    # deadline; that should be sufficient.
+    orig_create_rpc = memcache.create_rpc
+
+    def mock_create_rpc(deadline='invalid'):
+      # Fail if create_rpc() was called from _make_async_call().
+      self.assertNotEqual(deadline, 'invalid')
+      observed_deadlines.append(deadline)
+      return orig_create_rpc(deadline=deadline)
+
+    try:
+      memcache.create_rpc = mock_create_rpc
+
+      observed_deadlines = []
+      self.ctx.memcache_get('a').get_result()
+      self.assertEqual(observed_deadlines, [None])
+
+      observed_deadlines = []
+      self.ctx.memcache_get('a', deadline=1).get_result()
+      self.assertEqual(observed_deadlines, [1])
+
+      observed_deadlines = []
+      self.ctx.memcache_gets('a', deadline=2).get_result()
+      self.assertEqual(observed_deadlines, [2])
+
+      observed_deadlines = []
+      self.ctx.memcache_set('a', 'b', deadline=3).get_result()
+      self.assertEqual(observed_deadlines, [3])
+
+      observed_deadlines = []
+      self.ctx.memcache_add('a', 'b', deadline=4).get_result()
+      self.assertEqual(observed_deadlines, [4])
+
+      observed_deadlines = []
+      self.ctx.memcache_replace('a', 'b', deadline=5).get_result()
+      self.assertEqual(observed_deadlines, [5])
+
+      observed_deadlines = []
+      self.ctx.memcache_cas('a', 'b', deadline=6).get_result()
+      self.assertEqual(observed_deadlines, [6])
+
+      observed_deadlines = []
+      self.ctx.memcache_delete('a', deadline=7).get_result()
+      self.assertEqual(observed_deadlines, [7])
+
+      observed_deadlines = []
+      self.ctx.memcache_incr('a', deadline=8).get_result()
+      self.assertEqual(observed_deadlines, [8])
+
+      observed_deadlines = []
+      self.ctx.memcache_decr('a', deadline=9).get_result()
+      self.assertEqual(observed_deadlines, [9])
+
+    finally:
+      memcache.create_rpc = orig_create_rpc
+
+  def testMemcacheRpcDeadlineExceeded(self):
+    # A test where the deadline fails.
+    orig_create_rpc = memcache.create_rpc
+
+    def raise_deadline_error(*args):
+      observed_raises.append('raise')
+      raise apiproxy_errors.DeadlineExceededError('fake deadline')
+
+    def mock_create_rpc(deadline='invalid'):
+      # Fail if create_rpc() was called from _make_async_call().
+      self.assertNotEqual(deadline, 'invalid')
+      observed_deadlines.append(deadline)
+      rpc = orig_create_rpc(deadline=deadline)
+      # Monkey-patch the RPC instance.
+      rpc.check_success = raise_deadline_error
+      return rpc
+
+    try:
+      memcache.create_rpc = mock_create_rpc
+
+      observed_deadlines = []
+
+      observed_raises = []
+      key = model.Key('Kind', 'id')
+      ent = key.get(memcache_deadline=1)
+      self.assertEqual(ent, None)
+      # Three memcache calls should have been made (get, set, gets).
+      self.assertEqual(observed_deadlines, [1]*3)
+      self.assertEqual(observed_raises, ['raise']*3)
+
+    finally:
+      memcache.create_rpc = orig_create_rpc
 
   def start_test_server(self):
     host = '127.0.0.1'
