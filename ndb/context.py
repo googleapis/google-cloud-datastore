@@ -582,11 +582,8 @@ class Context(object):
     set it on a specific call (e.g. key.get(memcache_deadline=1) or
     in the configuration options of the context's connection.
     """
-    deadline = ContextOptions.memcache_deadline(options)
-    if deadline is None:
-      deadline = ContextOptions.memcache_deadline(self._conn.config)
-    # If it's still None, the system default (typically, 5) will apply.
-    return deadline
+    # If this returns None, the system default (typically, 5) will apply.
+    return ContextOptions.memcache_deadline(options, self._conn.config)
 
   # TODO: What about conflicting requests to different autobatchers,
   # e.g. tasklet A calls get() on a given key while tasklet B calls
