@@ -3422,6 +3422,8 @@ class Expando(Model):
     self._clone_properties()
     if isinstance(value, Model):
       prop = StructuredProperty(Model, name)
+    elif isinstance(value, dict):
+      prop = StructuredProperty(Expando, name)
     else:
       repeated = isinstance(value, list)
       indexed = self._default_indexed

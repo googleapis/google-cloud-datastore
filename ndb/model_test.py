@@ -4287,6 +4287,55 @@ class CacheTests(test_utils.NDBTest):
     new_joe = Person(**data)
     self.assertEqual(new_joe, joe)
 
+  # See issue 216 for the following testExpando* tests.  http://goo.gl/wNN3g
+
+  def testExpandoInModelFromDict(self):
+    class E(model.Expando):
+      pass
+    class M(model.Model):
+      m1 = model.StructuredProperty(E)
+    e = E(e1='e1test')
+    a = M(m1=e)
+    new_a = M(**a.to_dict())
+    self.assertEqual(a, new_a)
+
+  def testExpandoInExpandoFromDict(self):
+    class A(model.Expando):
+      pass
+    e = model.Expando(b1='b1test')
+    a = A(a1=e)
+    new_a = A(**a.to_dict())
+    self.assertEqual(a, new_a)
+
+  def testExpandoInExpandoWithoutStructureFromDict(self):
+    class A(model.Expando):
+      pass
+    e = model.Expando(b1='b1test')
+    a = A(a1=e)
+    a_new = A(c1='c1test')
+    a_new.populate(**a.to_dict())
+    a.c1 = 'c1test'
+    self.assertEqual(a, a_new)
+
+  def testExpandoInExpandoWithStructureFromDict(self):
+    class A(model.Expando):
+      pass
+    e = model.Expando(b1='b1test')
+    a = A(a1=e)
+    a_new = A(a1=model.Expando())
+    a_new.populate(**a.to_dict())
+    self.assertEqual(a, a_new)
+
+  def testExpandoInExpandoWithListsFromDict(self):
+    class B(model.Expando):
+      pass
+    class A(model.Expando):
+      pass
+    bs = [B(b1=[0, 1, 2, 3]), B(b2='b2test')]
+    a = A(a1=bs)
+    new_a = A(**a.to_dict())
+    self.assertEqual(a, new_a)
+
   def testTransactionsCachingAndQueries(self):
     # Prompted by a doc question and this (outdated) thread:
     # https://groups.google.com/forum/?fromgroups#!topic/appengine-ndb-discuss/idxsAZNHsqI
