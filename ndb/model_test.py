@@ -1833,13 +1833,17 @@ class ModelTests(test_utils.NDBTest):
         return json.dumps(val, indent=2)
     class Jumpy(model.Model):
       jsn = MyJsonProperty()
-    jump = Jumpy(jsn={'a': 123, 'b': ['xyz', 'pqr']})
+    jump = Jumpy(jsn={'a': [123, {'b': ['xyz', 'pqr']}]})
     self.assertEqual(repr(jump),
                      'Jumpy(jsn={\n'
-                     '  "a": 123, \n'
-                     '  "b": [\n'
-                     '    "xyz", \n'
-                     '    "pqr"\n'
+                     '  "a": [\n'
+                     '    123, \n'
+                     '    {\n'
+                     '      "b": [\n'
+                     '        "xyz", \n'
+                     '        "pqr"\n'
+                     '      ]\n'
+                     '    }\n'
                      '  ]\n'
                      '})')
 

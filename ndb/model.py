@@ -2847,7 +2847,7 @@ class Model(_NotEqualMixin):
       raise NotImplementedError('Cannot compare different model classes. '
                                 '%s is not %s' % (self.__class__.__name__,
                                                   other.__class_.__name__))
-    if self._projection != other._projection:
+    if set(self._projection) != set(other._projection):
       return False
     # It's all about determining inequality early.
     if len(self._properties) != len(other._properties):

@@ -33,7 +33,10 @@ class ProspectiveSearchTests(test_utils.NDBTest):
       rand = model.FloatProperty()
       nope = model.KeyProperty()
     prospective_search.subscribe(Foo, 'query', 'sub_id')
-    self.assertEqual(prospective_search._model_to_entity_schema(Foo),
+    result = prospective_search._model_to_entity_schema(Foo)
+    for val in result.values():
+      val.sort()
+    self.assertEqual(result,
                      {str: ['name', 'tags'],
                       int: ['rank'],
                       bool: ['flag'],

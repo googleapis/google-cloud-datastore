@@ -217,7 +217,7 @@ class QueryTests(test_utils.NDBTest):
     b.put()
     for arg in ('a', 'b'), set(['a', 'b']), frozenset(['a', 'b']):
       q = Employee.query(Employee.name.IN(arg))
-      self.assertEqual(list(q), [a, b])
+      self.assertEqual(set(x.name for x in q), set(['a', 'b']))
 
   def testInFilterWithNone(self):
     class Employee(model.Model):
@@ -296,6 +296,7 @@ class QueryTests(test_utils.NDBTest):
     self.assertRaises(model.UnprojectedPropertyError, lambda: ent.r)
     self.assertRaises(model.UnprojectedPropertyError, lambda: ent.d)
     ents = q.fetch(projection=['pp', 'r'])
+    ents.sort(key=lambda ent: ent.r)
     self.assertEqual(ents, [Foo(p=1, r=[3], key=key, projection=('pp', 'r')),
                             Foo(p=1, r=[4], key=key, projection=['pp', 'r'])])
     self.assertRaises(datastore_errors.BadArgumentError, q.get, projection=[42])
@@ -1608,12 +1609,14 @@ class QueryTests(test_utils.NDBTest):
 
   def testGqlProjection(self):
     q = query.gql("SELECT name, tags FROM Foo WHERE name < 'joe' ORDER BY name")
-    self.assertEqual(q.fetch(), [Foo(name='jill', tags=['jack'],
-                                     key=self.jill.key,
-                                     projection=['name', 'tags']),
-                                 Foo(name='jill', tags=['jill'],
-                                     key=self.jill.key,
-                                     projection=('name', 'tags'))])
+    ents = q.fetch()
+    ents.sort(key=lambda ent: ent.tags)
+    self.assertEqual(ents, [Foo(name='jill', tags=['jack'],
+                                key=self.jill.key,
+                                projection=['name', 'tags']),
+                            Foo(name='jill', tags=['jill'],
+                                key=self.jill.key,
+                                projection=('name', 'tags'))])
 
   def testGqlBadProjection(self):
     self.assertRaises(model.BadProjectionError,
