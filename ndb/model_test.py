@@ -1397,7 +1397,6 @@ property <
   def testRepeatedStructPropUnknownProp(self):
     # See issue 220.  http://goo.gl/wh06E
     # TODO: Test compressed subproperty.
-    # TODO: Test handling for structured subproperty (ignore with warning).
     class A(model.Model):
       name = model.StringProperty()
       extra = model.StringProperty()
@@ -1435,6 +1434,24 @@ property <
     self.assertTrue('extra' in ent3.lsp[1]._properties)
     self.assertTrue('extra' in ent3.lsp[0]._values)
     self.assertTrue('extra' in ent3.lsp[1]._values)
+
+  def testRepeatedStructPropUnknownNestedProp(self):
+    # Test handling for structured subproperty (ignore with warning).
+    # See issue 220.  http://goo.gl/wh06E
+    self.ExpectWarnings()
+    class Sub(model.Model):
+      val = model.IntegerProperty()
+    class A(model.Model):
+      name = model.StringProperty()
+      extra = model.StructuredProperty(Sub)
+    class B(model.Model):
+      sp = model.StructuredProperty(A, repeated=True)
+    ent = B(sp=[A(name='x', extra=Sub(val=1)), A(name='y', extra=Sub(val=2))])
+    key = ent.put()
+    del A.extra
+    del A._properties['extra']
+    ent2 = key.get()
+    self.assertTrue(ent is not ent2)
 
   def testNestedStructuredProperty(self):
     class Address(model.Model):

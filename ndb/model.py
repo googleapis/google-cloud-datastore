@@ -283,6 +283,7 @@ __author__ = 'guido@google.com (Guido van Rossum)'
 import copy
 import cPickle as pickle
 import datetime
+import logging
 import zlib
 
 from .google_imports import datastore_errors
