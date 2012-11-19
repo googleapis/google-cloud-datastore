@@ -2231,9 +2231,24 @@ class StructuredProperty(_StructuredGetForDictMixin):
     next = parts[depth]
     rest = parts[depth + 1:]
     prop = self._modelclass._properties.get(next)
+    prop_is_fake = False
     if prop is None:
-      raise RuntimeError('Unable to find property %s of StructuredProperty %s.'
-                         % (next, self._name))
+      # Synthesize a fake property.  (We can't use Model._fake_property()
+      # because we need the property before we can determine the subentity.)
+      if rest:
+        # TODO: Handle this case, too.
+        logging.warn('Skipping unknown structured subproperty (%s) '
+                     'in repeated structured property (%s of %s)',
+                     name, self._name, entity.__class__.__name__)
+        return
+      # TODO: Figure out the value for indexed.  Unfortunately we'd
+      # need this passed in from _from_pb(), which would mean a
+      # signature change for _deserialize(), which might break valid
+      # end-user code that overrides it.
+      compressed = p.meaning_uri() == _MEANING_URI_COMPRESSED
+      prop = GenericProperty(next, compressed=compressed)
+      prop._code_name = next
+      prop_is_fake = True
 
     values = self._get_base_value_unwrapped_as_list(entity)
     # Find the first subentity that doesn't have a value for this
@@ -2252,6 +2267,12 @@ class StructuredProperty(_StructuredGetForDictMixin):
       subentity = self._modelclass()
       values = self._retrieve_value(entity)
       values.append(_BaseValue(subentity))
+    if prop_is_fake:
+      # Add the synthetic property to the subentity's _properties
+      # dict, so that it will be correctly deserialized.
+      # (See Model._fake_property() for comparison.)
+      subentity._clone_properties()
+      subentity._properties[prop._name] = prop
     prop._deserialize(subentity, p, depth + 1)
 
   def _prepare_for_put(self, entity):

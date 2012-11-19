@@ -1299,6 +1299,13 @@ class ModelTests(test_utils.NDBTest):
     self.assertEqual(q.atime, t1)
     self.assertEqual(q.times, [t1, t2])
 
+    property = pb.add_property()
+    property.set_name('repstruct.country')
+    property.mutable_value().set_stringvalue('iceland')
+    q = Person._from_pb(pb)
+    self.assertIsNotNone(q)
+    self.assertEqual(q.repstruct[0].ctime, p.repstruct[0].ctime)
+
   def PrepareForPutTests(self, propclass):
     class AuditedRecord(model.Model):
       created = propclass(auto_now_add=True)
@@ -1371,6 +1378,63 @@ class ModelTests(test_utils.NDBTest):
     self.assertEqual(p.address.street, '1600 Amphitheatre')
     self.assertEqual(p.address.city, 'Mountain View')
     self.assertEqual(p.address, a)
+
+    new_property = """
+property <
+  name: "address.country"
+  value <
+    stringValue: "USA"
+  >
+  multiple: false
+>
+"""
+    person_with_extra_data = PERSON_PB + new_property
+
+    p = Person._from_pb(pb)  # Ensure the extra property is ignored.
+    self.assertIsNotNone(p)
+    self.assertEqual(p.name, 'Google')
+
+  def testRepeatedStructPropUnknownProp(self):
+    # See issue 220.  http://goo.gl/wh06E
+    # TODO: Test compressed subproperty.
+    # TODO: Test handling for structured subproperty (ignore with warning).
+    class A(model.Model):
+      name = model.StringProperty()
+      extra = model.StringProperty()
+    class B(model.Model):
+      sp = model.StructuredProperty(A, repeated=True)
+      lsp = model.LocalStructuredProperty(A, repeated=True)
+    ent = B(
+      sp=[A(name='sp0', extra='x'), A(name='sp1', extra='y')],
+      lsp=[A(name='lsp0', extra='xx'), A(name='lsp1', extra='yy')])
+    key = ent.put()
+    del A.extra
+    del A._properties['extra']
+    ent2 = key.get()
+    self.assertTrue(ent is not ent2)
+    self.assertTrue(isinstance(ent2.sp[0]._properties['extra'],
+                               model.GenericProperty))
+    self.assertTrue(isinstance(ent2.sp[1]._properties['extra'],
+                               model.GenericProperty))
+    self.assertTrue('extra' in ent2.sp[0]._values)
+    self.assertTrue('extra' in ent2.sp[1]._values)
+    self.assertTrue(isinstance(ent2.lsp[0]._properties['extra'],
+                               model.GenericProperty))
+    self.assertTrue(isinstance(ent2.lsp[1]._properties['extra'],
+                               model.GenericProperty))
+    self.assertTrue('extra' in ent2.lsp[0]._values)
+    self.assertTrue('extra' in ent2.lsp[1]._values)
+    pb = ent2._to_pb()
+    ent3 = B._from_pb(pb)
+    self.assertEqual(ent3, ent2)
+    self.assertTrue('extra' in ent3.sp[0]._properties)
+    self.assertTrue('extra' in ent3.sp[1]._properties)
+    self.assertTrue('extra' in ent3.sp[0]._values)
+    self.assertTrue('extra' in ent3.sp[1]._values)
+    self.assertTrue('extra' in ent3.lsp[0]._properties)
+    self.assertTrue('extra' in ent3.lsp[1]._properties)
+    self.assertTrue('extra' in ent3.lsp[0]._values)
+    self.assertTrue('extra' in ent3.lsp[1]._values)
 
   def testNestedStructuredProperty(self):
     class Address(model.Model):
