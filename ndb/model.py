@@ -1687,11 +1687,11 @@ class JsonProperty(BlobProperty):
     super(JsonProperty, self).__init__(name=name, compressed=compressed, **kwds)
     self._json_type = json_type
 
-  # Use late import so the dependency is optional.
-
   def _validate(self, value):
     if self._json_type is not None and not isinstance(value, self._json_type):
       raise TypeError('JSON property must be a %s' % self._json_type)
+
+  # Use late import so the dependency is optional.
 
   def _to_base_type(self, value):
     try:
