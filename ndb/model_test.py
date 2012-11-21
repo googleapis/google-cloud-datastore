@@ -1243,6 +1243,22 @@ class ModelTests(test_utils.NDBTest):
     ent2 = ent.key.get()
     self.assertTrue(ent2.pkl == sample)
 
+  def testJsonPropertyTypeRestricted(self):
+    class MyModel(model.Model):
+      pkl = model.JsonProperty(json_type=dict)
+      lst = model.JsonProperty(json_type=list)
+    sample = [1, 2, {'a': 'one', 'b': [1, 2]}, 'xyzzy', [1, 2, 3]]
+    sample2 = {'foo': 2, 'bar': [1, '2', 3, ['foo', 2]]}
+
+    self.assertRaises(TypeError, MyModel, pkl=sample)
+    self.assertRaises(TypeError, MyModel, lst=sample2)
+
+    ent = MyModel(pkl=sample2, lst=sample)
+    ent.put()
+    ent2 = ent.key.get()
+    self.assertTrue(ent2.pkl == sample2)
+    self.assertTrue(ent2.lst == sample)
+
   def DateAndOrTimePropertyTest(self, propclass, t1, t2):
     class ClockInOut(model.Model):
       ctime = propclass(auto_now_add=True)
