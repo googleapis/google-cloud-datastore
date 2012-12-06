@@ -1236,7 +1236,7 @@ class ModelTests(test_utils.NDBTest):
 
   def testJsonProperty(self):
     class MyModel(model.Model):
-      pkl = model.JsonProperty()
+      pkl = model.JsonProperty('pkl')
     sample = [1, 2, {'a': 'one', 'b': [1, 2]}, 'xyzzy', [1, 2, 3]]
     ent = MyModel(pkl=sample)
     ent.put()

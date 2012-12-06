@@ -1682,7 +1682,7 @@ class JsonProperty(BlobProperty):
 
   _json_type = None
 
-  @utils.positional(BlobProperty._positional)
+  @utils.positional(1 + BlobProperty._positional)
   def __init__(self, name=None, compressed=False, json_type=None, **kwds):
     super(JsonProperty, self).__init__(name=name, compressed=compressed, **kwds)
     self._json_type = json_type
