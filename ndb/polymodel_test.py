@@ -265,6 +265,14 @@ class PolyModelTests(test_utils.NDBTest):
     self.assertEqual(B.gql('').fetch(), [b])
     self.assertEqual(query.gql('SELECT * FROM B').fetch(), [b])
 
+  def testQueryFilter(self):
+    # Test that query on root class should not filter.
+    class Animal(PolyModel):
+      pass
+    class Cat(Animal):
+      pass
+    self.assertEqual(Animal.query().filters, None)
+    self.assertNotEqual(Cat.query().filters, None)
 
 TOM_PB = """\
 key <

@@ -1,3 +1,5 @@
+import logging
+
 def webapp_add_wsgi_middleware(app):
   try:
     from google.appengine.ext.appstats import recording

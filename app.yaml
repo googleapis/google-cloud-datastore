@@ -1,37 +1,38 @@
 # Demo app.
 application: ndb-experiment
 version: 1
-runtime: python
+runtime: python27
 api_version: 1
+threadsafe: True
 
 handlers:
 
 - url: /django_middleware
-  script: demo/django_middleware_test.py
+  script: demo.django_middleware_test.app
 
 - url: /fibo.*
-  script: demo/fibo.py
+  script: demo.fibo.app
 
 - url: /intest.*
-  script: demo/intest.py
+  script: demo.intest.app
 
 - url: /hello.*
-  script: demo/hello.py
+  script: demo.hello.app
 
-- url: /test.*
-  script: demo/test.py
+##- url: /test.*
+##  script: demo/test.py
 
 - url: /home
-  script: demo/main.py
+  script: demo.main.app
 
 - url: /account
-  script: demo/main.py
+  script: demo.main.app
 
 - url: /dataviewer.*
-  script: demo/dataviewer.py
+  script: demo.dataviewer.app
 
 - url: /.*
-  script: demo/guestbook.py
+  script: demo.guestbook.application
 
 builtins:
 - appstats: on

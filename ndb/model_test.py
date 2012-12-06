@@ -1236,12 +1236,28 @@ class ModelTests(test_utils.NDBTest):
 
   def testJsonProperty(self):
     class MyModel(model.Model):
-      pkl = model.JsonProperty()
+      pkl = model.JsonProperty('pkl')
     sample = [1, 2, {'a': 'one', 'b': [1, 2]}, 'xyzzy', [1, 2, 3]]
     ent = MyModel(pkl=sample)
     ent.put()
     ent2 = ent.key.get()
     self.assertTrue(ent2.pkl == sample)
+
+  def testJsonPropertyTypeRestricted(self):
+    class MyModel(model.Model):
+      pkl = model.JsonProperty(json_type=dict)
+      lst = model.JsonProperty(json_type=list)
+    sample = [1, 2, {'a': 'one', 'b': [1, 2]}, 'xyzzy', [1, 2, 3]]
+    sample2 = {'foo': 2, 'bar': [1, '2', 3, ['foo', 2]]}
+
+    self.assertRaises(TypeError, MyModel, pkl=sample)
+    self.assertRaises(TypeError, MyModel, lst=sample2)
+
+    ent = MyModel(pkl=sample2, lst=sample)
+    ent.put()
+    ent2 = ent.key.get()
+    self.assertTrue(ent2.pkl == sample2)
+    self.assertTrue(ent2.lst == sample)
 
   def DateAndOrTimePropertyTest(self, propclass, t1, t2):
     class ClockInOut(model.Model):
@@ -1298,6 +1314,13 @@ class ModelTests(test_utils.NDBTest):
     self.assertEqual(q.replocalstruct[0].mtime, p.replocalstruct[0].mtime)
     self.assertEqual(q.atime, t1)
     self.assertEqual(q.times, [t1, t2])
+
+    property = pb.add_property()
+    property.set_name('repstruct.country')
+    property.mutable_value().set_stringvalue('iceland')
+    q = Person._from_pb(pb)
+    self.assertIsNotNone(q)
+    self.assertEqual(q.repstruct[0].ctime, p.repstruct[0].ctime)
 
   def PrepareForPutTests(self, propclass):
     class AuditedRecord(model.Model):
@@ -1371,6 +1394,80 @@ class ModelTests(test_utils.NDBTest):
     self.assertEqual(p.address.street, '1600 Amphitheatre')
     self.assertEqual(p.address.city, 'Mountain View')
     self.assertEqual(p.address, a)
+
+    new_property = """
+property <
+  name: "address.country"
+  value <
+    stringValue: "USA"
+  >
+  multiple: false
+>
+"""
+    person_with_extra_data = PERSON_PB + new_property
+
+    p = Person._from_pb(pb)  # Ensure the extra property is ignored.
+    self.assertIsNotNone(p)
+    self.assertEqual(p.name, 'Google')
+
+  def testRepeatedStructPropUnknownProp(self):
+    # See issue 220.  http://goo.gl/wh06E
+    # TODO: Test compressed subproperty.
+    class A(model.Model):
+      name = model.StringProperty()
+      extra = model.StringProperty()
+    class B(model.Model):
+      sp = model.StructuredProperty(A, repeated=True)
+      lsp = model.LocalStructuredProperty(A, repeated=True)
+    ent = B(
+      sp=[A(name='sp0', extra='x'), A(name='sp1', extra='y')],
+      lsp=[A(name='lsp0', extra='xx'), A(name='lsp1', extra='yy')])
+    key = ent.put()
+    del A.extra
+    del A._properties['extra']
+    ent2 = key.get()
+    self.assertTrue(ent is not ent2)
+    self.assertTrue(isinstance(ent2.sp[0]._properties['extra'],
+                               model.GenericProperty))
+    self.assertTrue(isinstance(ent2.sp[1]._properties['extra'],
+                               model.GenericProperty))
+    self.assertTrue('extra' in ent2.sp[0]._values)
+    self.assertTrue('extra' in ent2.sp[1]._values)
+    self.assertTrue(isinstance(ent2.lsp[0]._properties['extra'],
+                               model.GenericProperty))
+    self.assertTrue(isinstance(ent2.lsp[1]._properties['extra'],
+                               model.GenericProperty))
+    self.assertTrue('extra' in ent2.lsp[0]._values)
+    self.assertTrue('extra' in ent2.lsp[1]._values)
+    pb = ent2._to_pb()
+    ent3 = B._from_pb(pb)
+    self.assertEqual(ent3, ent2)
+    self.assertTrue('extra' in ent3.sp[0]._properties)
+    self.assertTrue('extra' in ent3.sp[1]._properties)
+    self.assertTrue('extra' in ent3.sp[0]._values)
+    self.assertTrue('extra' in ent3.sp[1]._values)
+    self.assertTrue('extra' in ent3.lsp[0]._properties)
+    self.assertTrue('extra' in ent3.lsp[1]._properties)
+    self.assertTrue('extra' in ent3.lsp[0]._values)
+    self.assertTrue('extra' in ent3.lsp[1]._values)
+
+  def testRepeatedStructPropUnknownNestedProp(self):
+    # Test handling for structured subproperty (ignore with warning).
+    # See issue 220.  http://goo.gl/wh06E
+    self.ExpectWarnings()
+    class Sub(model.Model):
+      val = model.IntegerProperty()
+    class A(model.Model):
+      name = model.StringProperty()
+      extra = model.StructuredProperty(Sub)
+    class B(model.Model):
+      sp = model.StructuredProperty(A, repeated=True)
+    ent = B(sp=[A(name='x', extra=Sub(val=1)), A(name='y', extra=Sub(val=2))])
+    key = ent.put()
+    del A.extra
+    del A._properties['extra']
+    ent2 = key.get()
+    self.assertTrue(ent is not ent2)
 
   def testNestedStructuredProperty(self):
     class Address(model.Model):
@@ -1833,13 +1930,17 @@ class ModelTests(test_utils.NDBTest):
         return json.dumps(val, indent=2)
     class Jumpy(model.Model):
       jsn = MyJsonProperty()
-    jump = Jumpy(jsn={'a': 123, 'b': ['xyz', 'pqr']})
+    jump = Jumpy(jsn={'a': [123, {'b': ['xyz', 'pqr']}]})
     self.assertEqual(repr(jump),
                      'Jumpy(jsn={\n'
-                     '  "a": 123, \n'
-                     '  "b": [\n'
-                     '    "xyz", \n'
-                     '    "pqr"\n'
+                     '  "a": [\n'
+                     '    123, \n'
+                     '    {\n'
+                     '      "b": [\n'
+                     '        "xyz", \n'
+                     '        "pqr"\n'
+                     '      ]\n'
+                     '    }\n'
                      '  ]\n'
                      '})')
 
@@ -2621,6 +2722,14 @@ class ModelTests(test_utils.NDBTest):
     self.assertEqual(m.name_lower, 'foobar')
     self.assertEqual(m.length, 6)
     self.assertEqual(m.computed_hash, hash('Foobar'))
+
+    self.assertRaises(model.ComputedPropertyError, m.__delattr__, 'name_lower')
+    try:
+      del m.name_lower
+    except model.ComputedPropertyError:
+      pass
+    else:
+      self.fail('A ComputedProperty cannot be deleted.')
 
     func = lambda unused_ent: None
     self.assertRaises(TypeError, model.ComputedProperty, func,
@@ -4278,6 +4387,55 @@ class CacheTests(test_utils.NDBTest):
     data = joe._to_dict()
     new_joe = Person(**data)
     self.assertEqual(new_joe, joe)
+
+  # See issue 216 for the following testExpando* tests.  http://goo.gl/wNN3g
+
+  def testExpandoInModelFromDict(self):
+    class E(model.Expando):
+      pass
+    class M(model.Model):
+      m1 = model.StructuredProperty(E)
+    e = E(e1='e1test')
+    a = M(m1=e)
+    new_a = M(**a.to_dict())
+    self.assertEqual(a, new_a)
+
+  def testExpandoInExpandoFromDict(self):
+    class A(model.Expando):
+      pass
+    e = model.Expando(b1='b1test')
+    a = A(a1=e)
+    new_a = A(**a.to_dict())
+    self.assertEqual(a, new_a)
+
+  def testExpandoInExpandoWithoutStructureFromDict(self):
+    class A(model.Expando):
+      pass
+    e = model.Expando(b1='b1test')
+    a = A(a1=e)
+    a_new = A(c1='c1test')
+    a_new.populate(**a.to_dict())
+    a.c1 = 'c1test'
+    self.assertEqual(a, a_new)
+
+  def testExpandoInExpandoWithStructureFromDict(self):
+    class A(model.Expando):
+      pass
+    e = model.Expando(b1='b1test')
+    a = A(a1=e)
+    a_new = A(a1=model.Expando())
+    a_new.populate(**a.to_dict())
+    self.assertEqual(a, a_new)
+
+  def testExpandoInExpandoWithListsFromDict(self):
+    class B(model.Expando):
+      pass
+    class A(model.Expando):
+      pass
+    bs = [B(b1=[0, 1, 2, 3]), B(b2='b2test')]
+    a = A(a1=bs)
+    new_a = A(**a.to_dict())
+    self.assertEqual(a, new_a)
 
   def testTransactionsCachingAndQueries(self):
     # Prompted by a doc question and this (outdated) thread:
