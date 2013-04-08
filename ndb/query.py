@@ -765,9 +765,9 @@ class Query(object):
 
   @utils.positional(1)
   def __init__(self, kind=None, ancestor=None, filters=None, orders=None,
-               app=None, namespace=None, default_options=None):
+               app=None, namespace=None, default_options=None,
+               projection=None, group_bys=None):
     """Constructor.
-
     Args:
       kind: Optional kind string.
       ancestor: Optional ancestor Key.
@@ -776,7 +776,14 @@ class Query(object):
       app: Optional app id.
       namespace: Optional namespace.
       default_options: Optional QueryOptions object.
+      projection: Optional list or tuple of properties to project.
+      group_bys: Optional list or tuple of properties to group by.
     """
+    # TODO(arfuller): Accept projection=Model.key to mean keys_only.
+    # TODO(arfuller): Consider adding incremental group_by(*args) and
+    # project(*args, distinct).
+
+    # Validating input.
     if ancestor is not None:
       if isinstance(ancestor, ParameterizedThing):
         if isinstance(ancestor, ParameterizedFunction):
@@ -784,7 +791,7 @@ class Query(object):
             raise TypeError('ancestor cannot be a GQL function other than KEY')
       else:
         if not isinstance(ancestor, model.Key):
-          raise TypeError('ancestor must be a Key')
+          raise TypeError('ancestor must be a Key; received %r' % (ancestor,))
         if not ancestor.id():
           raise ValueError('ancestor cannot be an incomplete key')
         if app is not None:
@@ -798,32 +805,62 @@ class Query(object):
     if filters is not None:
       if not isinstance(filters, Node):
         raise TypeError('filters must be a query Node or None; received %r' %
-                        filters)
+                        (filters,))
     if orders is not None:
       if not isinstance(orders, datastore_query.Order):
         raise TypeError('orders must be an Order instance or None; received %r'
-                        % orders)
+                        % (orders,))
     if default_options is not None:
       if not isinstance(default_options, datastore_rpc.BaseConfiguration):
         raise TypeError('default_options must be a Configuration or None; '
-                        'received %r' % default_options)
-    self.__kind = kind  # String
-    self.__ancestor = ancestor  # Key
-    self.__filters = filters  # None or Node subclass
-    self.__orders = orders  # None or datastore_query.Order instance
+                        'received %r' % (default_options,))
+      if projection is not None:
+        if default_options.projection is not None:
+          raise TypeError('cannot use projection= and '
+                          'default_options.projection at the same time')
+        if default_options.keys_only is not None:
+          raise TypeError('cannot use projection= and '
+                          'default_options.keys_only at the same time')
+
+    self.__kind = kind  # String.
+    self.__ancestor = ancestor  # Key.
+    self.__filters = filters  # None or Node subclass.
+    self.__orders = orders  # None or datastore_query.Order instance.
     self.__app = app
     self.__namespace = namespace
     self.__default_options = default_options
-    # Check the projection in the default options.  (This is done as a
-    # side effect of calling _fix_projection(); it's done late because
-    # that function expects self to be completely initialized.)
-    if kind is not None and default_options is not None:
-      default_projection = QueryOptions.projection(default_options)
-      if default_projection is not None:
-        self._fix_projection(default_projection)
+
+    # Checked late as _check_indexed_properties depends on local state.
+    self.__projection = None
+    if projection is not None:
+      if not projection:
+        raise TypeError('projection argument cannot be empty')
+      if not isinstance(projection, (tuple, list)):
+        raise TypeError(
+          'projection must be a tuple, list or None; received %r' %
+          (projection,))
+      self._check_indexed_properties(self._to_property_names(projection))
+      self.__projection = tuple(projection)
+
+    self.__group_bys = None
+    if group_bys is not None:
+      if not group_bys:
+        raise TypeError('group_bys argument cannot be empty')
+      if not isinstance(group_bys, (tuple, list)):
+        raise TypeError(
+          'group_bys must be a tuple, list or None; received %r' % (group_bys,))
+      self._check_indexed_properties(self._to_property_names(group_bys))
+      self.__group_bys = tuple(group_bys)
 
   def __repr__(self):
     args = []
+    if self.app is not None:
+      args.append('app=%r' % self.app)
+    if (self.namespace is not None and
+        self.namespace != namespace_manager.get_namespace()):
+      # Only show the namespace if set and not the current namespace.
+      # (This is similar to what Key.__repr__() does.)
+      args.append('namespace=%r' % self.namespace)
     if self.kind is not None:
       args.append('kind=%r' % self.kind)
     if self.ancestor is not None:
@@ -833,13 +870,10 @@ class Query(object):
     if self.orders is not None:
       # TODO: Format orders better.
       args.append('orders=...')  # PropertyOrder doesn't have a good repr().
-    if self.app is not None:
-      args.append('app=%r' % self.app)
-    if (self.namespace is not None and
-        self.namespace != namespace_manager.get_namespace()):
-      # Only show the namespace if set and not the current namespace.
-      # (This is similar to what Key.__repr__() does.)
-      args.append('namespace=%r' % self.namespace)
+    if self.projection:
+      args.append('projection=%r' % (self._to_property_names(self.projection)))
+    if self.group_bys:
+      args.append('group_bys=%r' % (self._to_property_names(self.group_bys)))
     if self.default_options is not None:
       args.append('default_options=%r' % self.default_options)
     return '%s(%s)' % (self.__class__.__name__, ', '.join(args))
@@ -858,7 +892,8 @@ class Query(object):
     return self.__class__(kind=self.kind, ancestor=self.ancestor,
                           filters=self.filters, orders=self.orders,
                           app=self.app, namespace=namespace,
-                          default_options=self.default_options)
+                          default_options=self.default_options,
+                          projection=self.projection, group_bys=self.group_bys)
 
   def _get_query(self, connection):
     self.bind()  #  Raises an exception if there are unbound parameters.
@@ -871,12 +906,16 @@ class Query(object):
     if filters is not None:
       post_filters = filters._post_filters()
       filters = filters._to_filter()
+    group_by = None
+    if self.group_bys:
+      group_by = self._to_property_names(self.group_bys)
     dsquery = datastore_query.Query(app=self.app,
                                     namespace=self.namespace,
                                     kind=kind.decode('utf-8') if kind else None,
                                     ancestor=ancestor,
                                     filter_predicate=filters,
-                                    order=self.orders)
+                                    order=self.orders,
+                                    group_by=group_by)
     if post_filters is not None:
       dsquery = datastore_query._AugmentedQuery(
         dsquery,
@@ -945,7 +984,9 @@ class Query(object):
       subquery = self.__class__(kind=self.kind, ancestor=self.ancestor,
                                 filters=subfilter, orders=self.orders,
                                 app=self.app, namespace=self.namespace,
-                                default_options=self.default_options)
+                                default_options=self.default_options,
+                                projection=self.projection,
+                                group_bys=self.group_bys)
       subqueries.append(subquery)
     return _MultiQuery(subqueries)
 
@@ -984,6 +1025,26 @@ class Query(object):
     """Accessor for the default_options (a QueryOptions instance or None)."""
     return self.__default_options
 
+  @property
+  def group_bys(self):
+    """Accessor for the group by properties (a tuple instance or None)."""
+    return self.__group_bys
+
+  @property
+  def projection(self):
+    """Accessor for the projected properties (a tuple instance or None)."""
+    return self.__projection
+
+  def is_distinct(self):
+    """Returns True if results are guaranteed to contain a unique set of
+    property values.
+
+    This happens when every property in the group_bys is also in the projection.
+    """
+    return bool(self.__group_bys and
+                set(self._to_property_names(self.__group_bys)) <=
+                set(self._to_property_names(self.__projection)))
+
   def filter(self, *args):
     """Return a new Query with additional filter(s) applied."""
     if not args:
@@ -1005,7 +1066,8 @@ class Query(object):
     return self.__class__(kind=self.kind, ancestor=self.ancestor,
                           filters=pred, orders=self.orders,
                           app=self.app, namespace=self.namespace,
-                          default_options=self.default_options)
+                          default_options=self.default_options,
+                          projection=self.projection, group_bys=self.group_bys)
 
   def order(self, *args):
     """Return a new Query with additional sort order(s) applied."""
@@ -1033,7 +1095,8 @@ class Query(object):
     return self.__class__(kind=self.kind, ancestor=self.ancestor,
                           filters=self.filters, orders=orders,
                           app=self.app, namespace=self.namespace,
-                          default_options=self.default_options)
+                          default_options=self.default_options,
+                          projection=self.projection, group_bys=self.group_bys)
 
   # Datastore API using the default context.
 
@@ -1310,28 +1373,44 @@ class Query(object):
         raise TypeError('You cannot use config= and options= at the same time')
       q_options['config'] = q_options.pop('options')
     if q_options.get('projection'):
-      q_options['projection'] = self._fix_projection(q_options['projection'])
+      try:
+        q_options['projection'] = self._to_property_names(
+          q_options['projection'])
+        self._check_indexed_properties(q_options['projection'])
+      except TypeError, e:
+        raise datastore_errors.BadArgumentError(e)
     options = QueryOptions(**q_options)
+
+    # Populate projection if it hasn't been overriden
+    if (options.keys_only is None and
+        options.projection is None and
+        self.__projection):
+      options = QueryOptions(
+        projection=self._to_property_names(self.__projection), config=options)
+    # Populate default options
     if self.default_options is not None:
       options = self.default_options.merge(options)
+
     return options
 
-  def _fix_projection(self, projections):
-    if not isinstance(projections, (list, tuple)):
-      projections = [projections]  # It will be type-checked below.
+  def _to_property_names(self, properties):
+    if not isinstance(properties, (list, tuple)):
+      properties = [properties]  # It will be type-checked below.
     fixed = []
-    for proj in projections:
+    for proj in properties:
       if isinstance(proj, basestring):
         fixed.append(proj)
       elif isinstance(proj, model.Property):
         fixed.append(proj._name)
       else:
-        raise datastore_errors.BadArgumentError(
-          'Unexpected projection (%r); should be string or Property')
+        raise TypeError(
+            'Unexpected property (%r); should be string or Property' % (proj,))
+    return fixed
+
+  def _check_indexed_properties(self, fixed):
     modelclass = model.Model._kind_map.get(self.__kind)
     if modelclass is not None:
-      modelclass._check_projections(fixed)
-    return fixed
+      modelclass._check_indexed_properties(fixed)
 
   def analyze(self):
     """Return a list giving the parameters required by a query."""
@@ -1376,7 +1455,8 @@ class Query(object):
     return self.__class__(kind=self.kind, ancestor=ancestor,
                           filters=filters, orders=self.orders,
                           app=self.app, namespace=self.namespace,
-                          default_options=self.default_options)
+                          default_options=self.default_options,
+                          projection=self.projection, group_bys=self.group_bys)
 
 
 def gql(query_string, *args, **kwds):
@@ -1468,14 +1548,19 @@ def _gql(query_string, query_class=Query):
   keys_only = gql_qry._keys_only
   if not keys_only:
     keys_only = None
+  options = QueryOptions(offset=offset, limit=limit, keys_only=keys_only)
   projection = gql_qry.projection()
-  options = QueryOptions(offset=offset, limit=limit, keys_only=keys_only,
-                         projection=projection)
+  if gql_qry.is_distinct():
+    group_bys = projection
+  else:
+    group_bys = None
   qry = query_class(kind=kind,
                     ancestor=ancestor,
                     filters=filters,
                     orders=orders,
-                    default_options=options)
+                    default_options=options,
+                    projection=projection,
+                    group_bys=group_bys)
   return qry
 
 

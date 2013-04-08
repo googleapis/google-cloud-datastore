@@ -104,12 +104,17 @@ class QueryTests(test_utils.NDBTest):
     repr(q2)
     # App and namespace.
     q3 = Foo.query(app='a', namespace='ns')
-    self.assertEqual(repr(q3), "Query(kind='Foo', app='a', namespace='ns')")
+    self.assertEqual(repr(q3), "Query(app='a', namespace='ns', kind='Foo')")
     # default_options.
     q4 = Foo.query(default_options=query.QueryOptions(limit=3))
     self.assertEqual(
       repr(q4),
       "Query(kind='Foo', default_options=QueryOptions(limit=3))")
+    q5 = Foo.query(projection=[Foo.name, 'tags'], distinct=True)
+    self.assertEqual(
+      repr(q5),
+      "Query(kind='Foo', projection=['name', 'tags'], "
+      "group_bys=['name', 'tags'])")
 
   def testRunToQueue(self):
     qry = Foo.query()
@@ -279,6 +284,145 @@ class QueryTests(test_utils.NDBTest):
     self.assertRaises(datastore_errors.BadFilterError,
                       lambda: Emp.local == Foo(name='a'))
 
+  def testConstructor(self):
+    self.ExpectWarnings()
+    class Foo(model.Model):
+      p = model.IntegerProperty('pp')  # Also check renaming.
+      q = model.IntegerProperty(required=True)
+
+    key = Foo(p=1, q=2, namespace='ns').put()
+
+    # Check distinct validation
+    self.assertRaises(TypeError, Foo.query, distinct=True)
+    self.assertRaises(TypeError, Foo.query, distinct=False)
+    self.assertRaises(TypeError, Foo.query,
+                      distinct=True, projection=Foo.p, group_bys=[])
+    self.assertRaises(TypeError, Foo.query,
+                      distinct=False, projection=Foo.p, group_bys=[])
+
+    # Check both projection and default_options.projection/keys_only is not
+    # allowed.
+    self.assertRaises(TypeError, Foo.query,
+                      projection='pp',
+                      default_options=query.QueryOptions(projection=['pp']))
+    self.assertRaises(TypeError, Foo.query,
+                      projection='pp',
+                      default_options=query.QueryOptions(keys_only=False))
+    # Check empty projection/group_by not allowed.
+    for empty in ([], tuple()):
+      self.assertRaises(TypeError, Foo.query, projection=empty)
+      self.assertRaises(TypeError, Foo.query, group_bys=empty)
+
+    # Check that ancestor and namespace must match.
+    self.assertRaises(TypeError, Foo.query, namespace='other', ancestor=key)
+
+  def testConstructorOptionsInteractions(self):
+    self.ExpectWarnings()
+    qry = Foo.query(projection=[Foo.name, Foo.rate])
+    # Keys only overrides projection.
+    qry.get(keys_only=True)
+    # Projection overrides original projection.
+    qry.get(projection=Foo.tags)
+    # Cannot override both.
+    self.assertRaises(datastore_errors.BadRequestError, qry.get,
+                      projection=Foo.tags, keys_only=True)
+
+    qry = Foo.query(projection=[Foo.name, Foo.rate], distinct=True)
+    # Cannot project something out side the group by.
+    self.assertRaises(datastore_errors.BadRequestError, qry.get,
+                      projection=Foo.tags)
+    # Can project a subset of the group by.
+    qry.get(projection=Foo.name)
+    # Keys only overrides projection but a projection is required for group_bys.
+    self.assertRaises(datastore_errors.BadRequestError, qry.get, keys_only=True)
+
+  def testIsDistinct(self):
+    class Foo(model.Model):
+      p = model.IntegerProperty('pp')  # Also check renaming.
+      q = model.IntegerProperty(required=True)
+
+    for qry in (Foo.query(projection=[Foo.p, 'q'], distinct=True),
+                Foo.query(projection=[Foo.p, 'q'],
+                          group_bys=(Foo.q, 'pp', Foo.p))):
+      self.assertEquals(True, qry.is_distinct())
+
+    for qry in (Foo.query(),
+                Foo.query(projection=[Foo.p, 'q'])):
+      self.assertEquals(False, qry.is_distinct())
+
+  def testIndexOnlyPropertyListNormalization(self):
+    class Foo(model.Model):
+      p = model.IntegerProperty('pp')  # Also check renaming.
+
+    def assertNormalization(expected, value):
+      q1 = Foo.query(group_bys=value, projection=value)
+      q2 = Foo.query(distinct=True, projection=value)
+
+      # make sure it survives mutation.
+      q1 = q1.order(Foo.p).filter(Foo.p > 0)
+      q2 = q2.order(Foo.p).filter(Foo.p > 0)
+      self.assertEquals(expected, q1.group_bys)
+      self.assertEquals(expected, q1.projection)
+      self.assertEquals(expected, q2.group_bys)
+      self.assertEquals(expected, q2.projection)
+
+    for value in (('pp',), ['pp']):
+      assertNormalization(('pp',), value)
+
+  def testIndexOnlyPropertyValidation(self):
+    self.ExpectWarnings()
+    class Foo(model.Model):
+      p = model.IntegerProperty('pp', indexed=False)  # Also check renaming.
+      q = model.IntegerProperty(required=True)
+
+    self.assertRaises(TypeError,
+                      Foo.query, group_bys=[Foo.q, 42], projection=[Foo.q])
+    self.assertRaises(datastore_errors.BadArgumentError,
+                      Foo.query().get, projection=[42])
+    self.assertRaises(TypeError,
+                      Foo.query, group_bys=Foo.q, projection=[Foo.q])
+    self.assertRaises(TypeError,
+                      Foo.query, projection=Foo.q)
+
+    # Legacy support for single value projection
+    Foo.query().get(projection=Foo.q)
+
+    for bad in ((Foo.p,), ['wot']):
+      self.assertRaises(model.InvalidPropertyError, Foo.query,
+                        group_bys=bad, projection=[Foo.q])
+      self.assertRaises(model.BadProjectionError, Foo.query,
+                        group_bys=bad, projection=[Foo.q])
+      self.assertRaises(model.InvalidPropertyError, Foo.query, projection=bad)
+      self.assertRaises(model.BadProjectionError, Foo.query, projection=bad)
+      self.assertRaises(model.InvalidPropertyError,
+                        Foo.query().get, projection=bad)
+      self.assertRaises(model.BadProjectionError,
+                        Foo.query().get, projection=bad)
+
+  def testGroupByQuery(self):
+    self.ExpectWarnings()
+    class Foo(model.Model):
+      p = model.IntegerProperty('pp')  # Also check renaming
+      q = model.IntegerProperty(required=True)
+      r = model.IntegerProperty(repeated=True)
+      d = model.IntegerProperty(default=42)
+
+    key1 = Foo(p=1, q=5, r=[3, 4, 5]).put()
+    key2 = Foo(p=1, q=4, r=[3, 4]).put()
+    key3 = Foo(p=2, q=3, r=[3, 4]).put()
+    key4 = Foo(p=2, q=2, r=[3]).put()
+
+    qry = Foo.query(projection=[Foo.p],group_bys=[Foo.r, Foo.p])
+    qry = qry.order(Foo.p, Foo.r, Foo.q)
+    ents = qry.fetch()
+
+    self.assertEquals(5, len(ents))
+    self.assertEquals((1, key2), (ents[0].p, ents[0].key))
+    self.assertEquals((1, key2), (ents[1].p, ents[1].key))
+    self.assertEquals((1, key1), (ents[2].p, ents[2].key))
+    self.assertEquals((2, key4), (ents[3].p, ents[3].key))
+    self.assertEquals((2, key3), (ents[4].p, ents[4].key))
+
   def testProjectionQuery(self):
     self.ExpectWarnings()
     class Foo(model.Model):
@@ -299,11 +443,6 @@ class QueryTests(test_utils.NDBTest):
     ents.sort(key=lambda ent: ent.r)
     self.assertEqual(ents, [Foo(p=1, r=[3], key=key, projection=('pp', 'r')),
                             Foo(p=1, r=[4], key=key, projection=['pp', 'r'])])
-    self.assertRaises(datastore_errors.BadArgumentError, q.get, projection=[42])
-    self.assertRaises(model.BadProjectionError, q.get, projection=['wot'])
-    # Make sure a string isn't taken for its constituent characters.
-    self.assertTrue(q.get(projection=['q', 'r', 'd']))  # This is valid.
-    self.assertRaises(model.BadProjectionError, q.get, projection='qrd')
 
   def testProjectionQuery_AllTypes(self):
     class Foo(model.Model):
@@ -1607,8 +1746,26 @@ class QueryTests(test_utils.NDBTest):
     q = Foo.gql("WHERE tags = :1 AND name = :foo AND rate = :bar")
     self.assertEqual([1, 'bar', 'foo'], q.analyze())
 
+  def testGqlGroupBy(self):
+    q = query.gql("SELECT DISTINCT name, tags FROM Foo "
+                  "WHERE name < 'joe' ORDER BY name")
+    self.assertEquals(('name', 'tags'), q.projection)
+    self.assertEquals(('name', 'tags'), q.group_bys)
+    self.assertEquals(True, q.is_distinct())
+    ents = q.fetch()
+    ents.sort(key=lambda ent: ent.tags)
+    self.assertEqual(ents, [Foo(name='jill', tags=['jack'],
+                                key=self.jill.key,
+                                projection=['name', 'tags']),
+                            Foo(name='jill', tags=['jill'],
+                                key=self.jill.key,
+                                projection=('name', 'tags'))])
+
   def testGqlProjection(self):
     q = query.gql("SELECT name, tags FROM Foo WHERE name < 'joe' ORDER BY name")
+    self.assertEquals(('name', 'tags'), q.projection)
+    self.assertEquals(None, q.group_bys)
+    self.assertEquals(False, q.is_distinct())
     ents = q.fetch()
     ents.sort(key=lambda ent: ent.tags)
     self.assertEqual(ents, [Foo(name='jill', tags=['jack'],
@@ -1620,6 +1777,8 @@ class QueryTests(test_utils.NDBTest):
 
   def testGqlBadProjection(self):
     self.assertRaises(model.BadProjectionError,
+                      query.gql, "SELECT qqq FROM Foo")
+    self.assertRaises(model.InvalidPropertyError,
                       query.gql, "SELECT qqq FROM Foo")
 
   def testGqlBadKind(self):

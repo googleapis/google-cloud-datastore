@@ -1,3 +1,8 @@
+Release 1.0.8 (included in SDK 1.7.7)
+
+- Issue 227: ndb.Model constructor does not handle projections correctly
+- Issue 215: Projected entity loses projection after pickling
+
 Release 1.0.7 (included in SDK 1.7.4)
 
 - Issue 223: JsonProperty(json_type=dict) restricts the JSON value to a dict.

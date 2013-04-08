@@ -327,8 +327,15 @@ class KindError(datastore_errors.BadValueError):
   """
 
 
-class BadProjectionError(datastore_errors.Error):
-  """Raised when a property name used as a projection is invalid."""
+class InvalidPropertyError(datastore_errors.Error):
+  """Raised when a property is not applicable to a given use.
+
+  For example, a property must exist and be indexed to be used in a query's
+  projection or group by clause.
+  """
+
+# Mapping for legacy support.
+BadProjectionError = InvalidPropertyError
 
 
 class UnprojectedPropertyError(datastore_errors.Error):
@@ -1315,24 +1322,24 @@ class Property(ModelAttribute):
   def _prepare_for_put(self, entity):
     pass
 
-  def _check_projection(self, rest=None):
-    """Helper to check whether this property can be used as a projection.
+  def _check_property(self, rest=None, require_indexed=True):
+    """Helper to check whether this property is indexed.
 
     Args:
       rest: Optional subproperty to check, of the form 'name1.name2...nameN'.
 
     Raises:
-      BadProjectionError if this property is not indexed or if a
+      InvalidPropertyError if this property is not indexed or if a
       subproperty is specified.  (StructuredProperty overrides this
       method to handle subprpoperties.)
     """
     if not self._indexed:
-      raise BadProjectionError('Projecting on unindexed property %s' %
-                               self._name)
+      raise InvalidPropertyError('Projecting on unindexed property %s' %
+                                 self._name)
     if rest:
-      raise BadProjectionError('Projecting on subproperty %s.%s '
-                               'but %s is not a structured property' %
-                               (self._name, rest, self._name))
+      raise InvalidPropertyError('Projecting on subproperty %s.%s '
+                                 'but %s is not a structured property' %
+                                 (self._name, rest, self._name))
 
   def _get_for_dict(self, entity):
     """Retrieve the value like _get_value(), processed for _to_dict().
@@ -2293,18 +2300,17 @@ class StructuredProperty(_StructuredGetForDictMixin):
       if value is not None:
         value._prepare_for_put()
 
-  def _check_projection(self, rest=None):
-    """Override for Model._check_projection().
+  def _check_property(self, rest=None, require_indexed=True):
+    """Override for Property._check_property().
 
     Raises:
-      BadProjectionError if no subproperty is specified or if something
+      InvalidPropertyError if no subproperty is specified or if something
       is wrong with the subproperty.
     """
     if not rest:
-      raise BadProjectionError('Projecting on structured property %s '
-                               'requires a subproperty' %
-                               self._name)
-    self._modelclass._check_projections([rest])
+      raise InvalidPropertyError(
+        'Structured property %s requires a subproperty' % self._name)
+    self._modelclass._check_properties([rest], require_indexed=require_indexed)
 
 
 class LocalStructuredProperty(_StructuredGetForDictMixin, BlobProperty):
@@ -2669,7 +2675,7 @@ class Model(_NotEqualMixin):
   _key = ModelKey()
   key = _key
 
-  def __init__(*args, **kwds):
+  def __init__(self, *args, **kwds):
     """Creates a new instance of this model (a.k.a. an entity).
 
     The new entity must be written to the datastore using an explicit
@@ -2691,9 +2697,8 @@ class Model(_NotEqualMixin):
     through the constructor, but can be assigned to entity attributes
     after the entity has been created.
     """
-    if len(args) > 1:
+    if args:
       raise TypeError('Model constructor takes no positional arguments.')
-    (self,) = args
     get_arg = self.__get_arg
     key = get_arg(kwds, 'key')
     id = get_arg(kwds, 'id')
@@ -3095,22 +3100,22 @@ class Model(_NotEqualMixin):
         prop._prepare_for_put(self)
 
   @classmethod
-  def _check_projections(cls, projections):
-    """Helper to check that a list of projections is valid for this class.
+  def _check_properties(cls, property_names, require_indexed=True):
+    """Helper to check that property_names refer to indexed properties.
 
     Called from query.py.
 
     Args:
-      projections: List or tuple of projections -- each being a string
-        giving a property name, possibly containing dots (to address
-        subproperties of structured properties).
+      property_names: List or tuple of property names -- each being a string,
+        possibly containing dots (to address subproperties of structured
+        properties).
 
     Raises:
-      BadProjectionError if one of the properties is invalid.
+      InvalidPropertyError if one of the properties is invalid.
       AssertionError if the argument is not a list or tuple of strings.
     """
-    assert isinstance(projections, (list, tuple)), repr(projections)
-    for name in projections:
+    assert isinstance(property_names, (list, tuple)), repr(property_names)
+    for name in property_names:
       assert isinstance(name, basestring), repr(name)
       if '.' in name:
         name, rest = name.split('.', 1)
@@ -3118,21 +3123,21 @@ class Model(_NotEqualMixin):
         rest = None
       prop = cls._properties.get(name)
       if prop is None:
-        cls._unknown_projection(name)
+        cls._unknown_property(name)
       else:
-        prop._check_projection(rest)
+        prop._check_property(rest, require_indexed=require_indexed)
 
   @classmethod
-  def _unknown_projection(cls, name):
+  def _unknown_property(cls, name):
     """Helper to raise an exception for an unknown property name.
 
-    This is called by _check_projections().  It is overridden by
+    This is called by _check_properties().  It is overridden by
     Expando, where this is a no-op.
 
     Raises:
-      BadProjectionError.
+      InvalidPropertyError.
     """
-    raise BadProjectionError('Projecting on unknown property %s' % name)
+    raise InvalidPropertyError('Unknown property %s' % name)
 
   def _validate_key(self, key):
     """Validation for _key attribute (designed to be overridden).
@@ -3152,13 +3157,26 @@ class Model(_NotEqualMixin):
   def _query(cls, *args, **kwds):
     """Create a Query object for this class.
 
-    Keyword arguments are passed to the Query() constructor.  If
-    positional arguments are given they are used to apply an initial
-    filter.
+    Args:
+      distinct: Optional bool, short hand for group_bys = projection.
+      *args: Used to apply an initial filter
+      **kwds: are passed to the Query() constructor.
 
     Returns:
       A Query object.
     """
+    # Validating distinct.
+    if 'distinct' in kwds:
+      if 'group_bys' in kwds:
+        raise TypeError(
+            'cannot use distinct= and group_bys= at the same time')
+      projection = kwds.get('projection')
+      if not projection:
+        raise TypeError(
+            'cannot use distinct= without projection=')
+      if kwds.pop('distinct'):
+        kwds['group_bys'] = projection
+
     # TODO: Disallow non-empty args and filter=.
     from .query import Query  # Import late to avoid circular imports.
     qry = Query(kind=cls._get_kind(), **kwds)
@@ -3435,8 +3453,8 @@ class Expando(Model):
       setattr(self, name, value)
 
   @classmethod
-  def _unknown_projection(cls, name):
-    # It is not an error to project on an unknown Expando property.
+  def _unknown_property(cls, name):
+    # It is not an error as the property may be a dynamic property.
     pass
 
   def __getattr__(self, name):
