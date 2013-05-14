@@ -1,0 +1,585 @@
+// Copyright 2013 Google Inc. All Rights Reserved.
+//
+// The datastore v1 service proto definitions
+
+syntax = "proto2";
+
+package api.services.datastore;
+option java_package = "com.google.api.services.datastore";
+
+
+// An identifier for a particular subset of entities.
+//
+// Entities are partitioned into various subsets, each used by different
+// datasets and different namespaces within a dataset and so forth.
+//
+// All input partition IDs are normalized before use.
+// A partition ID is normalized as follows:
+//   If the partition ID is unset, replace it with an empty partition ID.
+//   If the partition ID has no dataset ID, assign it the context dataset ID.
+//
+// Partition dimension:
+// A dimension may be unset.
+// A dimension's value must never contain "!".
+// A dimension's value must never be "".
+// If the value of any dimension matches regex "__.*__", the
+// partition is reserved/read-only.
+message PartitionId {
+  enum Constants {
+    MAX_DIMENSION_TAG = 100;
+  }
+
+  // The dataset ID.
+  optional string dataset_id = 3;
+  // The namespace.
+  optional string namespace = 4;
+  // Next dimension id: 5 // MOE: strip_line
+
+  // Use tags > MAX_DIMENSION_TAG up for non-dimension fields to leave room for
+  // more dimensions.
+}
+
+// A unique identifier for an entity.
+message Key {
+  // Entities are partitioned into subsets, identified by a dataset (usually
+  // implicitly specified by the project) and namespace ID. Queries are scoped
+  // to a single partition.
+  optional PartitionId partition_id = 1;
+
+  // A (kind, ID/name) pair used to construct a key path.
+  //
+  // At most one of name or ID may be set.
+  // If either is set, the element is complete.
+  // If neither is set, the element is incomplete.
+  message PathElement {
+    // The kind of the entity.
+    // Kinds matching regex "__.*__" are reserved/read-only.
+    // Cannot be "".
+    required string kind = 1;
+    // The ID of the entity.
+    // Always > 0.
+    optional int64 id = 2;
+    // The name of the entity.
+    // Cannot be "", nor match regex "__.*__".
+    optional string name = 3;
+  }
+
+  // The entity path.
+  // An entity path consists of one or more elements composed of a kind and a
+  // string or numerical identifier, which identify entities. The first
+  // element identifies a <em>root entity</em>, the second element identifies
+  // a <em>child</em> of the root entity, the third element a child of the
+  // second entity, and so forth. The entities identified by all prefixes of
+  // the path are called the element's <em>ancestors</em>. 
+  // An entity path is always fully complete: ALL of the entity's ancestors
+  // are required to be in the path along with the entity identifier itself.
+  // The only exception is that in some documented cases, the identifier in the
+  // last path element (for the entity) itself may be omitted. A path can never
+  // be empty.
+  repeated PathElement path_element = 2;
+}
+
+// A message that can hold any of the supported value types and associated
+// metadata.
+//
+// At most one of the <type>Value fields may be set.
+// If none are set the value is "null".
+// Note that <type>Value fields that are smaller and more commonly used
+// have tags in the range 1-15 (that encode in a single byte), while other
+// <type>Value fields have larger tags (that encode in two bytes).
+message Value {
+  // A boolean value.
+  optional bool boolean_value = 1;
+  // An integer value.
+  optional int64 integer_value = 2;
+  // A double value.
+  optional double double_value = 3;
+  // A timestamp value.
+  optional int64 timestamp_microseconds_value = 4;
+  // A key value.
+  optional Key key_value  = 5;
+  // A blob key value.
+  optional string blob_key_value = 16;
+  // A UTF-8 encoded string value.
+  optional string string_value = 17;
+  // A blob value.
+  optional bytes blob_value = 18;
+  // An entity value.
+  // May have no key.
+  optional Entity entity_value = 6;
+
+  // The <code>meaning</code> field is reserved and should not be used.
+  // Meaning may only be set to certain numbers.
+  // Each valid meaning specifies which <type>_value field must be set.
+  //     meaning integer   <type>_value    constraint
+  //            1          string_value       --
+  //            2          string_value      max characters 2038
+  //            3          string_value       --
+  //            4          string_value       --
+  //            5          string_value       --
+  //            6          string_value       --
+  //            8          string_value       --
+  //            9          entity_value      see below
+  //           10          string_value       --
+  //           11          string_value       --
+  //           12          string_value       --
+  //           13          integer_value     in range [0, 100]
+  //           15          string_value       --
+  //           16          blob_value        max bytes 500
+  //           18            --              see LIMITATION below
+  //           20          entity_value      see below
+  //           21          entity_value      see below
+  //           22          blob_value         --
+  // When meaning is 20, entity_value must have no key and must have only
+  // these single-valued "user" properties:
+  //     property name         <type>_value    optional    indexed
+  //     email                 string_value       no          no
+  //     auth_domain           string_value       no          no
+  //     user_id               string_value       yes         no
+  //     federated_identity    string_value       yes         no
+  //     federated_provider    string_value       yes         no
+  // When meaning is 9 or 21, entity_value must have no key and must have
+  // only these single-valued "point" properties:
+  //     property name    <type>_value    optional    indexed  meaning 9 range
+  //           x          double_value       no          no      -90 to 90
+  //           y          double_value       no          no      -180 to 180
+  // LIMITATION:
+  // An input value may not have meaning set to 18.
+  // An output value may have meaning set to 18 only when it is derived from
+  // an index, which can occur only in documented contexts.
+  // In those contexts, the value is transformed as follows:
+  //     Any previous value of field meaning is overridden.
+  //     Field timestamp_microseconds_value is moved to field integer_value.
+  //     Field blob_key is moved to field string_value.
+  //     Field blob_value is moved to field string_value if it is valid UTF-8.
+  //     Field entity_value is converted to proto message Onestore.EntityProto,
+  //         serialized, and if valid UTF-8 moved to field string_value,
+  //         otherwise moved to field blob_value.
+  optional int32 meaning = 14;
+
+  // If the value should be indexed.
+  //
+  // The <code>indexed</code> property may be set to <code>null</code>.
+  // When <code>indexed</code> is <code>true</code>, <code>stringValue</code>
+  // is limited to 500 characters and the blob value is limited to 500 bytes.
+  // Input values by default have <code>indexed</code> set to
+  // <code>true</code>; however, you can explicitly set <code>indexed</code> to
+  // <code>true</code> if you want. (An output value never has
+  // <code>indexed</code> explicitly set to <code>true</code>.) If a value is
+  // itself an entity, it cannot have <code>indexed</code> set to
+  // <code>true</code>.
+  optional bool indexed = 15 [default = true];
+}
+
+// An entity property.
+message Property {
+  // The name of the property.
+  // Properties with names matching regex "__.*__" are reserved/read-only.
+  // Cannot be "".
+  required string name = 1;
+
+  // If this property contains a list of values.
+  // Input values may explicitly set multi to false, but otherwise
+  // false is always represented by omitting multi.
+  optional bool multi = 2 [default = false];
+
+  // The value(s) of the property.
+  // When multi is false there is always exactly one value.
+  // When multi is true there is always one or more values.
+  // Each value can have only one value property populated. For example,
+  // you cannot have a values list of <code>{ values: [ { integerValue: 22,
+  // stringValue: "a" } ] }</code>, but you can have <code>{ multi: true,
+  // values: [ { integerValue: 22 }, { stringValue: "a" } ] }</code>.
+  repeated Value value = 3;
+}
+
+// An entity.
+//
+// An entity is limited to 1 megabyte when stored. That *roughly* corresponds
+// to a limit of 1 megabyte for the serialized form of this message.
+message Entity {
+  // The entity's key.
+  //
+  // An entity must have a key, unless otherwise documented (for example
+  // an entity in <code>entityValue</code> may have no key).
+  // An entity's kind is its key's path's last element's kind,
+  // or null if it has no key.
+  optional Key key = 1;
+  // Each property's name must be unique for its entity.
+  // The entity's properties.
+  repeated Property property = 2;
+}
+
+
+// The result of fetching an entity from the datastore.
+message EntityResult {
+  // Specifies what data the 'entity' field contains.
+  // A ResultType is either implied (for example, in LookupResponse.found it
+  // is always FULL) or specified by context (for example, in message
+  // QueryResultBatch, field 'entity_result_type' specifies a ResultType
+  // for all the values in field 'entity_result').
+  enum ResultType {
+    FULL = 1;  // The entire entity.
+    PROJECTION = 2;  // A projected subset of properties.
+                     // The entity may have no key.
+                     // A property value may have meaning 18.
+    KEY_ONLY = 3;  // Only the key.
+  }
+
+  // The resulting entity.
+  required Entity entity = 1;
+}
+
+// A query.
+message Query {
+  // The projection to return. If not set the entire entity is returned.
+  repeated PropertyExpression projection = 2;
+
+  // The kinds to query (if empty, returns entities from all kinds).
+  repeated KindExpression kind = 3;
+
+  // The filter to apply (optional).
+  optional Filter filter = 4;
+
+  // The order to apply to the query results (if empty, order is unspecified).
+  repeated PropertyOrder order = 5;
+
+  // The properties to group by (if empty, no grouping is applied to the
+  // result set).
+  repeated PropertyReference group_by = 6;
+
+  // A starting point for the query results. Optional. Query cursors are
+  // returned in query result batches.
+  optional bytes /* serialized QueryCursor */ start_cursor = 7;
+
+  // An ending point for the query results. Optional. Query cursors are
+  // returned in query result batches.
+  optional bytes /* serialized QueryCursor */ end_cursor = 8;
+
+
+  // The number of results to skip. Applies before limit, but after all other
+  // constraints (optional, defaults to 0).
+  optional int32 offset = 10 [default=0];
+
+  // The maximum number of results to return. Applies after all other
+  // constraints. Optional.
+  optional int32 limit = 11;
+}
+
+// A representation of a kind.
+message KindExpression {
+  // The name of the kind.
+  required string name = 1;
+}
+
+// A reference to a property relative to the kind expressions.
+// exactly.
+message PropertyReference {
+  // The name of the property.
+  required string name = 2;
+}
+
+// A representation of a property in a projection.
+message PropertyExpression {
+  enum AggregationFunction {
+    FIRST = 1;
+  }
+  // The property to project.
+  required PropertyReference property = 1;
+  // The aggregation function to apply to the property. Optional.
+  // Can only be used when grouping by at least one property. Must
+  // then be set on all properties in the projection that are not
+  // being grouped by.
+  optional AggregationFunction aggregation_function = 2;
+}
+
+// The desired order for a specific property.
+message PropertyOrder {
+  enum Direction {
+    ASCENDING = 1;
+    DESCENDING = 2;
+  }
+  // The property to order by.
+  required PropertyReference property = 1;
+  // The direction to order by.
+  optional Direction direction = 2 [default=ASCENDING];
+}
+
+// A holder for any type of filter. Exactly one field should be specified.
+message Filter {
+  // A composite filter.
+  optional CompositeFilter composite_filter = 1;
+  // A filter on a property.
+  optional PropertyFilter property_filter = 2;
+}
+
+// A filter that merges the multiple other filters using the given operation.
+message CompositeFilter {
+  enum Operator {
+    AND = 1;
+  }
+
+  // The operator for combining multiple filters.
+  required Operator operator = 1;
+  // The list of filters to combine.
+  // Must contain at least one filter.
+  repeated Filter filter = 2;
+}
+
+// A filter on a specific property.
+message PropertyFilter {
+  enum Operator {
+    LESS_THAN = 1;
+    LESS_THAN_OR_EQUAL = 2;
+    GREATER_THAN = 3;
+    GREATER_THAN_OR_EQUAL = 4;
+    EQUAL = 5;
+
+    HAS_ANCESTOR = 11;
+  }
+
+  // The property to filter by.
+  required PropertyReference property = 1;
+  // The operator to filter by.
+  required Operator operator = 2;
+  // The value to compare the property to.
+  required Value value = 3;
+}
+
+// A batch of results produced by a query.
+message QueryResultBatch {
+  // The possible values for the 'more_results' field.
+  enum MoreResultsType {
+    NOT_FINISHED = 1;  // There are additional batches to fetch from this query.
+    MORE_RESULTS_AFTER_LIMIT = 2;  // The query is finished, but there are more
+                                   // results after the limit.
+    NO_MORE_RESULTS = 3;  // The query has been exhausted.
+  }
+
+  // The result type for every entity in entityResults.
+  required EntityResult.ResultType entity_result_type = 1;
+  // The results for this batch.
+  repeated EntityResult entity_result = 2;
+
+
+  // A cursor that points to the position after the last result in the batch.
+  // May be absent.
+  optional bytes /* serialized QueryCursor */ end_cursor = 4;
+
+  // The state of the query after the current batch.
+  required MoreResultsType more_results = 5;
+
+  // The number of results skipped because of <code>Query.offset</code>.
+  optional int32 skipped_results = 6;
+}
+
+// Options shared by read requests.
+message ReadOptions {
+  enum ReadConsistency {
+    DEFAULT = 0;
+    STRONG = 1;
+    EVENTUAL = 2;
+  }
+
+  // The read consistency to use.
+  // Cannot be set when transaction is set.
+  // Lookup and ancestor queries default to STRONG, global queries default to
+  // EVENTUAL and cannot be set to STRONG.
+  optional ReadConsistency read_consistency = 1 [default=DEFAULT];
+
+  // The transaction to use. Optional.
+  optional bytes /* serialized Transaction */ transaction = 2;
+}
+
+// A set of changes to apply.
+//
+// If entities with duplicate keys are present, an arbitrary choice will
+// be made as to which is written.
+message Mutation {
+
+  // Entities to upsert. Upserted entities must have a complete key path.
+  repeated Entity upsert = 1;
+  // Entities to update. Updated entities must have a complete key path.
+  repeated Entity update = 2;
+  // Entities to insert. Inserted entities must have a complete key path.
+  repeated Entity insert = 3;
+  // Insert entities with a newly allocated ID.
+  // Each entity's key must omit the final identifier in its path.
+  repeated Entity insert_auto_id = 4;
+  // Keys of entities to delete.
+  repeated Key delete = 5;
+  // Ignore a user specified read-only period. Optional.
+  optional bool force = 6;
+}
+
+// The result of applying a mutation.
+message MutationResult {
+  // Number of index writes.
+  required int32 index_updates = 1;
+  // Keys for <code>insertAutoId</code> entities. One per entity from the
+  // request, in the same order.
+  repeated Key insert_auto_id_key = 2;
+}
+
+// The request for Lookup.
+message LookupRequest {
+
+  // Options for this lookup request. Optional.
+  optional ReadOptions read_options = 1;
+  // Keys of entities to look up from the datastore.
+  repeated Key key = 3;
+}
+
+// The response for Lookup.
+message LookupResponse {
+
+  // The order of results in these fields is undefined and has no relation to
+  // the order of the keys in the input.
+
+  // Entities found as ResultType.FULL entities.
+  repeated EntityResult found = 1;
+
+  // Entities not found as ResultType.KEY_ONLY entities.
+  repeated EntityResult missing = 2;
+
+  // A list of keys that were not looked up due to resource constraints.
+  repeated Key deferred = 3;
+}
+
+// The request for BlindWrite.
+message BlindWriteRequest {
+
+  // The mutation to perform.
+  required Mutation mutation = 1;
+}
+
+// The response for BlindWrite.
+message BlindWriteResponse {
+
+  // The result of performing the mutation.
+  optional MutationResult mutation_result = 1;
+}
+
+// The request for RunQuery.
+message RunQueryRequest {
+
+  // The options for this query.
+  optional ReadOptions read_options = 1;
+
+  // Entities are partitioned into subsets, identified by a dataset (usually
+  // implicitly specified by the project) and namespace ID. Queries are scoped
+  // to a single partition.
+  optional PartitionId partition_id = 2;
+
+  // The query to run.
+  required Query query = 3;
+
+}
+
+// The response for RunQuery.
+message RunQueryResponse {
+
+  // A batch of query results (always present).
+  optional QueryResultBatch batch = 1;
+
+}
+
+// The request for BeginTransaction.
+message BeginTransactionRequest {
+
+  enum IsolationLevel {
+    SNAPSHOT = 0;  // Read from a consistent snapshot. Concurrent transactions
+                   // conflict if their mutations conflict. For example:
+                   // Read(A),Write(B) may not conflict with Read(B),Write(A),
+                   // but Read(B),Write(B) does conflict with Read(B),Write(B).
+    SERIALIZABLE = 1; // Read from a consistent snapshot. Concurrent
+                      // transactions conflict if they cannot be serialized.
+                      // For example Read(A),Write(B) does conflict with
+                      // Read(B),Write(A) but Read(A) may not conflict with
+                      // Write(A).
+  }
+
+  // The transaction isolation level.
+  optional IsolationLevel isolation_level = 1 [default=SNAPSHOT];
+}
+
+// The response for BeginTransaction.
+message BeginTransactionResponse {
+
+  // The transaction identifier (always present).
+  optional bytes /* serialized Transaction */ transaction = 1;
+}
+
+// The request for Rollback.
+message RollbackRequest {
+
+  // The transaction identifier, returned by a call to
+  // <code>beginTransaction</code>.
+  required bytes /* serialized Transaction */ transaction = 1;
+}
+
+// The response for Rollback.
+message RollbackResponse {
+// Empty
+}
+
+// The request for Commit.
+message CommitRequest {
+
+  // The transaction identifier, returned by a call to
+  // <code>beginTransaction</code>.
+  required bytes /* serialized Transaction */ transaction = 1;
+  // The mutation to perform as part of this transaction. Optional.
+  optional Mutation mutation = 2;
+}
+
+// The response for Commit.
+message CommitResponse {
+
+  // The result of performing the mutation (if any).
+  optional MutationResult mutation_result = 1;
+}
+
+// The request for AllocateIds.
+message AllocateIdsRequest {
+
+  // A list of keys with incomplete key paths to allocate IDs for.
+  repeated Key key = 1;
+}
+
+// The response for AllocateIds.
+message AllocateIdsResponse {
+
+  // The keys specified in the request (in the same order), each with
+  // its key path completed with a newly allocated ID.
+  repeated Key key = 1;
+}
+
+// Each rpc normalizes the partition IDs of the keys in its input entities,
+// and always returns entities with keys with normalized partition IDs.
+// (Note that applies to all entities, including entities in values.)
+service DatastoreService {
+  // Look up some entities by key.
+  rpc Lookup(LookupRequest) returns (LookupResponse) {
+  };
+  // Create, delete or modify some entities outside a transaction.
+  rpc BlindWrite(BlindWriteRequest) returns (BlindWriteResponse) {
+  };
+  // Query for entities.
+  rpc RunQuery(RunQueryRequest) returns (RunQueryResponse) {
+  };
+  // Begin a new transaction.
+  rpc BeginTransaction(BeginTransactionRequest) returns (BeginTransactionResponse) {
+  };
+  // Commit a transaction, optionally creating, deleting or modifying some
+  // entities.
+  rpc Commit(CommitRequest) returns (CommitResponse) {
+  };
+  // Roll back a transaction.
+  rpc Rollback(RollbackRequest) returns (RollbackResponse) {
+  };
+  // Allocate IDs for incomplete keys (useful for referencing an entity before
+  // it is inserted).
+  rpc AllocateIds(AllocateIdsRequest) returns (AllocateIdsResponse) {
+  };
+}

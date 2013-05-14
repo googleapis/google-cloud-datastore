@@ -1,0 +1,65 @@
+<!doctype html>
+<!--
+ Copyright 2013 Google Inc. All Rights Reserved.
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+-->
+<html ng-app="todo">
+  <head>
+<script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.0.5/angular.min.js"></script>
+    <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.0.5/angular-resource.min.js"></script>
+    <script src="/static/js/todo.js"></script>
+    <link rel="stylesheet" href="http://twitter.github.com/bootstrap/assets/css/bootstrap.css">
+    <style>
+      .done-true {
+      text-decoration: line-through;
+      color: grey;
+      }
+      input[type=text] {
+      margin-bottom: 0px;
+      }
+      input[type=checkbox] {
+      margin-top: 0px;
+      }
+      label {
+      display: inline;
+      }
+      li {
+      opacity: 1.0;
+      }
+      li.updating, li.saving {
+      opacity: 0.7;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="hero-unit">
+      <h2>todos</h2>
+      <div ng-controller="TodoCtrl">
+        <p><span>{{remaining()}} of {{todos.length}} remaining</span>
+        [ <a href="" ng-click="clear()">clear</a> ]</p>
+        <ul class="unstyled">
+          <li class="{{todo.state}}" ng-repeat="todo in todos">
+            <input id="todo-{{todo.id}}" type="checkbox" ng-model="todo.done" ng-change="change(todo)" ng-disabled="disabled(todo)">
+            <label for="todo-{{todo.id}}" class="done-{{todo.done}}">{{todo.text}}</label>
+          </li>
+        </ul>
+        <form ng-submit="addTodo()">
+          <input type="text" ng-model="todoText"  size="30"
+                 placeholder="add new todo here">
+          <input class="btn btn-primary" type="submit" value="add">
+        </form>
+      </div>
+    </div>
+  </body>
+</html>
