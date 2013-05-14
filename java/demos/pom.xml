@@ -4,20 +4,13 @@
   <groupId>com.google.apis</groupId>
   <artifactId>google-api-services-datastore-protobuf-demos</artifactId>
   <packaging>jar</packaging>
-  <version>${project.gcd.version}</version>
   <name>google-api-services-datastore-protobuf-demos</name>
   <url>https://github.com/GoogleCloudPlatform/google-cloud-datastore</url>
-  <repositories>
-    <repository>
-      <id>sonatype-snapshots</id>
-      <url>https://oss.sonatype.org/content/repositories/snapshots/</url>
-    </repository>
-  </repositories>
   <dependencies>
     <dependency>
       <groupId>com.google.apis</groupId>
       <artifactId>google-api-services-datastore-protobuf</artifactId>
-      <version>${project.gcd.version}</version>
+      <version>v1beta1-rev1-1.0.0-SNAPSHOT</version>
     </dependency>
   </dependencies>
   <build>
@@ -62,6 +55,6 @@
   <parent>
     <groupId>com.google.apis</groupId>
     <artifactId>google-api-services-datastore-protobuf-parent</artifactId>
-    <version>${project.gcd.version}</version>
+    <version>v1beta1-rev1-1.0.0-SNAPSHOT</version>
   </parent>
 </project>

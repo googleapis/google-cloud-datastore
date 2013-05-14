@@ -4,15 +4,14 @@
   <groupId>com.google.apis</groupId>
   <artifactId>google-api-services-datastore-protobuf-demos-all-deps</artifactId>
   <packaging>jar</packaging>
-  <version>${project.gcd.version}</version>
   <name>google-api-services-datastore-protobuf-demos-all-deps</name>
   <url>https://github.com/GoogleCloudPlatform/google-cloud-datastore</url>
   <dependencies>
     <dependency>
       <groupId>com.google.apis</groupId>
       <artifactId>google-api-services-datastore-protobuf-demos</artifactId>
-      <version>${project.gcd.version}</version>
-      </dependency>
+      <version>v1beta1-rev1-1.0.0-SNAPSHOT</version>
+    </dependency>
   </dependencies>
   <build>
     <plugins>
@@ -57,6 +56,6 @@
   <parent>
     <groupId>com.google.apis</groupId>
     <artifactId>google-api-services-datastore-protobuf-parent</artifactId>
-    <version>${project.gcd.version}</version>
+    <version>v1beta1-rev1-1.0.0-SNAPSHOT</version>
   </parent>
 </project>

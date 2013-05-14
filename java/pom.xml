@@ -4,8 +4,8 @@
   <groupId>com.google.apis</groupId>
   <artifactId>google-api-services-datastore-protobuf-parent</artifactId>
   <packaging>pom</packaging>
-  <name>google-api-services-datastore-protobuf-main</name>
-  <version>${project.gcd.version}</version>
+  <name>google-api-services-datastore-protobuf-parent</name>
+  <version>v1beta1-rev1-1.0.0-SNAPSHOT</version>
   <modules>
     <module>datastore</module>
     <module>demos</module>
@@ -13,12 +13,10 @@
     <module>demos-shade</module>
   </modules>
   <properties>
-    <project.gcd.version>v1beta1-rev1-1.0.0-SNAPSHOT</project.gcd.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.http.version>1.15.0-rc</project.http.version>
     <project.oauth.version>1.15.0-rc</project.oauth.version>
     <project.googleapi.version>1.15.0-rc</project.googleapi.version>
-    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
   </properties>
   <parent>
     <groupId>org.sonatype.oss</groupId>
