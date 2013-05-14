@@ -59,11 +59,11 @@ def main():
     # Get question property value.
     question = entity.property[0].value[0].string_value
     # Get answer property value.
-    answer = entity.property[1].value[0].string_value
+    answer = entity.property[1].value[0].integer_value
     # Print the question and read one line from stdin.
     print question
     result = raw_input('> ')
-    if result == answer:
+    if result == str(answer):
       print ('fascinating, extraordinary and,'
              'when you think hard about it, completely obvious.')
     else:
