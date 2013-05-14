@@ -1,5 +1,5 @@
 googledatastore
-=========
+===============
 
 Google Cloud Datastore Protobuf Buffers client.
 
