@@ -64,7 +64,7 @@ def main():
     print question
     result = raw_input('> ')
     if result == str(answer):
-      print ('fascinating, extraordinary and,'
+      print ('fascinating, extraordinary and, '
              'when you think hard about it, completely obvious.')
     else:
       print "Don't Panic!"
