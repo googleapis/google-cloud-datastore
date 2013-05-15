@@ -6,6 +6,12 @@
   <packaging>jar</packaging>
   <name>google-api-services-datastore-protobuf-demos</name>
   <url>https://github.com/GoogleCloudPlatform/google-cloud-datastore</url>
+  <repositories>
+    <repository>
+      <id>sonatype-snapshots</id>
+      <url>https://oss.sonatype.org/content/repositories/snapshots/</url>
+    </repository>
+  </repositories>
   <dependencies>
     <dependency>
       <groupId>com.google.apis</groupId>
