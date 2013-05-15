@@ -87,10 +87,10 @@ public class Adams {
       // Get `question` property value.
       String question = entityFound.getProperty(0).getValue(0).getStringValue();
       // Get `answer` property value.
-      String answer = entityFound.getProperty(0).getValue(0).getStringValue();
+      Long answer = entityFound.getProperty(1).getValue(0).getIntegerValue();
       System.out.println(question);
       String result = System.console().readLine("> ");
-      if (result == answer) {
+      if (result.equals(answer.toString())) {
         System.out.println("fascinating, extraordinary and," +
             "when you think hard about it, completely obvious.");
       } else {
