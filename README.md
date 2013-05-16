@@ -5,6 +5,8 @@ datastore accessible through Google APIs infrastructure. It provides
 a rich set of query capabilities, supports atomic transactions, and
 automatically scales up and down in response to load.
 
+The API is deliberately low-level to map to the underlying Datastore RPC model and provide more flexibility to developers and higher level library implementers.
+
 This repository contains the source code of samples and developer
 resources related to Google Cloud Datastore:
 - [Service and protocol buffers messages definition][6]
@@ -13,17 +15,54 @@ resources related to Google Cloud Datastore:
 - [Node.js samples][11]
 - [Command line utilities][12]
 
+## Samples
+
+### JSON
+- [Node.js][3]
+- [[Add yours here][16]]
+
+### Protobuf
+- [Python][1]
+- [Java][2]
+- [[Add yours here][16]]
+
+## Client libraries
+
+### JSON
+
+- [Node.js][17]:
+
+```
+npm install googleapis
+```
+
+- [[Add yours here][16]]
+
+
+### Protobuf
+- [Python][18] ([readthedocs][19]):
+
+```
+pip install googledatastore
+```
+
+- Maven/Java ([javadoc][20]):
+
+```
+<dependency>
+  <groupId>com.google.apis</groupId>
+  <artifactId>google-api-services-datastore-protobuf</artifactId>
+  <version>v1beta1-rev1-1.0.0-SNAPSHOT</version>
+</dependency>
+```
+
+- [[Add yours here][16]]
+
 ## Documentation
 
 - [Getting Started][4]
 - [JSON API reference][5]
 - [Protocol Buffers API reference][6]
-
-## Samples
-
-- [Python][1]
-- [Java][2]
-- [Node.js][3]
 
 ## Filing Issues
 
@@ -58,4 +97,9 @@ resources related to Google Cloud Datastore:
 [13]: https://cloud.google.com/support/packages
 [14]: https://github.com/GoogleCloudPlatform/google-cloud-datastore/issues
 [15]: https://github.com/GoogleCloudPlatform/google-cloud-datastore/issues/new
+[16]: https://github.com/GoogleCloudPlatform/google-cloud-datastore/fork
+[17]: https://npmjs.org/package/googleapis
+[18]: https://pypi.python.org/pypi/googledatastore
+[19]: googledatastore.readthedocs.org
+[20]: https://developers.google.com/datastore/docs/apis/javadoc/
 
