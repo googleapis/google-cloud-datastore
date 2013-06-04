@@ -1,3 +1,3 @@
-EMAIL: "something@developer.gserviceaccount.com"
-KEY_PATH: "key.p12 (copy your key into this directory and change the name)"
+EMAIL: "EMAIL/SERVICE_ACCOUNT"
+KEY_PATH: "KEY_PATH/PRIVATE_KEY_FILE"
 DATASET_ID: "my-dataset"
