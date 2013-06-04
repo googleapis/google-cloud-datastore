@@ -3,6 +3,9 @@ Bundler.require
 
 config = YAML.load File.open "datastore.yml"
 
+HttpLogger.logger = Logger.new STDOUT
+HttpLogger.log_headers = true
+
 $client = ActiveDatastore::Client.new config["EMAIL"], File.open(config["KEY_PATH"]).read
 $dataset = ActiveDatastore::Dataset.new config["DATASET_ID"], $client
 

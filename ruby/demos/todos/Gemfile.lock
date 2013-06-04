@@ -28,6 +28,7 @@ GEM
       multi_json (>= 1.0.0)
       signet (~> 0.4.5)
       uuidtools (>= 2.1.0)
+    http_logger (0.4.1)
     i18n (0.6.4)
     json (1.8.0)
     jwt (0.1.8)
@@ -57,4 +58,5 @@ PLATFORMS
 
 DEPENDENCIES
   active_datastore
+  http_logger
   sinatra
