@@ -1,6 +1,5 @@
-require 'sinatra'
-
-require 'active_datastore'
+require 'bundler'
+Bundler.require
 
 config = YAML.load File.open "datastore.yml"
 
