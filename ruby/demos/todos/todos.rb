@@ -4,7 +4,7 @@ Bundler.require
 config = YAML.load File.open "datastore.yml"
 
 # Uncomment the next line to see what requests are being sent to the GCD API in your console
-# HttpLogger.logger = Logger.new STDOUT
+HttpLogger.logger = Logger.new STDOUT
 
 # Uncomment the next line if you want to see what headers are being sent too.
 # HttpLogger.log_headers = true
@@ -14,11 +14,24 @@ $dataset = ActiveDatastore::Dataset.new config["DATASET_ID"], $client
 
 
 get '/' do
-	todos = $dataset.run_query({
+	batch = $dataset.run_query({
 		query: {
-			kinds: [{name: 'Todo'}]
+			kinds: [{name: 'Todo'}],
+			filter: {
+				propertyFilter: {
+					property: { name: '__key__'},
+					operator: 'hasAncestor',
+					value: {
+						keyValue: {
+							path: [{kind: 'TodoList', name: 'default'}]
+						}
+					}
+				}
+			}
 		}
-	}).data.batch.entityResults.map do |e|
+	}).data.batch
+
+	todos = (batch["entityResults"] || []).map do |e|
 		properties = e.entity.properties
 		content = properties.content.values.first.stringValue
 		created = properties.created.values.first.dateTimeValue
@@ -41,7 +54,7 @@ post '/' do
 		mutation: {
 			insertAutoId: [
 				{
-					key: {path: [{kind: 'Todo'}]},
+					key: {path: [{kind: 'TodoList', name: 'default'}, {kind: 'Todo'}]},
 					properties: {
 						content: {values: [{stringValue: todo}]},
 						created: {values: [{dateTimeValue: Time.now.utc.to_datetime.rfc3339}]}
