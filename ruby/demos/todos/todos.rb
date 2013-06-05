@@ -62,7 +62,7 @@ post '/' do
 				}
 			]
 		}
-	}).data.mutationResult.insertAutoIdKeys.first.path.first.id
+	}).data.mutationResult.insertAutoIdKeys.first.path.inspect
 
 	"<p>Your todo has been created with ID: #{new_todo_id}. Click <strong><a href='/'>here</a></strong> to go back to your list.</p>"
 
