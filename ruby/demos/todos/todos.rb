@@ -3,10 +3,13 @@ Bundler.require
 
 config = YAML.load File.open "datastore.yml"
 
-HttpLogger.logger = Logger.new STDOUT
-HttpLogger.log_headers = true
+# Uncomment the next line to see what requests are being sent to the GCD API in your console
+# HttpLogger.logger = Logger.new STDOUT
 
-$client = ActiveDatastore::Client.new config["EMAIL"], File.open(config["KEY_PATH"]).read
+# Uncomment the next line if you want to see what headers are being sent too.
+# HttpLogger.log_headers = true
+
+$client = ActiveDatastore::Client.new config["SERVICE_ACCOUNT"], File.open(config["PRIVATE_KEY_FILE"]).read
 $dataset = ActiveDatastore::Dataset.new config["DATASET_ID"], $client
 
 
