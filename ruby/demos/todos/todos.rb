@@ -4,7 +4,7 @@ Bundler.require
 config = YAML.load File.open "datastore.yml"
 
 # Uncomment the next line to see what requests are being sent to the GCD API in your console
-HttpLogger.logger = Logger.new STDOUT
+# HttpLogger.logger = Logger.new STDOUT
 
 # Uncomment the next line if you want to see what headers are being sent too.
 # HttpLogger.log_headers = true
