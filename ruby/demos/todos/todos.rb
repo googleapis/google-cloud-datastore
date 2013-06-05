@@ -4,7 +4,7 @@ Bundler.require
 config = YAML.load File.open "datastore.yml"
 
 # Uncomment the next line to see what requests are being sent to the GCD API in your console
-# HttpLogger.logger = Logger.new STDOUT
+HttpLogger.logger = Logger.new STDOUT
 
 # Uncomment the next line if you want to see what headers are being sent too.
 # HttpLogger.log_headers = true
@@ -62,7 +62,7 @@ post '/' do
 				}
 			]
 		}
-	}).data.mutationResult.insertAutoIdKeys.first.path.first.id
+	}).data.mutationResult.insertAutoIdKeys.first.path.inspect
 
 	"<p>Your todo has been created with ID: #{new_todo_id}. Click <strong><a href='/'>here</a></strong> to go back to your list.</p>"
 
