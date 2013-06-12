@@ -1,0 +1,4 @@
+*.p12
+
+ruby/**/*/datastore.yml
+Gemfile.lock
