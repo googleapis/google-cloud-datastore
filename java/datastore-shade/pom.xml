@@ -28,12 +28,12 @@
             <configuration>
               <createSourcesJar>true</createSourcesJar>
               <artifactSet>
-		<excludes>
-		  <exclude>com.google.code.findbugs:jsr305</exclude>
-		  <exclude>xpp3:xpp3</exclude>
+                <excludes>
+                  <exclude>com.google.code.findbugs:jsr305</exclude>
+                  <exclude>xpp3:xpp3</exclude>
                 </excludes>
               </artifactSet>
-            </configuration>	    
+            </configuration>     
           </execution>
         </executions>
       </plugin>
