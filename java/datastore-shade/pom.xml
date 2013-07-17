@@ -33,7 +33,7 @@
                   <exclude>xpp3:xpp3</exclude>
                 </excludes>
               </artifactSet>
-            </configuration>     
+            </configuration>
           </execution>
         </executions>
       </plugin>
