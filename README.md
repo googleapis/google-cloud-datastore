@@ -37,7 +37,18 @@ npm install googleapis
 ```
 
 - [Ruby (google-api-client)][23]
+
+```
+gem install google-api-client
+```
+
 - [Ruby (ActiveDatastore)][22]
+
+```
+gem install active_datastore
+```
+
+- [Dart][26]
 - [[Add yours here][16]]
 
 ### Protobuf
@@ -106,3 +117,4 @@ pip install googledatastore
 [23]: https://rubygems.org/gems/google-api-client
 [24]: nodejs/demos/todos/todo.js
 [25]: ruby/demos/todos/todos.rb
+[26]: https://github.com/dart-google-apis/dart_datastore_v1beta1_api_client
