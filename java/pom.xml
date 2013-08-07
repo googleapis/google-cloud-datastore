@@ -5,7 +5,7 @@
   <artifactId>google-api-services-datastore-protobuf-parent</artifactId>
   <packaging>pom</packaging>
   <name>google-api-services-datastore-protobuf-parent</name>
-  <version>v1beta1-rev1-1.0.0-SNAPSHOT</version>
+  <version>v1beta1-rev2-1.0.1</version>
   <modules>
     <module>datastore</module>
     <module>demos</module>

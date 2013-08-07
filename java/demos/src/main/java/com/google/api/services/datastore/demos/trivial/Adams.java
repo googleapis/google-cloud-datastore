@@ -20,6 +20,7 @@ import com.google.api.services.datastore.client.Datastore;
 import com.google.api.services.datastore.client.DatastoreException;
 import com.google.api.services.datastore.client.DatastoreFactory;
 import com.google.api.services.datastore.client.DatastoreHelper;
+import com.google.protobuf.ByteString;
 
 import java.io.IOException;
 import java.security.GeneralSecurityException;
@@ -51,43 +52,63 @@ public class Adams {
     }
 
     try {
-      // Create an RPC request to write mutations outside of a transaction.
-      BlindWriteRequest.Builder req = BlindWriteRequest.newBuilder();
-      // Create a new entity.
-      Entity.Builder entity = Entity.newBuilder();
+      // Create an RPC request to begin a new transaction.
+      BeginTransactionRequest.Builder treq = BeginTransactionRequest.newBuilder();
+      // Execute the RPC synchronously.
+      BeginTransactionResponse tres = datastore.beginTransaction(treq.build());
+      // Get the transaction handle from the response.
+      ByteString tx = tres.getTransaction();
+
+      // Create an RPC request to get entities by key.
+      LookupRequest.Builder lreq = LookupRequest.newBuilder();
       // Set the entity key with only one `path_element`: no parent.
       Key.Builder key = Key.newBuilder().addPathElement(
           Key.PathElement.newBuilder()
           .setKind("Trivia")
           .setName("hgtg"));
-      entity.setKey(key);
-      // Add two entity properties:
-      // - a utf-8 string: `question`
-      entity.addProperty(Property.newBuilder()
-          .setName("question")
-          .addValue(Value.newBuilder()
-              .setStringValue("Meaning of Life?")));
-      // - a 64bit integer: `answer`
-      entity.addProperty(Property.newBuilder()
-          .setName("answer")
-          .addValue(Value.newBuilder()
-              .setIntegerValue(42)));
-      // Add mutation to the request that update or insert this entity.
-      req.getMutationBuilder().addUpsert(entity);
-      // Execute the RPC synchronously and ignore the response.
-      datastore.blindWrite(req.build());
-      // Create an RPC request to get entities by key.
-      LookupRequest.Builder lreq = LookupRequest.newBuilder();
-      // Add one key to lookup the same entity.
+      // Add one key to the lookup request.
       lreq.addKey(key);
+      // Set the transaction, so we get a consistent snapshot of the
+      // entity at the time the transaction started.
+      lreq.getReadOptionsBuilder().setTransaction(tx);
       // Execute the RPC and get the response.
       LookupResponse lresp = datastore.lookup(lreq.build());
-      // Found one entity result.
-      Entity entityFound = lresp.getFound(0).getEntity();
+      // Create an RPC request to commit the transaction.
+      CommitRequest.Builder creq = CommitRequest.newBuilder();
+      // Set the transaction to commit.
+      creq.setTransaction(tx);
+      Entity entity;
+      if (lresp.getFoundCount() > 0) {
+        entity = lresp.getFound(0).getEntity();
+      } else {
+        // If no entity was found, create a new one.
+        Entity.Builder entityBuilder = Entity.newBuilder();
+        // Set the entity key.
+        entityBuilder.setKey(key);
+        // Add two entity properties:
+        // - a utf-8 string: `question`
+        entityBuilder.addProperty(Property.newBuilder()
+            .setName("question")
+            .addValue(Value.newBuilder()
+                .setStringValue("Meaning of Life?")));
+        // - a 64bit integer: `answer`
+        entityBuilder.addProperty(Property.newBuilder()
+            .setName("answer")
+            .addValue(Value.newBuilder()
+                .setIntegerValue(42)));
+        // Build the entity.
+        entity = entityBuilder.build();
+        // Insert the entity in the commit request mutation.
+        creq.getMutationBuilder().addInsert(entity);
+      }
+      // Execute the Commit RPC synchronously and ignore the response.
+      // Apply the insert mutation if the entity was not found and close
+      // the transaction.
+      datastore.commit(creq.build());
       // Get `question` property value.
-      String question = entityFound.getProperty(0).getValue(0).getStringValue();
+      String question = entity.getProperty(0).getValue(0).getStringValue();
       // Get `answer` property value.
-      Long answer = entityFound.getProperty(1).getValue(0).getIntegerValue();
+      Long answer = entity.getProperty(1).getValue(0).getIntegerValue();
       System.out.println(question);
       String result = System.console().readLine("> ");
       if (result.equals(answer.toString())) {

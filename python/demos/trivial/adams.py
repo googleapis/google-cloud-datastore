@@ -1,3 +1,4 @@
+#! /usr/bin/env python
 #
 # Copyright 2013 Google Inc. All Rights Reserved.
 #
@@ -13,7 +14,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-"""Adams datastore demo."""
+"""Adams datastore demo.
+
+Usage:
+export DATASTORE_SERVICE_ACCOUNT=..  # not required on
+export DATASTORE_PRIVATE_KEY_FILE=.. # Google Compute Engine
+adams.py <DATASET_ID>
+"""
 import logging
 import sys
 
@@ -27,35 +34,54 @@ def main():
   # Set the dataset from the command line parameters.
   datastore.set_options(dataset=sys.argv[1])
   try:
-    # Create a RPC request to write mutations outside of a transaction.
-    req = datastore.BlindWriteRequest()
-    # Add mutation that update or insert one entity.
-    entity = req.mutation.upsert.add()
-    # Set the entity key with only one `path_element`: no parent.
-    path = entity.key.path_element.add()
-    path.kind = 'Trivia'
-    path.name = 'hgtg'
-    # Add two entity properties:
-    # - a utf-8 string: `question`
-    property = entity.property.add()
-    property.name = 'questions'
-    value = property.value.add()
-    value.string_value = 'Meaning of life?'
-    # - a 64bit integer: `answer`
-    property = entity.property.add()
-    property.name = 'answer'
-    value = property.value.add()
-    value.integer_value = 42
-    # Execute the RPC synchronously and ignore the response.
-    datastore.blind_write(req)
+    # Create a RPC request to begin a new transaction.
+    req = datastore.BeginTransactionRequest()
+    # Execute the RPC synchronously.
+    resp = datastore.begin_transaction(req)
+    # Get the transaction handle from the response.
+    tx = resp.transaction
     # Create a RPC request to get entities by key.
     req = datastore.LookupRequest()
-    # Add one key to lookup w/ the same entity key.
-    req.key.extend([entity.key])
+    # Create a new entity key.
+    key = datastore.Key()
+    # Set the entity key with only one `path_element`: no parent.
+    path = key.path_element.add()
+    path.kind = 'Trivia'
+    path.name = 'hgtg'
+    # Add one key to the lookup request.
+    req.key.extend([key])
+    # Set the transaction, so we get a consistent snapshot of the
+    # entity at the time the transaction started.
+    req.read_options.transaction = tx
     # Execute the RPC and get the response.
     resp = datastore.lookup(req)
-    # Found one entity result.
-    entity = resp.found[0].entity
+    # Create a RPC request to commit the transaction.
+    req = datastore.CommitRequest()
+    # Set the transaction to commit.
+    req.transaction = tx
+    if resp.found:
+      # Get the entity from the response if found.
+      entity = resp.found[0].entity
+    else:
+      # If no entity was found, insert a new one in the commit request mutation.
+      entity = req.mutation.insert.add()
+      # Copy the entity key.
+      entity.key.CopyFrom(key)
+      # Add two entity properties:
+      # - a utf-8 string: `question`
+      prop = entity.property.add()
+      prop.name = 'questions'
+      value = prop.value.add()
+      value.string_value = 'Meaning of life?'
+      # - a 64bit integer: `answer`
+      prop = entity.property.add()
+      prop.name = 'answer'
+      value = prop.value.add()
+      value.integer_value = 42
+    # Execute the Commit RPC synchronously and ignore the response:
+    # Apply the insert mutation if the entity was not found and close
+    # the transaction.
+    datastore.commit(req)
     # Get question property value.
     question = entity.property[0].value[0].string_value
     # Get answer property value.

@@ -18,7 +18,8 @@ resources related to Google Cloud Datastore:
 ## Samples
 
 ### JSON
-- [Node.js][3]
+- [Node.js][3], [todo.js][24]
+- [Ruby][21], [todos.rb][25]
 - [[Add yours here][16]]
 
 ### Protobuf
@@ -36,8 +37,9 @@ resources related to Google Cloud Datastore:
 npm install googleapis
 ```
 
+- [Ruby (google-api-client)][23]
+- [Ruby (ActiveDatastore)][22]
 - [[Add yours here][16]]
-
 
 ### Protobuf
 - [Python][18] ([readthedocs][19]):
@@ -85,9 +87,8 @@ pip install googledatastore
 [2]: java/demos/src/main/java/com/google/api/services/datastore/demos/trivial/adams.java
 [3]: https://github.com/GoogleCloudPlatform/google-cloud-datastore/blob/master/nodejs/demos/trivial/adams.js
 [4]: https://developers.google.com/datastore
-[4]: https://developers.google.com/datastore/docs/apis/v1beta1/
-[5]: https://developers.google.com/datastore/docs/apis/v1beta1/proto
-[6]: proto/datastore_v1.proto
+[5]: https://developers.google.com/datastore/docs/apis/v1beta1/
+[6]: https://developers.google.com/datastore/docs/apis/v1beta1/proto
 [7]: CONTRIB.md
 [8]: LICENSE
 [9]: python
@@ -102,4 +103,8 @@ pip install googledatastore
 [18]: https://pypi.python.org/pypi/googledatastore
 [19]: googledatastore.readthedocs.org
 [20]: https://developers.google.com/datastore/docs/apis/javadoc/
-
+[21]: ruby/demos/trivial/adams.rb
+[22]: https://github.com/sudhirj/active_datastore
+[23]: https://rubygems.org/gems/google-api-client
+[24]: nodejs/demos/todos/todo.js
+[25]: ruby/demos/todos/todos.rb
