@@ -13,7 +13,6 @@ resources related to Google Cloud Datastore:
 - [Python protocol buffers client library and samples][9]
 - [Java protocol buffers Java client library and samples][10]
 - [Node.js samples][11]
-- [Command line utilities][12]
 
 ## Samples
 
@@ -94,7 +93,6 @@ pip install googledatastore
 [9]: python
 [10]: java
 [11]: nodejs
-[12]: tools
 [13]: https://cloud.google.com/support/packages
 [14]: https://github.com/GoogleCloudPlatform/google-cloud-datastore/issues
 [15]: https://github.com/GoogleCloudPlatform/google-cloud-datastore/issues/new
