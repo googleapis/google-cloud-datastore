@@ -41,65 +41,72 @@ function Adams(datasetId) {
     input: process.stdin,
     output: process.stdout
   });
-  // Retrieve credentials from Compute Engine metadata server.
-  this.compute = new googleapis.auth.Compute();
-  this.compute.authorize(this.onAuthorized.bind(this));
+  this.authorize();
 }
 util.inherits(Adams, events.EventEmitter);
 
 
 /**
- * Connect to the Datastore API.
- * @param {?Object} err compute authorization error or null if no error.
+ * Authorize with the Datastore API.
  */
-Adams.prototype.onAuthorized = function(err) {
-  if (err) {
-    this.emit('error', err);
-    return;
-  }
-  // Build the API bindings for the current version.
-  googleapis.discover('datastore', 'v1beta1')
-      .withAuthClient(this.compute)
-      .execute(this.onConnected.bind(this));
+Adams.prototype.authorize = function() {
+  // Retrieve credentials from Compute Engine metadata server.
+  this.compute = new googleapis.auth.Compute();
+  this.compute.authorize((function(err) {
+    if (err) {
+      this.emit('error', err);
+      return;
+    }
+    this.connect();
+  }).bind(this));
 };
 
 
 /**
- * Run the datastore demo.
- * @param {?Object} err Datastore API discovery error or null if no error.
- * @param {Object} client Datastore API client.
+ * Connect to the Datastore API.
  */
-Adams.prototype.onConnected = function(err, client) {
-  if (err) {
-    this.emit('error', err);
-    return;
-  }
-  this.datastore = client.datastore.datasets;
+Adams.prototype.connect = function() {
+  // Build the API bindings for the current version.
+  googleapis.discover('datastore', 'v1beta2')
+      .withAuthClient(this.compute)
+      .execute((function(err, client) {
+        if (err) {
+          this.emit('error', err);
+          return;
+        }
+        // Bind the datastore client to datasetId and get the datasets
+        // resource.
+        this.datastore = client.datastore.withDefaultParams({
+          datasetId: datasetId}).datasets;
+        this.beginTransaction();
+      }).bind(this));
+};
 
-  // Create a new transaction.
+
+/**
+ * Start a new transaction.
+ */
+Adams.prototype.beginTransaction = function() {
   this.datastore.beginTransaction({
-    datasetId: this.datasetId
     // Execute the RPC asynchronously, and call back with either an
     // error or the RPC result.
-  }).execute(this.onBeginTransactionDone.bind(this));
+  }).execute((function(err, result) {
+    if (err) {
+      this.emit('error', err);
+      return;
+    }
+    this.transaction = result.transaction;
+    this.lookup();
+  }).bind(this));
 };
 
 
 /**
- * Callback when the BeginTransaction RPC has succeeded.
- * @param {?Object} err RPC error or null if no error.
- * @param {Object} result BlindWrite RPC response.
+ * Lookup for the Trivia entity.
  */
-Adams.prototype.onBeginTransactionDone = function(err, result) {
-  if (err) {
-    this.emit('error', err);
-    return;
-  }
-  this.transaction = result.transaction;
-
+Adams.prototype.lookup = function() {
   // Get entities by key.
   this.datastore.lookup({
-    datasetId: this.datasetId,
     readOptions: {
       // Set the transaction, so we get a consistent snapshot of the
       // value at the time the transaction started.
@@ -108,26 +115,26 @@ Adams.prototype.onBeginTransactionDone = function(err, result) {
     // Add one entity key to the lookup request, with only one
     // `path` element (i.e. no parent).
     keys: [{ path: [{ kind: 'Trivia', name: 'hgtg' }] }]
-  }).execute(this.onLookupDone.bind(this));
+  }).execute((function(err, result) {
+    if (err) {
+      this.emit('error', err);
+      return;
+    }
+    // Get the entity from the response if found.
+    if (result.found) {
+      this.entity = result.found[0].entity;
+    }
+    this.commit();
+  }).bind(this));
 };
 
 
 /**
- * Callback when the Lookup RPC has succeeded.
- * @param {?Object} err RPC error or null if no error.
- * @param {Object} result Lookup RPC response.
+ * Commit the transaction and an insert mutation if the entity was not
+ * found.
  */
-Adams.prototype.onLookupDone = function(err, result) {
-  if (err) {
-    this.emit('error', err);
-    return;
-  }
-  if (result.found) {
-    // Get the entity from the response if found.
-    this.entity = result.found[0].entity;
-    // No mutation.
-    mutation = null;
-  } else {
+Adams.prototype.commit = function() {
+  if (!this.entity) {
     // If the entity is not found create it.
     this.entity = {
         // Set the entity key with only one `path` element (i.e. no parent).
@@ -136,54 +143,49 @@ Adams.prototype.onLookupDone = function(err, result) {
         // - a utf-8 string: `question`
         // - a 64bit integer: `answer`
         properties: {
-          question: { values: [{ stringValue: 'Meaning of life?' }] },
-          answer: { values: [{ integerValue: 42 }] }
+          question: { stringValue: 'Meaning of life?' },
+          answer: { integerValue: 42 }
         }
       };
     // Build a mutation to insert the new entity.
     mutation = { insert: [this.entity] };
+  } else {
+    // No mutation if the entity was found.
+    mutation = null;
   }
   // Commit the transaction and the insert mutation if the entity was not found.
   this.datastore.commit({
-    datasetId: this.datasetId,
     transaction: this.transaction,
     mutation: mutation
-  }).execute(this.onCommitDone.bind(this));
+  }).execute((function(err, result) {
+    if (err) {
+      this.emit('error', err);
+      return;
+    }
+    this.ask();
+  }).bind(this));
 };
 
 
 /**
- * Callback when the Commit RPC has succeeded.
- * @param {?Object} err RPC error or null if no error.
- * @param {Object} result BlindWrite RPC response.
+ * Ask for the question and validate the answer.
  */
-Adams.prototype.onCommitDone = function(err, result) {
-  if (err) {
-    this.emit('error', err);
-    return;
-  }
+Adams.prototype.ask = function() {
   // Get `question` property value.
-  this.question = this.entity.properties.question.values[0].stringValue;
+  var question = this.entity.properties.question.stringValue;
   // Get `answer` property value.
-  this.answer = this.entity.properties.answer.values[0].integerValue;
+  var answer = this.entity.properties.answer.integerValue;
   // Print the question and read one line from stdin.
-  this.readline.question(this.question + ' ', this.onAnswered.bind(this));
-};
-
-
-/**
- * Callback when the question has been answered.
- * @param {string} result answer to the question.
- */
-Adams.prototype.onAnswered = function(result) {
-  this.readline.close();
-  // Validate the input against the entity answer property.
-  if (parseInt(result, 10) == this.answer) {
-    console.log('fascinating, extraordinary and, ',
-                'when you think hard about it, completely obvious.');
-  } else {
-    console.log("Don't panic!");
-  }
+  this.readline.question(question + ' ', (function(result) {
+    this.readline.close();
+    // Validate the input against the entity answer property.
+    if (parseInt(result, 10) == answer) {
+      console.log('fascinating, extraordinary and, ',
+                  'when you think hard about it, completely obvious.');
+    } else {
+      console.log("Don't panic!");
+    }
+  }).bind(this));
 };
 
 

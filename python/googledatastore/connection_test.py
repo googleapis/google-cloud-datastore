@@ -81,7 +81,7 @@ class DatastoreTest(unittest.TestCase):
     payload = request.SerializeToString()
     response = self.makeLookupResponse()
     self.expectRequest(
-        'https://example.com/datastore/v1beta1/datasets/foo/lookup',
+        'https://example.com/datastore/v1beta2/datasets/foo/lookup',
         method='POST', body=payload,
         headers={'Content-Type': 'application/x-protobuf',
                  'Content-Length': str(len(payload))}).AndReturn(
@@ -97,7 +97,7 @@ class DatastoreTest(unittest.TestCase):
     request = self.makeLookupRequest()
     payload = request.SerializeToString()
     self.expectRequest(
-        'https://example.com/datastore/v1beta1/datasets/foo/lookup',
+        'https://example.com/datastore/v1beta2/datasets/foo/lookup',
         method='POST',
         body=payload,
         headers={'Content-Type': 'application/x-protobuf',
@@ -109,31 +109,13 @@ class DatastoreTest(unittest.TestCase):
     self.assertRaises(datastore.RPCError, self.conn.lookup, request)
     self.mox.VerifyAll()
 
-  def testBlindWrite(self):
-    request = datastore.BlindWriteRequest()
-    request.mutation.upsert.add()
-    payload = request.SerializeToString()
-    response = datastore.BlindWriteResponse()
-    self.expectRequest(
-        'https://example.com/datastore/v1beta1/datasets/foo/blindWrite',
-        method='POST', body=payload,
-        headers={'Content-Type': 'application/x-protobuf',
-                 'Content-Length': str(len(payload))}).AndReturn(
-                     (TestResponse(status=200, reason='Found'),
-                      response.SerializeToString()))
-    self.mox.ReplayAll()
-
-    resp = self.conn.blind_write(request)
-    self.assertEqual(response, resp)
-    self.mox.VerifyAll()
-
   def testRunQuery(self):
     request = datastore.RunQueryRequest()
     request.query.kind.add().name = 'Foo'
     payload = request.SerializeToString()
     response = datastore.RunQueryResponse()
     self.expectRequest(
-        'https://example.com/datastore/v1beta1/datasets/foo/runQuery',
+        'https://example.com/datastore/v1beta2/datasets/foo/runQuery',
         method='POST', body=payload,
         headers={'Content-Type': 'application/x-protobuf',
                  'Content-Length': str(len(payload))}).AndReturn(
@@ -150,7 +132,7 @@ class DatastoreTest(unittest.TestCase):
     payload = request.SerializeToString()
     response = datastore.BeginTransactionResponse()
     self.expectRequest(
-        'https://example.com/datastore/v1beta1/datasets/foo/'
+        'https://example.com/datastore/v1beta2/datasets/foo/'
         'beginTransaction',
         method='POST', body=payload,
         headers={'Content-Type': 'application/x-protobuf',
@@ -169,7 +151,7 @@ class DatastoreTest(unittest.TestCase):
     payload = request.SerializeToString()
     response = datastore.CommitResponse()
     self.expectRequest(
-        'https://example.com/datastore/v1beta1/datasets/foo/commit',
+        'https://example.com/datastore/v1beta2/datasets/foo/commit',
         method='POST', body=payload,
         headers={'Content-Type': 'application/x-protobuf',
                  'Content-Length': str(len(payload))}).AndReturn(
@@ -187,7 +169,7 @@ class DatastoreTest(unittest.TestCase):
     payload = request.SerializeToString()
     response = datastore.RollbackResponse()
     self.expectRequest(
-        'https://example.com/datastore/v1beta1/datasets/foo/rollback',
+        'https://example.com/datastore/v1beta2/datasets/foo/rollback',
         method='POST', body=payload,
         headers={'Content-Type': 'application/x-protobuf',
                  'Content-Length': str(len(payload))}).AndReturn(
@@ -204,7 +186,7 @@ class DatastoreTest(unittest.TestCase):
     payload = request.SerializeToString()
     response = datastore.AllocateIdsResponse()
     self.expectRequest(
-        'https://example.com/datastore/v1beta1/datasets/foo/allocateIds',
+        'https://example.com/datastore/v1beta2/datasets/foo/allocateIds',
         method='POST', body=payload,
         headers={'Content-Type': 'application/x-protobuf',
                  'Content-Length': str(len(payload))}).AndReturn(
@@ -223,7 +205,7 @@ class DatastoreTest(unittest.TestCase):
     payload = request.SerializeToString()
     response = self.makeLookupResponse()
     self.expectRequest(
-        'https://www.googleapis.com/datastore/v1beta1/datasets/foo/lookup',
+        'https://www.googleapis.com/datastore/v1beta2/datasets/foo/lookup',
         method='POST', body=payload,
         headers={'Content-Type': 'application/x-protobuf',
                  'Content-Length': str(len(payload))}).AndReturn(
@@ -247,7 +229,7 @@ class DatastoreTest(unittest.TestCase):
 
     datastore.set_options(dataset='bar')
     conn = datastore.get_default_connection()
-    self.assertEqual('http://localhost:8080/datastore/v1beta1/datasets/bar/',
+    self.assertEqual('http://localhost:8080/datastore/v1beta2/datasets/bar/',
                      conn._url)
     self.assertEqual(FakeCredentialsFromEnv, type(conn._credentials))
     self.mox.VerifyAll()
@@ -268,7 +250,7 @@ class DatastoreTest(unittest.TestCase):
   def testFunctions(self):
     datastore._conn = datastore.Datastore(dataset='foo')
     def caml(s): return ''.join(p[0].upper()+p[1:] for p in s.split('_'))
-    rpcs = ['lookup', 'blind_write', 'run_query', 'begin_transaction',
+    rpcs = ['lookup', 'run_query', 'begin_transaction',
             'commit', 'rollback', 'allocate_ids']
     methods = [(r, getattr(datastore, caml(r)+'Request'),
                 getattr(datastore, caml(r)+'Response'))

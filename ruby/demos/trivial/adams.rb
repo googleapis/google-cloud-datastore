@@ -27,7 +27,7 @@ client = Google::APIClient.new(
   :application_name => 'adams-ruby',
   :application_version => '1.0.0')
 # Build the datastore API client.
-datastore = client.discovered_api('datastore', 'v1beta1')
+datastore = client.discovered_api('datastore', 'v1beta2')
 
 # Get the dataset id from command line argument.
 dataset_id = ARGV[0]
@@ -54,9 +54,9 @@ resp = client.execute(
   :api_method => datastore.datasets.begin_transaction,
   :parameters => {:datasetId => dataset_id},
   :body_object => {})
-# Get the transaction handle, JSON encode/decode noop is a workaround
-# for https://github.com/google/google-api-ruby-client/issues/74
-tx = JSON.parse(resp.data.to_json)[:transaction]
+
+# Get the transaction handle
+tx = Base64.encode64(resp.data.transaction)
 
 # Get the entity by key.
 resp = client.execute(
@@ -75,9 +75,9 @@ if not resp.data.found.empty?
   # Get the entity from the response if found.
   entity = resp.data.found[0].entity
   # Get `question` property value.
-  question = entity.properties.question.values[0].stringValue
+  question = entity.properties.question.stringValue
   # Get `answer` property value.
-  answer = entity.properties.answer.values[0].integerValue
+  answer = entity.properties.answer.integerValue
   # No mutation.
   mutation = nil
 else
@@ -93,8 +93,8 @@ else
     # - a utf-8 string: `question`
     # - a 64bit integer: `answer`
     :properties => {
-      :question => {:values => [{:stringValue => question}]},
-      :answer => {:values => [{:integerValue => answer}]},
+      :question => {:stringValue => question},
+      :answer => {:integerValue => answer},
     }
   }
   # Build a mutation to insert the new entity.

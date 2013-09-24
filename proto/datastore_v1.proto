@@ -106,6 +106,10 @@ message Value {
   // May have a key with an incomplete key path.
   // May have a reserved/read-only key.
   optional Entity entity_value = 6;
+  // A list value.
+  // Cannot contain another list value.
+  // Cannot also have a meaning and indexing set.
+  repeated Value list_value = 7;
 
   // The <code>meaning</code> field is reserved and should not be used.
   optional int32 meaning = 14;
@@ -138,19 +142,12 @@ message Property {
   // The name cannot be "".
   required string name = 1;
 
-  // If this property contains a list of values.
-  // Input values may explicitly set multi to false, but otherwise
-  // false is always represented by omitting multi.
-  optional bool multi = 2 [default = false];
-
   // The value(s) of the property.
-  // When multi is false there is always exactly one value.
-  // When multi is true there are always one or more values.
   // Each value can have only one value property populated. For example,
-  // you cannot have a values list of <code>{ values: [ { integerValue: 22,
-  // stringValue: "a" } ] }</code>, but you can have <code>{ multi: true,
-  // values: [ { integerValue: 22 }, { stringValue: "a" } ] }</code>.
-  repeated Value value = 3;
+  // you cannot have a values list of <code>{ value: { integerValue: 22,
+  // stringValue: "a" } }</code>, but you can have <code>{ value: { listValue:
+  // [ { integerValue: 22 }, { stringValue: "a" } ] }</code>.
+  required Value value = 4;
 }
 
 // An entity.
@@ -450,19 +447,6 @@ message LookupResponse {
   repeated Key deferred = 3;
 }
 
-// The request for BlindWrite.
-message BlindWriteRequest {
-
-  // The mutation to perform.
-  required Mutation mutation = 1;
-}
-
-// The response for BlindWrite.
-message BlindWriteResponse {
-
-  // The result of performing the mutation (always present).
-  optional MutationResult mutation_result = 1;
-}
 
 // The request for RunQuery.
 message RunQueryRequest {
@@ -533,11 +517,18 @@ message RollbackResponse {
 // The request for Commit.
 message CommitRequest {
 
+  enum Mode {
+    TRANSACTIONAL = 1;
+    NON_TRANSACTIONAL = 2;
+  }
+
   // The transaction identifier, returned by a call to
-  // <code>beginTransaction</code>.
-  required bytes /* serialized Transaction */ transaction = 1;
-  // The mutation to perform as part of this transaction. Optional.
+  // <code>beginTransaction</code>. Must be set when mode is TRANSACTIONAL.
+  optional bytes /* serialized Transaction */ transaction = 1;
+  // The mutation to perform. Optional.
   optional Mutation mutation = 2;
+  // The type of commit to perform. Either TRANSACTIONAL or NON_TRANSACTIONAL.
+  optional Mode mode = 5 [default=TRANSACTIONAL];
 }
 
 // The response for Commit.
@@ -569,9 +560,6 @@ message AllocateIdsResponse {
 service DatastoreService {
   // Look up some entities by key.
   rpc Lookup(LookupRequest) returns (LookupResponse) {
-  };
-  // Create, delete or modify some entities outside a transaction.
-  rpc BlindWrite(BlindWriteRequest) returns (BlindWriteResponse) {
   };
   // Query for entities.
   rpc RunQuery(RunQueryRequest) returns (RunQueryResponse) {

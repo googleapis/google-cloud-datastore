@@ -21,17 +21,18 @@ import static com.google.api.services.datastore.client.DatastoreHelper.makeOrder
 import static com.google.api.services.datastore.client.DatastoreHelper.makeProperty;
 import static com.google.api.services.datastore.client.DatastoreHelper.makeValue;
 
-import com.google.api.services.datastore.DatastoreV1.BlindWriteRequest;
-import com.google.api.services.datastore.DatastoreV1.BlindWriteResponse;
+import com.google.api.services.datastore.DatastoreV1.CommitRequest;
 import com.google.api.services.datastore.DatastoreV1.Entity;
 import com.google.api.services.datastore.DatastoreV1.EntityResult;
 import com.google.api.services.datastore.DatastoreV1.Key;
+import com.google.api.services.datastore.DatastoreV1.Mutation;
 import com.google.api.services.datastore.DatastoreV1.PropertyFilter;
 import com.google.api.services.datastore.DatastoreV1.PropertyOrder;
 import com.google.api.services.datastore.DatastoreV1.Query;
 import com.google.api.services.datastore.DatastoreV1.QueryResultBatch;
 import com.google.api.services.datastore.DatastoreV1.RunQueryRequest;
 import com.google.api.services.datastore.DatastoreV1.RunQueryResponse;
+import com.google.api.services.datastore.DatastoreV1.Value;
 import com.google.api.services.datastore.client.Datastore;
 import com.google.api.services.datastore.client.DatastoreException;
 import com.google.api.services.datastore.client.DatastoreHelper;
@@ -136,11 +137,11 @@ public class Guestbook {
       System.out.println("no greetings in " + guestbookName);
     }
     for (Entity greeting : greetings) {
-      Map<String, Object> propertyMap = DatastoreHelper.getPropertyMap(greeting);
+      Map<String, Value> propertyMap = DatastoreHelper.getPropertyMap(greeting);
       System.out.println(
-          propertyMap.get(DATE_PROPERTY) + ": " +
-          propertyMap.get(USER_PROPERTY) + " says " +
-          propertyMap.get(MESSAGE_PROPERTY));
+          DatastoreHelper.toDate(propertyMap.get(DATE_PROPERTY)) + ": " +
+          DatastoreHelper.getString(propertyMap.get(USER_PROPERTY)) + " says " +
+          DatastoreHelper.getString(propertyMap.get(MESSAGE_PROPERTY)));
     }
   }
 
@@ -153,12 +154,15 @@ public class Guestbook {
    * @throws DatastoreException on error
    */
   List<Key> insertAutoId(Entity... entities) throws DatastoreException {
-    BlindWriteRequest.Builder request = BlindWriteRequest.newBuilder();
+    Mutation.Builder mutation = Mutation.newBuilder();
     for (Entity entity : entities) {
-      request.getMutationBuilder().addInsertAutoId(entity);
+      mutation.addInsertAutoId(entity);
     }
-    BlindWriteResponse response = datastore.blindWrite(request.build());
-    return response.getMutationResult().getInsertAutoIdKeyList();
+    CommitRequest req = CommitRequest.newBuilder()
+        .setMutation(mutation)
+        .setMode(CommitRequest.Mode.NON_TRANSACTIONAL)
+        .build();
+    return datastore.commit(req).getMutationResult().getInsertAutoIdKeyList();
   }
 
   /**

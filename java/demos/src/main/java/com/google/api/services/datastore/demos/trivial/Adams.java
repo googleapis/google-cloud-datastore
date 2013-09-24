@@ -89,13 +89,11 @@ public class Adams {
         // - a utf-8 string: `question`
         entityBuilder.addProperty(Property.newBuilder()
             .setName("question")
-            .addValue(Value.newBuilder()
-                .setStringValue("Meaning of Life?")));
+            .setValue(Value.newBuilder().setStringValue("Meaning of Life?")));
         // - a 64bit integer: `answer`
         entityBuilder.addProperty(Property.newBuilder()
             .setName("answer")
-            .addValue(Value.newBuilder()
-                .setIntegerValue(42)));
+            .setValue(Value.newBuilder().setIntegerValue(42)));
         // Build the entity.
         entity = entityBuilder.build();
         // Insert the entity in the commit request mutation.
@@ -106,13 +104,13 @@ public class Adams {
       // the transaction.
       datastore.commit(creq.build());
       // Get `question` property value.
-      String question = entity.getProperty(0).getValue(0).getStringValue();
+      String question = entity.getProperty(0).getValue().getStringValue();
       // Get `answer` property value.
-      Long answer = entity.getProperty(1).getValue(0).getIntegerValue();
+      Long answer = entity.getProperty(1).getValue().getIntegerValue();
       System.out.println(question);
       String result = System.console().readLine("> ");
       if (result.equals(answer.toString())) {
-        System.out.println("fascinating, extraordinary and," +
+        System.out.println("fascinating, extraordinary and, " +
             "when you think hard about it, completely obvious.");
       } else {
         System.out.println("Don't Panic!");
@@ -123,8 +121,8 @@ public class Adams {
       // Log the exception, the name of the method called and the error code.
       System.err.println(String.format("DatastoreException(%s): %s %s",
               exception.getMessage(),
-              exception.methodName,
-              exception.code));
+              exception.getMethodName(),
+              exception.getCode()));
       System.exit(1);
     }
   }

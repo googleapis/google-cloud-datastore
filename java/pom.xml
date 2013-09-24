@@ -5,7 +5,7 @@
   <artifactId>google-api-services-datastore-protobuf-parent</artifactId>
   <packaging>pom</packaging>
   <name>google-api-services-datastore-protobuf-parent</name>
-  <version>v1beta1-rev2-1.0.1</version>
+  <version>v1beta2-rev1-2.0.0</version>
   <modules>
     <module>datastore</module>
     <module>demos</module>
@@ -17,7 +17,100 @@
     <project.http.version>1.15.0-rc</project.http.version>
     <project.oauth.version>1.15.0-rc</project.oauth.version>
     <project.googleapi.version>1.15.0-rc</project.googleapi.version>
+    <project.javadocExecutable></project.javadocExecutable>
   </properties>
+  <build>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-compiler-plugin</artifactId>
+          <version>2.5.1</version>
+          <configuration>
+            <source>1.6</source>
+            <target>1.6</target>
+          </configuration>
+        </plugin>
+        <plugin>
+          <groupId>com.github.igor-petruk.protobuf</groupId>
+          <artifactId>protobuf-maven-plugin</artifactId>
+          <version>0.6.3</version>
+          <executions>
+            <execution>
+              <goals>
+                <goal>run</goal>
+              </goals>
+            </execution>
+          </executions>
+        </plugin>
+        <plugin>
+          <groupId>com.ning.maven.plugins</groupId>
+          <artifactId>maven-duplicate-finder-plugin</artifactId>
+          <version>1.0.4</version>
+          <executions>
+            <execution>
+              <phase>verify</phase>
+              <goals>
+                <goal>check</goal>
+              </goals>
+            </execution>
+          </executions>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-source-plugin</artifactId>
+          <version>2.2.1</version>
+          <executions>
+            <execution>
+              <id>attach-sources</id>
+                <goals>
+                  <goal>jar</goal>
+                </goals>
+            </execution>
+          </executions>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-shade-plugin</artifactId>
+          <version>2.0</version>
+          <executions>
+            <execution>
+              <phase>package</phase>
+              <goals>
+                <goal>shade</goal>
+              </goals>
+              <configuration>
+                <createSourcesJar>true</createSourcesJar>
+                <artifactSet>
+                  <excludes>
+                    <exclude>com.google.code.findbugs:jsr305</exclude>
+                    <exclude>xpp3:xpp3</exclude>
+                  </excludes>
+                </artifactSet>
+              </configuration>
+            </execution>
+          </executions>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-javadoc-plugin</artifactId>
+          <version>2.9</version>
+          <configuration>
+            <javadocExecutable>${project.javadocExecutable}</javadocExecutable>
+            <show>protected</show>
+          </configuration>
+          <executions>
+            <execution>
+              <id>attach-javadocs</id>
+              <goals>
+                <goal>jar</goal>
+              </goals>
+            </execution>
+          </executions>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+  </build>
   <parent>
     <groupId>org.sonatype.oss</groupId>
     <artifactId>oss-parent</artifactId>

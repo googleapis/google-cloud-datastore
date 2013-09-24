@@ -51,7 +51,7 @@ class DatastoreHelperTest(unittest.TestCase):
   def testPropertyValues(self):
     blob_key = datastore.Value()
     blob_key.blob_key_value = 'blob-key'
-    properties = collections.OrderedDict(
+    property_dict = collections.OrderedDict(
         a_string=u'a',
         a_blob='b',
         a_boolean=True,
@@ -63,14 +63,15 @@ class DatastoreHelperTest(unittest.TestCase):
         a_blob_key=blob_key,
         many_integer=[1, 2, 3])
     entity = datastore.Entity()
-    add_property_values(entity, **properties)
-    d = get_property_values(entity)
-    self.assertDictEqual(d, properties)
+    add_properties(entity, property_dict)
+    d = dict((prop.name, get_value(prop.value))
+             for prop in entity.property)
+    self.assertDictEqual(d, property_dict)
 
   def testAddPropertyValuesBlindlyAdd(self):
     entity = datastore.Entity()
-    add_property_values(entity, a=1)
-    add_property_values(entity, a=2)
+    add_properties(entity, {'a': 1})
+    add_properties(entity, {'a': 2})
     self.assertEquals(2, len(entity.property))
 
   def testEmptyValues(self):
@@ -79,24 +80,35 @@ class DatastoreHelperTest(unittest.TestCase):
 
   def testSetPropertyOverwrite(self):
     property = datastore.Property()
-    set_property(property, 'a', 1)
+    set_property(property, 'a', 1, indexed=False)
     set_property(property, 'a', 'a')
-    self.assertEquals(1, len(property.value))
+    self.assertEquals('a', get_value(property.value))
+    self.assertEquals(True, property.value.indexed)
+
+  def testIndexedPropagation(self):
+    value = datastore.Value()
+    set_value(value, 'a', False)
+    self.assertEquals(False, value.indexed)
+    set_value(value, value)
+    self.assertEquals(False, value.indexed)
+    set_value(value, value, True)
+    self.assertEquals(True, value.indexed)
 
   def testSetValueBadType(self):
     value = datastore.Value()
-    self.assertRaises(TypeError, set_value, value, 'a', None)
+    self.assertRaises(TypeError, set_value, value, 'a', object())
+    self.assertRaises(TypeError, set_value, value, object(), None)
 
   def testSetPropertyIndexed(self):
     property = datastore.Property()
     set_property(property, 'a', 1)
-    self.assertEquals(False, property.value[0].HasField('indexed'))
+    self.assertEquals(False, property.value.HasField('indexed'))
     set_property(property, 'a', 1, indexed=True)
-    self.assertEquals(False, property.value[0].HasField('indexed'))
-    self.assertEquals(True, property.value[0].indexed)
+    self.assertEquals(False, property.value.HasField('indexed'))
+    self.assertEquals(True, property.value.indexed)
     set_property(property, 'a', 1, indexed=False)
-    self.assertEquals(True, property.value[0].HasField('indexed'))
-    self.assertEquals(False, property.value[0].indexed)
+    self.assertEquals(True, property.value.HasField('indexed'))
+    self.assertEquals(False, property.value.indexed)
 
   def testQuery(self):
     q = datastore.Query()

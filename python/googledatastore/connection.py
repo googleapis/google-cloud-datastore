@@ -20,6 +20,7 @@ import os
 import httplib2
 
 from googledatastore import datastore_v1_pb2
+
 __all__ = [
     'Datastore',
     'Error',
@@ -32,7 +33,7 @@ __all__ = [
 SCOPE = ('https://www.googleapis.com/auth/datastore '
          'https://www.googleapis.com/auth/userinfo.email')
 GOOGLEAPIS_URL = 'https://www.googleapis.com'
-API_VERSION = 'v1beta1'
+API_VERSION = 'v1beta2'
 
 
 class Datastore(object):
@@ -85,22 +86,6 @@ class Datastore(object):
     return self._call_method('lookup', request,
                              datastore_v1_pb2.LookupResponse)
 
-  def blind_write(self, request):
-    """Write a mutation outside of a transaction.
-
-    Args:
-      request: BlindWriteRequest proto message.
-
-    Returns:
-      BlindWriteResponse proto message.
-
-    Raises:
-      RPCError: The underlying RPC call failed with an HTTP error.
-      (See: .response attribute)
-    """
-    return self._call_method('blindWrite', request,
-                             datastore_v1_pb2.BlindWriteResponse)
-
   def run_query(self, request):
     """Query for entities.
 
@@ -134,7 +119,7 @@ class Datastore(object):
                              datastore_v1_pb2.BeginTransactionResponse)
 
   def commit(self, request):
-    """Write a mutation and close the transaction.
+    """Commit a mutation, transaction or mutation in a transaction.
 
     Args:
       request: CommitRequest proto message.

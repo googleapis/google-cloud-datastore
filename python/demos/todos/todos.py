@@ -1,3 +1,4 @@
+#! /usr/bin/env python
 #
 # Copyright 2013 Google Inc. All Rights Reserved.
 #
@@ -70,10 +71,11 @@ class TodoList(object):
     return ('TodoList', self.name)
 
   def save(self):
-    req = datastore.BlindWriteRequest()
+    req = datastore.CommitRequest()
+    req.mode = datastore.CommitRequest.NON_TRANSACTIONAL
     entity = req.mutation.upsert.add()
     add_key_path(entity.key, *self.key_path)
-    datastore.blind_write(req)
+    datastore.commit(req)
     return self
 
 
@@ -108,7 +110,7 @@ class Todo(object):
   @classmethod
   def from_proto(cls, entity):
     d = {'id': entity.key.path_element[-1].id}
-    d.update(get_property_values(entity))
+    d.update((p.name, get_value(p.value)) for p in entity.property)
     return Todo(d)
 
   def to_proto(self):
@@ -118,8 +120,9 @@ class Todo(object):
       add_key_path(entity.key, 'Todo', self.id)
     else:
       add_key_path(entity.key, 'Todo')
-    add_property_values(
-        entity, text=self.text, done=self.done, created=self.created)
+    add_properties(entity, {'text': self.text,
+                            'done': self.done,
+                            'created': self.created})
     return entity
 
   @classmethod
@@ -139,7 +142,6 @@ class Todo(object):
   @classmethod
   def archive(cls):
     """Delete all Todo items that are done."""
-
     req = datastore.BeginTransactionRequest()
     resp = datastore.begin_transaction(req)
     tx = resp.transaction
@@ -167,11 +169,12 @@ class Todo(object):
 
   def save(self):
     """Update or insert a Todo item."""
-    req = datastore.BlindWriteRequest()
+    req = datastore.CommitRequest()
+    req.mode = datastore.CommitRequest.NON_TRANSACTIONAL
     proto = self.to_proto()
     mutation = req.mutation.upsert if self.id else req.mutation.insert_auto_id
     mutation.extend([proto])
-    resp = datastore.blind_write(req)
+    resp = datastore.commit(req)
     if not self.id:
       keys = resp.mutation_result.insert_auto_id_key
       self.id = keys[0].path_element[-1].id

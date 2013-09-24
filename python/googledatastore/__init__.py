@@ -66,11 +66,6 @@ def lookup(request):
   return get_default_connection().lookup(request)
 
 
-def blind_write(request):
-  """See connection.Datastore.blind_write."""
-  return get_default_connection().blind_write(request)
-
-
 def run_query(request):
   """See connection.Datastore.run_query."""
   return get_default_connection().run_query(request)

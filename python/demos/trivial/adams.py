@@ -70,22 +70,20 @@ def main():
       # Add two entity properties:
       # - a utf-8 string: `question`
       prop = entity.property.add()
-      prop.name = 'questions'
-      value = prop.value.add()
-      value.string_value = 'Meaning of life?'
+      prop.name = 'question'
+      prop.value.string_value = 'Meaning of life?'
       # - a 64bit integer: `answer`
       prop = entity.property.add()
       prop.name = 'answer'
-      value = prop.value.add()
-      value.integer_value = 42
+      prop.value.integer_value = 42
     # Execute the Commit RPC synchronously and ignore the response:
     # Apply the insert mutation if the entity was not found and close
     # the transaction.
     datastore.commit(req)
     # Get question property value.
-    question = entity.property[0].value[0].string_value
+    question = entity.property[0].value.string_value
     # Get answer property value.
-    answer = entity.property[1].value[0].integer_value
+    answer = entity.property[1].value.integer_value
     # Print the question and read one line from stdin.
     print question
     result = raw_input('> ')
