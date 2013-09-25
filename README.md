@@ -64,7 +64,7 @@ pip install googledatastore
 <dependency>
   <groupId>com.google.apis</groupId>
   <artifactId>google-api-services-datastore-protobuf</artifactId>
-  <version>v1beta1-rev2-1.0.1</version>
+  <version>v1beta2-rev1-2.0.0</version>
 </dependency>
 ```
 
@@ -83,7 +83,7 @@ pip install googledatastore
 1. When applicable, create a new [report][15].
 1. For bugs, detail the steps to reproduce the problem and the affected version number.
 1. For feature requests, articulate the usecase you are trying solve and describe current workaround.
-1. Make sure to annotate the issues with the appropriate labels
+1. Make sure to annotate the issues with the appropriate labels.
 
 ## Contributing changes
 
@@ -97,8 +97,8 @@ pip install googledatastore
 [2]: java/demos/src/main/java/com/google/api/services/datastore/demos/trivial/adams.java
 [3]: https://github.com/GoogleCloudPlatform/google-cloud-datastore/blob/master/nodejs/demos/trivial/adams.js
 [4]: https://developers.google.com/datastore
-[5]: https://developers.google.com/datastore/docs/apis/v1beta1/
-[6]: https://developers.google.com/datastore/docs/apis/v1beta1/proto
+[5]: https://developers.google.com/datastore/docs/apis/v1beta2/
+[6]: https://developers.google.com/datastore/docs/apis/v1beta2/proto
 [7]: CONTRIB.md
 [8]: LICENSE
 [9]: python
