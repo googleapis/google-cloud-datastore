@@ -1,2 +1,6 @@
 pycrypto>=2.6
 pyopenssl>=0.13
+protobuf>=2.5.0
+oauth2client>=1.1
+uritemplate>=0.5.2
+
