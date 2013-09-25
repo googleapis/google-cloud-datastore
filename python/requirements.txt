@@ -1,10 +1,6 @@
-argparse==1.2.1
-distribute==0.6.24
 httplib2==0.8
 oauth2client==1.2
 protobuf==2.5.0
 pycrypto==2.6
 pyopenssl==0.13
-simplejson==3.3.0
 uritemplate==0.6
-wsgiref==0.1.2
