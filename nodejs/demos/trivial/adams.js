@@ -77,7 +77,7 @@ Adams.prototype.connect = function() {
         // Bind the datastore client to datasetId and get the datasets
         // resource.
         this.datastore = client.datastore.withDefaultParams({
-          datasetId: datasetId}).datasets;
+          datasetId: this.datasetId}).datasets;
         this.beginTransaction();
       }).bind(this));
 };
