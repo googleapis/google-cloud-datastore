@@ -29,12 +29,11 @@ from googledatastore.connection import datastore_v1_pb2
 __all__ = [
     'get_credentials_from_env',
     'add_key_path',
-    'add_property_values',
+    'add_properties',
     'set_property',
     'set_value',
     'get_value',
-    'get_property_value',
-    'get_property_values',
+    'get_property_dict',
     'set_kind',
     'add_property_orders',
     'add_projection',
@@ -134,78 +133,86 @@ def add_key_path(key_proto, *path_elements):
   return key_proto
 
 
-def add_property_values(entity_proto, **kwargs):
+def add_properties(entity_proto, property_dict, indexed=None):
   """Add values to the given datastore.Entity proto message.
 
   Args:
     entity_proto: datastore.Entity proto message.
-    kwargs: keywords property_name=value arguments.
-
-  Note:
-    - indexing/meaning preferences are not set by this function.
+    property_dict: a dictionary from property name to either a python object or
+      datastore.Value.
+    indexed: if the property values should be indexed. None leaves indexing as
+      is (defaults to True if value is a python object).
 
   Usage:
-    >>> add_property_values(proto, foo="a", bar=2)
+    >>> add_properties(proto, {'foo': u'a', 'bar': [1, 2]})
+
+  Raises:
+    TypeError: if a given property value type is not supported.
   """
-  for name, value in kwargs.iteritems():
-    set_property(entity_proto.property.add(), name, value)
+  for name, value in property_dict.iteritems():
+    set_property(entity_proto.property.add(), name, value, indexed)
 
 
-def set_property(property_proto, name, value, indexed=True):
+def set_property(property_proto, name, value, indexed=None):
   """Set property value in the given datastore.Property proto message.
 
   Args:
     property_proto: datastore.Property proto message.
     name: name of the property.
     value: python object or datastore.Value.
-    indexed: if the property should be indexed or not.
+    indexed: if the value should be indexed. None leaves indexing as is
+      (defaults to True if value is a python object).
 
   Usage:
-    >>> set_property(property_proto, 'foo', 'a', True) #  foo='a', str, indexed
+    >>> set_property(property_proto, 'foo', u'a')
+
+  Raises:
+    TypeError: if the given value type is not supported.
   """
   property_proto.Clear()
   property_proto.name = name
-  if isinstance(value, list):
-    property_proto.multi = True
-    for v in value:
-      set_value(property_proto.value.add(), v, indexed)
-  else:
-    set_value(property_proto.value.add(), value, indexed)
+  set_value(property_proto.value, value, indexed)
 
 
-def set_value(value_proto, value, indexed=True):
+def set_value(value_proto, value, indexed=None):
   """Set the corresponding datastore.Value _value field for the given arg.
 
   Args:
     value_proto: datastore.Value proto message.
     value: python object or datastore.Value. (unicode value will set a
-    datastore string value, str value will set a blob string value).
+      datastore string value, str value will set a blob string value).
+    indexed: if the value should be indexed. None leaves indexing as is
+      (defaults to True if value is a python object).
 
   Raises:
-    TypeError: the given value type is not supported.
+    TypeError: if the given value type is not supported.
   """
-  value_proto.Clear()
-  if isinstance(value, unicode):
-    value_proto.string_value = value
-  elif isinstance(value, str):
-    value_proto.blob_value = value
-  elif isinstance(value, bool):
-    value_proto.boolean_value = value
-  elif isinstance(value, int):
-    value_proto.integer_value = value
-  elif isinstance(value, float):
-    value_proto.double_value = value
-  elif isinstance(value, datetime.datetime):
-    value_proto.timestamp_microseconds_value = to_timestamp_usec(value)
-  elif isinstance(value, datastore_v1_pb2.Key):
-    value_proto.key_value.CopyFrom(value)
-  elif isinstance(value, datastore_v1_pb2.Entity):
-    value_proto.entity_value.CopyFrom(value)
-  elif isinstance(value, datastore_v1_pb2.Value):
+  if isinstance(value, datastore_v1_pb2.Value):
     value_proto.CopyFrom(value)
   else:
-    raise TypeError('value type: %r not supported' % (value,))
-  if value_proto.indexed != bool(indexed):
+    value_proto.Clear()
+    if isinstance(value, unicode):
+      value_proto.string_value = value
+    elif isinstance(value, str):
+      value_proto.blob_value = value
+    elif isinstance(value, bool):
+      value_proto.boolean_value = value
+    elif isinstance(value, int):
+      value_proto.integer_value = value
+    elif isinstance(value, float):
+      value_proto.double_value = value
+    elif isinstance(value, datetime.datetime):
+      value_proto.timestamp_microseconds_value = to_timestamp_usec(value)
+    elif isinstance(value, datastore_v1_pb2.Key):
+      value_proto.key_value.CopyFrom(value)
+    elif isinstance(value, datastore_v1_pb2.Entity):
+      value_proto.entity_value.CopyFrom(value)
+    elif isinstance(value, (list, tuple)):
+      for v in value:
+        set_value(value_proto.list_value.add(), v)
+    else:
+      raise TypeError('value type: %r not supported' % (value,))
+  if indexed is not None and value_proto.indexed != indexed:
     value_proto.indexed = indexed
 
 
@@ -216,10 +223,8 @@ def get_value(value_proto):
     value_proto: datastore.Value proto message.
 
   Returns:
-    corresponding python object value. (timestamp are converted to
-    datetime, and datastore.Value is returned for
-    blob_key_value).
-
+    the corresponding python object value. timestamps are converted to
+    datetime, and datastore.Value is returned for blob_key_value.
   """
   for f in ('string_value',
             'blob_value',
@@ -234,38 +239,25 @@ def get_value(value_proto):
     return from_timestamp_usec(value_proto.timestamp_microseconds_value)
   if value_proto.HasField('blob_key_value'):
     return value_proto
+  if value_proto.list_value:
+    return [get_value(sub_value) for sub_value in value_proto.list_value]
   return None
 
 
-def get_property_value(property_proto):
-  """Gets the python object equivalent for the given property proto's value.
-
-  Args:
-    property_proto: datastore.Property proto message.
-
-  Returns:
-    datastore.Value proto message.
-  """
-  if property_proto.multi:
-    return [get_value(v) for v in property_proto.value]
-  assert len(property_proto.value) == 1
-  return get_value(property_proto.value[0])
-
-
-def get_property_values(entity_proto):
-  """Convert datastore.Entity proto to a dict of property name -> python object.
+def get_property_dict(entity_proto):
+  """Convert datastore.Entity to a dict of property name -> datastore.Value.
 
   Args:
     entity_proto: datastore.Entity proto message.
 
   Usage:
-    >>> get_property_values(entity_proto)
-    {'foo': 'a', 'bar': 2}
+    >>> get_property_dict(entity_proto)
+    {'foo': {string_value='a'}, 'bar': {integer_value=2}}
 
   Returns:
     dict of entity properties.
   """
-  return dict((p.name, get_property_value(p)) for p in entity_proto.property)
+  return dict((p.name, p.value) for p in entity_proto.property)
 
 
 def set_kind(query_proto, kind):

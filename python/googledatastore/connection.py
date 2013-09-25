@@ -16,9 +16,11 @@
 """googledatastore connection."""
 
 import logging
+import os
 import httplib2
 
 from googledatastore import datastore_v1_pb2
+
 __all__ = [
     'Datastore',
     'Error',
@@ -31,12 +33,11 @@ __all__ = [
 SCOPE = ('https://www.googleapis.com/auth/datastore '
          'https://www.googleapis.com/auth/userinfo.email')
 GOOGLEAPIS_URL = 'https://www.googleapis.com'
+API_VERSION = 'v1beta2'
 
 
 class Datastore(object):
   """Datastore client connection constructor."""
-
-  _version = 'v1beta1'
 
   def __init__(self, dataset, credentials=None, host=None):
     """Datastore client connection constructor.
@@ -45,20 +46,24 @@ class Datastore(object):
       dataset: dataset to send the RPC to.
       credentials: oauth2client.Credentials to authorize the
       connection, default to no credentials.
-      host: the host used to construct the datastore API, default to Google
-      APIs production server. Defaults to 'https://www.googleapis.com'.
+      host: the host used to construct the datastore API. Defaults to
+      'https://www.googleapis.com'.
 
     Usage: demos/trivial.py for example usages.
 
     Raises:
-      TypeError when dataset is needed, but not provided.
+      TypeError: when dataset is needed, but not provided.
     """
     self._http = httplib2.Http()
     if not dataset:
       raise TypeError('dataset argument is required')
     if not host:
       host = GOOGLEAPIS_URL
-    self._url = '%s/datastore/%s/datasets/%s/' % (host, self._version, dataset)
+    url_internal_override = os.getenv('DATASTORE_URL_INTERNAL_OVERRIDE')
+    if url_internal_override:
+      self._url = '%s/datasets/%s/' % (url_internal_override, dataset)
+    else:
+      self._url = '%s/datastore/%s/datasets/%s/' % (host, API_VERSION, dataset)
     if credentials:
       self._credentials = credentials
       credentials.authorize(self._http)
@@ -81,27 +86,11 @@ class Datastore(object):
     return self._call_method('lookup', request,
                              datastore_v1_pb2.LookupResponse)
 
-  def blind_write(self, request):
-    """Write a mutation outside of a transaction.
-
-    Args:
-      request: BlindWriteResponse proto message.
-
-    Returns:
-      BlindWriteResponse proto message.
-
-    Raises:
-      RPCError: The underlying RPC call failed with an HTTP error.
-      (See: .response attribute)
-    """
-    return self._call_method('blindWrite', request,
-                             datastore_v1_pb2.BlindWriteResponse)
-
   def run_query(self, request):
     """Query for entities.
 
     Args:
-      request: RunQueryResponse proto message.
+      request: RunQueryRequest proto message.
 
     Returns:
       RunQueryResponse proto message.
@@ -117,7 +106,7 @@ class Datastore(object):
     """Begin a new transaction.
 
     Args:
-      request: BeginTransactionResponse proto message.
+      request: BeginTransactionRequest proto message.
 
     Returns:
       BeginTransactionResponse proto message.
@@ -130,10 +119,10 @@ class Datastore(object):
                              datastore_v1_pb2.BeginTransactionResponse)
 
   def commit(self, request):
-    """Write a mutation and close the transaction.
+    """Commit a mutation, transaction or mutation in a transaction.
 
     Args:
-      request: CommitResponse proto message.
+      request: CommitRequest proto message.
 
     Returns:
       CommitResponse proto message.
@@ -149,7 +138,7 @@ class Datastore(object):
     """Rollback a transaction.
 
     Args:
-      request: RollbackResponse proto message.
+      request: RollbackRequest proto message.
 
     Returns:
       RollbackResponse proto message.
@@ -165,7 +154,7 @@ class Datastore(object):
     """Allocate ids for incomplete keys.
 
     Args:
-      request: AllocateIdsResponse proto message.
+      request: AllocateIdsRequest proto message.
 
     Returns:
       AllocateIdsResponse proto message.
@@ -187,7 +176,6 @@ class Datastore(object):
       method: RPC method name to be called.
       req: protobuf message for the RPC request.
       resp_class: protobuf message class for the RPC response.
-      dataset: dataset target of the operation.
 
     Returns:
       Deserialized resp_class protobuf message instance.
