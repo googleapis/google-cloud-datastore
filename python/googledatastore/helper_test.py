@@ -18,6 +18,7 @@
 __author__ = 'proppy@google.com (Johan Euphrosine)'
 
 import collections
+import copy
 import datetime
 import unittest
 
@@ -85,14 +86,53 @@ class DatastoreHelperTest(unittest.TestCase):
     self.assertEquals('a', get_value(property.value))
     self.assertEquals(True, property.value.indexed)
 
-  def testIndexedPropagation(self):
+  def testIndexedPropagation_Literal(self):
     value = datastore.Value()
+
+    set_value(value, 'a')
+    self.assertEquals(False, value.HasField('indexed'))
     set_value(value, 'a', False)
+    self.assertEquals(True, value.HasField('indexed'))
     self.assertEquals(False, value.indexed)
-    set_value(value, value)
-    self.assertEquals(False, value.indexed)
-    set_value(value, value, True)
+    set_value(value, 'a', True)
+    self.assertEquals(False, value.HasField('indexed'))
     self.assertEquals(True, value.indexed)
+
+  def testIndexedPropagation_Value(self):
+    value = datastore.Value()
+    set_value(value, datastore.Value())
+    self.assertEquals(False, value.HasField('indexed'))
+
+    set_value(value, datastore.Value(), False)
+    self.assertEquals(True, value.HasField('indexed'))
+    self.assertEquals(False, value.indexed)
+    set_value(value, copy.deepcopy(value))
+    self.assertEquals(True, value.HasField('indexed'))
+    self.assertEquals(False, value.indexed)
+
+    set_value(value, datastore.Value(), True)
+    self.assertEquals(False, value.HasField('indexed'))
+    self.assertEquals(True, value.indexed)
+    value.indexed = True
+    set_value(value, copy.deepcopy(value))
+    self.assertEquals(True, value.HasField('indexed'))
+    self.assertEquals(True, value.indexed)
+
+  def testIndexedPropagation_List(self):
+    value = datastore.Value()
+    set_value(value, ['a'])
+    self.assertEquals(False, value.HasField('indexed'))
+    self.assertEquals(False, value.list_value[0].HasField('indexed'))
+
+    set_value(value, ['a'], True)
+    self.assertEquals(False, value.HasField('indexed'))
+    self.assertEquals(False, value.list_value[0].HasField('indexed'))
+    self.assertEquals(True, value.list_value[0].indexed)
+
+    set_value(value, ['a'], False)
+    self.assertEquals(False, value.HasField('indexed'))
+    self.assertEquals(True, value.list_value[0].HasField('indexed'))
+    self.assertEquals(False, value.list_value[0].indexed)
 
   def testSetValueBadType(self):
     value = datastore.Value()

@@ -181,38 +181,44 @@ def set_value(value_proto, value, indexed=None):
     value_proto: datastore.Value proto message.
     value: python object or datastore.Value. (unicode value will set a
       datastore string value, str value will set a blob string value).
+      Undefined behavior if value is/contains value_proto.
     indexed: if the value should be indexed. None leaves indexing as is
-      (defaults to True if value is a python object).
+      (defaults to True if value is not a Value message).
 
   Raises:
     TypeError: if the given value type is not supported.
   """
+  value_proto.Clear()
+
+  if isinstance(value, (list, tuple)):
+    for sub_value in value:
+      set_value(value_proto.list_value.add(), sub_value, indexed)
+    return  # do not set indexed for a list property.
+
   if isinstance(value, datastore_v1_pb2.Value):
-    value_proto.CopyFrom(value)
+    value_proto.MergeFrom(value)
+  elif isinstance(value, unicode):
+    value_proto.string_value = value
+  elif isinstance(value, str):
+    value_proto.blob_value = value
+  elif isinstance(value, bool):
+    value_proto.boolean_value = value
+  elif isinstance(value, int):
+    value_proto.integer_value = value
+  elif isinstance(value, float):
+    value_proto.double_value = value
+  elif isinstance(value, datetime.datetime):
+    value_proto.timestamp_microseconds_value = to_timestamp_usec(value)
+  elif isinstance(value, datastore_v1_pb2.Key):
+    value_proto.key_value.CopyFrom(value)
+  elif isinstance(value, datastore_v1_pb2.Entity):
+    value_proto.entity_value.CopyFrom(value)
   else:
-    value_proto.Clear()
-    if isinstance(value, unicode):
-      value_proto.string_value = value
-    elif isinstance(value, str):
-      value_proto.blob_value = value
-    elif isinstance(value, bool):
-      value_proto.boolean_value = value
-    elif isinstance(value, int):
-      value_proto.integer_value = value
-    elif isinstance(value, float):
-      value_proto.double_value = value
-    elif isinstance(value, datetime.datetime):
-      value_proto.timestamp_microseconds_value = to_timestamp_usec(value)
-    elif isinstance(value, datastore_v1_pb2.Key):
-      value_proto.key_value.CopyFrom(value)
-    elif isinstance(value, datastore_v1_pb2.Entity):
-      value_proto.entity_value.CopyFrom(value)
-    elif isinstance(value, (list, tuple)):
-      for v in value:
-        set_value(value_proto.list_value.add(), v)
-    else:
-      raise TypeError('value type: %r not supported' % (value,))
-  if indexed is not None and value_proto.indexed != indexed:
+    raise TypeError('value type: %r not supported' % (value,))
+
+  if isinstance(indexed, bool) and indexed:
+    value_proto.ClearField('indexed')  # The default is true.
+  elif indexed is not None:
     value_proto.indexed = indexed
 
 
