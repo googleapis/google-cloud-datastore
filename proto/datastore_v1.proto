@@ -26,11 +26,17 @@ option java_package = "com.google.api.services.datastore";
 //
 // Partition dimension:
 // A dimension may be unset.
-// A dimension's value must never contain "!".
 // A dimension's value must never be "".
+// A dimension's value must match [A-Za-z\d\.\-_]{1,100}
 // If the value of any dimension matches regex "__.*__",
 // the partition is reserved/read-only.
 // A reserved/read-only partition ID is forbidden in certain documented contexts.
+//
+// Dataset ID:
+// A dataset id's value must never be "".
+// A dataset id's value must match
+// ([a-z\d\-]{1,100}~)?([a-z\d][a-z\d\-\.]{0,99}:)?([a-z\d][a-z\d\-]{0,99}
+
 message PartitionId {
   // The dataset ID.
   optional string dataset_id = 3;
@@ -55,14 +61,17 @@ message Key {
   // If neither is set, the element is incomplete.
   message PathElement {
     // The kind of the entity.
-    // Kinds matching regex "__.*__" are reserved/read-only.
+    // A kind matching regex "__.*__" is reserved/read-only.
+    // A kind must not contain more than 500 characters.
     // Cannot be "".
     required string kind = 1;
     // The ID of the entity.
-    // Always > 0.
+    // Never equal to zero. Values less than zero are discouraged and will not
+    // be supported in the future.
     optional int64 id = 2;
     // The name of the entity.
-    // Names matching regex "__.*__" are reserved/read-only.
+    // A name matching regex "__.*__" is reserved/read-only.
+    // A name must not be more than 500 characters.
     // Cannot be "".
     optional string name = 3;
   }
@@ -141,9 +150,10 @@ message Value {
 // An entity property.
 message Property {
   // The name of the property.
-  // Properties with names matching regex "__.*__" are reserved.
+  // A property name matching regex "__.*__" is reserved.
   // A reserved property name is forbidden in certain documented contexts.
-  // The name cannot be "".
+  // The name must not contain more than 500 characters.
+  // Cannot be "".
   required string name = 1;
 
   // The value(s) of the property.
