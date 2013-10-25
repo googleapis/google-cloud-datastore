@@ -18,9 +18,10 @@
 var util = require('util');
 var events = require('events');
 var readline = require('readline');
-
 var googleapis = require('googleapis');
 
+var SCOPES = ['https://www.googleapis.com/auth/userinfo.email',
+              'https://www.googleapis.com/auth/datastore'];
 
 
 /**
@@ -50,14 +51,25 @@ util.inherits(Adams, events.EventEmitter);
  * Authorize with the Datastore API.
  */
 Adams.prototype.authorize = function() {
-  // Retrieve credentials from Compute Engine metadata server.
-  this.compute = new googleapis.auth.Compute();
-  this.compute.authorize((function(err) {
-    if (err) {
-      this.emit('error', err);
-      return;
+  // First, try to retrieve credentials from Compute Engine metadata server.
+  this.credentials = new googleapis.auth.Compute();
+  this.credentials.authorize((function(computeErr) {
+    if (computeErr) {
+      var errors = {'compute auth error': computeErr};
+      // Then, fallback on JWT credentials.
+      this.credentials = new googleapis.auth.JWT(
+          process.env['DATASTORE_SERVICE_ACCOUNT'],
+          process.env['DATASTORE_PRIVATE_KEY_FILE'],
+          SCOPES);
+      this.credentials.authorize((function(jwtErr) {
+        if (jwtErr) {
+          errors['jwt auth error'] = jwtErr;
+          this.emit('error', errors);
+          return;
+        }
+        this.connect();
+      }).bind(this));
     }
-    this.connect();
   }).bind(this));
 };
 
@@ -68,10 +80,10 @@ Adams.prototype.authorize = function() {
 Adams.prototype.connect = function() {
   // Build the API bindings for the current version.
   googleapis.discover('datastore', 'v1beta2')
-      .withAuthClient(this.compute)
+      .withAuthClient(this.credentials)
       .execute((function(err, client) {
         if (err) {
-          this.emit('error', err);
+          this.emit('error', {'connection error': err});
           return;
         }
         // Bind the datastore client to datasetId and get the datasets
@@ -92,7 +104,7 @@ Adams.prototype.beginTransaction = function() {
     // error or the RPC result.
   }).execute((function(err, result) {
     if (err) {
-      this.emit('error', err);
+      this.emit('error', {'rpc error': err});
       return;
     }
     this.transaction = result.transaction;
@@ -117,7 +129,7 @@ Adams.prototype.lookup = function() {
     keys: [{ path: [{ kind: 'Trivia', name: 'hgtg' }] }]
   }).execute((function(err, result) {
     if (err) {
-      this.emit('error', err);
+      this.emit('error', {'rpc error': err});
       return;
     }
     // Get the entity from the response if found.
@@ -194,4 +206,5 @@ console.assert(process.argv.length == 3, 'usage: trivial.js <dataset-id>');
 var demo = new Adams(process.argv[2]);
 demo.once('error', function(err) {
   console.error('Adams:', err);
+  process.exit(1);
 });
