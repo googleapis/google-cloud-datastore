@@ -67,7 +67,7 @@ var commands = {
       }]
     }).execute(function(err, result) {
       console.assert(!err, err);
-      console.assert(!result.missing, 'todo %d: not found', id);
+      console.assert(result.found.length == 1, 'todo %d: not found', id);
       var entity = result.found[0].entity;
       var title = entity.properties.title.values[0].stringValue;
       var completed = entity.properties.completed.values[0].booleanValue == true;
