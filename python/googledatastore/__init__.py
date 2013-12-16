@@ -15,14 +15,17 @@
 #
 """googledatastore client."""
 import os
+import threading
 
 from googledatastore import helper
 from googledatastore.connection import *
 from googledatastore.datastore_v1_pb2 import *
 
 
-_conn = None
-_options = {}
+_conn_holder = {}  # thread id -> thread-local connection.
+_options = {}  # Global options.
+# Guards all access to _options and writes to _conn_holder.
+_rlock = threading.RLock()
 
 
 def set_options(**kwargs):
@@ -35,9 +38,9 @@ def set_options(**kwargs):
     host: the host used to construct the datastore API, default to Google
     APIs production server.
   """
-  global _conn
-  _options.update(kwargs)
-  _conn = None
+  with(_rlock):
+    _options.update(kwargs)
+    _conn_holder.clear()
 
 
 def get_default_connection():
@@ -49,16 +52,22 @@ def get_default_connection():
 
   Use set_options to override defaults.
   """
-  global _conn
-  if not _conn:
-    if 'dataset' not in _options:
-      _options['dataset'] = os.getenv('DATASTORE_DATASET')
-    if 'host' not in _options:
-      _options['host'] = os.getenv('DATASTORE_HOST')
-    if 'credentials' not in _options:
-      _options['credentials'] = helper.get_credentials_from_env()
-    _conn = Datastore(**_options)
-  return _conn
+  tid = id(threading.current_thread())
+  conn = _conn_holder.get(tid)
+  if not conn:
+    with(_rlock):
+      # No other thread would insert a value in our slot, so no need
+      # to recheck existence inside the lock.
+      if 'dataset' not in _options:
+        _options['dataset'] = os.getenv('DATASTORE_DATASET')
+      if 'host' not in _options:
+        _options['host'] = os.getenv('DATASTORE_HOST')
+      if 'credentials' not in _options:
+        _options['credentials'] = helper.get_credentials_from_env()
+      # We still need the lock when caching the thread local connection so we
+      # don't race with _conn_holder.clear() in set_options().
+      _conn_holder[tid] = conn = Datastore(**_options)
+  return conn
 
 
 def lookup(request):

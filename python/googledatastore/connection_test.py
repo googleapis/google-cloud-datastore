@@ -18,7 +18,10 @@
 __author__ = 'proppy@google.com (Johan Euphrosine)'
 
 import os
+import threading
 import unittest
+
+
 import mox
 
 import googledatastore as datastore
@@ -199,8 +202,7 @@ class DatastoreTest(unittest.TestCase):
     self.mox.VerifyAll()
 
   def testDefaultBaseUrl(self):
-    self.conn = datastore.Datastore(
-        dataset='foo')
+    self.conn = datastore.Datastore(dataset='foo')
     request = self.makeLookupRequest()
     payload = request.SerializeToString()
     response = self.makeLookupResponse()
@@ -218,24 +220,75 @@ class DatastoreTest(unittest.TestCase):
     self.mox.VerifyAll()
 
   def testSetOptions(self):
-    datastore._conn = None
+    other_thread_conn = []
+    lock1 = threading.Lock()
+    lock2 = threading.Lock()
+    lock1.acquire()
+    lock2.acquire()
+    def target():
+      # Grab two connections
+      other_thread_conn.append(datastore.get_default_connection())
+      other_thread_conn.append(datastore.get_default_connection())
+      lock1.release()  # Notify that we have grabbed the first 2 connections.
+      lock2.acquire()  # Wait for the signal to grab the 3rd.
+      other_thread_conn.append(datastore.get_default_connection())
+    other_thread = threading.Thread(target=target)
+
+    # Resetting options and state.
+    datastore._options = {}
+    datastore.set_options(dataset='foo')
+
     self.mox.StubOutWithMock(os, 'getenv')
     self.mox.StubOutWithMock(helper, 'get_credentials_from_env')
     os.getenv('DATASTORE_HOST').AndReturn('http://localhost:8080')
+    os.getenv('DATASTORE_URL_INTERNAL_OVERRIDE').AndReturn(None)
+    os.getenv('DATASTORE_URL_INTERNAL_OVERRIDE').AndReturn(None)
+    os.getenv('DATASTORE_URL_INTERNAL_OVERRIDE').AndReturn(None)
     os.getenv('DATASTORE_URL_INTERNAL_OVERRIDE').AndReturn(None)
 
     helper.get_credentials_from_env().AndReturn(FakeCredentialsFromEnv())
     self.mox.ReplayAll()
 
+    # Start the thread and wait for the first lock.
+    other_thread.start()
+    lock1.acquire()
+
+    t1_conn1 = datastore.get_default_connection()
+    t2_conn1, t2_conn1b = other_thread_conn
+    other_thread_conn = []
+    # The two threads get different connections.
+    self.assertIsNot(t1_conn1, t2_conn1)
+    # Multiple calls on the same thread get the same connection.
+    self.assertIs(t1_conn1, datastore.get_default_connection())
+    self.assertIs(t2_conn1, t2_conn1b)
+
+    # Change the global options and grab the connections again.
     datastore.set_options(dataset='bar')
-    conn = datastore.get_default_connection()
+    lock2.release()
+    other_thread.join()
+    t1_conn2 = datastore.get_default_connection()
+    t2_conn2 = other_thread_conn[0]
+
+    # Changing the options causes all threads to create new connections.
+    self.assertIsNot(t1_conn1, t1_conn2)
+    self.assertIsNot(t2_conn1, t2_conn2)
+    # The new connections are still different for each thread.
+    self.assertIsNot(t1_conn2, t2_conn2)
+    # The old connections has the old settings.
+    self.assertEqual('http://localhost:8080/datastore/v1beta2/datasets/foo/',
+                     t1_conn1._url)
+    self.assertEqual('http://localhost:8080/datastore/v1beta2/datasets/foo/',
+                     t2_conn1._url)
+    # The new connections has the new settings.
     self.assertEqual('http://localhost:8080/datastore/v1beta2/datasets/bar/',
-                     conn._url)
-    self.assertEqual(FakeCredentialsFromEnv, type(conn._credentials))
+                     t1_conn2._url)
+    self.assertEqual('http://localhost:8080/datastore/v1beta2/datasets/bar/',
+                     t2_conn2._url)
+    self.assertEqual(FakeCredentialsFromEnv, type(t1_conn2._credentials))
+    self.assertEqual(FakeCredentialsFromEnv, type(t2_conn2._credentials))
     self.mox.VerifyAll()
 
   def testSetUrlOverride(self):
-    datastore._conn = None
     self.mox.StubOutWithMock(os, 'getenv')
     os.getenv('DATASTORE_URL_INTERNAL_OVERRIDE').AndReturn(
         'http://prom-qa/datastore/v1beta42')
@@ -248,16 +301,17 @@ class DatastoreTest(unittest.TestCase):
     self.mox.VerifyAll()
 
   def testFunctions(self):
-    datastore._conn = datastore.Datastore(dataset='foo')
+    datastore.set_options(dataset='foo')
     def caml(s): return ''.join(p[0].upper()+p[1:] for p in s.split('_'))
     rpcs = ['lookup', 'run_query', 'begin_transaction',
             'commit', 'rollback', 'allocate_ids']
     methods = [(r, getattr(datastore, caml(r)+'Request'),
                 getattr(datastore, caml(r)+'Response'))
                for r in rpcs]
+    conn = datastore.get_default_connection()
     for m, req_class, resp_class in methods:
-      self.mox.StubOutWithMock(datastore._conn, m)
-      method = getattr(datastore._conn, m)
+      self.mox.StubOutWithMock(conn, m)
+      method = getattr(conn, m)
       method(mox.IsA(req_class)).AndReturn(resp_class())
     self.mox.ReplayAll()
 

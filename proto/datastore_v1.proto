@@ -36,7 +36,6 @@ option java_package = "com.google.api.services.datastore";
 // A dataset id's value must never be "".
 // A dataset id's value must match
 // ([a-z\d\-]{1,100}~)?([a-z\d][a-z\d\-\.]{0,99}:)?([a-z\d][a-z\d\-]{0,99}
-
 message PartitionId {
   // The dataset ID.
   optional string dataset_id = 3;
@@ -182,7 +181,6 @@ message Entity {
   repeated Property property = 2;
 }
 
-
 // The result of fetching an entity from the datastore.
 message EntityResult {
   // Specifies what data the 'entity' field contains.
@@ -227,7 +225,6 @@ message Query {
   // An ending point for the query results. Optional. Query cursors are
   // returned in query result batches.
   optional bytes /* serialized QueryCursor */ end_cursor = 8;
-
 
   // The number of results to skip. Applies before limit, but after all other
   // constraints (optional, defaults to 0).
@@ -364,7 +361,6 @@ message QueryResultBatch {
   // The results for this batch.
   repeated EntityResult entity_result = 2;
 
-
   // A cursor that points to the position after the last result in the batch.
   // May be absent.
   optional bytes /* serialized QueryCursor */ end_cursor = 4;
@@ -374,24 +370,6 @@ message QueryResultBatch {
 
   // The number of results skipped because of <code>Query.offset</code>.
   optional int32 skipped_results = 6;
-}
-
-// Options shared by read requests.
-message ReadOptions {
-  enum ReadConsistency {
-    DEFAULT = 0;
-    STRONG = 1;
-    EVENTUAL = 2;
-  }
-
-  // The read consistency to use.
-  // Cannot be set when transaction is set.
-  // Lookup and ancestor queries default to STRONG, global queries default to
-  // EVENTUAL and cannot be set to STRONG.
-  optional ReadConsistency read_consistency = 1 [default=DEFAULT];
-
-  // The transaction to use. Optional.
-  optional bytes /* serialized Transaction */ transaction = 2;
 }
 
 // A set of changes to apply.
@@ -434,6 +412,24 @@ message MutationResult {
   // Keys for <code>insertAutoId</code> entities. One per entity from the
   // request, in the same order.
   repeated Key insert_auto_id_key = 2;
+}
+
+// Options shared by read requests.
+message ReadOptions {
+  enum ReadConsistency {
+    DEFAULT = 0;
+    STRONG = 1;
+    EVENTUAL = 2;
+  }
+
+  // The read consistency to use.
+  // Cannot be set when transaction is set.
+  // Lookup and ancestor queries default to STRONG, global queries default to
+  // EVENTUAL and cannot be set to STRONG.
+  optional ReadConsistency read_consistency = 1 [default=DEFAULT];
+
+  // The transaction to use. Optional.
+  optional bytes /* serialized Transaction */ transaction = 2;
 }
 
 // The request for Lookup.
