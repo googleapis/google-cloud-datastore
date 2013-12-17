@@ -4,9 +4,11 @@ RELEASE NOTES
 v1beta2-rev1-2.1.0
 ------------------
 - Make Python client library thread-safe.
+  - https://github.com/GoogleCloudPlatform/google-cloud-datastore/issues/29
 - Fix propagation of `indexed` param to list values in Python helper.
 - Accept an optional HttpRequestInitializer in DatastoreOptions (Java).
 - Demonstrate JWT service account support in Node.js demo app.
+  - https://github.com/GoogleCloudPlatform/google-cloud-datastore/issues/24
 
 v1beta2-rev1-2.0.0
 ------------------
