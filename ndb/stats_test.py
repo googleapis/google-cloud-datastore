@@ -2,9 +2,9 @@
 
 import datetime
 import os
-import unittest
 
 from .google_imports import datastore
+from .google_test_imports import unittest
 
 from . import stats
 from . import test_utils
@@ -328,9 +328,5 @@ class StatsTests(test_utils.NDBTest):
     self.assertEquals(2, res[0].count)
 
 
-def main():
-  unittest.main()
-
-
 if __name__ == '__main__':
-  main()
+  unittest.main()

@@ -1351,7 +1351,7 @@ class Query(object):
     raise tasklets.Return(results, cursor, it.probably_has_next())
 
   def _make_options(self, q_options):
-    """Helper to construct a QueryOptions object from keyword arguents.
+    """Helper to construct a QueryOptions object from keyword arguments.
 
     Args:
       q_options: a dict of keyword arguments.
@@ -1366,7 +1366,7 @@ class Query(object):
     Returns:
       A QueryOptions object, or None if q_options is empty.
     """
-    if not q_options:
+    if not (q_options or self.__projection):
       return self.default_options
     if 'options' in q_options:
       # Move 'options' to 'config' since that is what QueryOptions() uses.
@@ -1619,7 +1619,6 @@ class QueryIterator(object):
     This is normally called by Query.iter() or Query.__iter__().
     """
     ctx = tasklets.get_context()
-    callback = None
     options = query._make_options(q_options)
     callback = self._extended_callback
     self._iter = ctx.iter_query(query,

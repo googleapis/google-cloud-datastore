@@ -2,11 +2,11 @@
 
 import base64
 import pickle
-import unittest
 
 from .google_imports import datastore_errors
 from .google_imports import datastore_types
 from .google_imports import entity_pb
+from .google_test_imports import unittest
 
 from . import eventloop
 from . import key
@@ -469,10 +469,5 @@ class KeyTests(test_utils.NDBTest):
     old_key2 = new_key.to_old_key()
     self.assertEquals(old_key, old_key2)
 
-
-def main():
-  unittest.main()
-
-
 if __name__ == '__main__':
-  main()
+  unittest.main()

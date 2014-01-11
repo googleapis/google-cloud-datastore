@@ -1,9 +1,9 @@
 """Some tests for datastore_rpc.py."""
 
-import unittest
 
 from .google_imports import apiproxy_stub_map
 from .google_imports import datastore_rpc
+from .google_test_imports import unittest
 
 from . import model
 from . import test_utils
@@ -77,9 +77,5 @@ class PendingTests(test_utils.NDBTest):
     self.assertEqual(self.conn.get_pending_rpcs(), set())
 
 
-def main():
-  unittest.main()
-
-
 if __name__ == '__main__':
-  main()
+  unittest.main()

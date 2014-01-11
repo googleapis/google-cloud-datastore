@@ -6,10 +6,10 @@ and other environment variables.
 """
 
 import logging
-import unittest
 
 from .google_test_imports import datastore_stub_util
 from .google_test_imports import testbed
+from .google_test_imports import unittest
 
 from . import model
 from . import tasklets
@@ -34,7 +34,7 @@ class NDBTest(unittest.TestCase):
     connection.
     """
     self.testbed = testbed.Testbed()
-    self.testbed.setup_env(app_id=self.APP_ID)
+    self.testbed.setup_env(overwrite=True, app_id=self.APP_ID)
     self.testbed.activate()
     self.testbed.init_datastore_v3_stub()
     self.testbed.init_memcache_stub()

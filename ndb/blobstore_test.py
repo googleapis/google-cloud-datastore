@@ -4,10 +4,10 @@ import cgi
 import cStringIO
 import datetime
 import pickle
-import unittest
 
 from .google_imports import namespace_manager
 from .google_imports import datastore_types
+from .google_test_imports import unittest
 
 from . import blobstore
 from . import model
@@ -291,10 +291,5 @@ class BlobstoreTests(test_utils.NDBTest):
     self.assertEqual(f.read(), 'abcde')
     self.assertEqual(f.blob_info, b)
 
-
-def main():
-  unittest.main()
-
-
 if __name__ == '__main__':
-  main()
+  unittest.main()

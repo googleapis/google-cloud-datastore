@@ -1,13 +1,12 @@
 """Tests for msgprop.py."""
 
-import unittest
-
 from protorpc import messages
 
 from . import model
 from . import msgprop
 from . import test_utils
 from .google_imports import datastore_errors
+from .google_test_imports import unittest
 
 
 class Color(messages.Enum):
@@ -430,10 +429,5 @@ class MsgPropTests(test_utils.NDBTest):
     res2 = Storage.query().get(projection=['wrap.greets.text'])
     self.assertEqual(res2.wrap, Wrapper(greets=[Greeting(text='abc')]))
 
-
-def main():
-  unittest.main()
-
-
 if __name__ == '__main__':
-  main()
+  unittest.main()

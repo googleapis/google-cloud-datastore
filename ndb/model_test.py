@@ -5,7 +5,6 @@ import difflib
 import os
 import pickle
 import re
-import unittest
 
 from .google_imports import datastore_errors
 from .google_imports import datastore_types
@@ -15,6 +14,7 @@ from .google_imports import memcache
 from .google_imports import namespace_manager
 from .google_imports import users
 from .google_test_imports import datastore_stub_util
+from .google_test_imports import unittest
 
 try:
   import json
@@ -454,8 +454,11 @@ property <
 >
 """
 
-
 class ModelTests(test_utils.NDBTest):
+  def assertBetween(self, x, a, b):
+    '''Asserts a <= x <= b.'''
+    if not a <= x <= b:
+      self.fail('%s is not between %s and %s' % (x, a, b))
 
   def tearDown(self):
     self.assertTrue(model.Model._properties == {})
@@ -995,15 +998,34 @@ class ModelTests(test_utils.NDBTest):
     # Check that b is still unset.
     self.assertFalse(MyModel.b._has_value(m))
 
+  def testRequiredDefault(self):
+    # Test combining required and default.
+    class MyModel(model.Model):
+      a = model.StringProperty(required=True, default='a')
+      b = model.StringProperty(required=True, default='')
+    x = MyModel()
+    self.assertEqual(x.a, 'a')
+    self.assertEqual(x.b, '')
+    x._to_pb()  # Okay.
+    x.a = ''
+    self.assertEqual(x.a, '')
+    x._to_pb()  # Okay.
+    x.a = None
+    self.assertEqual(x.a, None)
+    self.assertRaises(datastore_errors.BadValueError, x._to_pb)  # Fail.
+    x.a = ''
+    x.b = None
+    self.assertEqual(x.a, '')
+    self.assertEqual(x.b, None)
+    self.assertRaises(datastore_errors.BadValueError, x._to_pb)  # Fail.
+
   def testRepeatedRequiredDefaultConflict(self):
-    # Allow at most one of repeated=True, required=True, default=<non-None>.
+    # Don't combine repeated=True with required=True or default=<non-None>
     class MyModel(model.Model):
       self.assertRaises(Exception,
                         model.StringProperty, repeated=True, default='')
       self.assertRaises(Exception,
                         model.StringProperty, repeated=True, required=True)
-      self.assertRaises(Exception,
-                        model.StringProperty, required=True, default='')
       self.assertRaises(Exception,
                         model.StringProperty,
                         repeated=True, required=True, default='')
@@ -1272,7 +1294,7 @@ class ModelTests(test_utils.NDBTest):
     self.assertTrue(ent2.pkl == sample2)
     self.assertTrue(ent2.lst == sample)
 
-  def DateAndOrTimePropertyTest(self, propclass, t1, t2):
+  def DateAndOrTimePropertyTest(self, propclass, nowfunc, t1, t2):
     class ClockInOut(model.Model):
       ctime = propclass(auto_now_add=True)
       mtime = propclass(auto_now=True)
@@ -1302,17 +1324,19 @@ class ModelTests(test_utils.NDBTest):
     self.assertEqual(p.localstruct.mtime, None)
     self.assertEqual(p.replocalstruct[0].ctime, None)
     self.assertEqual(p.replocalstruct[0].mtime, None)
+    timepoint0 = nowfunc()
     p.put()
-    self.assertNotEqual(p.ctime, None)
-    self.assertNotEqual(p.mtime, None)
-    self.assertNotEqual(p.struct.ctime, None)
-    self.assertNotEqual(p.struct.mtime, None)
-    self.assertNotEqual(p.repstruct[0].ctime, None)
-    self.assertNotEqual(p.repstruct[0].mtime, None)
-    self.assertNotEqual(p.localstruct.ctime, None)
-    self.assertNotEqual(p.localstruct.mtime, None)
-    self.assertNotEqual(p.replocalstruct[0].ctime, None)
-    self.assertNotEqual(p.replocalstruct[0].mtime, None)
+    timepoint1 = nowfunc()
+    self.assertBetween(p.ctime, timepoint0, timepoint1)
+    self.assertBetween(p.mtime, timepoint0, timepoint1)
+    self.assertBetween(p.struct.ctime, timepoint0, timepoint1)
+    self.assertBetween(p.struct.mtime, timepoint0, timepoint1)
+    self.assertBetween(p.repstruct[0].ctime, timepoint0, timepoint1)
+    self.assertBetween(p.repstruct[0].mtime, timepoint0, timepoint1)
+    self.assertBetween(p.localstruct.ctime, timepoint0, timepoint1)
+    self.assertBetween(p.localstruct.mtime, timepoint0, timepoint1)
+    self.assertBetween(p.replocalstruct[0].ctime, timepoint0, timepoint1)
+    self.assertBetween(p.replocalstruct[0].mtime, timepoint0, timepoint1)
     pb = p._to_pb()
     q = Person._from_pb(pb)
     self.assertEqual(q.ctime, p.ctime)
@@ -1367,16 +1391,19 @@ class ModelTests(test_utils.NDBTest):
 
   def testDateTimeProperty(self):
     self.MultiDateAndOrTimePropertyTest(model.DateTimeProperty,
+                                        datetime.datetime.utcnow,
                                         datetime.datetime(1982, 12, 1, 9, 0, 0),
                                         datetime.datetime(1995, 4, 15, 5, 0, 0))
 
   def testDateProperty(self):
     self.MultiDateAndOrTimePropertyTest(model.DateProperty,
+                                        lambda: datetime.datetime.utcnow().date(),
                                         datetime.date(1982, 12, 1),
                                         datetime.date(1995, 4, 15))
 
   def testTimeProperty(self):
     self.MultiDateAndOrTimePropertyTest(model.TimeProperty,
+                                        lambda: datetime.datetime.utcnow().time(),
                                         datetime.time(9, 0, 0),
                                         datetime.time(5, 0, 0, 500))
 
@@ -1408,7 +1435,7 @@ class ModelTests(test_utils.NDBTest):
     self.assertEqual(p.address.city, 'Mountain View')
     self.assertEqual(p.address, a)
 
-    new_property = """
+    new_property = """\
 property <
   name: "address.country"
   value <
@@ -1418,8 +1445,14 @@ property <
 >
 """
     person_with_extra_data = PERSON_PB + new_property
+    prop = pb.add_property()
+    prop.set_name("address.country")
+    prop.mutable_value().set_stringvalue("USA")
+    prop.set_multiple(False)
+    self.assertEqual(str(pb), person_with_extra_data)
 
-    p = Person._from_pb(pb)  # Ensure the extra property is ignored.
+    # Ensure the extra property is ignored.
+    p = Person._from_pb(pb)
     self.assertNotEqual(None, p)
     self.assertEqual(p.name, 'Google')
 
@@ -1510,6 +1543,32 @@ property <
     self.assertEqual(p.address.work.street, '345 Spear')
     self.assertEqual(p.address.work.city, 'San Francisco')
 
+  def testRepeatedStructuredPropertiesWithSameType(self):
+    class Person(model.Model):
+      last_name = model.StringProperty()
+      first_name = model.StringProperty()
+
+    class CustomObject(model.Model):
+      p1 = model.StructuredProperty(Person, repeated=True)
+      p2 = model.StructuredProperty(Person, repeated=True)
+
+    p1 = Person(first_name="Bob", last_name="C")
+    p2 = Person(first_name="Joe", last_name="K")
+    p3 = Person(first_name="Alice", last_name="B")
+    p4 = Person(first_name="Peter", last_name="Q")
+
+    orig = CustomObject(p1=[p1,p2], p2=[p3,p4])
+    copy = CustomObject._from_pb(orig._to_pb())
+
+    self.assertEqual("Bob", copy.p1[0].first_name)
+    self.assertEqual("Joe", copy.p1[1].first_name)
+    self.assertEqual("Alice", copy.p2[0].first_name)
+    self.assertEqual("Peter", copy.p2[1].first_name)
+    self.assertEqual(2, copy._subentity_counter.get(['p1', 'first_name']))
+    self.assertEqual(2, copy._subentity_counter.get(['p2', 'first_name']))
+    self.assertEqual(2, copy._subentity_counter.get(['p1', 'last_name']))
+    self.assertEqual(2, copy._subentity_counter.get(['p2', 'last_name']))
+
   def testRepeatedNestedStructuredProperty(self):
     class Person(model.Model):
       first_name = model.StringProperty()
@@ -1531,6 +1590,66 @@ property <
     self.assertEqual(len(ent.numbers), 1)
     self.assertEqual(ent.numbers[0].person.last_name, 'Smith')
     self.assertEqual(ent.numbers[0].phone, '1-212-555-1212')
+
+
+  def testRepeatedNestedStructuredPropertyWithEmptyModels(self):
+    class F(model.Model):
+      g = model.StringProperty()
+
+      def __eq__(self, other):
+        return (not (self.g and other.g) or self.g == other.g)
+
+    class D(model.Model):
+      e = model.StringProperty()
+      f = model.StructuredProperty(F)
+
+      def __eq__(self, other):
+        return ((not (self.e and other.e) or self.e == other.e)
+                and (not (self.f and other.f) or self.f == other.f))
+
+    class A(model.Model):
+      b = model.IntegerProperty()
+      c = model.StringProperty()
+      d = model.StructuredProperty(D)
+
+      def __eq__(self, other):
+        return ((not (self.b and other.b) or self.b == other.b)
+                and (not (self.c and other.c) or self.c == other.c)
+                and (not (self.b and other.b) or self.b == other.b))
+
+    class Foo(model.Model):
+      a = model.StructuredProperty(A, repeated=True)
+
+      def __eq__(self, other):
+        return len(self.a) == len(other.a) and all(a == b for a,b in zip(self.a, other.a) )
+
+    orig = Foo(a=[A(),
+                  A(b=1,
+                    c="a",
+                    d=None),
+                  A(b=2,
+                    d=D(e="hi",
+                        f=F(g="hello"))),
+                  A(b=None,
+                    c="b",
+                    d=D(e="bye")),
+                  A(b=3)
+                 ])
+    pb = orig._to_pb()
+    copy = Foo._from_pb(pb)
+    self.assertEqual(orig, copy)
+    self.assertEqual(-1, copy._subentity_counter._absolute_counter())
+    self.assertEqual(5, copy._subentity_counter.get(['a', 'b']))
+    self.assertEqual(4, copy._subentity_counter.get(['a', 'd']))
+    self.assertEqual(-1, copy._subentity_counter._absolute_counter())
+    self.assertEqual(4, copy._subentity_counter.get(['a', 'd', 'e']))
+    self.assertEqual(3, copy._subentity_counter.get(['a', 'd', 'f']))
+
+    # Only entity with repeated StructuredProperty should have counter
+    self.assertFalse(hasattr(copy.a[2], '_subentity_counter'))
+    self.assertFalse(hasattr(copy.a[2].d, '_subentity_counter'))
+    self.assertFalse(hasattr(copy.a[2].d.f, '_subentity_counter'))
+    self.assertFalse(hasattr(copy.a[2].d, '_subentity_counter'))
 
   def testRecursiveStructuredProperty(self):
     class Node(model.Model):
@@ -2317,6 +2436,16 @@ property <
     self.assertTrue(x is not y)
     self.assertEqual(x, y)
 
+  def testLocalStructuredPropertyRepeatedNone(self):
+    class Inner(model.Model):
+      a = model.IntegerProperty()
+    class Outer(model.Model):
+      b = model.LocalStructuredProperty(Inner, repeated=True)
+    x = Outer()
+    x.b.append(None)
+    # Should raise "Expected Inner instance, got None"
+    self.assertRaises(datastore_errors.BadValueError, x.put)
+
   def testLocalStructuredPropertyWithoutKey(self):
     class Inner(model.Model):
       pass
@@ -2776,9 +2905,16 @@ property <
     class Outer(model.Model):
       wrap = model.StructuredProperty(Inner, repeated=True)
     orig = Outer(wrap=[Inner(arg=1), Inner(arg=2)])
-    key = orig.put()
+    orig.put()
     copy = Outer.query().get()
     self.assertEqual(copy, orig)
+
+  def testComputedPropertyWithVerboseName(self):
+    class A(model.Model):
+      arg = model.IntegerProperty()
+      comp1 = model.ComputedProperty(lambda ent: 1, verbose_name="foo")
+    a = A(arg=5)
+    self.assertEqual(A.comp1._verbose_name, "foo")
 
   def testLargeValues(self):
     class Demo(model.Model):
@@ -3451,6 +3587,23 @@ property <
     self.assertEqual(logs[0], logs[1])
     self.assertNotEqual(before, logs[0])
 
+  def testTransactionAync(self):
+    @model.transactional_async(propagation=context.TransactionOptions.ALLOWED)
+    def fn(x):
+      assert model.in_transaction()
+      return 'hi'
+
+    self.assertEqual('hi', fn(0.2).get_result())
+
+  def testTransactionTasklet(self):
+    @model.transactional_tasklet(propagation=context.TransactionOptions.ALLOWED)
+    def fn(x):
+      assert model.in_transaction()
+      yield tasklets.sleep(x)
+      raise tasklets.Return('hi')
+
+    self.assertEqual('hi', fn(0.2).get_result())
+
   def testTransactionalDecoratorExtensions(self):
     # Test that @transactional(flag=value, ...) works too.
     @model.transactional()
@@ -3525,6 +3678,9 @@ property <
     # propagation=NESTED -- creates new transaction
     flag = context.TransactionOptions.NESTED
     nkey, nctx = model.transactional(propagation=flag)(increment)(key)
+    self.assertRaises(TypeError, model.transactional,
+                      increment, propagation=flag)
+    self.assertRaises(TypeError, model.transactional(flag), increment)
     self.assertTrue(nctx is not octx)
     self.assertTrue(nctx.in_transaction())
     self.assertEqual(nkey, key)
@@ -3623,6 +3779,11 @@ property <
     self.ExpectWarnings()
     class Counter(model.Model):
       count = model.IntegerProperty(default=0)
+    class DbCounter(db.Model):
+      count = db.IntegerProperty(default=0)
+      @classmethod
+      def kind(cls):
+        return Counter._get_kind()
     def increment(key, delta=1):
       ctx = tasklets.get_context()
       ent = key.get()
@@ -3632,6 +3793,14 @@ property <
         ent.count += delta
       ent.put()
       return (ent.key, ctx)
+    def increment_db(key, delta=1):
+      ent = db.get(key.to_old_key())
+      if ent is None:
+        ent = DbCounter(count=delta, key=key.to_old_key())
+      else:
+        ent.count += delta
+      ent.put()
+      return db.is_in_transaction()
 
     # *** Not currently in a transaction. ***
     octx = tasklets.get_context()
@@ -3695,6 +3864,15 @@ property <
         datastore_errors.BadRequestError,
         model.non_transactional(allow_existing=False)(increment),
         key)
+      # db also respects non_transactional.
+      self.assertFalse(model.non_transactional(increment_db)(key))
+      self.assertEqual(key.get().count, 1)
+      # db non_transactional fails (technically this is undefined behavior, but
+      # we prefer a loud failure).
+      self.assertRaises(Exception, db.non_transactional(increment_db), key)
+      # Make sure we are still in a transaction.
+      self.assertTrue(tasklets.get_context().in_transaction())
+      self.assertTrue(db.is_in_transaction())
       # Raise a unique exception so the outer test code can tell we
       # made it all the way here.
       raise ZeroDivisionError
@@ -3703,7 +3881,7 @@ property <
     # then raise ZeroDivisionError.
     self.assertRaises(ZeroDivisionError, model.transaction, callback)
     # Three non-transactional calls have bumped the count.
-    self.assertEqual(model.Key(Counter, 'y').get().count, 3)
+    self.assertEqual(model.Key(Counter, 'y').get().count, 4)
 
   def testPropertyFilters(self):
     class M(model.Model):
@@ -4370,12 +4548,14 @@ class CacheTests(test_utils.NDBTest):
       wrap = model.StructuredProperty(Inner, repeated=True)
 
     orig = Outer(wrap=[Inner(other=2),
-                       Inner(range=IntRangeModel(first=0, last=10), other=4)])
+                       Inner(range=IntRangeModel(first=0, last=10), other=4),
+                       Inner(other=5)])
     orig.put()
     q = Outer.query()
     copy = q.get()
     self.assertEqual(copy.wrap[0].range, None)
     self.assertEqual(copy.wrap[1].range, IntRangeModel(first=0, last=10))
+    self.assertEqual(copy.wrap[2].range, None)
 
   def testStructuredPropertyFromDict(self):
     # See issue 207.  http://goo.gl/IQXS6
@@ -4486,10 +4666,5 @@ class CacheTests(test_utils.NDBTest):
     txn1()
     txn2()
 
-
-def main():
-  unittest.main()
-
-
 if __name__ == '__main__':
-  main()
+  unittest.main()

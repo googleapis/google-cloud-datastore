@@ -585,6 +585,23 @@ class Context(object):
     # If this returns None, the system default (typically, 5) will apply.
     return ContextOptions.memcache_deadline(options, self._conn.config)
 
+
+  def _load_from_cache_if_available(self, key):
+    """Returns a cached Model instance given the entity key if available.
+
+    Args:
+      key: Key instance.
+
+    Returns:
+      A Model instance if the key exists in the cache.
+    """
+    if key in self._cache:
+      entity = self._cache[key]  # May be None, meaning "doesn't exist".
+      if entity is None or entity._key == key:
+        # If entity's key didn't change later, it is ok.
+        # See issue 13.  http://goo.gl/jxjOP
+        raise tasklets.Return(entity)
+
   # TODO: What about conflicting requests to different autobatchers,
   # e.g. tasklet A calls get() on a given key while tasklet B calls
   # delete()?  The outcome is nondeterministic, depending on which
@@ -604,17 +621,12 @@ class Context(object):
       **ctx_options: Context options.
 
     Returns:
-      A Model instance it the key exists in the datastore; None otherwise.
+      A Model instance if the key exists in the datastore; None otherwise.
     """
     options = _make_ctx_options(ctx_options)
     use_cache = self._use_cache(key, options)
     if use_cache:
-      if key in self._cache:
-        entity = self._cache[key]  # May be None, meaning "doesn't exist".
-        if entity is None or entity._key == key:
-          # If entity's key didn't change later, it is ok.
-          # See issue 13.  http://goo.gl/jxjOP
-          raise tasklets.Return(entity)
+      self._load_from_cache_if_available(key)
 
     use_datastore = self._use_datastore(key, options)
     if (use_datastore and
@@ -631,6 +643,9 @@ class Context(object):
       mvalue = yield self.memcache_get(mkey, for_cas=use_datastore,
                                        namespace=ns, use_cache=True,
                                        deadline=memcache_deadline)
+      # A value may have appeared while yielding.
+      if use_cache:
+        self._load_from_cache_if_available(key)
       if mvalue not in (_LOCKED, None):
         cls = model.Model._kind_map.get(key.kind())
         if cls is None:
@@ -794,7 +809,6 @@ class Context(object):
       try:
         inq = tasklets.SerialQueueFuture()
         query.run_to_queue(inq, self._conn, options)
-        is_ancestor_query = query.ancestor is not None
         while True:
           try:
             batch, i, ent = yield inq.getq()
@@ -903,10 +917,10 @@ class Context(object):
         adapter=parent._conn.adapter,
         config=parent._conn.config,
         transaction=transaction)
-      old_ds_conn = datastore._GetConnection()
       tctx = parent.__class__(conn=tconn,
                               auto_batcher_class=parent._auto_batcher_class,
                               parent_context=parent)
+      tctx._old_ds_conn = datastore._GetConnection()
       ok = False
       try:
         # Copy memcache policies.  Note that get() will never use
@@ -929,7 +943,7 @@ class Context(object):
           raise
         except Exception:
           t, e, tb = sys.exc_info()
-          yield tconn.async_rollback(options)  # TODO: Don't block???
+          tconn.async_rollback(options)  # Fire and forget.
           if issubclass(t, datastore_errors.Rollback):
             # TODO: Raise value using tasklets.get_return_value(t)?
             return
@@ -943,7 +957,8 @@ class Context(object):
             raise tasklets.Return(result)
             # The finally clause will run the on-commit queue.
       finally:
-        datastore._SetConnection(old_ds_conn)
+        datastore._SetConnection(tctx._old_ds_conn)
+        del tctx._old_ds_conn
         if ok:
           # Call the callbacks collected in the transaction context's
           # on-commit queue.  If the transaction failed the queue is

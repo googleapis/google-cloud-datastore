@@ -9,6 +9,7 @@ if google_imports.normal_environment:
   from google.appengine.api.prospective_search import prospective_search_stub
   from google.appengine.datastore import datastore_stub_util
   from google.appengine.ext import testbed
+  import unittest
 else:
   # Prospective search is optional.
   try:
@@ -17,3 +18,4 @@ else:
     pass
   from google3.apphosting.datastore import datastore_stub_util
   from google3.apphosting.ext import testbed
+  from google3.testing.pybase import googletest as unittest

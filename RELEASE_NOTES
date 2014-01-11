@@ -1,3 +1,9 @@
+Release 1.0.10 (included in SDK 1.8.9)
+- Issue 239: Added support for verbose_name to ComputedProperty
+- Issue 238: Allow deferred library to defer @ndb.toplevel.
+- Issue 233: Fixed error for NoneType in repeated LocalStructuredProperty.
+- Fixed deserialization inefficiency for large repeated StructuredProperty.
+
 Release 1.0.9 (included in SDK 1.8.0)
 
 - Issue 229: Add support for 'distinct' queries

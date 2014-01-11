@@ -4,10 +4,10 @@ See issue 35.  http://goo.gl/iHkCm
 """
 
 import pickle
-import unittest
 
 from .google_imports import namespace_manager
 from .google_imports import datastore_types
+from .google_test_imports import unittest
 
 from . import polymodel
 from . import model
@@ -345,9 +345,5 @@ class CompatibilityTests(test_utils.NDBTest):
     self.assertEqual(str(tom._to_pb()), TOM_PB)
 
 
-def main():
-  unittest.main()
-
-
 if __name__ == '__main__':
-  main()
+  unittest.main()

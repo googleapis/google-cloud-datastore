@@ -2,10 +2,10 @@
 
 import base64
 import os
-import unittest
 
 from .google_imports import apiproxy_stub_map
 from .google_test_imports import prospective_search_stub
+from .google_test_imports import unittest
 
 
 from . import prospective_search
@@ -102,9 +102,5 @@ class ProspectiveSearchTests(test_utils.NDBTest):
     self.assertEqual(ent2, ent)
 
 
-def main():
-  unittest.main()
-
-
 if __name__ == '__main__':
-  main()
+  unittest.main()

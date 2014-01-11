@@ -1,21 +1,30 @@
 """Tests for tasklets.py."""
 
 import os
+import pickle
 import random
 import re
+import StringIO
 import sys
 import time
-import unittest
 
 from .google_imports import namespace_manager
+from .google_test_imports import unittest
 
 from . import context
 from . import eventloop
+from . import key
 from . import model
 from . import test_utils
 from . import tasklets
 from . import utils
 
+
+# This must live at the module level to allow pickling to work properly.
+@tasklets.toplevel
+def toplevel_put_async(m):
+  m.put_async()
+  raise tasklets.Return(True)
 
 class TaskletTests(test_utils.NDBTest):
 
@@ -723,6 +732,16 @@ class TaskletTests(test_utils.NDBTest):
     self.assertEqual(key.namespace(), 'before')
     self.assertEqual(namespace_manager.get_namespace(), 'after')
 
+  def testCanPickleTopLevel(self):
+    class Employee(model.Model):
+      name = model.StringProperty()
+    m = Employee(name='Patrick', id='mykey')
+    src = StringIO.StringIO()
+    pickle.dump(toplevel_put_async, src)
+    fn = pickle.load(StringIO.StringIO(src.getvalue()))
+    self.assertEqual(fn(m), True)
+    self.assertEqual(key.Key(Employee, 'mykey').get().name, 'Patrick')
+
 
 class TracebackTests(test_utils.NDBTest):
   """Checks that errors result in reasonable tracebacks."""
@@ -780,9 +799,5 @@ class TracebackTests(test_utils.NDBTest):
         str(err)))
 
 
-def main():
-  unittest.main()
-
-
 if __name__ == '__main__':
-  main()
+  unittest.main()

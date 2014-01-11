@@ -120,10 +120,10 @@ accept several optional keyword arguments:
 - verbose_name=<value>: A human readable name for this property.  This
   human readable name can be used for html form labels.
 
-The repeated, required and default options are mutually exclusive: a
+The repeated and required/default options are mutually exclusive: a
 repeated property cannot be required nor can it specify a default
 value (the default is always an empty list and an empty list is always
-an allowed value), and a required property cannot have a default.
+an allowed value), but a required property can have a default.
 
 Some property types have additional arguments.  Some property types
 do not support all options.
@@ -280,23 +280,24 @@ Property subclass is in the docstring for the Property class.
 
 __author__ = 'guido@google.com (Guido van Rossum)'
 
+import collections
 import copy
 import cPickle as pickle
 import datetime
 import logging
 import zlib
 
+from .google_imports import datastore
 from .google_imports import datastore_errors
-from .google_imports import datastore_types
-from .google_imports import users
 from .google_imports import datastore_query
 from .google_imports import datastore_rpc
+from .google_imports import datastore_types
+from .google_imports import users
 from .google_imports import entity_pb
 
+from . import key as key_module  # NOTE: 'key' is a common local variable name.
 from . import utils
 
-# NOTE: 'key' is a common local variable name.
-from . import key as key_module
 Key = key_module.Key  # For export.
 
 # NOTE: Property and Error classes are added later.
@@ -304,8 +305,9 @@ __all__ = ['Key', 'BlobKey', 'GeoPt', 'Rollback',
            'Index', 'IndexState', 'IndexProperty',
            'ModelAdapter', 'ModelAttribute',
            'ModelKey', 'MetaModel', 'Model', 'Expando',
-           'transaction', 'transaction_async',
-           'in_transaction', 'transactional', 'non_transactional',
+           'transaction', 'transaction_async', 'in_transaction',
+           'transactional', 'transactional_async', 'transactional_tasklet',
+           'non_transactional',
            'get_multi', 'get_multi_async',
            'put_multi', 'put_multi_async',
            'delete_multi', 'delete_multi_async',
@@ -378,6 +380,83 @@ class _NotEqualMixin(object):
     if eq is NotImplemented:
       return NotImplemented
     return not eq
+
+
+class _NestedCounter(object):
+  """ A recursive counter for StructuredProperty deserialization.
+
+  Deserialization has some complicated rules to handle StructuredPropertys
+  that may or may not be empty. The simplest case is a leaf counter, where
+  the counter will return the index of the repeated value that last had this
+  leaf property written. When a non-leaf counter requested, this will return
+  the max of all its leaf values. This is due to the fact that the next index
+  that a full non-leaf property may be written to comes after all indices that
+  have part of that property written (otherwise, a partial entity would be
+  overwritten.
+
+  Consider an evaluation of the following structure:
+  -A
+    -B
+      -D
+      -E
+    -C
+  With the properties being deserialized in the order:
+
+  1) a.b.d = z
+  2) a.c = y
+  3) a.b = None
+  4) a = None
+  5) a.b.e = x
+  6) a.b.d = w
+
+  The counter state should be the following:
+     a | a.b | a.b.d | a.b.e | a.c
+  0) 0    0      0       0      0
+  1) 1    1      1       0      0
+  2)@1   @1      1       0      1
+  3)@1*  @1*     1       0      1
+  4)@1*  @1*     1       0      1
+  5)@1*  @1*     1       1      1
+  6)@3   @3      3       1      1
+
+  Here, @ indicates that this counter value is actually a calculated value.
+  It is equal to the MAX of its sub-counters.
+
+  Note that in the * cases, our counters actually fall behind. We cannot
+  increase the counters when this happens because child properties have
+  not yet been fully populated. In theses cases, we'll have to do a series
+  of increments to catch up the counters following None deserializations.
+  """
+
+  def __init__(self):
+    self.__counter = 0
+    self.__sub_counters = collections.defaultdict(_NestedCounter)
+
+  def get(self, parts=None):
+    if parts:
+      return self.__sub_counters[parts[0]].get(parts[1:])
+    if self.__is_parent_node():
+      return max(v.get() for v in self.__sub_counters.itervalues())
+    return self.__counter
+
+  def increment(self, parts=None):
+    if parts:
+      self.__make_parent_node()
+      return self.__sub_counters[parts[0]].increment(parts[1:])
+    if self.__is_parent_node():
+      return -1
+    self.__counter += 1
+    return self.__counter
+
+  def _absolute_counter(self):
+    # Used only for testing.
+    return self.__counter
+
+  def __is_parent_node(self):
+    return self.__counter == -1
+
+  def __make_parent_node(self):
+    self.__counter = -1
 
 
 class IndexProperty(_NotEqualMixin):
@@ -783,10 +862,8 @@ class Property(ModelAttribute):
       self._default = default
     if verbose_name is not None:
       self._verbose_name = verbose_name
-    if (bool(self._repeated) +
-        bool(self._required) +
-        (self._default is not None)) > 1:
-      raise ValueError('repeated, required and default are mutally exclusive.')
+    if self._repeated and (self._required or self._default is not None):
+      raise ValueError('repeated is incompatible with required or default')
     if choices is not None:
       if not isinstance(choices, (list, tuple, set, frozenset)):
         raise TypeError('choices must be a list, tuple or set; received %r' %
@@ -1251,8 +1328,9 @@ class Property(ModelAttribute):
 
     This returns False if a value is stored but it is None.
     """
-    return not self._required or (self._has_value(entity) and
-                                  self._get_value(entity) is not None)
+    return (not self._required or
+            ((self._has_value(entity) or self._default is not None) and
+             self._get_value(entity) is not None))
 
   def __get__(self, entity, unused_cls=None):
     """Descriptor protocol: get the value from the entity."""
@@ -1946,7 +2024,7 @@ class DateTimeProperty(Property):
                                            (value,))
 
   def _now(self):
-    return datetime.datetime.now()
+    return datetime.datetime.utcnow()
 
   def _prepare_for_put(self, entity):
     if (self._auto_now or
@@ -2023,7 +2101,7 @@ class DateProperty(DateTimeProperty):
     return value.date()
 
   def _now(self):
-    return datetime.date.today()
+    return datetime.datetime.utcnow().date()
 
 
 class TimeProperty(DateTimeProperty):
@@ -2043,7 +2121,7 @@ class TimeProperty(DateTimeProperty):
     return value.time()
 
   def _now(self):
-    return datetime.datetime.now().time()
+    return datetime.datetime.utcnow().time()
 
 
 class _StructuredGetForDictMixin(Property):
@@ -2289,22 +2367,37 @@ class StructuredProperty(_StructuredGetForDictMixin):
       prop._code_name = next
       prop_is_fake = True
 
-    values = self._get_base_value_unwrapped_as_list(entity)
     # Find the first subentity that doesn't have a value for this
     # property yet.
-    for sub in values:
-      if not isinstance(sub, self._modelclass):
-        raise TypeError('sub-entities must be instances of their Model class.')
-      if not prop._has_value(sub, rest):
-        subentity = sub
-        break
-    else:
+    if not hasattr(entity, '_subentity_counter'):
+      entity._subentity_counter = _NestedCounter()
+    counter = entity._subentity_counter
+    counter_path = parts[depth - 1:]
+    next_index = counter.get(counter_path)
+    subentity = None
+    if self._has_value(entity):
+      # If an entire subentity has been set to None, we have to loop
+      # to advance until we find the next partial entity.
+      while next_index < self._get_value_size(entity):
+        subentity = self._get_base_value_at_index(entity, next_index)
+        if not isinstance(subentity, self._modelclass):
+          raise TypeError('sub-entities must be instances '
+                          'of their Model class.')
+        if not prop._has_value(subentity, rest):
+          break
+        next_index = counter.increment(counter_path)
+      else:
+        subentity = None
+    # The current property is going to be populated, so advance the counter.
+    counter.increment(counter_path)
+    if not subentity:
       # We didn't find one.  Add a new one to the underlying list of
-      # values (the list returned by
-      # _get_base_value_unwrapped_as_list() is a copy so we
-      # can't append to it).
+      # values.
       subentity = self._modelclass()
-      values = self._retrieve_value(entity)
+      values = self._retrieve_value(entity, self._default)
+      if values is None:
+        self._store_value(entity, [])
+        values = self._retrieve_value(entity, self._default)
       values.append(_BaseValue(subentity))
     if prop_is_fake:
       # Add the synthetic property to the subentity's _properties
@@ -2332,6 +2425,17 @@ class StructuredProperty(_StructuredGetForDictMixin):
         'Structured property %s requires a subproperty' % self._name)
     self._modelclass._check_properties([rest], require_indexed=require_indexed)
 
+  def _get_base_value_at_index(self, entity, index):
+    assert self._repeated
+    value = self._retrieve_value(entity, self._default)
+    value[index] = self._opt_call_to_base_type(value[index])
+    return value[index].b_val
+
+  def _get_value_size(self, entity):
+    values = self._retrieve_value(entity, self._default)
+    if values is None:
+      return 0
+    return len(values)
 
 class LocalStructuredProperty(_StructuredGetForDictMixin, BlobProperty):
   """Substructure that is serialized to an opaque blob.
@@ -2394,7 +2498,8 @@ class LocalStructuredProperty(_StructuredGetForDictMixin, BlobProperty):
     if value is not None:
       if self._repeated:
         for subent in value:
-          subent._prepare_for_put()
+          if subent is not None:
+            subent._prepare_for_put()
       else:
         value._prepare_for_put()
 
@@ -2597,7 +2702,8 @@ class ComputedProperty(GenericProperty):
   ...   hash = ComputedProperty(_compute_hash, name='sha1')
   """
 
-  def __init__(self, func, name=None, indexed=None, repeated=None):
+  def __init__(self, func, name=None, indexed=None,
+               repeated=None, verbose_name=None):
     """Constructor.
 
     Args:
@@ -2605,7 +2711,8 @@ class ComputedProperty(GenericProperty):
             a calculated value.
     """
     super(ComputedProperty, self).__init__(name=name, indexed=indexed,
-                                           repeated=repeated)
+                                           repeated=repeated,
+                                           verbose_name=verbose_name)
     self._func = func
 
   def _set_value(self, entity, value):
@@ -3587,12 +3694,11 @@ def in_transaction():
   return tasklets.get_context().in_transaction()
 
 
-@utils.positional(1)
-def transactional(_func=None, **ctx_options):
+@utils.decorator
+def transactional(func, args, kwds, **options):
   """Decorator to make a function automatically run in a transaction.
 
   Args:
-    _func: Do not use.
     **ctx_options: Transaction options (see transaction(), but propagation
       default to TransactionOptions.ALLOWED).
 
@@ -3608,37 +3714,38 @@ def transactional(_func=None, **ctx_options):
       def callback(arg):
         ...
   """
-  if _func is not None:
-    # Form (1), vanilla.
-    if ctx_options:
-      raise TypeError('@transactional() does not take positional arguments')
-    # TODO: Avoid recursion, call outer_transactional_wrapper() directly?
-    return transactional()(_func)
-
-  ctx_options.setdefault('propagation',
-                         datastore_rpc.TransactionOptions.ALLOWED)
-
-  # Form (2), with options.
-  def outer_transactional_wrapper(func):
-    @utils.wrapping(func)
-    def inner_transactional_wrapper(*args, **kwds):
-      f = func
-      if args or kwds:
-        f = lambda: func(*args, **kwds)
-      return transaction(f, **ctx_options)
-    return inner_transactional_wrapper
-  return outer_transactional_wrapper
+  return transactional_async.wrapped_decorator(
+      func, args, kwds, **options).get_result()
 
 
-@utils.positional(1)
-def non_transactional(_func=None, allow_existing=True):
+@utils.decorator
+def transactional_async(func, args, kwds, **options):
+  """The async version of @ndb.transaction."""
+  options.setdefault('propagation', datastore_rpc.TransactionOptions.ALLOWED)
+  if args or kwds:
+    return transaction_async(lambda: func(*args, **kwds), **options)
+  return transaction_async(func, **options)
+
+
+@utils.decorator
+def transactional_tasklet(func, args, kwds, **options):
+  """The async version of @ndb.transaction.
+
+  Will return the result of the wrapped function as a Future.
+  """
+  from . import tasklets
+  func = tasklets.tasklet(func)
+  return transactional_async.wrapped_decorator(func, args, kwds, **options)
+
+
+@utils.decorator
+def non_transactional(func, args, kwds, allow_existing=True):
   """A decorator that ensures a function is run outside a transaction.
 
   If there is an existing transaction (and allow_existing=True), the
   existing transaction is paused while the function is executed.
 
   Args:
-    _func: Do not use.
     allow_existing: If false, throw an exception if called from within
       a transaction.  If true, temporarily re-establish the
       previous non-transactional context.  Defaults to True.
@@ -3649,33 +3756,28 @@ def non_transactional(_func=None, allow_existing=True):
     A wrapper for the decorated function that ensures it runs outside a
     transaction.
   """
-  if _func is not None:
-    # TODO: Avoid recursion, call outer_non_transactional_wrapper() directly?
-    return non_transactional()(_func)
-
-  def outer_non_transactional_wrapper(func):
-    from . import tasklets
-    @utils.wrapping(func)
-    def inner_non_transactional_wrapper(*args, **kwds):
-      ctx = tasklets.get_context()
-      if not ctx.in_transaction():
-        return func(*args, **kwds)
-      if not allow_existing:
-        raise datastore_errors.BadRequestError(
-          '%s cannot be called within a transaction.' % func.__name__)
-      save_ctx = ctx
-      while ctx.in_transaction():
-        ctx = ctx._parent_context
-        if ctx is None:
-          raise datastore_errors.BadRequestError(
-            'Context without non-transactional ancestor')
-      try:
-        tasklets.set_context(ctx)
-        return func(*args, **kwds)
-      finally:
-        tasklets.set_context(save_ctx)
-    return inner_non_transactional_wrapper
-  return outer_non_transactional_wrapper
+  from . import tasklets
+  ctx = tasklets.get_context()
+  if not ctx.in_transaction():
+    return func(*args, **kwds)
+  if not allow_existing:
+    raise datastore_errors.BadRequestError(
+      '%s cannot be called within a transaction.' % func.__name__)
+  save_ctx = ctx
+  while ctx.in_transaction():
+    ctx = ctx._parent_context
+    if ctx is None:
+      raise datastore_errors.BadRequestError(
+        'Context without non-transactional ancestor')
+  save_ds_conn = datastore._GetConnection()
+  try:
+    if hasattr(save_ctx, '_old_ds_conn'):
+      datastore._SetConnection(save_ctx._old_ds_conn)
+    tasklets.set_context(ctx)
+    return func(*args, **kwds)
+  finally:
+    tasklets.set_context(save_ctx)
+    datastore._SetConnection(save_ds_conn)
 
 
 def get_multi_async(keys, **ctx_options):

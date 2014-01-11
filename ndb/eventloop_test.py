@@ -3,10 +3,10 @@
 import logging
 import os
 import time
-import unittest
 
 from .google_imports import apiproxy_stub_map
 from .google_imports import datastore_rpc
+from .google_test_imports import unittest
 
 from . import eventloop
 from . import test_utils
@@ -151,10 +151,6 @@ class EventLoopTests(test_utils.NDBTest):
     ev = eventloop.get_event_loop()  # A new event loop.
     self.assertEqual(len(ev.rpcs), 0)
 
-
-def main():
+if __name__ == '__main__':
   unittest.main()
 
-
-if __name__ == '__main__':
-  main()

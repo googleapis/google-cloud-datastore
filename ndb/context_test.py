@@ -5,7 +5,6 @@ import random
 import socket
 import threading
 import time
-import unittest
 
 from .google_imports import apiproxy_errors
 from .google_imports import datastore
@@ -13,6 +12,7 @@ from .google_imports import datastore_errors
 from .google_imports import datastore_rpc
 from .google_imports import memcache
 from .google_imports import taskqueue
+from .google_test_imports import unittest
 
 from . import context
 from . import eventloop
@@ -717,6 +717,32 @@ class ContextTests(test_utils.NDBTest):
     foo().check_success()
     self.assertEqual(key.get(), None)
 
+  def testContext_TransactionRollbackException(self):
+    self.ExpectWarnings()
+    key = model.Key('Foo', 1)
+
+    class CustomException(Exception):
+      pass
+    def bad_transaction(*arg, **kwargs):
+      return datastore_rpc.datastore_pb.Transaction()
+    @tasklets.tasklet
+    def foo():
+      ent = model.Expando(key=key, bar=1)
+      @tasklets.tasklet
+      def callback():
+        # Cause rollback to return an exception
+        tasklets.get_context()._conn._end_transaction = bad_transaction
+        yield ent.put_async()
+        raise CustomException()
+      yield self.ctx.transaction(callback)
+    try:
+      foo().check_success()
+      self.fail()
+    except CustomException:
+      pass  # good
+
+    self.assertEqual(key.get(), None)
+
   def testContext_TransactionAddTask(self):
     self.ExpectWarnings()
     key = model.Key('Foo', 1)
@@ -1390,6 +1416,19 @@ class ContextTests(test_utils.NDBTest):
     conn_after = datastore._GetConnection()
     self.assertEqual(conn_before, conn_after)
 
+  def testMemcacheAndContextCache(self):
+    self.ctx.set_datastore_policy(True)
+    self.ctx.set_cache_policy(False)
+    self.ctx.set_memcache_policy(True)
+    class EmptyModel(model.Model):
+      pass
+    key = EmptyModel().put()
+    self.ctx.get(key).get_result() # pull entity into memcache
+    self.ctx.set_cache_policy(True)
+    f1, f2 = self.ctx.get(key), self.ctx.get(key)
+    e1, e2 = f1.get_result(), f2.get_result()
+    self.assertTrue(e1 is e2)
+
 
 class ContextFutureCachingTests(test_utils.NDBTest):
   # See issue 62.  http://goo.gl/5zLkK
@@ -1463,10 +1502,5 @@ class ContextFutureCachingTests(test_utils.NDBTest):
     self.assertFalse(f1 is f4,
                     'Context memcache get future cached after result known.')
 
-
-def main():
-  unittest.main()
-
-
 if __name__ == '__main__':
-  main()
+  unittest.main()

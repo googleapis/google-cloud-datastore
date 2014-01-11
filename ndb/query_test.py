@@ -2,12 +2,12 @@
 
 import datetime
 import os
-import unittest
 
 from .google_imports import datastore_errors
 from .google_imports import namespace_manager
 from .google_imports import users
 from .google_test_imports import datastore_stub_util
+from .google_test_imports import unittest
 
 from . import model
 from . import query
@@ -412,16 +412,28 @@ class QueryTests(test_utils.NDBTest):
     key3 = Foo(p=2, q=3, r=[3, 4]).put()
     key4 = Foo(p=2, q=2, r=[3]).put()
 
-    qry = Foo.query(projection=[Foo.p],group_by=[Foo.r, Foo.p])
+    qry = Foo.query(projection=[Foo.p], group_by=[Foo.r, Foo.p])
     qry = qry.order(Foo.p, Foo.r, Foo.q)
-    ents = qry.fetch()
 
-    self.assertEquals(5, len(ents))
-    self.assertEquals((1, key2), (ents[0].p, ents[0].key))
-    self.assertEquals((1, key2), (ents[1].p, ents[1].key))
-    self.assertEquals((1, key1), (ents[2].p, ents[2].key))
-    self.assertEquals((2, key4), (ents[3].p, ents[3].key))
-    self.assertEquals((2, key3), (ents[4].p, ents[4].key))
+    expected = [(1, key2), (1, key2), (1, key1), (2, key4), (2, key3)]
+
+    # Test fetch and iter in base case.
+    self.assertEqual(expected, [(ent.p, ent.key) for ent in qry.fetch()])
+    self.assertEqual(expected, [(ent.p, ent.key) for ent in qry])
+
+    # Test projection using default options.
+    qry = Foo.query(group_by=[Foo.r, Foo.p],
+                    default_options=query.QueryOptions(projection=['pp']))
+    qry = qry.order(Foo.p, Foo.r, Foo.q)
+    self.assertEqual(expected, [(ent.p, ent.key) for ent in qry.fetch()])
+    self.assertEqual(expected, [(ent.p, ent.key) for ent in qry])
+
+    # Test projection with other default options.
+    qry = Foo.query(projection=[Foo.p], group_by=[Foo.r, Foo.p],
+                    default_options=query.QueryOptions(limit=4))
+    qry = qry.order(Foo.p, Foo.r, Foo.q)
+    self.assertEqual(expected[:4], [(ent.p, ent.key) for ent in qry.fetch()])
+    self.assertEqual(expected[:4], [(ent.p, ent.key) for ent in qry])
 
   def testProjectionQuery(self):
     self.ExpectWarnings()
@@ -1868,9 +1880,5 @@ class QueryTests(test_utils.NDBTest):
       datastore_stub_util._MAX_QUERY_OFFSET = save_max_query_offset
 
 
-def main():
-  unittest.main()
-
-
 if __name__ == '__main__':
-  main()
+  unittest.main()

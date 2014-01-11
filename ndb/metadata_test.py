@@ -1,8 +1,8 @@
 """Tests for metadata.py."""
 
-import unittest
-
 from .google_imports import namespace_manager
+
+from .google_test_imports import unittest
 
 from . import context
 from . import metadata
@@ -131,9 +131,5 @@ class MetadataTests(test_utils.NDBTest):
     self.assertTrue(metadata.get_entity_group_version(foo_e.key) > 0)
 
 
-def main():
-  unittest.main()
-
-
 if __name__ == '__main__':
-  main()
+  unittest.main()
