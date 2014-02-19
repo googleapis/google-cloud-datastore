@@ -110,7 +110,7 @@ pip install googledatastore
 [16]: https://github.com/GoogleCloudPlatform/google-cloud-datastore/fork
 [17]: https://npmjs.org/package/googleapis
 [18]: https://pypi.python.org/pypi/googledatastore
-[19]: googledatastore.readthedocs.org
+[19]: http://googledatastore.readthedocs.org
 [20]: https://developers.google.com/datastore/docs/apis/javadoc/
 [21]: ruby/demos/trivial/adams.rb
 [22]: https://github.com/sudhirj/active_datastore
