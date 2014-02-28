@@ -67,6 +67,7 @@ Adams.prototype.authorize = function() {
           this.emit('error', errors);
           return;
         }
+        this.connect();
       }).bind(this));
     }
     this.connect();
@@ -133,7 +134,7 @@ Adams.prototype.lookup = function() {
       return;
     }
     // Get the entity from the response if found.
-    if (result.found && result.found.length > 0) {
+    if (result.found.length > 0) {
       this.entity = result.found[0].entity;
     }
     this.commit();
