@@ -94,7 +94,7 @@ pip install googledatastore
 - See [LICENSE][8]
 
 [1]: python/demos/trivial/adams.py
-[2]: java/demos/src/main/java/com/google/api/services/datastore/demos/trivial/adams.java
+[2]: java/demos/src/main/java/com/google/api/services/datastore/demos/trivial/Adams.java
 [3]: https://github.com/GoogleCloudPlatform/google-cloud-datastore/blob/master/nodejs/demos/trivial/adams.js
 [4]: https://developers.google.com/datastore
 [5]: https://developers.google.com/datastore/docs/apis/v1beta2/
