@@ -1,17 +1,32 @@
+Release 1.0.11 (included in SDK 1.9.8)
+
+- Added support for more efficient query cursors.
+- App Engine Issue 11082: Fixed error while deserializing repeated
+  structured properties.
+
+----------------------------------------
+
 Release 1.0.10 (included in SDK 1.8.9)
+
 - Issue 239: Added support for verbose_name to ComputedProperty
 - Issue 238: Allow deferred library to defer @ndb.toplevel.
 - Issue 233: Fixed error for NoneType in repeated LocalStructuredProperty.
 - Fixed deserialization inefficiency for large repeated StructuredProperty.
 
+----------------------------------------
+
 Release 1.0.9 (included in SDK 1.8.0)
 
 - Issue 229: Add support for 'distinct' queries
+
+----------------------------------------
 
 Release 1.0.8 (included in SDK 1.7.7)
 
 - Issue 227: ndb.Model constructor does not handle projections correctly
 - Issue 215: Projected entity loses projection after pickling
+
+----------------------------------------
 
 Release 1.0.7 (included in SDK 1.7.4)
 
@@ -21,12 +36,16 @@ Release 1.0.7 (included in SDK 1.7.4)
 - Issue 217: Explicitly disallow deleting ComputedProperty.
 - Issue 213: PolyModel root class query should not filter on 'class'.
 
+----------------------------------------
+
 Release 1.0.6 (included in SDK 1.7.3)
 
 - Issue 207: Convert dicts into structured properties automatically.
 - Issue 209: Save/restore datastore connection around tasklet switches.
 - Issue 210: Fix fetch() with offset > 1000.
 - Improve error message when calling Model() with positional argument(s).
+
+----------------------------------------
 
 Release 1.0.5 (included in SDK 1.7.2)
 

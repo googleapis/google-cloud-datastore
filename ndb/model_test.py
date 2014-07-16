@@ -1597,15 +1597,14 @@ property <
       g = model.StringProperty()
 
       def __eq__(self, other):
-        return (not (self.g and other.g) or self.g == other.g)
+        return self.g == other.g
 
     class D(model.Model):
       e = model.StringProperty()
       f = model.StructuredProperty(F)
 
       def __eq__(self, other):
-        return ((not (self.e and other.e) or self.e == other.e)
-                and (not (self.f and other.f) or self.f == other.f))
+        return self.e == other.e and self.f == other.f
 
     class A(model.Model):
       b = model.IntegerProperty()
@@ -1613,15 +1612,14 @@ property <
       d = model.StructuredProperty(D)
 
       def __eq__(self, other):
-        return ((not (self.b and other.b) or self.b == other.b)
-                and (not (self.c and other.c) or self.c == other.c)
-                and (not (self.b and other.b) or self.b == other.b))
+        return self.b == other.b and self.c == other.c and self.d == other.d
 
     class Foo(model.Model):
       a = model.StructuredProperty(A, repeated=True)
 
       def __eq__(self, other):
-        return len(self.a) == len(other.a) and all(a == b for a,b in zip(self.a, other.a) )
+        return (len(self.a) == len(other.a)
+                and all(a == b for a, b in zip(self.a, other.a)))
 
     orig = Foo(a=[A(),
                   A(b=1,
@@ -1640,16 +1638,227 @@ property <
     self.assertEqual(orig, copy)
     self.assertEqual(-1, copy._subentity_counter._absolute_counter())
     self.assertEqual(5, copy._subentity_counter.get(['a', 'b']))
-    self.assertEqual(4, copy._subentity_counter.get(['a', 'd']))
+    self.assertEqual(5, copy._subentity_counter.get(['a', 'd']))
     self.assertEqual(-1, copy._subentity_counter._absolute_counter())
-    self.assertEqual(4, copy._subentity_counter.get(['a', 'd', 'e']))
-    self.assertEqual(3, copy._subentity_counter.get(['a', 'd', 'f']))
+    self.assertEqual(5, copy._subentity_counter.get(['a', 'd', 'e']))
+    self.assertEqual(5, copy._subentity_counter.get(['a', 'd', 'f']))
 
     # Only entity with repeated StructuredProperty should have counter
     self.assertFalse(hasattr(copy.a[2], '_subentity_counter'))
     self.assertFalse(hasattr(copy.a[2].d, '_subentity_counter'))
     self.assertFalse(hasattr(copy.a[2].d.f, '_subentity_counter'))
     self.assertFalse(hasattr(copy.a[2].d, '_subentity_counter'))
+
+  def testRepeatedNestedStructuredPropertyWithEmptyModelsFirst(self):
+    class B(model.Model):
+      e = model.StringProperty()
+
+      def __eq__(self, other):
+        return self.e == other.e
+
+    class A(model.Model):
+      b = model.StructuredProperty(B)
+      c = model.IntegerProperty()
+      d = model.StringProperty()
+
+      def __eq__(self, other):
+        return self.b == other.b and self.c == other.c and self.d == other.d
+
+    class Foo(model.Model):
+      a = model.StructuredProperty(A, repeated=True)
+
+      def __eq__(self, other):
+        return (len(self.a) == len(other.a)
+                and all(a == b for a, b in zip(self.a, other.a)))
+
+    orig = Foo(a=[A(b=B(e='ae'),
+                    c=1,
+                    d='a'),
+                  A(b=None,
+                    c=2,
+                    d='b'),
+                  A(b=None,
+                    c=3,
+                    d='c'),
+                  A(b=None,
+                    c=4,
+                    d='d')])
+    pb = orig._to_pb()
+    copy = Foo._from_pb(pb)
+    self.assertEqual(orig, copy)
+    self.assertEqual(-1, copy._subentity_counter._absolute_counter())
+    self.assertEqual(4, copy._subentity_counter.get(['a', 'c']))
+    self.assertEqual(4, copy._subentity_counter.get(['a', 'd']))
+    self.assertEqual(-1, copy._subentity_counter._absolute_counter())
+    self.assertEqual(4, copy._subentity_counter.get(['a', 'b', 'e']))
+
+    # Only entity with repeated StructuredProperty should have counter
+    self.assertFalse(hasattr(copy.a[0], '_subentity_counter'))
+    self.assertFalse(hasattr(copy.a[0].b, '_subentity_counter'))
+
+  def testRepeatedNestedStructuredPropertyWithEmptyModelsFirstAndLast(self):
+    class B(model.Model):
+      e = model.StringProperty()
+
+      def __eq__(self, other):
+        return self.e == other.e
+
+    class A(model.Model):
+      b = model.StructuredProperty(B)
+      c = model.IntegerProperty()
+
+      def __eq__(self, other):
+        return self.b == other.b and self.c == other.c
+
+    class Foo(model.Model):
+      a = model.StructuredProperty(A, repeated=True)
+
+      def __eq__(self, other):
+        return (len(self.a) == len(other.a)
+                and all(a == b for a, b in zip(self.a, other.a)))
+
+    orig = Foo(a=[A(b=B(e='ae'),
+                    c=1),
+                  A(b=None,
+                    c=2),
+                  A(b=None,
+                    c=3),
+                  A(b=None,
+                    c=4),
+                  A(b=B(e='de'),
+                    c=5)])
+    pb = orig._to_pb()
+    copy = Foo._from_pb(pb)
+    self.assertEqual(orig, copy)
+    self.assertEqual(-1, copy._subentity_counter._absolute_counter())
+    self.assertEqual(5, copy._subentity_counter.get(['a', 'c']))
+    self.assertEqual(-1, copy._subentity_counter._absolute_counter())
+    self.assertEqual(5, copy._subentity_counter.get(['a', 'b', 'e']))
+
+    # Only entity with repeated StructuredProperty should have counter
+    self.assertFalse(hasattr(copy.a[0], '_subentity_counter'))
+    self.assertFalse(hasattr(copy.a[0].b, '_subentity_counter'))
+
+  def testRepeatedNestedStructuredPropertyWithEmptyModelsLast(self):
+    class B(model.Model):
+      e = model.StringProperty()
+
+      def __eq__(self, other):
+        return self.e == other.e
+
+    class A(model.Model):
+      b = model.StructuredProperty(B)
+      c = model.IntegerProperty()
+      d = model.StringProperty()
+
+      def __eq__(self, other):
+        return self.b == other.b and self.c == other.c and self.d == other.d
+
+    class Foo(model.Model):
+      a = model.StructuredProperty(A, repeated=True)
+
+      def __eq__(self, other):
+        return (len(self.a) == len(other.a)
+                and all(a == b for a, b in zip(self.a, other.a)))
+
+    orig = Foo(a=[A(b=None,
+                    c=1,
+                    d='a'),
+                  A(b=None,
+                    c=2,
+                    d='b'),
+                  A(b=B(e='ce'),
+                    c=3,
+                    d='c')])
+    pb = orig._to_pb()
+    copy = Foo._from_pb(pb)
+    self.assertEqual(orig, copy)
+    self.assertEqual(-1, copy._subentity_counter._absolute_counter())
+    self.assertEqual(3, copy._subentity_counter.get(['a', 'c']))
+    self.assertEqual(3, copy._subentity_counter.get(['a', 'd']))
+    self.assertEqual(-1, copy._subentity_counter._absolute_counter())
+    self.assertEqual(3, copy._subentity_counter.get(['a', 'b', 'e']))
+
+    # Only entity with repeated StructuredProperty should have counter
+    self.assertFalse(hasattr(copy.a[2], '_subentity_counter'))
+    self.assertFalse(hasattr(copy.a[2].b, '_subentity_counter'))
+
+  def testRepeatedNestedStructuredPropertyWithEmptyModelsMiddle(self):
+    class B(model.Model):
+      e = model.StringProperty()
+
+      def __eq__(self, other):
+        return self.e == other.e
+
+    class A(model.Model):
+      b = model.StructuredProperty(B)
+      c = model.IntegerProperty()
+      d = model.StringProperty()
+
+      def __eq__(self, other):
+        return self.b == other.b and self.c == other.c and self.d == other.d
+
+    class Foo(model.Model):
+      a = model.StructuredProperty(A, repeated=True)
+
+      def __eq__(self, other):
+        return (len(self.a) == len(other.a)
+                and all(a == b for a,b in zip(self.a, other.a)))
+
+    orig = Foo(a=[A(b=None,
+                    c=1,
+                    d='a'),
+                  A(b=B(e='ce'),
+                    c=2,
+                    d='b'),
+                  A(b=None,
+                    c=3,
+                    d='c')])
+    pb = orig._to_pb()
+    copy = Foo._from_pb(pb)
+    self.assertEqual(orig, copy)
+    self.assertEqual(-1, copy._subentity_counter._absolute_counter())
+    self.assertEqual(3, copy._subentity_counter.get(['a', 'c']))
+    self.assertEqual(3, copy._subentity_counter.get(['a', 'd']))
+    self.assertEqual(-1, copy._subentity_counter._absolute_counter())
+    self.assertEqual(3, copy._subentity_counter.get(['a', 'b', 'e']))
+
+    # Only entity with repeated StructuredProperty should have counter
+    self.assertFalse(hasattr(copy.a[1], '_subentity_counter'))
+    self.assertFalse(hasattr(copy.a[1].b, '_subentity_counter'))
+
+  def testSubPropertyWithGrowingNones(self):
+    class B(model.Model):
+      c = model.IntegerProperty()
+
+      def __eq__(self, other):
+        return self.c == other.c
+
+    class A(model.Model):
+      b1 = model.StructuredProperty(B)
+      b2 = model.StructuredProperty(B)
+
+      def __eq__(self, other):
+        return self.b1 == other.b1 and self.b2 == other.b2
+
+    class Foo(model.Model):
+      # top-level model
+      a = model.StructuredProperty(A, repeated=True)
+
+      def __eq__(self, other):
+        return (len(self.a) == len(other.a)
+                and all(a == b for a, b in zip(self.a, other.a)))
+
+    orig = Foo(a=[A(b1=B(c=1),
+                    b2=B(c=2)),
+                  A(b1=B(c=3),
+                    b2=None),
+                  A(b1=None,
+                    b2=None)])
+    self.assertEqual(3, len(orig.a))
+    copy = Foo._from_pb(orig._to_pb())
+    self.assertEqual(3, len(copy.a))
+    self.assertEqual(orig, copy)
 
   def testRecursiveStructuredProperty(self):
     class Node(model.Model):

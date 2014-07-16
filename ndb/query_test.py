@@ -969,6 +969,38 @@ class QueryTests(test_utils.NDBTest):
     self.assertEqual(cursors[3], cursors[4])
     # TODO: Assert that only one RPC call was made.
 
+  def testCursorsDelete(self):
+    """Tests that deleting an entity doesn't affect cursor positioning."""
+    class DeletedEntity(model.Model):
+      name = model.StringProperty()
+    entities = [DeletedEntity(name='A'),
+                DeletedEntity(name='B'),
+                DeletedEntity(name='C')]
+    model.put_multi(entities)
+    q = DeletedEntity.query().order(DeletedEntity.name)
+    it = q.iter(limit=2, produce_cursors=True)
+    self.assertEqual('A', it.next().name)
+    entities[0].key.delete()
+    # Grab cursor after deleting first entity. This should point before second.
+    cursor = it.cursor_after()
+    it = q.iter(start_cursor=cursor, produce_cursors=True)
+    self.assertEqual('B', it.next().name)
+
+  def testSkippedResultCursor(self):
+    class SkippedEntity(model.Model):
+      name = model.StringProperty()
+    entities = [SkippedEntity(name='A'),
+                SkippedEntity(name='B'),
+                SkippedEntity(name='C')]
+    model.put_multi(entities)
+    q = SkippedEntity.query().order(SkippedEntity.name)
+    it = q.iter(offset=2, produce_cursors=True)
+    self.assertEqual('C', it.next().name)
+    cursor = it.cursor_before()
+    # Run the query at the iterator returned before the first result
+    it = q.iter(start_cursor=cursor, produce_cursors=True)
+    self.assertEqual('C', it.next().name)
+
   def create_index(self):
     ci = datastore_stub_util.datastore_pb.CompositeIndex()
     ci.set_app_id(os.environ['APPLICATION_ID'])

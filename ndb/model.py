@@ -395,37 +395,50 @@ class _NestedCounter(object):
   overwritten.
 
   Consider an evaluation of the following structure:
-  -A
-    -B
-      -D
-      -E
-    -C
-  With the properties being deserialized in the order:
+    class B(model.Model):
+      c = model.IntegerProperty()
+      d = model.IntegerProperty()
 
-  1) a.b.d = z
-  2) a.c = y
-  3) a.b = None
-  4) a = None
-  5) a.b.e = x
-  6) a.b.d = w
+    class A(model.Model):
+      b = model.StructuredProperty(B)
+
+    class Foo(model.Model):
+      # top-level model
+      a = model.StructuredProperty(A, repeated=True)
+
+    Foo(a=[A(b=None),
+           A(b=B(c=1)),
+           A(b=None),
+           A(b=B(c=2, d=3))])
+
+  This will result in a serialized structure:
+
+  1) a.b   = None
+  2) a.b.c = 1
+  3) a.b.d = None
+  4) a.b   = None
+  5) a.b.c = 2
+  6) a.b.d = 3
 
   The counter state should be the following:
-     a | a.b | a.b.d | a.b.e | a.c
-  0) 0    0      0       0      0
-  1) 1    1      1       0      0
-  2)@1   @1      1       0      1
-  3)@1*  @1*     1       0      1
-  4)@1*  @1*     1       0      1
-  5)@1*  @1*     1       1      1
-  6)@3   @3      3       1      1
+     a | a.b | a.b.c | a.b.d
+  0) -    -      -       -
+  1) @1   1      -       -
+  2) @2   @2     2       -
+  3) @2   @2     2       2
+  4) @3   @3     3       3
+  5) @4   @4     4       3
+  6) @4   @4     4       4
 
   Here, @ indicates that this counter value is actually a calculated value.
   It is equal to the MAX of its sub-counters.
 
-  Note that in the * cases, our counters actually fall behind. We cannot
-  increase the counters when this happens because child properties have
-  not yet been fully populated. In theses cases, we'll have to do a series
-  of increments to catch up the counters following None deserializations.
+  Counter values may get incremented multiple times while deserializing a
+  property. This will happen if a child counter falls behind,
+  for example in steps 2 and 3.
+
+  During an increment of a parent node, all child nodes values are incremented
+  to match that of the parent, for example in step 4.
   """
 
   def __init__(self):
@@ -444,9 +457,20 @@ class _NestedCounter(object):
       self.__make_parent_node()
       return self.__sub_counters[parts[0]].increment(parts[1:])
     if self.__is_parent_node():
-      return -1
+      # Move all children forward
+      value = self.get() + 1
+      self._set(value)
+      return value
     self.__counter += 1
     return self.__counter
+
+  def _set(self, value):
+    """Updates all descendants to a specified value."""
+    if self.__is_parent_node():
+      for child in self.__sub_counters.itervalues():
+        child._set(value)
+    else:
+      self.__counter = value
 
   def _absolute_counter(self):
     # Used only for testing.
@@ -634,11 +658,7 @@ class ModelAdapter(datastore_rpc.AbstractAdapter):
     if pb.key().path().element_size():
       key = Key(reference=pb.key())
       kind = key.kind()
-    modelclass = Model._kind_map.get(kind, self.default_model)
-    if modelclass is None:
-      raise KindError(
-        "No model class found for kind '%s'. Did you forget to import it?" %
-        kind)
+    modelclass = Model._lookup_model(kind, self.default_model)
     entity = modelclass._from_pb(pb, key=key, set_key=False)
     if self.want_pbs:
       entity._orig_pb = pb
@@ -2378,7 +2398,7 @@ class StructuredProperty(_StructuredGetForDictMixin):
     if self._has_value(entity):
       # If an entire subentity has been set to None, we have to loop
       # to advance until we find the next partial entity.
-      while next_index < self._get_value_size(entity):
+      while (next_index < self._get_value_size(entity)):
         subentity = self._get_base_value_at_index(entity, next_index)
         if not isinstance(subentity, self._modelclass):
           raise TypeError('sub-entities must be instances '
@@ -2985,6 +3005,26 @@ class Model(_NotEqualMixin):
         keep[name] = value
     cls._kind_map.clear()
     cls._kind_map.update(keep)
+
+  @classmethod
+  def _lookup_model(cls, kind, default_model=None):
+    """Get the model class for the kind.
+
+    Args:
+      kind: A string representing the name of the kind to lookup.
+      default_model: The model class to use if the kind can't be found.
+
+    Returns:
+      The model class for the requested kind.
+    Raises:
+      KindError: The kind was not found and no default_model was provided.
+    """
+    modelclass = cls._kind_map.get(kind, default_model)
+    if modelclass is None:
+      raise KindError(
+          "No model class found for kind '%s'. Did you forget to import it?" %
+          kind)
+    return modelclass
 
   def _has_complete_key(self):
     """Return whether this entity has a complete key."""

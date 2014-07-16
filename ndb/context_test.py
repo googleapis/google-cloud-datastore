@@ -450,6 +450,35 @@ class ContextTests(test_utils.NDBTest):
          })
     foo().check_success()
 
+  def testContext_MemcacheMissingKind(self):
+    ctx = context.Context(
+        conn=model.make_connection(default_model=None),
+        auto_batcher_class=MyAutoBatcher)
+    ctx.set_memcache_policy(False)
+    ctx.set_cache_policy(False)
+
+    class Foo(model.Model):
+      foo = model.IntegerProperty()
+      bar = model.StringProperty()
+
+    key1 = model.Key(flat=('Foo', 1))
+    ent1 = Foo(key=key1, foo=42, bar='hello')
+    ctx.put(ent1).get_result()
+    ctx.set_memcache_policy(True)
+    ctx.get(key1).get_result() # Pull entity into memcache
+
+    model.Model._reset_kind_map()
+    self.assertRaises(model.KindError, ctx.get(key1).get_result)
+
+    ctx = context.Context(
+        conn=model.make_connection(default_model=Foo),
+        auto_batcher_class=MyAutoBatcher)
+    ctx.set_memcache_policy(True)
+    ctx.set_cache_policy(False)
+
+    ent1_res = ctx.get(key1).get_result()
+    self.assertEqual(ent1, ent1_res)
+
   def testContext_MemcachePolicy(self):
     badkeys = []
     def tracking_add_async(*args, **kwds):
