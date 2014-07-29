@@ -69,6 +69,7 @@ Adams.prototype.authorize = function() {
         }
         this.connect();
       }).bind(this));
+      return;
     }
     this.connect();
   }).bind(this));
