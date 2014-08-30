@@ -14,31 +14,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-var googleapis = require('googleapis'),
-    authclient = new googleapis.OAuth2Client(),
-    datasetId = 'gcd-codelab',
-    compute = new googleapis.auth.Compute(),
-    datastore = null,
-    todoListName = null;
+var googleapis = require('googleapis');
+var authclient = new googleapis.auth.OAuth2();
+var datasetId = 'gcd-codelab';
+var compute = new googleapis.auth.Compute();
+var todoListName = process.argv[2];
+var datastore = googleapis.datastore({ version: 'v1', auth: compute });
+var cmd = process.argv[3];
 
 var usage = 'usage todo.js <todolist> <add|get|del|edit|ls|archive> [todo-title|todo-id]';
+
 compute.authorize(function(err, result) {
   console.assert(!err, err);
-  googleapis.discover('datastore', 'v1beta1')
-    .withAuthClient(compute)
-    .execute(function(err, client) {
-      datastore = client.datastore.datasets;
-      todoListName = process.argv[2];
-      var cmd = process.argv[3];
-      console.assert(todoListName && cmd && commands[cmd], usage);
-      commands[cmd].apply(commands, process.argv.slice(4))
-    });
+  console.assert(todoListName && cmd && commands[cmd], usage);
+  commands[cmd].apply(commands, process.argv.slice(4));
 });
 
 var commands = {
   // level 0
   add: function(title) {
-    datastore.blindWrite({
+    datastore.datasets.blindWrite({
       datasetId: datasetId,
       mutation: {
         insertAutoId: [{
@@ -52,25 +47,25 @@ var commands = {
           }
         }]
       }
-    }).execute(function(err, result) {
+    }, function(err, result) {
       console.assert(!err, err);
       var key = result.mutationResult.insertAutoIdKeys[0];
       console.log('%d: TODO %s', key.path[1].id, title);
-    });    
+    });
   },
   get: function(id, callback) {
-    datastore.lookup({
+    datastore.datasets.lookup({
       datasetId: datasetId,
       keys: [{
         path: [{ kind: 'TodoList', name: todoListName},
                { kind: 'Todo', id: id }]
       }]
-    }).execute(function(err, result) {
+    }, function(err, result) {
       console.assert(!err, err);
       console.assert(!result.missing, 'todo %d: not found', id);
       var entity = result.found[0].entity;
       var title = entity.properties.title.values[0].stringValue;
-      var completed = entity.properties.completed.values[0].booleanValue == true;
+      var completed = entity.properties.completed.values[0].booleanValue === true;
       if (callback) {
         callback(err, id, title, completed);
       } else {
@@ -80,15 +75,15 @@ var commands = {
   },
   // level 1
   del: function(id) {
-    datastore.blindWrite({
+    datastore.datasets.blindWrite({
       datasetId: datasetId,
       mutation: {
         delete: [{
           path: [{ kind: 'TodoList', name: todoListName },
                  { kind: 'Todo', id: id }]
         }]
-      }   
-    }).execute(function(err, result) {
+      }
+    }, function(err, result) {
       console.assert(!err, err);
       console.log('%d: DEL', id);
     });
@@ -96,7 +91,7 @@ var commands = {
   // level 2
   edit: function(id, title, completed) {
     completed = completed === 'true';
-    datastore.blindWrite({
+    datastore.datasets.blindWrite({
       datasetId: datasetId,
       mutation: {
         update: [{
@@ -110,13 +105,13 @@ var commands = {
           }
         }]
       }
-    }).execute(function(err, result) {
+    }, function(err, result) {
       console.assert(!err, err);
       console.log('%d: %s %s', id, completed && 'DONE' || 'TODO', title);
     });
   },
   ls: function() {
-    datastore.runQuery({
+    datastore.datasets.runQuery({
       datasetId: datasetId,
       query: {
         kinds: [{ name: 'Todo' }],
@@ -132,26 +127,25 @@ var commands = {
           }
         }
       }
-    }).execute(function(err, result) {
+    }, function(err, result) {
       var entityResults = result.batch.entityResults || [];
       entityResults.forEach(function(entityResult) {
         var entity = entityResult.entity;
         var id = entity.key.path[1].id;
         var properties = entity.properties;
         var title = properties.title.values[0].stringValue;
-        var completed = properties.completed.values[0].booleanValue == true;
+        var completed = properties.completed.values[0].booleanValue === true;
         console.log('%d: %s %s', id, completed && 'DONE' || 'TODO', title);
       });
-
     });
   },
   // level 3
   archive: function() {
-    datastore.beginTransaction({
+    datastore.datasets.beginTransaction({
       datasetId: datasetId
-    }).execute(function(err, result) {
+    }, function(err, result) {
       var tx = result.transaction;
-      datastore.runQuery({
+      datastore.datasets.runQuery({
         datasetId: datasetId,
         readOptions: { transaction: tx },
         query: {
@@ -177,17 +171,19 @@ var commands = {
             }
           }
         }
-      }).execute(function(err, result) {
+      }, function(err, result) {
         var keys = [];
         var entityResults = result.batch.entityResults || [];
+
         entityResults.forEach(function(entityResult) {
           keys.push(entityResult.entity.key);
         });
-        datastore.commit({
+
+        datastore.datasets.commit({
           datasetId: datasetId,
           transaction: tx,
           mutation: { delete: keys }
-        }).execute(function(err, result) {
+        }, function(err, result) {
           console.assert(!err, err);
           keys.forEach(function(key) {
             console.log('%d: DEL', key.path[1].id);

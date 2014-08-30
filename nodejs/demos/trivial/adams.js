@@ -19,10 +19,10 @@ var util = require('util');
 var events = require('events');
 var readline = require('readline');
 var googleapis = require('googleapis');
+var datastore = googleapis.datastore('v1');
 
 var SCOPES = ['https://www.googleapis.com/auth/userinfo.email',
               'https://www.googleapis.com/auth/datastore'];
-
 
 /**
  * Adams is a simple command line application using the Datastore API.
@@ -58,8 +58,8 @@ Adams.prototype.authorize = function() {
       var errors = {'compute auth error': computeErr};
       // Then, fallback on JWT credentials.
       this.credentials = new googleapis.auth.JWT(
-          process.env['DATASTORE_SERVICE_ACCOUNT'],
-          process.env['DATASTORE_PRIVATE_KEY_FILE'],
+          process.env.DATASTORE_SERVICE_ACCOUNT,
+          process.env.DATASTORE_PRIVATE_KEY_FILE,
           SCOPES);
       this.credentials.authorize((function(jwtErr) {
         if (jwtErr) {
@@ -81,19 +81,8 @@ Adams.prototype.authorize = function() {
  */
 Adams.prototype.connect = function() {
   // Build the API bindings for the current version.
-  googleapis.discover('datastore', 'v1beta2')
-      .withAuthClient(this.credentials)
-      .execute((function(err, client) {
-        if (err) {
-          this.emit('error', {'connection error': err});
-          return;
-        }
-        // Bind the datastore client to datasetId and get the datasets
-        // resource.
-        this.datastore = client.datastore.withDefaultParams({
-          datasetId: this.datasetId}).datasets;
-        this.beginTransaction();
-      }).bind(this));
+
+  this.beginTransaction();
 };
 
 
@@ -101,10 +90,11 @@ Adams.prototype.connect = function() {
  * Start a new transaction.
  */
 Adams.prototype.beginTransaction = function() {
-  this.datastore.beginTransaction({
+  datastore.datasets.beginTransaction({
+    datasetId: this.datasetId
     // Execute the RPC asynchronously, and call back with either an
     // error or the RPC result.
-  }).execute((function(err, result) {
+  }, (function(err, result) {
     if (err) {
       this.emit('error', {'rpc error': err});
       return;
@@ -120,7 +110,8 @@ Adams.prototype.beginTransaction = function() {
  */
 Adams.prototype.lookup = function() {
   // Get entities by key.
-  this.datastore.lookup({
+  datastore.datasets.lookup({
+    datasetId: this.datasetId,
     readOptions: {
       // Set the transaction, so we get a consistent snapshot of the
       // value at the time the transaction started.
@@ -129,7 +120,7 @@ Adams.prototype.lookup = function() {
     // Add one entity key to the lookup request, with only one
     // `path` element (i.e. no parent).
     keys: [{ path: [{ kind: 'Trivia', name: 'hgtg' }] }]
-  }).execute((function(err, result) {
+  }, (function(err, result) {
     if (err) {
       this.emit('error', {'rpc error': err});
       return;
@@ -169,9 +160,10 @@ Adams.prototype.commit = function() {
   }
   // Commit the transaction and the insert mutation if the entity was not found.
   this.datastore.commit({
+    datasetId: this.datasetId,
     transaction: this.transaction,
     mutation: mutation
-  }).execute((function(err, result) {
+  }, (function(err, result) {
     if (err) {
       this.emit('error', err);
       return;
