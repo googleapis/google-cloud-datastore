@@ -16,11 +16,12 @@
 //
 var googleapis = require('googleapis');
 var authclient = new googleapis.auth.OAuth2();
-var datasetId = 'gcd-codelab';
 var compute = new googleapis.auth.Compute();
+var datastore = googleapis.datastore({ version: 'v1beta2', auth: compute });
+
 var todoListName = process.argv[2];
-var datastore = googleapis.datastore({ version: 'v1', auth: compute });
 var cmd = process.argv[3];
+var datasetId = 'gcd-codelab';
 
 var usage = 'usage todo.js <todolist> <add|get|del|edit|ls|archive> [todo-title|todo-id]';
 

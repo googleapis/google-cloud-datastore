@@ -19,7 +19,7 @@ var util = require('util');
 var events = require('events');
 var readline = require('readline');
 var googleapis = require('googleapis');
-var datastore = googleapis.datastore('v1');
+var datastore = googleapis.datastore('v1beta2');
 
 var SCOPES = ['https://www.googleapis.com/auth/userinfo.email',
               'https://www.googleapis.com/auth/datastore'];
