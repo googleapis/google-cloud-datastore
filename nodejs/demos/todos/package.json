@@ -1,0 +1,11 @@
+{
+  "name": "google-cloud-datastore-todos",
+  "version": "0.0.0",
+  "private": true,
+  "bin": {
+    "datastore-todos": "cli.js"
+  },
+  "dependencies": {
+    "gcloud": ">=0.6.0"
+  }
+}
