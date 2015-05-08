@@ -17,6 +17,7 @@
 
 import calendar
 import datetime
+import json
 import logging
 import os
 
@@ -78,6 +79,8 @@ def get_credentials_from_env():
         and os.getenv('DATASTORE_PRIVATE_KEY_FILE')):
       with open(os.getenv('DATASTORE_PRIVATE_KEY_FILE'), 'rb') as f:
         key = f.read()
+      if os.getenv("DATASTORE_PRIVATE_KEY_FILE").endswith(".json"):
+        key = json.loads(key)["private_key"]
       credentials = client.SignedJwtAssertionCredentials(
           os.getenv('DATASTORE_SERVICE_ACCOUNT'), key, connection.SCOPE)
       logging.info('connect using DatastoreSignedJwtCredentials')
