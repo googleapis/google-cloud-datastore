@@ -770,7 +770,6 @@ class SerialQueueFuture(Future):
   """
 
   def __init__(self, info=None):
-    self._full = False
     self._queue = collections.deque()
     self._waiting = collections.deque()
     super(SerialQueueFuture, self).__init__(info=info)
@@ -778,17 +777,15 @@ class SerialQueueFuture(Future):
   # TODO: __repr__
 
   def complete(self):
-    if self._full:
-      raise RuntimeError('SerialQueueFuture cannot complete twice.')
-    self._full = True
     while self._waiting:
       waiter = self._waiting.popleft()
       waiter.set_exception(EOFError('Queue is empty'))
-    if not self._queue:
-      self.set_result(None)
+    # When the writer is complete the future will also complete. If there are
+    # still pending queued futures, these futures are themselves in the pending
+    # list, so they will eventually be executed.
+    self.set_result(None)
 
   def set_exception(self, exc, tb=None):
-    self._full = True
     super(SerialQueueFuture, self).set_exception(exc, tb)
     while self._waiting:
       waiter = self._waiting.popleft()
@@ -809,7 +806,7 @@ class SerialQueueFuture(Future):
   def add_dependent(self, fut):
     if not isinstance(fut, Future):
       raise TypeError('fut must be a Future instance; received %r' % fut)
-    if self._full:
+    if self._done:
       raise RuntimeError('SerialQueueFuture cannot add dependent '
                          'once complete.')
     if self._waiting:
@@ -821,14 +818,9 @@ class SerialQueueFuture(Future):
   def getq(self):
     if self._queue:
       fut = self._queue.popleft()
-      # TODO: Isn't it better to call self.set_result(None) in complete()?
-      if not self._queue and self._full and not self._done:
-        self.set_result(None)
     else:
       fut = Future()
-      if self._full:
-        if not self._done:
-          raise RuntimeError('self._queue should be non-empty.')
+      if self._done:
         err = self.get_exception()
         if err is not None:
           tb = self.get_traceback()

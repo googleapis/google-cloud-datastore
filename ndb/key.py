@@ -209,10 +209,10 @@ class Key(object):
     # Either one fully specifies a key; if both are set they must be
     # consistent with each other.
     if 'reference' in kwargs or 'serialized' in kwargs or 'urlsafe' in kwargs:
-      self.__reference = _ConstructReference(cls, **kwargs)
-      self.__pairs = None
-      self.__app = None
-      self.__namespace = None
+      (self.__reference,
+       self.__pairs,
+       self.__app,
+       self.__namespace) = self._parse_from_ref(cls, **kwargs)
     elif 'pairs' in kwargs or 'flat' in kwargs:
       self.__reference = None
       (self.__pairs,
@@ -285,6 +285,58 @@ class Key(object):
       namespace = _DefaultNamespace()
     return tuple(pairs), app, namespace
 
+  @staticmethod
+  def _parse_from_ref(cls, pairs=None, flat=None,
+                      reference=None, serialized=None, urlsafe=None,
+                      app=None, namespace=None, parent=None):
+    """Construct a Reference; the signature is the same as for Key."""
+    if cls is not Key:
+      raise TypeError('Cannot construct Key reference on non-Key class; '
+                      'received %r' % cls)
+    if (bool(pairs) + bool(flat) + bool(reference) + bool(serialized) +
+        bool(urlsafe) + bool(parent)) != 1:
+      raise TypeError('Cannot construct Key reference from incompatible '
+                      'keyword arguments.')
+    if urlsafe:
+      serialized = _DecodeUrlSafe(urlsafe)
+    if serialized:
+      reference = _ReferenceFromSerialized(serialized)
+    if reference:
+      reference = _ReferenceFromReference(reference)
+    pairs = []
+    elem = None
+    path = reference.path()
+    for elem in path.element_list():
+      kind = elem.type()
+      if elem.has_id():
+        id_or_name = elem.id()
+      else:
+        id_or_name = elem.name()
+      if not id_or_name:
+        id_or_name = None
+      tup = (kind, id_or_name)
+      pairs.append(tup)
+    if elem is None:
+      raise RuntimeError('Key reference has no path or elements (%r, %r, %r).'
+                         % (urlsafe, serialized, str(reference)))
+    # TODO: ensure that each element has a type and either an id or a name
+    # You needn't specify app= or namespace= together with reference=,
+    # serialized= or urlsafe=, but if you do, their values must match
+    # what is already in the reference.
+    ref_app = reference.app()
+    if app is not None:
+      if app != ref_app:
+        raise RuntimeError('Key reference constructed uses a different app %r '
+                           'than the one specified %r' %
+                           (ref_app, app))
+    ref_namespace = reference.name_space()
+    if namespace is not None:
+      if namespace != ref_namespace:
+        raise RuntimeError('Key reference constructed uses a different '
+                           'namespace %r than the one specified %r' %
+                           (ref_namespace, namespace))
+    return (reference, tuple(pairs), ref_app, ref_namespace)
+
   def __repr__(self):
     """String representation, used by str() and repr().
 
@@ -324,9 +376,9 @@ class Key(object):
     # compare pairs(), and we're performance-conscious here.
     if not isinstance(other, Key):
       return NotImplemented
-    return (tuple(self.pairs()) == tuple(other.pairs()) and
-            self.app() == other.app() and
-            self.namespace() == other.namespace())
+    return (self.__pairs == other.__pairs and
+            self.__app == other.__app and
+            self.__namespace == other.__namespace)
 
   def __ne__(self, other):
     """The opposite of __eq__."""
@@ -336,7 +388,7 @@ class Key(object):
 
   def __tuple(self):
     """Helper to return an orderable tuple."""
-    return (self.app(), self.namespace(), self.pairs())
+    return (self.__app, self.__namespace, self.__pairs)
 
   def __lt__(self, other):
     """Less than ordering."""
@@ -364,9 +416,11 @@ class Key(object):
 
   def __getstate__(self):
     """Private API used for pickling."""
-    return ({'pairs': list(self.pairs()),
-             'app': self.app(),
-             'namespace': self.namespace()},)
+    # If any changes are made to this function pickle compatibility tests should
+    # be updated.
+    return ({'pairs': self.__pairs,
+             'app': self.__app,
+             'namespace': self.__namespace},)
 
   def __setstate__(self, state):
     """Private API used for pickling."""
@@ -378,43 +432,39 @@ class Key(object):
       raise TypeError('Key accepts a dict of keyword arguments as state; '
                       'received %r' % kwargs)
     self.__reference = None
-    self.__pairs = kwargs['pairs']
+    self.__pairs = tuple(kwargs['pairs'])
     self.__app = kwargs['app']
     self.__namespace = kwargs['namespace']
 
   def __getnewargs__(self):
     """Private API used for pickling."""
-    return ({'pairs': tuple(self.pairs()),
-             'app': self.app(),
-             'namespace': self.namespace()},)
+    return ({'pairs': self.__pairs,
+             'app': self.__app,
+             'namespace': self.__namespace},)
 
   def parent(self):
     """Return a Key constructed from all but the last (kind, id) pairs.
 
     If there is only one (kind, id) pair, return None.
     """
-    pairs = self.pairs()
+    pairs = self.__pairs
     if len(pairs) <= 1:
       return None
-    return Key(pairs=pairs[:-1], app=self.app(), namespace=self.namespace())
+    return Key(pairs=pairs[:-1], app=self.__app, namespace=self.__namespace)
 
   def root(self):
     """Return the root key.  This is either self or the highest parent."""
-    pairs = self.pairs()
+    pairs = self.__pairs
     if len(pairs) <= 1:
       return self
-    return Key(pairs=pairs[:1], app=self.app(), namespace=self.namespace())
+    return Key(pairs=pairs[:1], app=self.__app, namespace=self.__namespace)
 
   def namespace(self):
     """Return the namespace."""
-    if self.__namespace is None:
-      self.__namespace = self.__reference.name_space()
     return self.__namespace
 
   def app(self):
     """Return the application id."""
-    if self.__app is None:
-      self.__app = self.__reference.app()
     return self.__app
 
   def id(self):
@@ -423,10 +473,7 @@ class Key(object):
     Returns:
       A string or integer id, or None if the key is incomplete.
     """
-    if self.__pairs:
-      return self.__pairs[-1][1]
-    elem = self.__reference.path().element(-1)
-    return elem.name() or elem.id() or None
+    return self.__pairs[-1][1]
 
   def string_id(self):
     """Return the string id in the last (kind, id) pair, if any.
@@ -434,13 +481,10 @@ class Key(object):
     Returns:
       A string id, or None if the key has an integer id or is incomplete.
     """
-    if self.__reference is None:
-      id = self.id()
-      if not isinstance(id, basestring):
-        id = None
-      return id
-    elem = self.__reference.path().element(-1)
-    return elem.name() or None
+    id = self.id()
+    if not isinstance(id, basestring):
+      id = None
+    return id
 
   def integer_id(self):
     """Return the integer id in the last (kind, id) pair, if any.
@@ -448,36 +492,19 @@ class Key(object):
     Returns:
       An integer id, or None if the key has a string id or is incomplete.
     """
-    if self.__reference is None:
-      id = self.id()
-      if not isinstance(id, (int, long)):
-        id = None
-      return id
-    elem = self.__reference.path().element(-1)
-    return elem.id() or None
+    id = self.id()
+    if not isinstance(id, (int, long)):
+      id = None
+    return id
 
   def pairs(self):
     """Return a tuple of (kind, id) pairs."""
-    pairs = self.__pairs
-    if pairs is None:
-      pairs = []
-      for elem in self.__reference.path().element_list():
-        kind = elem.type()
-        if elem.has_id():
-          id_or_name = elem.id()
-        else:
-          id_or_name = elem.name()
-        if not id_or_name:
-          id_or_name = None
-        tup = (kind, id_or_name)
-        pairs.append(tup)
-      self.__pairs = pairs = tuple(pairs)
-    return pairs
+    return self.__pairs
 
   def flat(self):
     """Return a tuple of alternating kind and id values."""
     flat = []
-    for kind, id in self.pairs():
+    for kind, id in self.__pairs:
       flat.append(kind)
       flat.append(id)
     return tuple(flat)
@@ -487,9 +514,7 @@ class Key(object):
 
     This is the kind from the last (kind, id) pair.
     """
-    if self.__pairs:
-      return self.__pairs[-1][0]
-    return self.__reference.path().element(-1).type()
+    return self.__pairs[-1][0]
 
   def reference(self):
     """Return the Reference object for this Key.
@@ -650,15 +675,17 @@ def _ConstructReference(cls, pairs=None, flat=None,
     # serialized= or urlsafe=, but if you do, their values must match
     # what is already in the reference.
     if app is not None:
-      if app != reference.app():
+      ref_app = reference.app()
+      if app != ref_app:
         raise RuntimeError('Key reference constructed uses a different app %r '
                            'than the one specified %r' %
-                           (reference.app(), app))
+                           (ref_app, app))
     if namespace is not None:
-      if namespace != reference.name_space():
+      ref_namespace = reference.name_space()
+      if namespace != ref_namespace:
         raise RuntimeError('Key reference constructed uses a different '
                            'namespace %r than the one specified %r' %
-                           (reference.name_space(), namespace))
+                           (ref_namespace, namespace))
   return reference
 
 
@@ -728,7 +755,6 @@ def _ReferenceFromPairs(pairs, reference=None, app=None, namespace=None):
                          (_MAX_KEYPART_BYTES, idorname))
       elem.set_name(idorname)
     elif idorname is None:
-      elem.set_id(0)
       last = True
     elif issubclass(t, (int, long)):
       if not (1 <= idorname < _MAX_LONG):

@@ -25,6 +25,7 @@ if normal_environment:
   from google.appengine.api import urlfetch
   from google.appengine.api import users
   from google.appengine.api.prospective_search import prospective_search_pb
+  from google.appengine.datastore import datastore_pbs
   from google.appengine.datastore import datastore_query
   from google.appengine.datastore import datastore_rpc
   # This line will fail miserably for any app using auto_import_fixer
@@ -48,6 +49,7 @@ else:
   from google3.apphosting.api import taskqueue
   from google3.apphosting.api import urlfetch
   from google3.apphosting.api import users
+  from google3.apphosting.datastore import datastore_pbs
   from google3.apphosting.datastore import datastore_query
   from google3.apphosting.datastore import datastore_rpc
   from google3.storage.onestore.v3 import entity_pb

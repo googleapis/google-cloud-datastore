@@ -7,6 +7,9 @@ and other environment variables.
 
 import logging
 
+from .google_imports import datastore
+from .google_imports import datastore_pbs
+from .google_imports import datastore_rpc
 from .google_test_imports import datastore_stub_util
 from .google_test_imports import testbed
 from .google_test_imports import unittest
@@ -14,7 +17,6 @@ from .google_test_imports import unittest
 from . import model
 from . import tasklets
 from . import eventloop
-
 
 class NDBTest(unittest.TestCase):
   """Base class for tests that interact with API stubs or create Models.
@@ -25,7 +27,7 @@ class NDBTest(unittest.TestCase):
   calling this classes setUp method.
   """
 
-  APP_ID = '_'
+  APP_ID = 'ndb-test-app-id'
 
   def setUp(self):
     """Set up test framework.
@@ -50,7 +52,8 @@ class NDBTest(unittest.TestCase):
 
   def HRTest(self):
     ds_stub = self.testbed.get_stub('datastore_v3')
-    hrd_policy = datastore_stub_util.BaseHighReplicationConsistencyPolicy()
+    hrd_policy = datastore_stub_util.PseudoRandomHRConsistencyPolicy(
+        probability=1)
     ds_stub.SetConsistencyPolicy(hrd_policy)
 
   def ExpectErrors(self):
@@ -117,3 +120,21 @@ class NDBTest(unittest.TestCase):
     self.assertFalse(unlisted,
                      '%s defines some names that are not in __all__: %s' %
                      (modname, unlisted))
+
+
+class NDBCloudDatastoreV1Test(NDBTest):
+  """NDB test base that uses a datastore V1 connection."""
+
+  def setUp(self):
+    super(NDBCloudDatastoreV1Test, self).setUp()
+
+  def SetupContextCache(self):
+    """Set up the context cache to use the V4 API."""
+    id_resolver = datastore_pbs.IdResolver([self.APP_ID])
+    self.conn = model.make_connection(
+        _api_version=datastore_rpc._CLOUD_DATASTORE_V1,
+        _id_resolver=id_resolver)
+    ctx = tasklets.make_context(conn=self.conn)
+    tasklets.set_context(ctx)
+    ctx.set_cache_policy(False)
+    ctx.set_memcache_policy(False)

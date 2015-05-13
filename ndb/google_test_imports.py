@@ -19,3 +19,5 @@ else:
   from google3.apphosting.datastore import datastore_stub_util
   from google3.apphosting.ext import testbed
   from google3.testing.pybase import googletest as unittest
+
+import unittest as real_unittest

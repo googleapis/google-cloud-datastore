@@ -4,9 +4,12 @@ import datetime
 import os
 
 from .google_imports import datastore_errors
+from .google_imports import datastore_pbs
+from .google_imports import datastore_rpc
 from .google_imports import namespace_manager
 from .google_imports import users
 from .google_test_imports import datastore_stub_util
+from .google_test_imports import real_unittest
 from .google_test_imports import unittest
 
 from . import model
@@ -15,11 +18,8 @@ from . import tasklets
 from . import test_utils
 
 
-class QueryTests(test_utils.NDBTest):
-
+class BaseQueryTestMixin(object):
   def setUp(self):
-    super(QueryTests, self).setUp()
-
     # Create class inside tests because kinds are cleared every test.
     global Foo
     class Foo(model.Model):
@@ -316,26 +316,6 @@ class QueryTests(test_utils.NDBTest):
     # Check that ancestor and namespace must match.
     self.assertRaises(TypeError, Foo.query, namespace='other', ancestor=key)
 
-  def testConstructorOptionsInteractions(self):
-    self.ExpectWarnings()
-    qry = Foo.query(projection=[Foo.name, Foo.rate])
-    # Keys only overrides projection.
-    qry.get(keys_only=True)
-    # Projection overrides original projection.
-    qry.get(projection=Foo.tags)
-    # Cannot override both.
-    self.assertRaises(datastore_errors.BadRequestError, qry.get,
-                      projection=Foo.tags, keys_only=True)
-
-    qry = Foo.query(projection=[Foo.name, Foo.rate], distinct=True)
-    # Cannot project something out side the group by.
-    self.assertRaises(datastore_errors.BadRequestError, qry.get,
-                      projection=Foo.tags)
-    # Can project a subset of the group by.
-    qry.get(projection=Foo.name)
-    # Keys only overrides projection but a projection is required for group_by.
-    self.assertRaises(datastore_errors.BadRequestError, qry.get, keys_only=True)
-
   def testIsDistinct(self):
     class Foo(model.Model):
       p = model.IntegerProperty('pp')  # Also check renaming.
@@ -492,8 +472,12 @@ class QueryTests(test_utils.NDBTest):
                        getattr(boo, prop._code_name))
       for otherprop in Foo._properties.itervalues():
         if otherprop is not prop:
-          self.assertRaises(model.UnprojectedPropertyError,
-                            getattr, ent, otherprop._code_name)
+          try:
+            getattr(ent, otherprop._code_name)
+            self.fail('Expected an UnprojectedPropertyError for property %s'
+                      ' when projecting %s.' % (otherprop, prop))
+          except model.UnprojectedPropertyError:
+            pass
 
   def testProjectionQuery_ComputedProperties(self):
     class Foo(model.Model):
@@ -969,6 +953,33 @@ class QueryTests(test_utils.NDBTest):
     self.assertEqual(cursors[3], cursors[4])
     # TODO: Assert that only one RPC call was made.
 
+  def testProbablyHasNext(self):
+    q = query.Query(kind='Foo')
+    probablies = []
+    it = q.iter(produce_cursors=True)
+    for _ in it:
+      probablies.append(it.probably_has_next())
+    self.assertEqual(probablies, [True, True, False])
+
+  def testProbablyHasNextMultipleBatches(self):
+    q = query.Query(kind='Foo')
+    probablies = []
+    it = q.iter(produce_cursors=True, batch_size=1)
+    for _ in it:
+      probablies.append(it.probably_has_next())
+    self.assertEqual(probablies, [True, True, False])
+
+  def testProbablyHasNextAndHasNextInteraction(self):
+    q = query.Query(kind='Foo')
+    mores = []
+    probablies = []
+    it = q.iter(produce_cursors=True)
+    for _ in it:
+      mores.append(it.has_next())
+      probablies.append(it.probably_has_next())
+    self.assertEqual(probablies, [True, True, False])
+    self.assertEqual(mores, [True, True, False])
+
   def testCursorsDelete(self):
     """Tests that deleting an entity doesn't affect cursor positioning."""
     class DeletedEntity(model.Model):
@@ -1000,95 +1011,6 @@ class QueryTests(test_utils.NDBTest):
     # Run the query at the iterator returned before the first result
     it = q.iter(start_cursor=cursor, produce_cursors=True)
     self.assertEqual('C', it.next().name)
-
-  def create_index(self):
-    ci = datastore_stub_util.datastore_pb.CompositeIndex()
-    ci.set_app_id(os.environ['APPLICATION_ID'])
-    ci.set_id(0)
-    ci.set_state(ci.WRITE_ONLY)
-    index = ci.mutable_definition()
-    index.set_ancestor(0)
-    index.set_entity_type('Foo')
-    property = index.add_property()
-    property.set_name('name')
-    property.set_direction(property.DESCENDING)
-    property = index.add_property()
-    property.set_name('tags')
-    property.set_direction(property.ASCENDING)
-    stub = self.testbed.get_stub('datastore_v3')
-    stub.CreateIndex(ci)
-
-  def testIndexListPremature(self):
-    # Before calling next() we don't have the information.
-    self.create_index()
-    q = Foo.query(Foo.name >= 'joe', Foo.tags == 'joe')
-    qi = q.iter()
-    self.assertEqual(qi.index_list(), None)
-
-  def testIndexListEmpty(self):
-    # A simple query requires no composite indexes.
-    q = Foo.query(Foo.name == 'joe', Foo.tags == 'joe')
-    qi = q.iter()
-    qi.next()
-    self.assertEqual(qi.index_list(), [])
-
-  def testIndexListNontrivial(self):
-    # Test a non-trivial query.
-    q = Foo.query(Foo.name >= 'joe', Foo.tags == 'joe')
-    qi = q.iter()
-    qi.next()
-    properties=[model.IndexProperty(name='tags', direction='asc'),
-                model.IndexProperty(name='name', direction='asc')]
-    self.assertEqual(qi.index_list(),
-                     [model.IndexState(
-                       definition=model.Index(kind='Foo',
-                                              properties=properties,
-                                              ancestor=False),
-                       state='serving',
-                       id=0)])
-
-  def testIndexListExhausted(self):
-    # Test that the information is preserved after the iterator is
-    # exhausted.
-    q = Foo.query(Foo.name >= 'joe', Foo.tags == 'joe')
-    qi = q.iter()
-    list(qi)
-    properties=[model.IndexProperty(name='tags', direction='asc'),
-                model.IndexProperty(name='name', direction='asc')]
-    self.assertEqual(qi.index_list(),
-                     [model.IndexState(
-                       definition=model.Index(kind='Foo',
-                                              properties=properties,
-                                              ancestor=False),
-                       state='serving',
-                       id=0)])
-
-  def testIndexListWithIndexAndOrder(self):
-    # Test a non-trivial query with sort order and an actual composite
-    # index present.
-    self.create_index()
-    q = Foo.query(Foo.name >= 'joe', Foo.tags == 'joe')
-    q = q.order(-Foo.name, Foo.tags)
-    qi = q.iter()
-    qi.next()
-    # TODO: This is a little odd, because that's not exactly the index
-    # we created...?
-    properties=[model.IndexProperty(name='tags', direction='asc'),
-                model.IndexProperty(name='name', direction='desc')]
-    self.assertEqual(qi.index_list(),
-                     [model.IndexState(
-                       definition=model.Index(kind='Foo',
-                                              properties=properties,
-                                              ancestor=False),
-                       state='serving',
-                       id=0)])
-
-  def testIndexListMultiQuery(self):
-    self.create_index()
-    q = Foo.query(query.OR(Foo.name == 'joe', Foo.name == 'jill'))
-    qi = q.iter()
-    qi.next()
-    self.assertEqual(qi.index_list(), None)
 
   def testCount(self):
     q = query.Query(kind='Foo').filter(Foo.tags == 'jill').order(Foo.name)
@@ -1131,6 +1053,18 @@ class QueryTests(test_utils.NDBTest):
     self.assertEqual(q.count(3), 2)
     self.assertEqual(q.count(2), 2)
     self.assertEqual(q.count(1), 1)
+
+  def testLargeCount(self):
+    class Bar(model.Model):
+      pass
+    for i in xrange(0, datastore_stub_util._MAX_QUERY_OFFSET + 10):
+      Bar(id=str(i)).put()
+    count = Bar.query().count(datastore_stub_util._MAX_QUERY_OFFSET + 20)
+    self.assertEqual(datastore_stub_util._MAX_QUERY_OFFSET + 10, count)
+
+    # Test count less than requested limit.
+    count = Bar.query().count(datastore_stub_util._MAX_QUERY_OFFSET + 5)
+    self.assertEqual(datastore_stub_util._MAX_QUERY_OFFSET + 5, count)
 
   def testFetchPage(self):
     # This test implicitly also tests fetch_page_async().
@@ -1279,6 +1213,26 @@ class QueryTests(test_utils.NDBTest):
     mq = query._MultiQuery([bq, baq])
     res = list(mq)
     self.assertEqual(res, [benji, ben])
+
+  def testNestedMultiQuery(self):
+    class Bar(model.Model):
+      a = model.StringProperty()
+      b = model.StringProperty()
+    class Rank(model.Model):
+      val = model.IntegerProperty()
+    class Foo(model.Model):
+      bar = model.StructuredProperty(Bar, repeated=True)
+      rank = model.StructuredProperty(Rank)
+
+    f1 = Foo(bar=[Bar(a='a1', b='b')], rank=Rank(val=1))
+    f2 = Foo(bar=[Bar(a='a2', b='e')], rank=Rank(val=2))
+    f1.put()
+    f2.put()
+
+    q = Foo.query(query.OR(Foo.bar == Bar(a='a1', b='b'),
+                           Foo.bar == Bar(a='a2', b='e')))
+    q = q.order(Foo.rank.val)
+    self.assertEqual([f1, f2], q.fetch())
 
   def testNotEqualOperator(self):
     q = query.Query(kind='Foo').filter(Foo.rate != 2)
@@ -1885,7 +1839,13 @@ class QueryTests(test_utils.NDBTest):
       self.assertEqual(res, [barney, willy])
       self.assertEqual(more, False)
 
-  def testHugeOffset(self):
+  def hugeOffsetTestHelper(self, fetch):
+    """ Helper function to test large offsets.
+
+    Args:
+      fetch: A function that takes in (query, offset) and returns a list with
+      one result.
+    """
     # See issue 210.  http://goo.gl/EDfHa
     # Vastly reduce _MAX_QUERY_OFFSET since otherwise the test spends
     # several seconds creating enough entities to reproduce the problem.
@@ -1898,18 +1858,185 @@ class QueryTests(test_utils.NDBTest):
       ms = [M(a=i, id='%04d' % i) for i in range(33)]
       ks = ndb.put_multi(ms)
       q = M.query().order(M.a)
-      xs = q.fetch(1, offset=9)
+      xs = fetch(q, 9)
       self.assertEqual(xs, ms[9:10])
-      xs = q.fetch(1, offset=10)
+      xs = fetch(q, 10)
       self.assertEqual(xs, ms[10:11])
-      xs = q.fetch(1, offset=11)
+      xs = fetch(q, 11)
       self.assertEqual(xs, ms[11:12])
-      xs = q.fetch(1, offset=21)
+      xs = fetch(q, 21)
       self.assertEqual(xs, ms[21:22])
-      xs = q.fetch(1, offset=31)
+      xs = fetch(q, 31)
       self.assertEqual(xs, ms[31:32])
     finally:
       datastore_stub_util._MAX_QUERY_OFFSET = save_max_query_offset
+
+  def testHugeOffset(self):
+    """Test offset > MAX_OFFSET for fetch."""
+    def fetch_one(qry, offset):
+      return qry.fetch(1, offset=offset)
+
+    self.hugeOffsetTestHelper(fetch_one)
+
+  def testHugeOffsetRunToQueue(self):
+    """Test offset > MAX_OFFSET for run_to_queue."""
+    def fetch_from_queue(qry, offset):
+      queue = tasklets.MultiFuture()
+      options = query.QueryOptions(offset=offset, limit=1)
+      qry.run_to_queue(queue, self.conn, options).check_success()
+      results = queue.get_result()
+      return [result[2] for result in results]
+
+    self.hugeOffsetTestHelper(fetch_from_queue)
+
+class IndexListTestMixin(object):
+  """Tests for Index lists. Must be used with BaseQueryTestMixin."""
+
+  def create_index(self):
+    ci = datastore_stub_util.datastore_pb.CompositeIndex()
+    ci.set_app_id(os.environ['APPLICATION_ID'])
+    ci.set_id(0)
+    ci.set_state(ci.WRITE_ONLY)
+    index = ci.mutable_definition()
+    index.set_ancestor(0)
+    index.set_entity_type('Foo')
+    property = index.add_property()
+    property.set_name('name')
+    property.set_direction(property.DESCENDING)
+    property = index.add_property()
+    property.set_name('tags')
+    property.set_direction(property.ASCENDING)
+    stub = self.testbed.get_stub('datastore_v3')
+    stub.CreateIndex(ci)
+
+  def testIndexListPremature(self):
+    # Before calling next() we don't have the information.
+    self.create_index()
+    q = Foo.query(Foo.name >= 'joe', Foo.tags == 'joe')
+    qi = q.iter()
+    self.assertEqual(qi.index_list(), None)
+
+  def testIndexListEmpty(self):
+    # A simple query requires no composite indexes.
+    q = Foo.query(Foo.name == 'joe', Foo.tags == 'joe')
+    qi = q.iter()
+    qi.next()
+    self.assertEqual(qi.index_list(), [])
+
+  def testIndexListNontrivial(self):
+    # Test a non-trivial query.
+    q = Foo.query(Foo.name >= 'joe', Foo.tags == 'joe')
+    qi = q.iter()
+    qi.next()
+    properties=[model.IndexProperty(name='tags', direction='asc'),
+                model.IndexProperty(name='name', direction='asc')]
+    self.assertEqual(qi.index_list(),
+                     [model.IndexState(
+                       definition=model.Index(kind='Foo',
+                                              properties=properties,
+                                              ancestor=False),
+                       state='serving',
+                       id=0)])
+
+  def testIndexListExhausted(self):
+    # Test that the information is preserved after the iterator is
+    # exhausted.
+    q = Foo.query(Foo.name >= 'joe', Foo.tags == 'joe')
+    qi = q.iter()
+    list(qi)
+    properties=[model.IndexProperty(name='tags', direction='asc'),
+                model.IndexProperty(name='name', direction='asc')]
+    self.assertEqual(qi.index_list(),
+                     [model.IndexState(
+                       definition=model.Index(kind='Foo',
+                                              properties=properties,
+                                              ancestor=False),
+                       state='serving',
+                       id=0)])
+
+  def testIndexListWithIndexAndOrder(self):
+    # Test a non-trivial query with sort order and an actual composite
+    # index present.
+    self.create_index()
+    q = Foo.query(Foo.name >= 'joe', Foo.tags == 'joe')
+    q = q.order(-Foo.name, Foo.tags)
+    qi = q.iter()
+    qi.next()
+    # TODO: This is a little odd, because that's not exactly the index
+    # we created...?
+    properties=[model.IndexProperty(name='tags', direction='asc'),
+                model.IndexProperty(name='name', direction='desc')]
+    self.assertEqual(qi.index_list(),
+                     [model.IndexState(
+                       definition=model.Index(kind='Foo',
+                                              properties=properties,
+                                              ancestor=False),
+                       state='serving',
+                       id=0)])
+
+  def testIndexListMultiQuery(self):
+    self.create_index()
+    q = Foo.query(query.OR(Foo.name == 'joe', Foo.name == 'jill'))
+    qi = q.iter()
+    qi.next()
+    self.assertEqual(qi.index_list(), None)
+
+
+class QueryV3Tests(test_utils.NDBTest, BaseQueryTestMixin, IndexListTestMixin):
+  """Query tests that use a connection to a Datastore V3 stub."""
+
+  def setUp(self):
+    test_utils.NDBTest.setUp(self)
+    BaseQueryTestMixin.setUp(self)
+
+  def testConstructorOptionsInteractions(self):
+    self.ExpectWarnings()
+    qry = Foo.query(projection=[Foo.name, Foo.rate])
+    # Keys only overrides projection.
+    qry.get(keys_only=True)
+    # Projection overrides original projection.
+    qry.get(projection=Foo.tags)
+    # Cannot override both.
+    self.assertRaises(datastore_errors.BadRequestError, qry.get,
+                      projection=Foo.tags, keys_only=True)
+
+    qry = Foo.query(projection=[Foo.name, Foo.rate], distinct=True)
+    # Cannot project something out side the group by.
+    self.assertRaises(datastore_errors.BadRequestError, qry.get,
+                      projection=Foo.tags)
+    # Can project a subset of the group by.
+    qry.get(projection=Foo.name)
+    # Keys only overrides projection but a projection is required for group_by.
+    self.assertRaises(datastore_errors.BadRequestError,
+                      qry.get, keys_only=True)
+
+@real_unittest.skipUnless(datastore_pbs._CLOUD_DATASTORE_ENABLED,
+    "V1 must be supported to run V1 tests.")
+class QueryV1Tests(test_utils.NDBCloudDatastoreV1Test, BaseQueryTestMixin):
+  """Query tests that use a connection to a Cloud Datastore V1 stub."""
+
+  def setUp(self):
+    test_utils.NDBCloudDatastoreV1Test.setUp(self)
+    BaseQueryTestMixin.setUp(self)
+
+  def testConstructorOptionsInteractions(self):
+    self.ExpectWarnings()
+    qry = Foo.query(projection=[Foo.name, Foo.rate])
+    # Keys only overrides projection.
+    qry.get(keys_only=True)
+    # Projection overrides original projection.
+    qry.get(projection=Foo.tags)
+    # Can override both.
+    qry.get(projection=Foo.tags, keys_only=True)
+    qry = Foo.query(projection=[Foo.name, Foo.rate], distinct=True)
+    # Cannot project something out side the group by.
+    self.assertRaises(datastore_errors.BadRequestError, qry.get,
+                      projection=Foo.tags)
+    # Can project a subset of the group by.
+    qry.get(projection=Foo.name)
+    # Keys only overrides projection but a projection is required for group_by.
+    self.assertRaises(datastore_errors.BadRequestError,
+                      qry.get, keys_only=True)
 
 
 if __name__ == '__main__':

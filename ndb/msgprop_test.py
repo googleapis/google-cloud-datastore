@@ -16,7 +16,7 @@ class Color(messages.Enum):
 
 
 SAMPLE_PB = r"""key <
-  app: "_"
+  app: "ndb-test-app-id"
   path <
     Element {
       type: "Storage"

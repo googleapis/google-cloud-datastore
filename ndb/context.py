@@ -978,7 +978,8 @@ class Context(object):
       tconn = datastore_rpc.TransactionalConnection(
         adapter=parent._conn.adapter,
         config=parent._conn.config,
-        transaction=transaction)
+        transaction=transaction,
+        _api_version=parent._conn._api_version)
       tctx = parent.__class__(conn=tconn,
                               auto_batcher_class=parent._auto_batcher_class,
                               parent_context=parent)

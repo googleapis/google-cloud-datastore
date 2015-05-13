@@ -34,7 +34,7 @@ AMSTERDAM = model.GeoPt(52.35, 4.9166667)
 
 GOLDEN_PB = """\
 key <
-  app: "_"
+  app: "ndb-test-app-id"
   path <
     Element {
       type: "Model"
@@ -66,7 +66,7 @@ property <
   name: "k"
   value <
     ReferenceValue {
-      app: "_"
+      app: "ndb-test-app-id"
       PathElement {
         type: "Model"
         id: 42
@@ -118,11 +118,10 @@ INDEXED_PB = re.sub('Model', 'MyModel', GOLDEN_PB)
 
 UNINDEXED_PB = """\
 key <
-  app: "_"
+  app: "ndb-test-app-id"
   path <
     Element {
       type: "MyModel"
-      id: 0
     }
   >
 >
@@ -148,11 +147,10 @@ raw_property <
 
 PERSON_PB = """\
 key <
-  app: "_"
+  app: "ndb-test-app-id"
   path <
     Element {
       type: "Person"
-      id: 0
     }
   >
 >
@@ -183,11 +181,10 @@ property <
 
 NESTED_PB = """\
 key <
-  app: "_"
+  app: "ndb-test-app-id"
   path <
     Element {
       type: "Person"
-      id: 0
     }
   >
 >
@@ -232,11 +229,10 @@ property <
 
 RECURSIVE_PB = """\
 key <
-  app: "_"
+  app: "ndb-test-app-id"
   path <
     Element {
       type: "Tree"
-      id: 0
     }
   >
 >
@@ -330,11 +326,10 @@ property <
 
 MULTI_PB = """\
 key <
-  app: "_"
+  app: "ndb-test-app-id"
   path <
     Element {
       type: "Person"
-      id: 0
     }
   >
 >
@@ -365,11 +360,10 @@ property <
 
 MULTIINSTRUCT_PB = """\
 key <
-  app: "_"
+  app: "ndb-test-app-id"
   path <
     Element {
       type: "Person"
-      id: 0
     }
   >
 >
@@ -407,11 +401,10 @@ property <
 
 MULTISTRUCT_PB = """\
 key <
-  app: "_"
+  app: "ndb-test-app-id"
   path <
     Element {
       type: "Person"
-      id: 0
     }
   >
 >
@@ -842,6 +835,65 @@ class ModelTests(test_utils.NDBTest):
     self.assertFalse(b == c)
     self.assertFalse(a == 'xyz')
     self.assertTrue(a != 'xyz')
+
+  def testCompressedNestedFakeValue(self):
+    class InternalModel(model.Model):
+      json_property  = model.JsonProperty(compressed=True, indexed=False)
+      normal_property = model.StringProperty()
+
+    class Model(model.Model):
+      internal = model.StructuredProperty(InternalModel)
+
+    key = Model(internal=InternalModel(json_property={'some':'object'},
+                                       normal_property='string')).put()
+    # Redefine models with missing compressed property.
+    class InternalModel(model.Model):
+      normal_property = model.StringProperty()
+
+    class Model(model.Model):
+      internal = model.StructuredProperty(InternalModel)
+
+    ent = key.get()
+    self.assertTrue('json_property' in ent.internal._values)
+
+  def testUnindexibleNestedFakeValue(self):
+    class InternalModel(model.Model):
+      normal_property = model.StringProperty(indexed=False)
+
+    class Model(model.Model):
+      internal = model.StructuredProperty(InternalModel)
+
+    a_long_string = 'a' * 2000
+    key = Model(internal=InternalModel(normal_property=a_long_string)).put()
+    # Redefine models with missing compressed property.
+    class InternalModel(model.Model):
+      pass
+
+    class Model(model.Model):
+      internal = model.StructuredProperty(InternalModel)
+
+    ent = key.get()
+    self.assertTrue('normal_property' in ent.internal._values)
+
+    # TODO(pcostello): This should not fail because the value should maintain
+    # its indexing properties. However, this requires a major version change.
+    self.assertRaises(datastore_errors.BadRequestError, ent.put)
+
+  def testUnindexibleFakeValue(self):
+    class Model(model.Model):
+      prop = model.StringProperty(indexed=False)
+
+    a_long_string = 'a' * 2000
+    key = Model(prop=a_long_string).put()
+    # Redefine models with missing compressed property.
+    class Model(model.Model):
+      pass
+
+    ent = key.get()
+    self.assertTrue('prop' in ent._values)
+    # This will succeed because deserialization maintains the indexed settings
+    # of properties.
+    ent.put()
 
   def testProperty(self):
     class MyModel(model.Model):
@@ -2256,12 +2308,12 @@ property <
       text = model.TextProperty()
     small = Biggy(blob='xyz', text=u'abc')
     self.assertEqual(repr(small), "Biggy(blob='xyz', text=u'abc')")
-    large = Biggy(blob='x'*500, text='a'*500)
+    large = Biggy(blob='x'*1500, text='a'*1500)
     self.assertEqual(repr(large),
-                     "Biggy(blob='%s', text='%s')" % ('x'*500, 'a'*500))
-    huge = Biggy(blob='x'*1000, text='a'*1000)
+                     "Biggy(blob='%s', text='%s')" % ('x'*1500, 'a'*1500))
+    huge = Biggy(blob='x'*2000, text='a'*2000)
     self.assertEqual(repr(huge),
-                     "Biggy(blob='%s...', text='%s...')" % ('x'*499, 'a'*499))
+                     "Biggy(blob='%s...', text='%s...')" % ('x'*1499, 'a'*1499))
 
   def testModelRepr_CustomRepr(self):
     # Demonstrate how to override a property's repr.
@@ -2396,8 +2448,8 @@ property <
   def testLengthRestriction(self):
     # Check the following rules for size validation of blobs and texts:
     # - Unindexed blob and text properties can be unlimited in size.
-    # - Indexed blob properties are limited to 500 bytes.
-    # - Indexed text properties are limited to 500 characters.
+    # - Indexed blob properties are limited to 1500 bytes.
+    # - Indexed text properties are limited to 1500 bytes.
     class MyModel(model.Model):
       ublob = model.BlobProperty()  # Defaults to indexed=False.
       iblob = model.BlobProperty(indexed=True)
@@ -2407,12 +2459,13 @@ property <
       istr = model.StringProperty()  # Defaults to indexed=True.
       ugen = model.GenericProperty(indexed=False)
       igen = model.GenericProperty(indexed=True)
-    largeblob = 'x'*500
-    toolargeblob = 'x'*501
+    largeblob = 'x'*1500
+    toolargeblob = 'x'*1501
     hugeblob = 'x'*10000
-    largetext = u'\u1234'*500
-    toolargetext = u'\u1234'*500 + 'x'
+    largetext = u'\u1234'*(1500 / 3)  # 3 bytes per char
+    toolargetext = u'\u1234'*(1500 / 3) + 'x'
     hugetext = u'\u1234'*10000
+
     ent = MyModel()
     # These should all fail:
     self.assertRaises(datastore_errors.BadValueError,
@@ -2775,6 +2828,118 @@ property <
     q = Person._from_pb(pb)
     self.assertEqual(q.name, [], str(pb))
 
+  empty_proto = object()
+
+  def makeEntityProto(self, entity_contents=empty_proto):
+    proto = entity_pb.EntityProto()
+    proto.mutable_key().set_app('ndb-test-app-id')
+    proto.mutable_entity_group()
+    elem = proto.mutable_key().mutable_path().add_element()
+    elem.set_type('Strung')
+
+    if entity_contents == self.empty_proto:
+      return proto
+
+    prop = proto.add_property()
+    prop.set_multiple(False)
+    prop.set_name('string_list')
+    prop.mutable_value()
+
+    if entity_contents is None:
+      pass  # It is a null proto
+    elif not entity_contents:
+      prop.set_meaning(entity_pb.Property.EMPTY_LIST)
+    elif entity_contents == [None]:
+      prop.set_multiple(True)
+    elif isinstance(entity_contents, list) and len(entity_contents) == 1:
+      prop.set_multiple(True)
+      prop.mutable_value().set_int64value(entity_contents[0])
+    else:
+      raise AssertionError(
+          "Don't know how to convert %s to proto", entity_contents)
+    return proto
+
+  def testStaticEmptyListBehavior(self):
+    self.RunEmptyListAndNoneBehaviorTest(
+        is_static=True,
+        model_to_protobuf=(
+            (None, db.BadValueError),
+            ([None], db.BadValueError),
+            ([7],[7]),
+            ([], self.empty_proto)
+        ),
+        protobuf_to_model=(
+            (self.empty_proto, []),
+            (None, [None]),
+            ([None], [None]),
+            ([7],[7]),
+            ([], [None]))
+    )
+
+  def testDynamicEmptyListBehavior(self):
+    self.RunEmptyListAndNoneBehaviorTest(
+        is_static=False,
+        model_to_protobuf=(
+            (None, None),
+            ([None], db.BadValueError),
+            ([7],[7]),
+            ([], self.empty_proto)
+        ),
+        protobuf_to_model=(
+            (None, None),
+            ([None], [None]),
+            ([7],[7]),
+            ([], None))
+    )
+
+  def RunEmptyListAndNoneBehaviorTest(
+      self, is_static, model_to_protobuf, protobuf_to_model):
+    test_config = 'static' if is_static else 'dynamic'
+    if is_static:
+
+      class Strung(model.Model):
+        string_list = model.GenericProperty(repeated=True)
+    else:
+
+      class Strung(model.Expando):
+        pass
+
+    for input_, output in protobuf_to_model:
+      desc = 'proto(%s) -> %s model(%s) test ' % (input_, test_config, output)
+      self.RunOneEmptyListTest(True, input_, output, desc, Strung)
+
+    for input_, output in model_to_protobuf:
+      desc = '%s model(%s) -> proto(%s) test ' % (input_, test_config, output)
+      self.RunOneEmptyListTest(False, input_, output, desc, Strung)
+
+  def RunOneEmptyListTest(
+      self, is_proto_to_model, test_input, expected_output, desc, db_model):
+    expect_error = isinstance(expected_output, type) and issubclass(
+        expected_output, Exception)
+    try:
+      if is_proto_to_model:  # See what db_model we get from the protobuf
+        model_instance = db_model._from_pb(self.makeEntityProto(test_input))
+        self.assertTrue(
+            isinstance(model_instance, db_model), 'Model should be a db_model')
+        real_output = model_instance.string_list
+        self.assertEqual(expected_output, real_output, desc)
+      else:  # See what protobuf we get from the db_model.
+        s = db_model()
+        s.string_list = test_input
+        try:
+          as_proto = s._to_pb()
+        except AssertionError:
+          raise db.BadValueError('Cannot Serialize')
+        self.assertEqual(
+            self.makeEntityProto(expected_output), as_proto, desc)
+        s.put()
+      self.assertFalse(expect_error, desc)
+    except AssertionError:
+      raise
+    except BaseException as e:
+      self.assertTrue(expect_error, desc)
+      self.assertTrue(isinstance(e, expected_output), desc)
+
   def testDatetimeSerializing(self):
     class Person(model.Model):
       t = model.GenericProperty()
@@ -2996,6 +3161,47 @@ property <
     v.set_stringvalue(sval)
     y = Outer._from_pb(pb)
     self.assertEqual(y.inner, Inner(name='x'))
+
+  def testGenericProperty(self):
+    class Goo(model.Model):
+      prop = model.GenericProperty()
+
+    for value in ("test",
+                  1234,
+                  12.34,
+                  model.Key(flat=['Parent', 'a', 'Child', 'b']),
+                  datetime.datetime(1982, 12, 1, 9, 0, 0),
+                  model.GeoPt(1, 2),
+                  users.User(email='test@example.com'),
+                  model.BlobKey('testkey123')):
+      g = Goo(prop=value)
+      gKey = g.put()
+      gCopy = gKey.get()
+      self.assertEqual(g, gCopy)
+      self.assertEqual(value, gCopy.prop)
+
+  def testGenericPropertyWithModel(self):
+    class Goo(model.Expando):
+      prop = model.GenericProperty(indexed=False)
+
+    g = Goo(prop=Goo(prop='a'))
+    gKey = g.put()
+    gCopy = gKey.get()
+    self.assertEqual(g.prop.prop, gCopy.prop.prop)
+
+  def testGenericPropertyInvalidLong(self):
+    class Goo(model.Model):
+      prop = model.GenericProperty()
+
+    g = Goo(prop=key._MAX_LONG + 1)
+    self.assertRaises(TypeError, g.put)
+
+  def testGenericPropertyInvalidType(self):
+    class Goo(model.Model):
+      prop = model.GenericProperty()
+
+    g = Goo(prop=datetime.time(12))
+    self.assertRaises(NotImplementedError, g.put)
 
   def testGenericPropertyCompressedRefusesIndexed(self):
     self.assertRaises(NotImplementedError,

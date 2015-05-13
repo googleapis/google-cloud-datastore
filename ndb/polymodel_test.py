@@ -276,11 +276,10 @@ class PolyModelTests(test_utils.NDBTest):
 
 TOM_PB = """\
 key <
-  app: "_"
+  app: "ndb-test-app-id"
   path <
     Element {
       type: "Animal"
-      id: 0
     }
   >
 >

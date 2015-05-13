@@ -46,7 +46,7 @@ class KeyTests(test_utils.NDBTest):
   def testSerialized(self):
     flat = ['Kind', 1, 'Subkind', 'foobar']
     r = entity_pb.Reference()
-    r.set_app('_')
+    r.set_app('ndb-test-app-id')
     e = r.mutable_path().add_element()
     e.set_type(flat[0])
     e.set_id(flat[1])
@@ -84,7 +84,7 @@ class KeyTests(test_utils.NDBTest):
     self.assertEqual(k.reference(), r)
 
     k1 = key.Key('A', 1)
-    self.assertEqual(k1.urlsafe(), 'agFfcgcLEgFBGAEM')
+    self.assertEqual(k1.urlsafe(), 'ag9uZGItdGVzdC1hcHAtaWRyBwsSAUEYAQw')
     k2 = key.Key(urlsafe=k1.urlsafe())
     self.assertEqual(k1, k2)
 
@@ -205,7 +205,7 @@ class KeyTests(test_utils.NDBTest):
     key.Key(reference=r)
     # TODO: this may not make sense -- the protobuf utf8-encodes values
     r = entity_pb.Reference()
-    r.set_app('_')
+    r.set_app('ndb-test-app-id')
     e = r.mutable_path().add_element()
     e.set_type(flat_input[0])
     e.set_name(flat_input[3])
@@ -259,14 +259,6 @@ class KeyTests(test_utils.NDBTest):
         self.assertEqual(x.pairs()[-1], ('foo', None))
         self.assertEqual(x.flat()[-1], None)
         self.assertEqual(x.urlsafe(), c.urlsafe())
-
-  def testPickling(self):
-    flat = ['Kind', 1, 'Subkind', 'foobar']
-    k = key.Key(flat=flat)
-    for proto in range(pickle.HIGHEST_PROTOCOL + 1):
-      s = pickle.dumps(k, protocol=proto)
-      kk = pickle.loads(s)
-      self.assertEqual(k, kk)
 
   def testIncomplete(self):
     key.Key(flat=['Kind', None])
@@ -468,6 +460,44 @@ class KeyTests(test_utils.NDBTest):
 
     old_key2 = new_key.to_old_key()
     self.assertEquals(old_key, old_key2)
+
+
+class KeyPickleTests(test_utils.NDBTest):
+  """Tests for key pickling."""
+
+  def setUp(self):
+    super(KeyPickleTests, self).setUp()
+    self.keys = [key.Key(flat=['Kind', 1]),
+                 key.Key(flat=['Kind', 1, 'Subkind', 'foobar']),
+                 key.Key(flat=['Kind', 1, 'Subkind', 'foobar'],
+                         namespace='ns',
+                         app='a-different-app')]
+
+  # When making changes to key.Key.__getstate__, add an additional list with
+  # the new output.
+    self.pkeys = [
+        [
+         "ccopy_reg\n_reconstructor\np0\n(c" + key.__name__ + "\nKey\np1\nc__builtin__\nobject\np2\nNtp3\nRp4\n((dp5\nS'namespace'\np6\nS''\np7\nsS'app'\np8\nS'ndb-test-app-id'\np9\nsS'pairs'\np10\n(lp11\n(S'Kind'\np12\nI1\ntp13\nastp14\nb.",
+         "ccopy_reg\n_reconstructor\np0\n(c" + key.__name__ + "\nKey\np1\nc__builtin__\nobject\np2\nNtp3\nRp4\n((dp5\nS'namespace'\np6\nS''\np7\nsS'app'\np8\nS'ndb-test-app-id'\np9\nsS'pairs'\np10\n(lp11\n(S'Kind'\np12\nI1\ntp13\na(S'Subkind'\np14\nS'foobar'\np15\ntp16\nastp17\nb.",
+         "ccopy_reg\n_reconstructor\np0\n(c" + key.__name__ + "\nKey\np1\nc__builtin__\nobject\np2\nNtp3\nRp4\n((dp5\nS'namespace'\np6\nS'ns'\np7\nsS'app'\np8\nS'a-different-app'\np9\nsS'pairs'\np9\n(lp10\n(S'Kind'\np11\nI1\ntp12\na(S'Subkind'\np13\nS'foobar'\np14\ntp15\nastp16\nb."
+        ],
+        [
+         "ccopy_reg\n_reconstructor\np0\n(c" + key.__name__ + "\nKey\np1\nc__builtin__\nobject\np2\nNtp3\nRp4\n((dp5\nS'app'\np6\nS'ndb-test-app-id'\np7\nsS'pairs'\np8\n((S'Kind'\np9\nI1\ntp10\ntp11\nsS'namespace'\np12\nS''\np13\nstp14\nb.",
+         "ccopy_reg\n_reconstructor\np0\n(c" + key.__name__ + "\nKey\np1\nc__builtin__\nobject\np2\nNtp3\nRp4\n((dp5\nS'app'\np6\nS'ndb-test-app-id'\np7\nsS'pairs'\np8\n((S'Kind'\np9\nI1\ntp10\n(S'Subkind'\np11\nS'foobar'\np12\ntp13\ntp14\nsS'namespace'\np15\nS''\np16\nstp17\nb.",
+         "ccopy_reg\n_reconstructor\np0\n(c" + key.__name__ + "\nKey\np1\nc__builtin__\nobject\np2\nNtp3\nRp4\n((dp5\nS'app'\np6\nS'a-different-app'\np7\nsS'pairs'\np8\n((S'Kind'\np9\nI1\ntp10\n(S'Subkind'\np11\nS'foobar'\np12\ntp13\ntp14\nsS'namespace'\np15\nS'ns'\np16\nstp17\nb."
+        ]]
+
+  def testPickleBackwardsCompatibility(self):
+    for pkey_list in self.pkeys:
+      for expected, pkey in zip(self.keys, pkey_list):
+        expected.app()
+        actual = pickle.loads(pkey)
+        self.assertEqual(expected, actual)
+
+  def testPickling(self):
+    for k in self.keys:
+      for protocol in range(pickle.HIGHEST_PROTOCOL + 1):
+        self.assertEqual(k, pickle.loads(pickle.dumps(k, protocol)))
 
 if __name__ == '__main__':
   unittest.main()

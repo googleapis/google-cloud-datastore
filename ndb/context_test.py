@@ -9,10 +9,12 @@ import time
 from .google_imports import apiproxy_errors
 from .google_imports import datastore
 from .google_imports import datastore_errors
+from .google_imports import datastore_pbs
 from .google_imports import datastore_rpc
 from .google_imports import memcache
 from .google_imports import taskqueue
 from .google_test_imports import unittest
+from .google_test_imports import real_unittest
 
 from . import context
 from . import eventloop
@@ -42,15 +44,7 @@ class MyAutoBatcher(context.AutoBatcher):
     super(MyAutoBatcher, self).__init__(wrap, limit)
 
 
-class ContextTests(test_utils.NDBTest):
-
-  def setUp(self):
-    super(ContextTests, self).setUp()
-    MyAutoBatcher.reset_log()
-    self.ctx = context.Context(
-        conn=model.make_connection(default_model=model.Expando),
-        auto_batcher_class=MyAutoBatcher)
-    tasklets.set_context(self.ctx)
+class ContextTestMixin(object):
 
   the_module = context
 
@@ -97,6 +91,9 @@ class ContextTests(test_utils.NDBTest):
     key2 = yield fut2
     key3 = yield fut3
     raise tasklets.Return([key1, key2, key3])
+
+  def make_bad_transaction(*arg, **kwargs):
+    raise NotImplementedError
 
   def testContext_AutoBatcher_Put(self):
     keys = self.create_entities().get_result()
@@ -752,15 +749,14 @@ class ContextTests(test_utils.NDBTest):
 
     class CustomException(Exception):
       pass
-    def bad_transaction(*arg, **kwargs):
-      return datastore_rpc.datastore_pb.Transaction()
     @tasklets.tasklet
     def foo():
       ent = model.Expando(key=key, bar=1)
       @tasklets.tasklet
       def callback():
         # Cause rollback to return an exception
-        tasklets.get_context()._conn._end_transaction = bad_transaction
+        ctx = tasklets.get_context()
+        ctx._conn._end_transaction = self.make_bad_transaction
         yield ent.put_async()
         raise CustomException()
       yield self.ctx.transaction(callback)
@@ -785,25 +781,6 @@ class ContextTests(test_utils.NDBTest):
         taskqueue.add(url='/', transactional=True)
       yield self.ctx.transaction(callback)
     foo().check_success()
-
-  def testContext_TransactionXG(self):
-    self.ExpectWarnings()
-    # The XG option only works on the HRD datastore
-    self.HRTest()
-
-    key1 = model.Key('Foo', 1)
-    key2 = model.Key('Foo', 2)
-    @tasklets.tasklet
-    def tx():
-      ctx = tasklets.get_context()
-      ent1 = model.Expando(key=key1, foo=1)
-      ent2 = model.Expando(key=key2, bar=2)
-      yield ctx.put(ent1), ctx.put(ent2)
-      raise tasklets.Return(42)
-    self.assertRaises(datastore_errors.BadRequestError,
-                      self.ctx.transaction(tx).check_success)
-    res = self.ctx.transaction(tx, xg=True).get_result()
-    self.assertEqual(res, 42)
 
   def testContext_TransactionMemcache(self):
     class Foo(model.Model):
@@ -1458,6 +1435,66 @@ class ContextTests(test_utils.NDBTest):
     e1, e2 = f1.get_result(), f2.get_result()
     self.assertTrue(e1 is e2)
 
+
+class ContextV3Tests(ContextTestMixin, test_utils.NDBTest):
+  """Context tests that use a Datastore V3 connection."""
+
+  def setUp(self):
+    super(ContextV3Tests, self).setUp()
+    MyAutoBatcher.reset_log()
+    self.ctx = context.Context(
+        conn=model.make_connection(default_model=model.Expando),
+        auto_batcher_class=MyAutoBatcher)
+    tasklets.set_context(self.ctx)
+
+  def make_bad_transaction(*arg, **kwargs):
+    return datastore_rpc.datastore_pb.Transaction()
+
+  def testContext_TransactionAddTask(self):
+    self.ExpectWarnings()
+    key = model.Key('Foo', 1)
+    @tasklets.tasklet
+    def foo():
+      ent = model.Expando(key=key, bar=1)
+      @tasklets.tasklet
+      def callback():
+        ctx = tasklets.get_context()
+        yield ctx.put(ent)
+        taskqueue.add(url='/', transactional=True)
+      yield self.ctx.transaction(callback)
+    foo().check_success()
+
+@real_unittest.skipUnless(datastore_pbs._CLOUD_DATASTORE_ENABLED,
+    "V1 must be supported to run V1 tests.")
+class ContextV1Tests(ContextTestMixin, test_utils.NDBCloudDatastoreV1Test):
+  """Context tests that use a Cloud Datastore V1 connection."""
+
+  def setUp(self):
+    super(ContextV1Tests, self).setUp()
+    self.HRTest()
+    MyAutoBatcher.reset_log()
+    self.ctx = context.Context(
+        conn=model.make_connection(default_model=model.Expando,
+            _api_version=datastore_rpc._CLOUD_DATASTORE_V1),
+        auto_batcher_class=MyAutoBatcher)
+    tasklets.set_context(self.ctx)
+
+  def make_bad_transaction(*arg, **kwargs):
+    return ''
+
+  def testContext_TransactionAddTask(self):
+    self.ExpectWarnings()
+    key = model.Key('Foo', 1)
+    @tasklets.tasklet
+    def foo():
+      ent = model.Expando(key=key, bar=1)
+      @tasklets.tasklet
+      def callback():
+        ctx = tasklets.get_context()
+        yield ctx.put(ent)
+        taskqueue.add(url='/', transactional=True)
+      yield self.ctx.transaction(callback)
+    self.assertRaises(ValueError, foo().check_success)
 
 class ContextFutureCachingTests(test_utils.NDBTest):
   # See issue 62.  http://goo.gl/5zLkK

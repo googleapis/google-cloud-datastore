@@ -1,3 +1,12 @@
+Release 1.0.12 (included in SDK 1.9.21)
+
+- Improved ndb deserialization speed in keys.
+- Fixed Query.run_to_queue to properly handle large offsets.
+- Fixed issue where CompressedPropertys could not be dropped from a model.
+- App Engine Issue 9610: Reduced memory leaks in query iteration.
+
+----------------------------------------
+
 Release 1.0.11 (included in SDK 1.9.8)
 
 - Added support for more efficient query cursors.

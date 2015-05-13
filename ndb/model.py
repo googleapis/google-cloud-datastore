@@ -626,14 +626,23 @@ class ModelAdapter(datastore_rpc.AbstractAdapter):
   See the base class docstring for more info about the signatures.
   """
 
-  def __init__(self, default_model=None):
+  def __init__(self, default_model=None, id_resolver=None):
     """Constructor.
 
     Args:
       default_model: If an implementation for the kind cannot be found, use
         this model class.  If none is specified, an exception will be thrown
         (default).
+      id_resolver: A datastore_pbs.IdResolver that can resolve
+        application ids. This is only necessary when running on the Cloud
+        Datastore v1 API.
     """
+    # TODO(pcostello): Remove this once AbstractAdapter's constructor makes
+    # it into production.
+    try:
+      super(ModelAdapter, self).__init__(id_resolver)
+    except:
+      pass
     self.default_model = default_model
     self.want_pbs = 0
 
@@ -684,15 +693,17 @@ class ModelAdapter(datastore_rpc.AbstractAdapter):
     return index_state
 
 
-def make_connection(config=None, default_model=None):
+def make_connection(config=None, default_model=None,
+                    _api_version=datastore_rpc._DATASTORE_V3,
+                    _id_resolver=None):
   """Create a new Connection object with the right adapter.
 
   Optionally you can pass in a datastore_rpc.Configuration object.
   """
   return datastore_rpc.Connection(
-      adapter=ModelAdapter(default_model),
-      config=config)
-
+      adapter=ModelAdapter(default_model, id_resolver=_id_resolver),
+      config=config,
+      _api_version=_api_version)
 
 class ModelAttribute(object):
   """A Base class signifying the presence of a _fix_up() method."""
@@ -1706,16 +1717,19 @@ class TextProperty(BlobProperty):
     if isinstance(value, str):
       # Decode from UTF-8 -- if this fails, we can't write it.
       try:
-        value = unicode(value, 'utf-8')
+        length = len(value)
+        value = value.decode('utf-8')
       except UnicodeError:
         raise datastore_errors.BadValueError('Expected valid UTF-8, got %r' %
                                              (value,))
-    elif not isinstance(value, unicode):
+    elif isinstance(value, unicode):
+      length = len(value.encode('utf-8'))
+    else:
       raise datastore_errors.BadValueError('Expected string, got %r' %
                                            (value,))
-    if self._indexed and len(value) > _MAX_STRING_LENGTH:
+    if self._indexed and length > _MAX_STRING_LENGTH:
       raise datastore_errors.BadValueError(
-        'Indexed value %s must be at most %d characters' %
+        'Indexed value %s must be at most %d bytes' %
         (self._name, _MAX_STRING_LENGTH))
 
   def _to_base_type(self, value):
@@ -2349,7 +2363,12 @@ class StructuredProperty(_StructuredGetForDictMixin):
         raise RuntimeError('Cannot deserialize StructuredProperty %s; value '
                            'retrieved not a %s instance %r' %
                            (self._name, cls.__name__, subentity))
-      prop = subentity._get_property_for(p, depth=depth)
+      # _GenericProperty tries to keep compressed values as unindexed, but
+      # won't override a set argument. We need to force it at this level.
+      # TODO(pcostello): Remove this hack by passing indexed to _deserialize.
+      # This cannot happen until we version the API.
+      indexed = p.meaning_uri() != _MEANING_URI_COMPRESSED
+      prop = subentity._get_property_for(p, depth=depth, indexed=indexed)
       if prop is None:
         # Special case: kill subentity after all.
         self._store_value(entity, None)
@@ -2563,12 +2582,13 @@ class GenericProperty(Property):
       return zlib.decompress(value.z_val)
 
   def _validate(self, value):
-    if (isinstance(value, basestring) and
-        self._indexed and
-        len(value) > _MAX_STRING_LENGTH):
-      raise datastore_errors.BadValueError(
-        'Indexed value %s must be at most %d bytes' %
-        (self._name, _MAX_STRING_LENGTH))
+    if self._indexed:
+      if isinstance(value, unicode):
+        value = value.encode('utf-8')
+      if isinstance(value, basestring) and len(value) > _MAX_STRING_LENGTH:
+        raise datastore_errors.BadValueError(
+          'Indexed value %s must be at most %d bytes' %
+          (self._name, _MAX_STRING_LENGTH))
 
   def _db_get_value(self, v, p):
     # This is awkward but there seems to be no faster way to inspect
@@ -2644,7 +2664,7 @@ class GenericProperty(Property):
     elif isinstance(value, (int, long)):
       if not (-_MAX_LONG <= value < _MAX_LONG):
         raise TypeError('Property %s can only accept 64-bit integers; '
-                        'received %s' % value)
+                        'received %s' % (self._name, value))
       v.set_int64value(value)
     elif isinstance(value, float):
       v.set_doublevalue(value)
