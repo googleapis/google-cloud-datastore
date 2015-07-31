@@ -1,6 +1,6 @@
 #! /usr/bin/env node
 //
-// Copyright 2013 Google Inc. All Rights Reserved.
+// Copyright 2015 Google Inc. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -31,6 +31,12 @@ var SCOPES = ['https://www.googleapis.com/auth/userinfo.email',
  * question with its answer to your dataset. Does a lookup by key and
  * presents the question to the user. If the user gets the right
  * answer, it will greet him with a quote from a famous book.
+ * The entity is alternatively written and deleted depending on if it
+ * is found on the server or not.
+ * 
+ * If not running from a Google Compute Engine instance, the path to
+ * the Service Account's .json key must be set to the environment 
+ * variable: "DATASTORE_PRIVATE_JSON_KEY_FILE"
  *
  * @param {string} datasetId The ID of the dataset.
  * @constructor
@@ -42,7 +48,10 @@ function Adams(datasetId) {
     input: process.stdin,
     output: process.stdout
   });
+
+  console.log("authorizing ...");
   this.authorize();
+  console.log("finished authorizing ...");
 }
 util.inherits(Adams, events.EventEmitter);
 
@@ -53,65 +62,34 @@ util.inherits(Adams, events.EventEmitter);
 Adams.prototype.authorize = function() {
   // First, try to retrieve credentials from Compute Engine metadata server.
   this.credentials = new googleapis.auth.Compute();
-  this.credentials.authorize((function(computeErr) {
+
+  this.credentials.getAccessToken((function(computeErr) {
     if (computeErr) {
-      var errors = {'compute auth error': computeErr};
-      // Then, fallback on JWT credentials.
+      errors = {"jwt auth error":computeErr};
+
+      // Fallback on JWT credential if Compute is not available
+      this.key = require(process.env['DATASTORE_PRIVATE_JSON_KEY_FILE']);
       this.credentials = new googleapis.auth.JWT(
-          process.env['DATASTORE_SERVICE_ACCOUNT'],
-          process.env['DATASTORE_PRIVATE_KEY_FILE'],
-          SCOPES);
+          this.key.client_email,
+          null, /* path to private_key.pem, only if not using the next parameter */
+          this.key.private_key,
+          SCOPES,
+          null /* user to impersonate */);
+
       this.credentials.authorize((function(jwtErr) {
         if (jwtErr) {
           errors['jwt auth error'] = jwtErr;
           this.emit('error', errors);
           return;
         }
-        this.connect();
+        this.lookup();
       }).bind(this));
+
       return;
     }
-    this.connect();
-  }).bind(this));
-};
-
-
-/**
- * Connect to the Datastore API.
- */
-Adams.prototype.connect = function() {
-  // Build the API bindings for the current version.
-  googleapis.discover('datastore', 'v1beta2')
-      .withAuthClient(this.credentials)
-      .execute((function(err, client) {
-        if (err) {
-          this.emit('error', {'connection error': err});
-          return;
-        }
-        // Bind the datastore client to datasetId and get the datasets
-        // resource.
-        this.datastore = client.datastore.withDefaultParams({
-          datasetId: this.datasetId}).datasets;
-        this.beginTransaction();
-      }).bind(this));
-};
-
-
-/**
- * Start a new transaction.
- */
-Adams.prototype.beginTransaction = function() {
-  this.datastore.beginTransaction({
-    // Execute the RPC asynchronously, and call back with either an
-    // error or the RPC result.
-  }).execute((function(err, result) {
-    if (err) {
-      this.emit('error', {'rpc error': err});
-      return;
-    }
-    this.transaction = result.transaction;
     this.lookup();
   }).bind(this));
+
 };
 
 
@@ -119,17 +97,18 @@ Adams.prototype.beginTransaction = function() {
  * Lookup for the Trivia entity.
  */
 Adams.prototype.lookup = function() {
-  // Get entities by key.
-  this.datastore.lookup({
-    readOptions: {
-      // Set the transaction, so we get a consistent snapshot of the
-      // value at the time the transaction started.
-      transaction: this.transaction
-    },
-    // Add one entity key to the lookup request, with only one
-    // `path` element (i.e. no parent).
-    keys: [{ path: [{ kind: 'Trivia', name: 'hgtg' }] }]
-  }).execute((function(err, result) {
+  this.datastore = googleapis.datastore({
+    version: 'v1beta2',
+    auth: this.credentials,
+    projectId: this.datasetId,
+  });
+
+  this.datastore.datasets.lookup({
+    datasetId: this.datasetId,
+    resource: {
+      keys: [{path: [{kind: 'Trivia', name: 'hgtg'}]}]
+    }
+  }, (function(err, result) {
     if (err) {
       this.emit('error', {'rpc error': err});
       return;
@@ -140,6 +119,7 @@ Adams.prototype.lookup = function() {
     }
     this.commit();
   }).bind(this));
+
 };
 
 
@@ -164,14 +144,18 @@ Adams.prototype.commit = function() {
     // Build a mutation to insert the new entity.
     mutation = { insert: [this.entity] };
   } else {
-    // No mutation if the entity was found.
-    mutation = null;
+    // Build a mutation to delete the entity if it was found.
+    mutation = { delete: [this.entity.key] };
   }
+
   // Commit the transaction and the insert mutation if the entity was not found.
-  this.datastore.commit({
-    transaction: this.transaction,
-    mutation: mutation
-  }).execute((function(err, result) {
+  this.datastore.datasets.commit({
+    datasetId: this.datasetId,
+    resource: {
+      mutation: mutation,
+      mode: "NON_TRANSACTIONAL"
+    }
+  }, (function(err, result) {
     if (err) {
       this.emit('error', err);
       return;
@@ -204,6 +188,9 @@ Adams.prototype.ask = function() {
 
 
 console.assert(process.argv.length == 3, 'usage: trivial.js <dataset-id>');
+
+console.log("starting");
+
 // Get the dataset ID from the command line parameters.
 var demo = new Adams(process.argv[2]);
 demo.once('error', function(err) {
