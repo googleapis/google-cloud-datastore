@@ -65,7 +65,7 @@ Adams.prototype.authorize = function() {
 
   this.credentials.getAccessToken((function(computeErr) {
     if (computeErr) {
-      var errors = {"jwt auth error":computeErr};
+      var errors = {'compute auth error': computeErr};
 
       // Fallback on JWT credential if Compute is not available
       this.key = require(process.env['DATASTORE_PRIVATE_JSON_KEY_FILE']);
