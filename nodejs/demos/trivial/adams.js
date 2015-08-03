@@ -155,9 +155,11 @@ Adams.prototype.commit = function() {
       };
     // Build a mutation to insert the new entity.
     mutation = { insert: [this.entity] };
+    console.log('Trivia not found, inserting new entity...')
   } else {
     // Build a mutation to delete the entity if it was found.
     mutation = { delete: [this.entity.key] };
+    console.log('Trivia found, deleting entity...')
   }
 
   // Commit the transaction and the insert mutation if the entity was not found.
