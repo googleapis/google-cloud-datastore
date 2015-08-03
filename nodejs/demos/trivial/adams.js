@@ -1,6 +1,6 @@
 #! /usr/bin/env node
 //
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2013 Google Inc. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -49,9 +49,9 @@ function Adams(datasetId) {
     output: process.stdout
   });
 
-  console.log("authorizing ...");
+  console.log('authorizing ...');
   this.authorize();
-  console.log("finished authorizing ...");
+  console.log('finished authorizing ...');
 }
 util.inherits(Adams, events.EventEmitter);
 
@@ -62,34 +62,49 @@ util.inherits(Adams, events.EventEmitter);
 Adams.prototype.authorize = function() {
   // First, try to retrieve credentials from Compute Engine metadata server.
   this.credentials = new googleapis.auth.Compute();
+  var self = this;
 
-  this.credentials.getAccessToken((function(computeErr) {
+  this.credentials.getAccessToken(function(computeErr) {
     if (computeErr) {
       var errors = {'compute auth error': computeErr};
 
       // Fallback on JWT credential if Compute is not available
-      this.key = require(process.env['DATASTORE_PRIVATE_JSON_KEY_FILE']);
-      this.credentials = new googleapis.auth.JWT(
-          this.key.client_email,
+      self.key = require(process.env['DATASTORE_PRIVATE_JSON_KEY_FILE']);
+      self.credentials = new googleapis.auth.JWT(
+          self.key.client_email,
           null, /* path to private_key.pem, only if not using the next parameter */
-          this.key.private_key,
+          self.key.private_key,
           SCOPES,
           null /* user to impersonate */);
 
-      this.credentials.authorize((function(jwtErr) {
+      self.credentials.authorize(function(jwtErr) {
         if (jwtErr) {
           errors['jwt auth error'] = jwtErr;
-          this.emit('error', errors);
+          self.emit('error', errors);
           return;
         }
-        this.lookup();
-      }).bind(this));
+        self.start();
+      });
 
       return;
     }
-    this.lookup();
-  }).bind(this));
+    self.start();
+  });
 
+};
+
+
+/**
+ * Create the datastore object
+ */
+Adams.prototype.start = function() {
+  this.datastore = googleapis.datastore({
+    version: 'v1beta2',
+    auth: this.credentials,
+    projectId: this.datasetId,
+  });
+
+  this.lookup();
 };
 
 
@@ -97,29 +112,24 @@ Adams.prototype.authorize = function() {
  * Lookup for the Trivia entity.
  */
 Adams.prototype.lookup = function() {
-  this.datastore = googleapis.datastore({
-    version: 'v1beta2',
-    auth: this.credentials,
-    projectId: this.datasetId,
-  });
+  var self = this;
 
   this.datastore.datasets.lookup({
     datasetId: this.datasetId,
     resource: {
       keys: [{path: [{kind: 'Trivia', name: 'hgtg'}]}]
     }
-  }, (function(err, result) {
+  }, function(err, result) {
     if (err) {
-      this.emit('error', {'rpc error': err});
+      self.emit('error', {'rpc error': err});
       return;
     }
     // Get the entity from the response if found.
     if (result.found.length > 0) {
-      this.entity = result.found[0].entity;
+      self.entity = result.found[0].entity;
     }
-    this.commit();
-  }).bind(this));
-
+    self.commit();
+  });
 };
 
 
@@ -128,6 +138,8 @@ Adams.prototype.lookup = function() {
  * found.
  */
 Adams.prototype.commit = function() {
+  var self = this;
+
   if (!this.entity) {
     // If the entity is not found create it.
     this.entity = {
@@ -153,15 +165,15 @@ Adams.prototype.commit = function() {
     datasetId: this.datasetId,
     resource: {
       mutation: mutation,
-      mode: "NON_TRANSACTIONAL"
+      mode: 'NON_TRANSACTIONAL'
     }
-  }, (function(err, result) {
+  }, function(err, result) {
     if (err) {
-      this.emit('error', err);
+      self.emit('error', err);
       return;
     }
-    this.ask();
-  }).bind(this));
+    self.ask();
+  });
 };
 
 
@@ -169,13 +181,15 @@ Adams.prototype.commit = function() {
  * Ask for the question and validate the answer.
  */
 Adams.prototype.ask = function() {
+  var self = this;
+
   // Get `question` property value.
   var question = this.entity.properties.question.stringValue;
   // Get `answer` property value.
   var answer = this.entity.properties.answer.integerValue;
   // Print the question and read one line from stdin.
-  this.readline.question(question + ' ', (function(result) {
-    this.readline.close();
+  this.readline.question(question + ' ', function(result) {
+    self.readline.close();
     // Validate the input against the entity answer property.
     if (parseInt(result, 10) == answer) {
       console.log('fascinating, extraordinary and, ',
@@ -183,13 +197,13 @@ Adams.prototype.ask = function() {
     } else {
       console.log("Don't panic!");
     }
-  }).bind(this));
+  });
 };
 
 
 console.assert(process.argv.length == 3, 'usage: trivial.js <dataset-id>');
 
-console.log("starting");
+console.log('starting');
 
 // Get the dataset ID from the command line parameters.
 var demo = new Adams(process.argv[2]);
