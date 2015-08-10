@@ -1,15 +1,62 @@
+#
+# Copyright 2008 Google Inc. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 """Dynamically decide from where to import Google App Engine modules.
 
 All other NDB code should import its Google App Engine modules from
 this module.  If necessary, add new imports here (in both places).
 """
 
+import os
+import sys
+try:
+  import google
+  GOOGLE_PACKAGE_PATH = set(google.__path__)
+except ImportError:
+  GOOGLE_PACKAGE_PATH = None
+
+
+def set_appengine_imports():
+  gae_path = os.getenv('GAE')
+  if gae_path is None:
+    return
+
+  sys.path.insert(0, gae_path)
+  sys.modules.pop('google', None)
+  import dev_appserver
+  dev_appserver.fix_sys_path()
+
+  if GOOGLE_PACKAGE_PATH is not None:
+    import google
+    GOOGLE_PACKAGE_PATH.update(google.__path__)
+    google.__path__ = list(GOOGLE_PACKAGE_PATH)
+
+
 try:
   from google.appengine.datastore import entity_pb
   normal_environment = True
 except ImportError:
-  from google3.storage.onestore.v3 import entity_pb
-  normal_environment = False
+  try:
+    from google3.storage.onestore.v3 import entity_pb
+    normal_environment = False
+  except ImportError:
+    # If we are running locally but outside the context of App Engine.
+    set_appengine_imports()
+    from google.appengine.datastore import entity_pb
+    normal_environment = True
 
 if normal_environment:
   from google.appengine.api.blobstore import blobstore as api_blobstore

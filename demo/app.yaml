@@ -8,31 +8,31 @@ threadsafe: True
 handlers:
 
 - url: /django_middleware
-  script: demo.django_middleware_test.app
+  script: django_middleware_test.app
 
 - url: /fibo.*
-  script: demo.fibo.app
+  script: fibo.app
 
 - url: /intest.*
-  script: demo.intest.app
+  script: intest.app
 
 - url: /hello.*
-  script: demo.hello.app
+  script: hello.app
 
 ##- url: /test.*
-##  script: demo/test.py
+##  script: test.py
 
 - url: /home
-  script: demo.main.app
+  script: main.app
 
 - url: /account
-  script: demo.main.app
+  script: main.app
 
 - url: /dataviewer.*
-  script: demo.dataviewer.app
+  script: dataviewer.app
 
 - url: /.*
-  script: demo.guestbook.application
+  script: guestbook.application
 
 builtins:
 - appstats: on

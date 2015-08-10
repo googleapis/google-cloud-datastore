@@ -29,7 +29,7 @@ are the same as for the App Engine SDK).
 Overview
 --------
 
-The code is structured into two subdirectories:
+The code is structured into four subdirectories:
 
 - ndb: This is the main code base.  Notable submodules are
   key.py, model.py, query.py, eventloop.py, tasklets.py, and context.py.
@@ -38,6 +38,10 @@ The code is structured into two subdirectories:
 
 - demo: This is where demo programs live.  Check out guestbook.py and
   main.py.
+
+- samples: This is where sample code lives.
+
+- tests: This is where additional ndb tests live.
 
 The main directory contains some scripts and auxiliary files.
 
