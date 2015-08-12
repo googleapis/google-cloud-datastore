@@ -20,8 +20,10 @@ var events = require('events');
 var readline = require('readline');
 var googleapis = require('googleapis');
 
-var SCOPES = ['https://www.googleapis.com/auth/userinfo.email',
-              'https://www.googleapis.com/auth/datastore'];
+var SCOPES = [
+  'https://www.googleapis.com/auth/userinfo.email',
+  'https://www.googleapis.com/auth/datastore'
+];
 
 
 /**
@@ -31,12 +33,10 @@ var SCOPES = ['https://www.googleapis.com/auth/userinfo.email',
  * question with its answer to your dataset. Does a lookup by key and
  * presents the question to the user. If the user gets the right
  * answer, it will greet him with a quote from a famous book.
- * The entity is alternatively written and deleted depending on if it
- * is found on the server or not.
- * 
+ *
  * If not running from a Google Compute Engine instance, the path to
- * the Service Account's .json key must be set to the environment 
- * variable: "DATASTORE_PRIVATE_JSON_KEY_FILE"
+ * the Service Account's .json key must be set to the environment
+ * variable: "DATASTORE_JSON_PRIVATE_KEY_FILE"
  *
  * @param {string} datasetId The ID of the dataset.
  * @constructor
@@ -49,9 +49,7 @@ function Adams(datasetId) {
     output: process.stdout
   });
 
-  console.log('authorizing ...');
   this.authorize();
-  console.log('finished authorizing ...');
 }
 util.inherits(Adams, events.EventEmitter);
 
@@ -60,19 +58,18 @@ util.inherits(Adams, events.EventEmitter);
  * Authorize with the Datastore API.
  */
 Adams.prototype.authorize = function() {
+  var self = this;
   // First, try to retrieve credentials from Compute Engine metadata server.
   this.credentials = new googleapis.auth.Compute();
-  var self = this;
-
   this.credentials.getAccessToken(function(computeErr) {
     if (computeErr) {
       var errors = {'compute auth error': computeErr};
 
       // Fallback on JWT credential if Compute is not available
-      self.key = require(process.env['DATASTORE_PRIVATE_JSON_KEY_FILE']);
+      self.key = require(process.env['DATASTORE_JSON_PRIVATE_KEY_FILE']);
       self.credentials = new googleapis.auth.JWT(
           self.key.client_email,
-          null, /* path to private_key.pem, only if not using the next parameter */
+          null /* path to private_key.pem */,
           self.key.private_key,
           SCOPES,
           null /* user to impersonate */);
@@ -102,9 +99,31 @@ Adams.prototype.start = function() {
     version: 'v1beta2',
     auth: this.credentials,
     projectId: this.datasetId,
+    params: {datasetId: this.datasetId}
   });
 
-  this.lookup();
+  this.beginTransaction();
+};
+
+
+/**
+ * Start a new transaction.
+ */
+Adams.prototype.beginTransaction = function() {
+  var self = this;
+  this.datastore.datasets.beginTransaction(
+      {
+          // Execute the RPC asynchronously, and call back with either an
+          // error or the RPC result.
+      },
+      function(err, result) {
+        if (err) {
+          self.emit('error', {'rpc error': err});
+          return;
+        }
+        self.transaction = result.transaction;
+        self.lookup();
+      });
 };
 
 
@@ -113,23 +132,28 @@ Adams.prototype.start = function() {
  */
 Adams.prototype.lookup = function() {
   var self = this;
-
-  this.datastore.datasets.lookup({
-    datasetId: this.datasetId,
-    resource: {
-      keys: [{path: [{kind: 'Trivia', name: 'hgtg'}]}]
-    }
-  }, function(err, result) {
-    if (err) {
-      self.emit('error', {'rpc error': err});
-      return;
-    }
-    // Get the entity from the response if found.
-    if (result.found.length > 0) {
-      self.entity = result.found[0].entity;
-    }
-    self.commit();
-  });
+  this.datastore.datasets.lookup(
+      {
+        resource: {
+          // Set the transaction, so we get a consistent snapshot of the
+          // value at the time the transaction started.
+          transaction: this.transaction,
+          // Add one entity key to the lookup request, with only one
+          // `path` element (i.e. no parent).
+          keys: [{path: [{kind: 'Trivia', name: 'hgtg'}]}]
+        }
+      },
+      function(err, result) {
+        if (err) {
+          self.emit('error', {'rpc error': err});
+          return;
+        }
+        // Get the entity from the response if found.
+        if (result.found.length > 0) {
+          self.entity = result.found[0].entity;
+        }
+        self.commit();
+      });
 };
 
 
@@ -139,43 +163,35 @@ Adams.prototype.lookup = function() {
  */
 Adams.prototype.commit = function() {
   var self = this;
-
   if (!this.entity) {
     // If the entity is not found create it.
     this.entity = {
-        // Set the entity key with only one `path` element (i.e. no parent).
-        key: { path: [{ kind: 'Trivia', name: 'hgtg' }] },
-        // Set the entity properties:
-        // - a utf-8 string: `question`
-        // - a 64bit integer: `answer`
-        properties: {
-          question: { stringValue: 'Meaning of life?' },
-          answer: { integerValue: 42 }
-        }
-      };
+      // Set the entity key with only one `path` element (i.e. no parent).
+      key: {path: [{kind: 'Trivia', name: 'hgtg'}]},
+      // Set the entity properties:
+      // - a utf-8 string: `question`
+      // - a 64bit integer: `answer`
+      properties: {
+        question: {stringValue: 'Meaning of life?'},
+        answer: {integerValue: 42}
+      }
+    };
     // Build a mutation to insert the new entity.
-    mutation = { insert: [this.entity] };
-    console.log('Trivia not found, inserting new entity...')
+    mutation = {insert: [this.entity]};
   } else {
-    // Build a mutation to delete the entity if it was found.
-    mutation = { delete: [this.entity.key] };
-    console.log('Trivia found, deleting entity...')
+    mutation = null;
   }
 
   // Commit the transaction and the insert mutation if the entity was not found.
-  this.datastore.datasets.commit({
-    datasetId: this.datasetId,
-    resource: {
-      mutation: mutation,
-      mode: 'NON_TRANSACTIONAL'
-    }
-  }, function(err, result) {
-    if (err) {
-      self.emit('error', err);
-      return;
-    }
-    self.ask();
-  });
+  this.datastore.datasets.commit(
+      {resource: {transaction: this.transaction, mutation: mutation}},
+      function(err, result) {
+        if (err) {
+          self.emit('error', err);
+          return;
+        }
+        self.ask();
+      });
 };
 
 
@@ -184,7 +200,6 @@ Adams.prototype.commit = function() {
  */
 Adams.prototype.ask = function() {
   var self = this;
-
   // Get `question` property value.
   var question = this.entity.properties.question.stringValue;
   // Get `answer` property value.
@@ -204,9 +219,6 @@ Adams.prototype.ask = function() {
 
 
 console.assert(process.argv.length == 3, 'usage: trivial.js <dataset-id>');
-
-console.log('starting');
-
 // Get the dataset ID from the command line parameters.
 var demo = new Adams(process.argv[2]);
 demo.once('error', function(err) {
