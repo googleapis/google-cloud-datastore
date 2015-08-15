@@ -139,7 +139,7 @@ public class DatastoreHelper {
    */
   public static Credential getServiceAccountCredential(String account, String privateKeyFile)
       throws GeneralSecurityException, IOException {
-    NetHttpTransport transport = GoogleNetHttpTransport.newTrustedTransport();
+    NetHttpTransport transport = new com.google.api.client.http.javanet.NetHttpTransport();
     JacksonFactory jsonFactory = new JacksonFactory();
     return new GoogleCredential.Builder()
         .setTransport(transport)
