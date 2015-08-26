@@ -13,7 +13,7 @@ from google.protobuf import descriptor_pb2
 DESCRIPTOR = _descriptor.FileDescriptor(
   name='datastore_v1.proto',
   package='api.services.datastore',
-  serialized_pb='\n\x12\x64\x61tastore_v1.proto\x12\x16\x61pi.services.datastore\"4\n\x0bPartitionId\x12\x12\n\ndataset_id\x18\x03 \x01(\t\x12\x11\n\tnamespace\x18\x04 \x01(\t\"\xb6\x01\n\x03Key\x12\x39\n\x0cpartition_id\x18\x01 \x01(\x0b\x32#.api.services.datastore.PartitionId\x12=\n\x0cpath_element\x18\x02 \x03(\x0b\x32\'.api.services.datastore.Key.PathElement\x1a\x35\n\x0bPathElement\x12\x0c\n\x04kind\x18\x01 \x02(\t\x12\n\n\x02id\x18\x02 \x01(\x03\x12\x0c\n\x04name\x18\x03 \x01(\t\"\xf4\x02\n\x05Value\x12\x15\n\rboolean_value\x18\x01 \x01(\x08\x12\x15\n\rinteger_value\x18\x02 \x01(\x03\x12\x14\n\x0c\x64ouble_value\x18\x03 \x01(\x01\x12$\n\x1ctimestamp_microseconds_value\x18\x04 \x01(\x03\x12.\n\tkey_value\x18\x05 \x01(\x0b\x32\x1b.api.services.datastore.Key\x12\x16\n\x0e\x62lob_key_value\x18\x10 \x01(\t\x12\x14\n\x0cstring_value\x18\x11 \x01(\t\x12\x12\n\nblob_value\x18\x12 \x01(\x0c\x12\x34\n\x0c\x65ntity_value\x18\x06 \x01(\x0b\x32\x1e.api.services.datastore.Entity\x12\x31\n\nlist_value\x18\x07 \x03(\x0b\x32\x1d.api.services.datastore.Value\x12\x0f\n\x07meaning\x18\x0e \x01(\x05\x12\x15\n\x07indexed\x18\x0f \x01(\x08:\x04true\"F\n\x08Property\x12\x0c\n\x04name\x18\x01 \x02(\t\x12,\n\x05value\x18\x04 \x02(\x0b\x32\x1d.api.services.datastore.Value\"f\n\x06\x45ntity\x12(\n\x03key\x18\x01 \x01(\x0b\x32\x1b.api.services.datastore.Key\x12\x32\n\x08property\x18\x02 \x03(\x0b\x32 .api.services.datastore.Property\"t\n\x0c\x45ntityResult\x12.\n\x06\x65ntity\x18\x01 \x02(\x0b\x32\x1e.api.services.datastore.Entity\"4\n\nResultType\x12\x08\n\x04\x46ULL\x10\x01\x12\x0e\n\nPROJECTION\x10\x02\x12\x0c\n\x08KEY_ONLY\x10\x03\"\xec\x02\n\x05Query\x12>\n\nprojection\x18\x02 \x03(\x0b\x32*.api.services.datastore.PropertyExpression\x12\x34\n\x04kind\x18\x03 \x03(\x0b\x32&.api.services.datastore.KindExpression\x12.\n\x06\x66ilter\x18\x04 \x01(\x0b\x32\x1e.api.services.datastore.Filter\x12\x34\n\x05order\x18\x05 \x03(\x0b\x32%.api.services.datastore.PropertyOrder\x12;\n\x08group_by\x18\x06 \x03(\x0b\x32).api.services.datastore.PropertyReference\x12\x14\n\x0cstart_cursor\x18\x07 \x01(\x0c\x12\x12\n\nend_cursor\x18\x08 \x01(\x0c\x12\x11\n\x06offset\x18\n \x01(\x05:\x01\x30\x12\r\n\x05limit\x18\x0b \x01(\x05\"\x1e\n\x0eKindExpression\x12\x0c\n\x04name\x18\x01 \x02(\t\"!\n\x11PropertyReference\x12\x0c\n\x04name\x18\x02 \x02(\t\"\xd1\x01\n\x12PropertyExpression\x12;\n\x08property\x18\x01 \x02(\x0b\x32).api.services.datastore.PropertyReference\x12\\\n\x14\x61ggregation_function\x18\x02 \x01(\x0e\x32>.api.services.datastore.PropertyExpression.AggregationFunction\" \n\x13\x41ggregationFunction\x12\t\n\x05\x46IRST\x10\x01\"\xc7\x01\n\rPropertyOrder\x12;\n\x08property\x18\x01 \x02(\x0b\x32).api.services.datastore.PropertyReference\x12M\n\tdirection\x18\x02 \x01(\x0e\x32/.api.services.datastore.PropertyOrder.Direction:\tASCENDING\"*\n\tDirection\x12\r\n\tASCENDING\x10\x01\x12\x0e\n\nDESCENDING\x10\x02\"\x8c\x01\n\x06\x46ilter\x12\x41\n\x10\x63omposite_filter\x18\x01 \x01(\x0b\x32\'.api.services.datastore.CompositeFilter\x12?\n\x0fproperty_filter\x18\x02 \x01(\x0b\x32&.api.services.datastore.PropertyFilter\"\x9a\x01\n\x0f\x43ompositeFilter\x12\x42\n\x08operator\x18\x01 \x02(\x0e\x32\x30.api.services.datastore.CompositeFilter.Operator\x12.\n\x06\x66ilter\x18\x02 \x03(\x0b\x32\x1e.api.services.datastore.Filter\"\x13\n\x08Operator\x12\x07\n\x03\x41ND\x10\x01\"\xbb\x02\n\x0ePropertyFilter\x12;\n\x08property\x18\x01 \x02(\x0b\x32).api.services.datastore.PropertyReference\x12\x41\n\x08operator\x18\x02 \x02(\x0e\x32/.api.services.datastore.PropertyFilter.Operator\x12,\n\x05value\x18\x03 \x02(\x0b\x32\x1d.api.services.datastore.Value\"{\n\x08Operator\x12\r\n\tLESS_THAN\x10\x01\x12\x16\n\x12LESS_THAN_OR_EQUAL\x10\x02\x12\x10\n\x0cGREATER_THAN\x10\x03\x12\x19\n\x15GREATER_THAN_OR_EQUAL\x10\x04\x12\t\n\x05\x45QUAL\x10\x05\x12\x10\n\x0cHAS_ANCESTOR\x10\x0b\"\xae\x01\n\x08GqlQuery\x12\x14\n\x0cquery_string\x18\x01 \x02(\t\x12\x1c\n\rallow_literal\x18\x02 \x01(\x08:\x05\x66\x61lse\x12\x35\n\x08name_arg\x18\x03 \x03(\x0b\x32#.api.services.datastore.GqlQueryArg\x12\x37\n\nnumber_arg\x18\x04 \x03(\x0b\x32#.api.services.datastore.GqlQueryArg\"Y\n\x0bGqlQueryArg\x12\x0c\n\x04name\x18\x01 \x01(\t\x12,\n\x05value\x18\x02 \x01(\x0b\x32\x1d.api.services.datastore.Value\x12\x0e\n\x06\x63ursor\x18\x03 \x01(\x0c\"\xf1\x02\n\x10QueryResultBatch\x12K\n\x12\x65ntity_result_type\x18\x01 \x02(\x0e\x32/.api.services.datastore.EntityResult.ResultType\x12;\n\rentity_result\x18\x02 \x03(\x0b\x32$.api.services.datastore.EntityResult\x12\x12\n\nend_cursor\x18\x04 \x01(\x0c\x12N\n\x0cmore_results\x18\x05 \x02(\x0e\x32\x38.api.services.datastore.QueryResultBatch.MoreResultsType\x12\x17\n\x0fskipped_results\x18\x06 \x01(\x05\"V\n\x0fMoreResultsType\x12\x10\n\x0cNOT_FINISHED\x10\x01\x12\x1c\n\x18MORE_RESULTS_AFTER_LIMIT\x10\x02\x12\x13\n\x0fNO_MORE_RESULTS\x10\x03\"\x8e\x02\n\x08Mutation\x12.\n\x06upsert\x18\x01 \x03(\x0b\x32\x1e.api.services.datastore.Entity\x12.\n\x06update\x18\x02 \x03(\x0b\x32\x1e.api.services.datastore.Entity\x12.\n\x06insert\x18\x03 \x03(\x0b\x32\x1e.api.services.datastore.Entity\x12\x36\n\x0einsert_auto_id\x18\x04 \x03(\x0b\x32\x1e.api.services.datastore.Entity\x12+\n\x06\x64\x65lete\x18\x05 \x03(\x0b\x32\x1b.api.services.datastore.Key\x12\r\n\x05\x66orce\x18\x06 \x01(\x08\"`\n\x0eMutationResult\x12\x15\n\rindex_updates\x18\x01 \x02(\x05\x12\x37\n\x12insert_auto_id_key\x18\x02 \x03(\x0b\x32\x1b.api.services.datastore.Key\"\xb4\x01\n\x0bReadOptions\x12V\n\x10read_consistency\x18\x01 \x01(\x0e\x32\x33.api.services.datastore.ReadOptions.ReadConsistency:\x07\x44\x45\x46\x41ULT\x12\x13\n\x0btransaction\x18\x02 \x01(\x0c\"8\n\x0fReadConsistency\x12\x0b\n\x07\x44\x45\x46\x41ULT\x10\x00\x12\n\n\x06STRONG\x10\x01\x12\x0c\n\x08\x45VENTUAL\x10\x02\"t\n\rLookupRequest\x12\x39\n\x0cread_options\x18\x01 \x01(\x0b\x32#.api.services.datastore.ReadOptions\x12(\n\x03key\x18\x03 \x03(\x0b\x32\x1b.api.services.datastore.Key\"\xab\x01\n\x0eLookupResponse\x12\x33\n\x05\x66ound\x18\x01 \x03(\x0b\x32$.api.services.datastore.EntityResult\x12\x35\n\x07missing\x18\x02 \x03(\x0b\x32$.api.services.datastore.EntityResult\x12-\n\x08\x64\x65\x66\x65rred\x18\x03 \x03(\x0b\x32\x1b.api.services.datastore.Key\"\xea\x01\n\x0fRunQueryRequest\x12\x39\n\x0cread_options\x18\x01 \x01(\x0b\x32#.api.services.datastore.ReadOptions\x12\x39\n\x0cpartition_id\x18\x02 \x01(\x0b\x32#.api.services.datastore.PartitionId\x12,\n\x05query\x18\x03 \x01(\x0b\x32\x1d.api.services.datastore.Query\x12\x33\n\tgql_query\x18\x07 \x01(\x0b\x32 .api.services.datastore.GqlQuery\"K\n\x10RunQueryResponse\x12\x37\n\x05\x62\x61tch\x18\x01 \x01(\x0b\x32(.api.services.datastore.QueryResultBatch\"\xae\x01\n\x17\x42\x65ginTransactionRequest\x12\x61\n\x0fisolation_level\x18\x01 \x01(\x0e\x32>.api.services.datastore.BeginTransactionRequest.IsolationLevel:\x08SNAPSHOT\"0\n\x0eIsolationLevel\x12\x0c\n\x08SNAPSHOT\x10\x00\x12\x10\n\x0cSERIALIZABLE\x10\x01\"/\n\x18\x42\x65ginTransactionResponse\x12\x13\n\x0btransaction\x18\x01 \x01(\x0c\"&\n\x0fRollbackRequest\x12\x13\n\x0btransaction\x18\x01 \x02(\x0c\"\x12\n\x10RollbackResponse\"\xd3\x01\n\rCommitRequest\x12\x13\n\x0btransaction\x18\x01 \x01(\x0c\x12\x32\n\x08mutation\x18\x02 \x01(\x0b\x32 .api.services.datastore.Mutation\x12G\n\x04mode\x18\x05 \x01(\x0e\x32*.api.services.datastore.CommitRequest.Mode:\rTRANSACTIONAL\"0\n\x04Mode\x12\x11\n\rTRANSACTIONAL\x10\x01\x12\x15\n\x11NON_TRANSACTIONAL\x10\x02\"Q\n\x0e\x43ommitResponse\x12?\n\x0fmutation_result\x18\x01 \x01(\x0b\x32&.api.services.datastore.MutationResult\">\n\x12\x41llocateIdsRequest\x12(\n\x03key\x18\x01 \x03(\x0b\x32\x1b.api.services.datastore.Key\"?\n\x13\x41llocateIdsResponse\x12(\n\x03key\x18\x01 \x03(\x0b\x32\x1b.api.services.datastore.Key2\xed\x04\n\x10\x44\x61tastoreService\x12Y\n\x06Lookup\x12%.api.services.datastore.LookupRequest\x1a&.api.services.datastore.LookupResponse\"\x00\x12_\n\x08RunQuery\x12\'.api.services.datastore.RunQueryRequest\x1a(.api.services.datastore.RunQueryResponse\"\x00\x12w\n\x10\x42\x65ginTransaction\x12/.api.services.datastore.BeginTransactionRequest\x1a\x30.api.services.datastore.BeginTransactionResponse\"\x00\x12Y\n\x06\x43ommit\x12%.api.services.datastore.CommitRequest\x1a&.api.services.datastore.CommitResponse\"\x00\x12_\n\x08Rollback\x12\'.api.services.datastore.RollbackRequest\x1a(.api.services.datastore.RollbackResponse\"\x00\x12h\n\x0b\x41llocateIds\x12*.api.services.datastore.AllocateIdsRequest\x1a+.api.services.datastore.AllocateIdsResponse\"\x00\x42#\n!com.google.api.services.datastore')
+  serialized_pb='\n\x12\x64\x61tastore_v1.proto\x12\x16\x61pi.services.datastore\"4\n\x0bPartitionId\x12\x12\n\ndataset_id\x18\x03 \x01(\t\x12\x11\n\tnamespace\x18\x04 \x01(\t\"\xb6\x01\n\x03Key\x12\x39\n\x0cpartition_id\x18\x01 \x01(\x0b\x32#.api.services.datastore.PartitionId\x12=\n\x0cpath_element\x18\x02 \x03(\x0b\x32\'.api.services.datastore.Key.PathElement\x1a\x35\n\x0bPathElement\x12\x0c\n\x04kind\x18\x01 \x02(\t\x12\n\n\x02id\x18\x02 \x01(\x03\x12\x0c\n\x04name\x18\x03 \x01(\t\"/\n\x08GeoPoint\x12\x10\n\x08latitude\x18\x01 \x02(\x01\x12\x11\n\tlongitude\x18\x02 \x02(\x01\"\xaf\x03\n\x05Value\x12\x15\n\rboolean_value\x18\x01 \x01(\x08\x12\x15\n\rinteger_value\x18\x02 \x01(\x03\x12\x14\n\x0c\x64ouble_value\x18\x03 \x01(\x01\x12$\n\x1ctimestamp_microseconds_value\x18\x04 \x01(\x03\x12.\n\tkey_value\x18\x05 \x01(\x0b\x32\x1b.api.services.datastore.Key\x12\x16\n\x0e\x62lob_key_value\x18\x10 \x01(\t\x12\x14\n\x0cstring_value\x18\x11 \x01(\t\x12\x12\n\nblob_value\x18\x12 \x01(\x0c\x12\x39\n\x0fgeo_point_value\x18\x08 \x01(\x0b\x32 .api.services.datastore.GeoPoint\x12\x34\n\x0c\x65ntity_value\x18\x06 \x01(\x0b\x32\x1e.api.services.datastore.Entity\x12\x31\n\nlist_value\x18\x07 \x03(\x0b\x32\x1d.api.services.datastore.Value\x12\x0f\n\x07meaning\x18\x0e \x01(\x05\x12\x15\n\x07indexed\x18\x0f \x01(\x08:\x04true\"F\n\x08Property\x12\x0c\n\x04name\x18\x01 \x02(\t\x12,\n\x05value\x18\x04 \x02(\x0b\x32\x1d.api.services.datastore.Value\"f\n\x06\x45ntity\x12(\n\x03key\x18\x01 \x01(\x0b\x32\x1b.api.services.datastore.Key\x12\x32\n\x08property\x18\x02 \x03(\x0b\x32 .api.services.datastore.Property\"\x95\x01\n\x0c\x45ntityResult\x12.\n\x06\x65ntity\x18\x01 \x02(\x0b\x32\x1e.api.services.datastore.Entity\x12\x0f\n\x07version\x18\x02 \x01(\x03\x12\x0e\n\x06\x63ursor\x18\x03 \x01(\x0c\"4\n\nResultType\x12\x08\n\x04\x46ULL\x10\x01\x12\x0e\n\nPROJECTION\x10\x02\x12\x0c\n\x08KEY_ONLY\x10\x03\"\xec\x02\n\x05Query\x12>\n\nprojection\x18\x02 \x03(\x0b\x32*.api.services.datastore.PropertyExpression\x12\x34\n\x04kind\x18\x03 \x03(\x0b\x32&.api.services.datastore.KindExpression\x12.\n\x06\x66ilter\x18\x04 \x01(\x0b\x32\x1e.api.services.datastore.Filter\x12\x34\n\x05order\x18\x05 \x03(\x0b\x32%.api.services.datastore.PropertyOrder\x12;\n\x08group_by\x18\x06 \x03(\x0b\x32).api.services.datastore.PropertyReference\x12\x14\n\x0cstart_cursor\x18\x07 \x01(\x0c\x12\x12\n\nend_cursor\x18\x08 \x01(\x0c\x12\x11\n\x06offset\x18\n \x01(\x05:\x01\x30\x12\r\n\x05limit\x18\x0b \x01(\x05\"\x1e\n\x0eKindExpression\x12\x0c\n\x04name\x18\x01 \x02(\t\"!\n\x11PropertyReference\x12\x0c\n\x04name\x18\x02 \x02(\t\"\xd1\x01\n\x12PropertyExpression\x12;\n\x08property\x18\x01 \x02(\x0b\x32).api.services.datastore.PropertyReference\x12\\\n\x14\x61ggregation_function\x18\x02 \x01(\x0e\x32>.api.services.datastore.PropertyExpression.AggregationFunction\" \n\x13\x41ggregationFunction\x12\t\n\x05\x46IRST\x10\x01\"\xc7\x01\n\rPropertyOrder\x12;\n\x08property\x18\x01 \x02(\x0b\x32).api.services.datastore.PropertyReference\x12M\n\tdirection\x18\x02 \x01(\x0e\x32/.api.services.datastore.PropertyOrder.Direction:\tASCENDING\"*\n\tDirection\x12\r\n\tASCENDING\x10\x01\x12\x0e\n\nDESCENDING\x10\x02\"\x8c\x01\n\x06\x46ilter\x12\x41\n\x10\x63omposite_filter\x18\x01 \x01(\x0b\x32\'.api.services.datastore.CompositeFilter\x12?\n\x0fproperty_filter\x18\x02 \x01(\x0b\x32&.api.services.datastore.PropertyFilter\"\x9a\x01\n\x0f\x43ompositeFilter\x12\x42\n\x08operator\x18\x01 \x02(\x0e\x32\x30.api.services.datastore.CompositeFilter.Operator\x12.\n\x06\x66ilter\x18\x02 \x03(\x0b\x32\x1e.api.services.datastore.Filter\"\x13\n\x08Operator\x12\x07\n\x03\x41ND\x10\x01\"\xbb\x02\n\x0ePropertyFilter\x12;\n\x08property\x18\x01 \x02(\x0b\x32).api.services.datastore.PropertyReference\x12\x41\n\x08operator\x18\x02 \x02(\x0e\x32/.api.services.datastore.PropertyFilter.Operator\x12,\n\x05value\x18\x03 \x02(\x0b\x32\x1d.api.services.datastore.Value\"{\n\x08Operator\x12\r\n\tLESS_THAN\x10\x01\x12\x16\n\x12LESS_THAN_OR_EQUAL\x10\x02\x12\x10\n\x0cGREATER_THAN\x10\x03\x12\x19\n\x15GREATER_THAN_OR_EQUAL\x10\x04\x12\t\n\x05\x45QUAL\x10\x05\x12\x10\n\x0cHAS_ANCESTOR\x10\x0b\"\xae\x01\n\x08GqlQuery\x12\x14\n\x0cquery_string\x18\x01 \x02(\t\x12\x1c\n\rallow_literal\x18\x02 \x01(\x08:\x05\x66\x61lse\x12\x35\n\x08name_arg\x18\x03 \x03(\x0b\x32#.api.services.datastore.GqlQueryArg\x12\x37\n\nnumber_arg\x18\x04 \x03(\x0b\x32#.api.services.datastore.GqlQueryArg\"Y\n\x0bGqlQueryArg\x12\x0c\n\x04name\x18\x01 \x01(\t\x12,\n\x05value\x18\x02 \x01(\x0b\x32\x1d.api.services.datastore.Value\x12\x0e\n\x06\x63ursor\x18\x03 \x01(\x0c\"\xa3\x03\n\x10QueryResultBatch\x12K\n\x12\x65ntity_result_type\x18\x01 \x02(\x0e\x32/.api.services.datastore.EntityResult.ResultType\x12;\n\rentity_result\x18\x02 \x03(\x0b\x32$.api.services.datastore.EntityResult\x12\x16\n\x0eskipped_cursor\x18\x03 \x01(\x0c\x12\x12\n\nend_cursor\x18\x04 \x01(\x0c\x12N\n\x0cmore_results\x18\x05 \x02(\x0e\x32\x38.api.services.datastore.QueryResultBatch.MoreResultsType\x12\x17\n\x0fskipped_results\x18\x06 \x01(\x05\x12\x18\n\x10snapshot_version\x18\x07 \x01(\x03\"V\n\x0fMoreResultsType\x12\x10\n\x0cNOT_FINISHED\x10\x01\x12\x1c\n\x18MORE_RESULTS_AFTER_LIMIT\x10\x02\x12\x13\n\x0fNO_MORE_RESULTS\x10\x03\"\x8e\x02\n\x08Mutation\x12.\n\x06upsert\x18\x01 \x03(\x0b\x32\x1e.api.services.datastore.Entity\x12.\n\x06update\x18\x02 \x03(\x0b\x32\x1e.api.services.datastore.Entity\x12.\n\x06insert\x18\x03 \x03(\x0b\x32\x1e.api.services.datastore.Entity\x12\x36\n\x0einsert_auto_id\x18\x04 \x03(\x0b\x32\x1e.api.services.datastore.Entity\x12+\n\x06\x64\x65lete\x18\x05 \x03(\x0b\x32\x1b.api.services.datastore.Key\x12\r\n\x05\x66orce\x18\x06 \x01(\x08\"`\n\x0eMutationResult\x12\x15\n\rindex_updates\x18\x01 \x02(\x05\x12\x37\n\x12insert_auto_id_key\x18\x02 \x03(\x0b\x32\x1b.api.services.datastore.Key\"\xb4\x01\n\x0bReadOptions\x12V\n\x10read_consistency\x18\x01 \x01(\x0e\x32\x33.api.services.datastore.ReadOptions.ReadConsistency:\x07\x44\x45\x46\x41ULT\x12\x13\n\x0btransaction\x18\x02 \x01(\x0c\"8\n\x0fReadConsistency\x12\x0b\n\x07\x44\x45\x46\x41ULT\x10\x00\x12\n\n\x06STRONG\x10\x01\x12\x0c\n\x08\x45VENTUAL\x10\x02\"t\n\rLookupRequest\x12\x39\n\x0cread_options\x18\x01 \x01(\x0b\x32#.api.services.datastore.ReadOptions\x12(\n\x03key\x18\x03 \x03(\x0b\x32\x1b.api.services.datastore.Key\"\xab\x01\n\x0eLookupResponse\x12\x33\n\x05\x66ound\x18\x01 \x03(\x0b\x32$.api.services.datastore.EntityResult\x12\x35\n\x07missing\x18\x02 \x03(\x0b\x32$.api.services.datastore.EntityResult\x12-\n\x08\x64\x65\x66\x65rred\x18\x03 \x03(\x0b\x32\x1b.api.services.datastore.Key\"\xea\x01\n\x0fRunQueryRequest\x12\x39\n\x0cread_options\x18\x01 \x01(\x0b\x32#.api.services.datastore.ReadOptions\x12\x39\n\x0cpartition_id\x18\x02 \x01(\x0b\x32#.api.services.datastore.PartitionId\x12,\n\x05query\x18\x03 \x01(\x0b\x32\x1d.api.services.datastore.Query\x12\x33\n\tgql_query\x18\x07 \x01(\x0b\x32 .api.services.datastore.GqlQuery\"K\n\x10RunQueryResponse\x12\x37\n\x05\x62\x61tch\x18\x01 \x01(\x0b\x32(.api.services.datastore.QueryResultBatch\"\xae\x01\n\x17\x42\x65ginTransactionRequest\x12\x61\n\x0fisolation_level\x18\x01 \x01(\x0e\x32>.api.services.datastore.BeginTransactionRequest.IsolationLevel:\x08SNAPSHOT\"0\n\x0eIsolationLevel\x12\x0c\n\x08SNAPSHOT\x10\x00\x12\x10\n\x0cSERIALIZABLE\x10\x01\"/\n\x18\x42\x65ginTransactionResponse\x12\x13\n\x0btransaction\x18\x01 \x01(\x0c\"&\n\x0fRollbackRequest\x12\x13\n\x0btransaction\x18\x01 \x02(\x0c\"\x12\n\x10RollbackResponse\"\xf4\x01\n\rCommitRequest\x12\x13\n\x0btransaction\x18\x01 \x01(\x0c\x12\x32\n\x08mutation\x18\x02 \x01(\x0b\x32 .api.services.datastore.Mutation\x12G\n\x04mode\x18\x05 \x01(\x0e\x32*.api.services.datastore.CommitRequest.Mode:\rTRANSACTIONAL\x12\x1f\n\x10ignore_read_only\x18\x07 \x01(\x08:\x05\x66\x61lse\"0\n\x04Mode\x12\x11\n\rTRANSACTIONAL\x10\x01\x12\x15\n\x11NON_TRANSACTIONAL\x10\x02\"Q\n\x0e\x43ommitResponse\x12?\n\x0fmutation_result\x18\x01 \x01(\x0b\x32&.api.services.datastore.MutationResult\">\n\x12\x41llocateIdsRequest\x12(\n\x03key\x18\x01 \x03(\x0b\x32\x1b.api.services.datastore.Key\"?\n\x13\x41llocateIdsResponse\x12(\n\x03key\x18\x01 \x03(\x0b\x32\x1b.api.services.datastore.Key2\xed\x04\n\x10\x44\x61tastoreService\x12Y\n\x06Lookup\x12%.api.services.datastore.LookupRequest\x1a&.api.services.datastore.LookupResponse\"\x00\x12_\n\x08RunQuery\x12\'.api.services.datastore.RunQueryRequest\x1a(.api.services.datastore.RunQueryResponse\"\x00\x12w\n\x10\x42\x65ginTransaction\x12/.api.services.datastore.BeginTransactionRequest\x1a\x30.api.services.datastore.BeginTransactionResponse\"\x00\x12Y\n\x06\x43ommit\x12%.api.services.datastore.CommitRequest\x1a&.api.services.datastore.CommitResponse\"\x00\x12_\n\x08Rollback\x12\'.api.services.datastore.RollbackRequest\x1a(.api.services.datastore.RollbackResponse\"\x00\x12h\n\x0b\x41llocateIds\x12*.api.services.datastore.AllocateIdsRequest\x1a+.api.services.datastore.AllocateIdsResponse\"\x00\x42#\n!com.google.api.services.datastore')
 
 
 
@@ -38,8 +38,8 @@ _ENTITYRESULT_RESULTTYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   options=None,
-  serialized_start=900,
-  serialized_end=952,
+  serialized_start=1042,
+  serialized_end=1094,
 )
 
 _PROPERTYEXPRESSION_AGGREGATIONFUNCTION = _descriptor.EnumDescriptor(
@@ -55,8 +55,8 @@ _PROPERTYEXPRESSION_AGGREGATIONFUNCTION = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   options=None,
-  serialized_start=1566,
-  serialized_end=1598,
+  serialized_start=1708,
+  serialized_end=1740,
 )
 
 _PROPERTYORDER_DIRECTION = _descriptor.EnumDescriptor(
@@ -76,8 +76,8 @@ _PROPERTYORDER_DIRECTION = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   options=None,
-  serialized_start=1758,
-  serialized_end=1800,
+  serialized_start=1900,
+  serialized_end=1942,
 )
 
 _COMPOSITEFILTER_OPERATOR = _descriptor.EnumDescriptor(
@@ -93,8 +93,8 @@ _COMPOSITEFILTER_OPERATOR = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   options=None,
-  serialized_start=2081,
-  serialized_end=2100,
+  serialized_start=2223,
+  serialized_end=2242,
 )
 
 _PROPERTYFILTER_OPERATOR = _descriptor.EnumDescriptor(
@@ -130,8 +130,8 @@ _PROPERTYFILTER_OPERATOR = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   options=None,
-  serialized_start=2295,
-  serialized_end=2418,
+  serialized_start=2437,
+  serialized_end=2560,
 )
 
 _QUERYRESULTBATCH_MORERESULTSTYPE = _descriptor.EnumDescriptor(
@@ -155,8 +155,8 @@ _QUERYRESULTBATCH_MORERESULTSTYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   options=None,
-  serialized_start=2972,
-  serialized_end=3058,
+  serialized_start=3164,
+  serialized_end=3250,
 )
 
 _READOPTIONS_READCONSISTENCY = _descriptor.EnumDescriptor(
@@ -180,8 +180,8 @@ _READOPTIONS_READCONSISTENCY = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   options=None,
-  serialized_start=3556,
-  serialized_end=3612,
+  serialized_start=3748,
+  serialized_end=3804,
 )
 
 _BEGINTRANSACTIONREQUEST_ISOLATIONLEVEL = _descriptor.EnumDescriptor(
@@ -201,8 +201,8 @@ _BEGINTRANSACTIONREQUEST_ISOLATIONLEVEL = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   options=None,
-  serialized_start=4347,
-  serialized_end=4395,
+  serialized_start=4539,
+  serialized_end=4587,
 )
 
 _COMMITREQUEST_MODE = _descriptor.EnumDescriptor(
@@ -222,8 +222,8 @@ _COMMITREQUEST_MODE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   options=None,
-  serialized_start=4670,
-  serialized_end=4718,
+  serialized_start=4895,
+  serialized_end=4943,
 )
 
 
@@ -338,6 +338,41 @@ _KEY = _descriptor.Descriptor(
 )
 
 
+_GEOPOINT = _descriptor.Descriptor(
+  name='GeoPoint',
+  full_name='api.services.datastore.GeoPoint',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='latitude', full_name='api.services.datastore.GeoPoint.latitude', index=0,
+      number=1, type=1, cpp_type=5, label=2,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None),
+    _descriptor.FieldDescriptor(
+      name='longitude', full_name='api.services.datastore.GeoPoint.longitude', index=1,
+      number=2, type=1, cpp_type=5, label=2,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  options=None,
+  is_extendable=False,
+  extension_ranges=[],
+  serialized_start=285,
+  serialized_end=332,
+)
+
+
 _VALUE = _descriptor.Descriptor(
   name='Value',
   full_name='api.services.datastore.Value',
@@ -402,28 +437,35 @@ _VALUE = _descriptor.Descriptor(
       is_extension=False, extension_scope=None,
       options=None),
     _descriptor.FieldDescriptor(
-      name='entity_value', full_name='api.services.datastore.Value.entity_value', index=8,
+      name='geo_point_value', full_name='api.services.datastore.Value.geo_point_value', index=8,
+      number=8, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None),
+    _descriptor.FieldDescriptor(
+      name='entity_value', full_name='api.services.datastore.Value.entity_value', index=9,
       number=6, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None),
     _descriptor.FieldDescriptor(
-      name='list_value', full_name='api.services.datastore.Value.list_value', index=9,
+      name='list_value', full_name='api.services.datastore.Value.list_value', index=10,
       number=7, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None),
     _descriptor.FieldDescriptor(
-      name='meaning', full_name='api.services.datastore.Value.meaning', index=10,
+      name='meaning', full_name='api.services.datastore.Value.meaning', index=11,
       number=14, type=5, cpp_type=1, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None),
     _descriptor.FieldDescriptor(
-      name='indexed', full_name='api.services.datastore.Value.indexed', index=11,
+      name='indexed', full_name='api.services.datastore.Value.indexed', index=12,
       number=15, type=8, cpp_type=7, label=1,
       has_default_value=True, default_value=True,
       message_type=None, enum_type=None, containing_type=None,
@@ -438,8 +480,8 @@ _VALUE = _descriptor.Descriptor(
   options=None,
   is_extendable=False,
   extension_ranges=[],
-  serialized_start=286,
-  serialized_end=658,
+  serialized_start=335,
+  serialized_end=766,
 )
 
 
@@ -473,8 +515,8 @@ _PROPERTY = _descriptor.Descriptor(
   options=None,
   is_extendable=False,
   extension_ranges=[],
-  serialized_start=660,
-  serialized_end=730,
+  serialized_start=768,
+  serialized_end=838,
 )
 
 
@@ -508,8 +550,8 @@ _ENTITY = _descriptor.Descriptor(
   options=None,
   is_extendable=False,
   extension_ranges=[],
-  serialized_start=732,
-  serialized_end=834,
+  serialized_start=840,
+  serialized_end=942,
 )
 
 
@@ -527,6 +569,20 @@ _ENTITYRESULT = _descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None),
+    _descriptor.FieldDescriptor(
+      name='version', full_name='api.services.datastore.EntityResult.version', index=1,
+      number=2, type=3, cpp_type=2, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None),
+    _descriptor.FieldDescriptor(
+      name='cursor', full_name='api.services.datastore.EntityResult.cursor', index=2,
+      number=3, type=12, cpp_type=9, label=1,
+      has_default_value=False, default_value="",
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None),
   ],
   extensions=[
   ],
@@ -537,8 +593,8 @@ _ENTITYRESULT = _descriptor.Descriptor(
   options=None,
   is_extendable=False,
   extension_ranges=[],
-  serialized_start=836,
-  serialized_end=952,
+  serialized_start=945,
+  serialized_end=1094,
 )
 
 
@@ -621,8 +677,8 @@ _QUERY = _descriptor.Descriptor(
   options=None,
   is_extendable=False,
   extension_ranges=[],
-  serialized_start=955,
-  serialized_end=1319,
+  serialized_start=1097,
+  serialized_end=1461,
 )
 
 
@@ -649,8 +705,8 @@ _KINDEXPRESSION = _descriptor.Descriptor(
   options=None,
   is_extendable=False,
   extension_ranges=[],
-  serialized_start=1321,
-  serialized_end=1351,
+  serialized_start=1463,
+  serialized_end=1493,
 )
 
 
@@ -677,8 +733,8 @@ _PROPERTYREFERENCE = _descriptor.Descriptor(
   options=None,
   is_extendable=False,
   extension_ranges=[],
-  serialized_start=1353,
-  serialized_end=1386,
+  serialized_start=1495,
+  serialized_end=1528,
 )
 
 
@@ -713,8 +769,8 @@ _PROPERTYEXPRESSION = _descriptor.Descriptor(
   options=None,
   is_extendable=False,
   extension_ranges=[],
-  serialized_start=1389,
-  serialized_end=1598,
+  serialized_start=1531,
+  serialized_end=1740,
 )
 
 
@@ -749,8 +805,8 @@ _PROPERTYORDER = _descriptor.Descriptor(
   options=None,
   is_extendable=False,
   extension_ranges=[],
-  serialized_start=1601,
-  serialized_end=1800,
+  serialized_start=1743,
+  serialized_end=1942,
 )
 
 
@@ -784,8 +840,8 @@ _FILTER = _descriptor.Descriptor(
   options=None,
   is_extendable=False,
   extension_ranges=[],
-  serialized_start=1803,
-  serialized_end=1943,
+  serialized_start=1945,
+  serialized_end=2085,
 )
 
 
@@ -820,8 +876,8 @@ _COMPOSITEFILTER = _descriptor.Descriptor(
   options=None,
   is_extendable=False,
   extension_ranges=[],
-  serialized_start=1946,
-  serialized_end=2100,
+  serialized_start=2088,
+  serialized_end=2242,
 )
 
 
@@ -863,8 +919,8 @@ _PROPERTYFILTER = _descriptor.Descriptor(
   options=None,
   is_extendable=False,
   extension_ranges=[],
-  serialized_start=2103,
-  serialized_end=2418,
+  serialized_start=2245,
+  serialized_end=2560,
 )
 
 
@@ -912,8 +968,8 @@ _GQLQUERY = _descriptor.Descriptor(
   options=None,
   is_extendable=False,
   extension_ranges=[],
-  serialized_start=2421,
-  serialized_end=2595,
+  serialized_start=2563,
+  serialized_end=2737,
 )
 
 
@@ -954,8 +1010,8 @@ _GQLQUERYARG = _descriptor.Descriptor(
   options=None,
   is_extendable=False,
   extension_ranges=[],
-  serialized_start=2597,
-  serialized_end=2686,
+  serialized_start=2739,
+  serialized_end=2828,
 )
 
 
@@ -981,22 +1037,36 @@ _QUERYRESULTBATCH = _descriptor.Descriptor(
       is_extension=False, extension_scope=None,
       options=None),
     _descriptor.FieldDescriptor(
-      name='end_cursor', full_name='api.services.datastore.QueryResultBatch.end_cursor', index=2,
+      name='skipped_cursor', full_name='api.services.datastore.QueryResultBatch.skipped_cursor', index=2,
+      number=3, type=12, cpp_type=9, label=1,
+      has_default_value=False, default_value="",
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None),
+    _descriptor.FieldDescriptor(
+      name='end_cursor', full_name='api.services.datastore.QueryResultBatch.end_cursor', index=3,
       number=4, type=12, cpp_type=9, label=1,
       has_default_value=False, default_value="",
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None),
     _descriptor.FieldDescriptor(
-      name='more_results', full_name='api.services.datastore.QueryResultBatch.more_results', index=3,
+      name='more_results', full_name='api.services.datastore.QueryResultBatch.more_results', index=4,
       number=5, type=14, cpp_type=8, label=2,
       has_default_value=False, default_value=1,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None),
     _descriptor.FieldDescriptor(
-      name='skipped_results', full_name='api.services.datastore.QueryResultBatch.skipped_results', index=4,
+      name='skipped_results', full_name='api.services.datastore.QueryResultBatch.skipped_results', index=5,
       number=6, type=5, cpp_type=1, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None),
+    _descriptor.FieldDescriptor(
+      name='snapshot_version', full_name='api.services.datastore.QueryResultBatch.snapshot_version', index=6,
+      number=7, type=3, cpp_type=2, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
@@ -1011,8 +1081,8 @@ _QUERYRESULTBATCH = _descriptor.Descriptor(
   options=None,
   is_extendable=False,
   extension_ranges=[],
-  serialized_start=2689,
-  serialized_end=3058,
+  serialized_start=2831,
+  serialized_end=3250,
 )
 
 
@@ -1074,8 +1144,8 @@ _MUTATION = _descriptor.Descriptor(
   options=None,
   is_extendable=False,
   extension_ranges=[],
-  serialized_start=3061,
-  serialized_end=3331,
+  serialized_start=3253,
+  serialized_end=3523,
 )
 
 
@@ -1109,8 +1179,8 @@ _MUTATIONRESULT = _descriptor.Descriptor(
   options=None,
   is_extendable=False,
   extension_ranges=[],
-  serialized_start=3333,
-  serialized_end=3429,
+  serialized_start=3525,
+  serialized_end=3621,
 )
 
 
@@ -1145,8 +1215,8 @@ _READOPTIONS = _descriptor.Descriptor(
   options=None,
   is_extendable=False,
   extension_ranges=[],
-  serialized_start=3432,
-  serialized_end=3612,
+  serialized_start=3624,
+  serialized_end=3804,
 )
 
 
@@ -1180,8 +1250,8 @@ _LOOKUPREQUEST = _descriptor.Descriptor(
   options=None,
   is_extendable=False,
   extension_ranges=[],
-  serialized_start=3614,
-  serialized_end=3730,
+  serialized_start=3806,
+  serialized_end=3922,
 )
 
 
@@ -1222,8 +1292,8 @@ _LOOKUPRESPONSE = _descriptor.Descriptor(
   options=None,
   is_extendable=False,
   extension_ranges=[],
-  serialized_start=3733,
-  serialized_end=3904,
+  serialized_start=3925,
+  serialized_end=4096,
 )
 
 
@@ -1271,8 +1341,8 @@ _RUNQUERYREQUEST = _descriptor.Descriptor(
   options=None,
   is_extendable=False,
   extension_ranges=[],
-  serialized_start=3907,
-  serialized_end=4141,
+  serialized_start=4099,
+  serialized_end=4333,
 )
 
 
@@ -1299,8 +1369,8 @@ _RUNQUERYRESPONSE = _descriptor.Descriptor(
   options=None,
   is_extendable=False,
   extension_ranges=[],
-  serialized_start=4143,
-  serialized_end=4218,
+  serialized_start=4335,
+  serialized_end=4410,
 )
 
 
@@ -1328,8 +1398,8 @@ _BEGINTRANSACTIONREQUEST = _descriptor.Descriptor(
   options=None,
   is_extendable=False,
   extension_ranges=[],
-  serialized_start=4221,
-  serialized_end=4395,
+  serialized_start=4413,
+  serialized_end=4587,
 )
 
 
@@ -1356,8 +1426,8 @@ _BEGINTRANSACTIONRESPONSE = _descriptor.Descriptor(
   options=None,
   is_extendable=False,
   extension_ranges=[],
-  serialized_start=4397,
-  serialized_end=4444,
+  serialized_start=4589,
+  serialized_end=4636,
 )
 
 
@@ -1384,8 +1454,8 @@ _ROLLBACKREQUEST = _descriptor.Descriptor(
   options=None,
   is_extendable=False,
   extension_ranges=[],
-  serialized_start=4446,
-  serialized_end=4484,
+  serialized_start=4638,
+  serialized_end=4676,
 )
 
 
@@ -1405,8 +1475,8 @@ _ROLLBACKRESPONSE = _descriptor.Descriptor(
   options=None,
   is_extendable=False,
   extension_ranges=[],
-  serialized_start=4486,
-  serialized_end=4504,
+  serialized_start=4678,
+  serialized_end=4696,
 )
 
 
@@ -1438,6 +1508,13 @@ _COMMITREQUEST = _descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None),
+    _descriptor.FieldDescriptor(
+      name='ignore_read_only', full_name='api.services.datastore.CommitRequest.ignore_read_only', index=3,
+      number=7, type=8, cpp_type=7, label=1,
+      has_default_value=True, default_value=False,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None),
   ],
   extensions=[
   ],
@@ -1448,8 +1525,8 @@ _COMMITREQUEST = _descriptor.Descriptor(
   options=None,
   is_extendable=False,
   extension_ranges=[],
-  serialized_start=4507,
-  serialized_end=4718,
+  serialized_start=4699,
+  serialized_end=4943,
 )
 
 
@@ -1476,8 +1553,8 @@ _COMMITRESPONSE = _descriptor.Descriptor(
   options=None,
   is_extendable=False,
   extension_ranges=[],
-  serialized_start=4720,
-  serialized_end=4801,
+  serialized_start=4945,
+  serialized_end=5026,
 )
 
 
@@ -1504,8 +1581,8 @@ _ALLOCATEIDSREQUEST = _descriptor.Descriptor(
   options=None,
   is_extendable=False,
   extension_ranges=[],
-  serialized_start=4803,
-  serialized_end=4865,
+  serialized_start=5028,
+  serialized_end=5090,
 )
 
 
@@ -1532,14 +1609,15 @@ _ALLOCATEIDSRESPONSE = _descriptor.Descriptor(
   options=None,
   is_extendable=False,
   extension_ranges=[],
-  serialized_start=4867,
-  serialized_end=4930,
+  serialized_start=5092,
+  serialized_end=5155,
 )
 
 _KEY_PATHELEMENT.containing_type = _KEY;
 _KEY.fields_by_name['partition_id'].message_type = _PARTITIONID
 _KEY.fields_by_name['path_element'].message_type = _KEY_PATHELEMENT
 _VALUE.fields_by_name['key_value'].message_type = _KEY
+_VALUE.fields_by_name['geo_point_value'].message_type = _GEOPOINT
 _VALUE.fields_by_name['entity_value'].message_type = _ENTITY
 _VALUE.fields_by_name['list_value'].message_type = _VALUE
 _PROPERTY.fields_by_name['value'].message_type = _VALUE
@@ -1602,6 +1680,7 @@ _ALLOCATEIDSREQUEST.fields_by_name['key'].message_type = _KEY
 _ALLOCATEIDSRESPONSE.fields_by_name['key'].message_type = _KEY
 DESCRIPTOR.message_types_by_name['PartitionId'] = _PARTITIONID
 DESCRIPTOR.message_types_by_name['Key'] = _KEY
+DESCRIPTOR.message_types_by_name['GeoPoint'] = _GEOPOINT
 DESCRIPTOR.message_types_by_name['Value'] = _VALUE
 DESCRIPTOR.message_types_by_name['Property'] = _PROPERTY
 DESCRIPTOR.message_types_by_name['Entity'] = _ENTITY
@@ -1650,6 +1729,12 @@ class Key(_message.Message):
   DESCRIPTOR = _KEY
 
   # @@protoc_insertion_point(class_scope:api.services.datastore.Key)
+
+class GeoPoint(_message.Message):
+  __metaclass__ = _reflection.GeneratedProtocolMessageType
+  DESCRIPTOR = _GEOPOINT
+
+  # @@protoc_insertion_point(class_scope:api.services.datastore.GeoPoint)
 
 class Value(_message.Message):
   __metaclass__ = _reflection.GeneratedProtocolMessageType

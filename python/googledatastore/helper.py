@@ -45,49 +45,74 @@ __all__ = [
 
 
 def get_credentials_from_env():
-  """Get datastore credentials from DATASTORE_* environment variables.
+  """Get datastore credentials from the environment.
 
   Try and fallback on the following credentials in that order:
-  - Compute Engine service account
   - Google APIs Signed JWT credentials based on
   DATASTORE_SERVICE_ACCOUNT and DATASTORE_PRIVATE_KEY_FILE
-  environments variables
+  environment variables
+  - Compute Engine service account
   - No credentials (development server)
 
   Returns:
     datastore credentials.
-
   """
+  # If DATASTORE_SERVICE_ACCOUNT and DATASTORE_PRIVATE_KEY_FILE
+  # environment variables are defined: use Google APIs Console Service
+  # Accounts (signed JWT). Note that the corresponding service account
+  # should be an admin of the datastore application.
+  service_account = os.getenv('DATASTORE_SERVICE_ACCOUNT')
+  key_path = os.getenv('DATASTORE_PRIVATE_KEY_FILE')
+  if service_account and key_path:
+    with open(key_path, 'rb') as f:
+      key = f.read()
+      credentials = client.SignedJwtAssertionCredentials(
+          service_account, key, connection.SCOPE)
+      logging.info('connecting using DatastoreSignedJwtCredentials')
+      return credentials
   try:
-    # Use Compute Engine credentials to connect to the datastore service. Note
-    # that the corresponding service account should be an admin of the
-    # datastore application.
+    # Fallback on getting Compute Engine credentials from the metadata server
+    # to connect to the datastore service. Note that the corresponding
+    # service account should be an admin of the datastore application.
     credentials = gce.AppAssertionCredentials(connection.SCOPE)
     http = httplib2.Http()
     credentials.authorize(http)
-    # force first credentials refresh to detect if we are running on
+    # Force first credentials refresh to detect if we are running on
     # Compute Engine.
     credentials.refresh(http)
-    logging.info('connect using compute credentials')
+    logging.info('connecting using compute credentials')
     return credentials
   except (client.AccessTokenRefreshError, httplib2.HttpLib2Error):
-    # If not running on Google Compute fallback on using Google APIs
-    # Console Service Accounts (signed JWT). Note that the corresponding
-    # service account should be an admin of the datastore application.
-    if (os.getenv('DATASTORE_SERVICE_ACCOUNT')
-        and os.getenv('DATASTORE_PRIVATE_KEY_FILE')):
-      with open(os.getenv('DATASTORE_PRIVATE_KEY_FILE'), 'rb') as f:
-        key = f.read()
-      credentials = client.SignedJwtAssertionCredentials(
-          os.getenv('DATASTORE_SERVICE_ACCOUNT'), key, connection.SCOPE)
-      logging.info('connect using DatastoreSignedJwtCredentials')
-      return credentials
-  # Fallback on no credentials if no DATASTORE_ environments variables
-  # are defined. Note that it will only authorize call to the
-  # development server.
-  logging.info('connect using no credentials')
-  return None
+    # Fallback on no credentials if no DATASTORE_ environment
+    # variables are defined and Compute Engine auth failed. Note that
+    # it will only authorize calls to the development server.
+    logging.info('connecting using no credentials')
+    return None
 
+def get_dataset_from_env():
+  """Get datastore dataset_id from the environment.
+
+  Try and fallback on the following sources in that order:
+  - DATASTORE_DATASET environment variables
+  - Cloud Project ID from Compute Engine metadata server.
+  - None
+
+  Returns:
+    datastore dataset id.
+  """
+  # If DATASTORE_DATASET environment variable is defined return it.
+  dataset_id = os.getenv('DATASTORE_DATASET')
+  if dataset_id:
+    return dataset_id
+  # Fallback on returning the Cloud Project ID from Compute Engine
+  # metadata server.
+  try:
+    _, content = httplib2.Http().request(
+        'http://metadata/computeMetadata/v1/project/project-id',
+        headers={'X-Google-Metadata-Request': 'True'})
+    return content
+  except httplib2.HttpLib2Error:
+    return None
 
 def add_key_path(key_proto, *path_elements):
   """Add path elements to the given datastore.Key proto message.
@@ -204,6 +229,9 @@ def set_value(value_proto, value, indexed=None):
   elif isinstance(value, bool):
     value_proto.boolean_value = value
   elif isinstance(value, int):
+    value_proto.integer_value = value
+  elif isinstance(value, long):
+    # Proto will complain if the value is too large.
     value_proto.integer_value = value
   elif isinstance(value, float):
     value_proto.double_value = value
@@ -356,8 +384,19 @@ def from_timestamp_usec(timestamp):
 
 
 def to_timestamp_usec(dt):
-  """Convert datetime to microsecond timestamp."""
+  """Convert datetime to microsecond timestamp.
+
+  Args:
+    dt: a timezone naive datetime.
+
+  Returns:
+    a microsecond timestamp as a long.
+
+  Raises:
+    TypeError: if a timezone aware datetime was provided.
+  """
   if dt.tzinfo:
-    # this is an "aware" datetime with an explicit timezone. convert to UTC.
-    dt = value.astimezone(UTC)
+    # this is an "aware" datetime with an explicit timezone. Throw an error.
+    raise TypeError('Cannot store a timezone aware datetime. '
+                    'Convert to UTC and store the naive datetime.')
   return long(calendar.timegm(dt.timetuple()) * 1000000L) + dt.microsecond
