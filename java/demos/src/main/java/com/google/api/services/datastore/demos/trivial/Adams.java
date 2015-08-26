@@ -41,7 +41,7 @@ public class Adams {
     try {
       // Setup the connection to Google Cloud Datastore and infer credentials
       // from the environment.
-      datastore = DatastoreFactory.get().create(DatastoreHelper.getOptionsfromEnv()
+      datastore = DatastoreFactory.get().create(DatastoreHelper.getOptionsFromEnv()
           .dataset(datasetId).build());
     } catch (GeneralSecurityException exception) {
       System.err.println("Security error connecting to the datastore: " + exception.getMessage());

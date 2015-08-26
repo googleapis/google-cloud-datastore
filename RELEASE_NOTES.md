@@ -1,6 +1,21 @@
 RELEASE NOTES
 =============
 
+v1beta2-rev1-3.0.0
+------------------
+- Change to QuerySplitter interface.
+  - This will not affect users of the interface, however is a breaking change for
+    any implements of the interface. This adds a method that allows specifying
+    the PartitionId so that namespace queries can be split.
+
+v1beta2-rev1-2.1.2
+------------------
+- Modify helper functions in the Python client library to support long integers.
+  - Fixes: https://github.com/GoogleCloudPlatform/google-cloud-datastore/issues/49.
+- Check environment variables before creating a Compute Engine credential in Python and Java client libraries.
+  - Fixes: https://github.com/GoogleCloudPlatform/google-cloud-datastore/issues/37.
+- Bring LocalDevelopmentDatastore into sync with the current `gcd` command line tool options.
+
 v1beta2-rev1-2.1.1
 ------------------
 - Update to latest App Engine SDK version.

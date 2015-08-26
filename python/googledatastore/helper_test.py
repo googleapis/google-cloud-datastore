@@ -20,17 +20,27 @@ __author__ = 'proppy@google.com (Johan Euphrosine)'
 import collections
 import copy
 import datetime
+import os
+import tempfile
 import unittest
 
 
+import httplib2
+import mox
+from oauth2client import client
+from oauth2client import gce
+import pytz
+
 import googledatastore as datastore
-from googledatastore.helper import *
+from googledatastore import connection
+from googledatastore import helper
 
 
 class DatastoreHelperTest(unittest.TestCase):
+
   def testSetKeyPath(self):
     key = datastore.Key()
-    add_key_path(key, 'Foo', 1, 'Bar', 'bar')
+    helper.add_key_path(key, 'Foo', 1, 'Bar', 'bar')
     self.assertEquals(2, len(key.path_element))
     self.assertEquals('Foo', key.path_element[0].kind)
     self.assertEquals(1, key.path_element[0].id)
@@ -39,7 +49,7 @@ class DatastoreHelperTest(unittest.TestCase):
 
   def testIncompleteKey(self):
     key = datastore.Key()
-    add_key_path(key, 'Foo')
+    helper.add_key_path(key, 'Foo')
     self.assertEquals(1, len(key.path_element))
     self.assertEquals('Foo', key.path_element[0].kind)
     self.assertEquals(0, key.path_element[0].id)
@@ -47,7 +57,7 @@ class DatastoreHelperTest(unittest.TestCase):
 
   def testInvalidKey(self):
     key = datastore.Key()
-    self.assertRaises(TypeError, add_key_path, key, 'Foo', 1.0)
+    self.assertRaises(TypeError, helper.add_key_path, key, 'Foo', 1.0)
 
   def testPropertyValues(self):
     blob_key = datastore.Value()
@@ -57,6 +67,7 @@ class DatastoreHelperTest(unittest.TestCase):
         a_blob='b',
         a_boolean=True,
         a_integer=1,
+        a_long=2L,
         a_double=1.0,
         a_timestamp_microseconds=datetime.datetime.now(),
         a_key=datastore.Key(),
@@ -64,115 +75,123 @@ class DatastoreHelperTest(unittest.TestCase):
         a_blob_key=blob_key,
         many_integer=[1, 2, 3])
     entity = datastore.Entity()
-    add_properties(entity, property_dict)
-    d = dict((prop.name, get_value(prop.value))
+    helper.add_properties(entity, property_dict)
+    d = dict((prop.name, helper.get_value(prop.value))
              for prop in entity.property)
     self.assertDictEqual(d, property_dict)
 
+  def testLongValueNotTruncated(self):
+    value = datastore.Value()
+    try:
+      helper.set_value(value, 1 << 63)
+      self.fail('expected ValueError')
+    except ValueError:
+      pass
+
   def testAddPropertyValuesBlindlyAdd(self):
     entity = datastore.Entity()
-    add_properties(entity, {'a': 1})
-    add_properties(entity, {'a': 2})
+    helper.add_properties(entity, {'a': 1})
+    helper.add_properties(entity, {'a': 2})
     self.assertEquals(2, len(entity.property))
 
   def testEmptyValues(self):
     v = datastore.Value()
-    self.assertEquals(None, get_value(v))
+    self.assertEquals(None, helper.get_value(v))
 
   def testSetPropertyOverwrite(self):
     property = datastore.Property()
-    set_property(property, 'a', 1, indexed=False)
-    set_property(property, 'a', 'a')
-    self.assertEquals('a', get_value(property.value))
+    helper.set_property(property, 'a', 1, indexed=False)
+    helper.set_property(property, 'a', 'a')
+    self.assertEquals('a', helper.get_value(property.value))
     self.assertEquals(True, property.value.indexed)
 
   def testIndexedPropagation_Literal(self):
     value = datastore.Value()
 
-    set_value(value, 'a')
+    helper.set_value(value, 'a')
     self.assertEquals(False, value.HasField('indexed'))
-    set_value(value, 'a', False)
+    helper.set_value(value, 'a', False)
     self.assertEquals(True, value.HasField('indexed'))
     self.assertEquals(False, value.indexed)
-    set_value(value, 'a', True)
+    helper.set_value(value, 'a', True)
     self.assertEquals(False, value.HasField('indexed'))
     self.assertEquals(True, value.indexed)
 
   def testIndexedPropagation_Value(self):
     value = datastore.Value()
-    set_value(value, datastore.Value())
+    helper.set_value(value, datastore.Value())
     self.assertEquals(False, value.HasField('indexed'))
 
-    set_value(value, datastore.Value(), False)
+    helper.set_value(value, datastore.Value(), False)
     self.assertEquals(True, value.HasField('indexed'))
     self.assertEquals(False, value.indexed)
-    set_value(value, copy.deepcopy(value))
+    helper.set_value(value, copy.deepcopy(value))
     self.assertEquals(True, value.HasField('indexed'))
     self.assertEquals(False, value.indexed)
 
-    set_value(value, datastore.Value(), True)
+    helper.set_value(value, datastore.Value(), True)
     self.assertEquals(False, value.HasField('indexed'))
     self.assertEquals(True, value.indexed)
     value.indexed = True
-    set_value(value, copy.deepcopy(value))
+    helper.set_value(value, copy.deepcopy(value))
     self.assertEquals(True, value.HasField('indexed'))
     self.assertEquals(True, value.indexed)
 
   def testIndexedPropagation_List(self):
     value = datastore.Value()
-    set_value(value, ['a'])
+    helper.set_value(value, ['a'])
     self.assertEquals(False, value.HasField('indexed'))
     self.assertEquals(False, value.list_value[0].HasField('indexed'))
 
-    set_value(value, ['a'], True)
+    helper.set_value(value, ['a'], True)
     self.assertEquals(False, value.HasField('indexed'))
     self.assertEquals(False, value.list_value[0].HasField('indexed'))
     self.assertEquals(True, value.list_value[0].indexed)
 
-    set_value(value, ['a'], False)
+    helper.set_value(value, ['a'], False)
     self.assertEquals(False, value.HasField('indexed'))
     self.assertEquals(True, value.list_value[0].HasField('indexed'))
     self.assertEquals(False, value.list_value[0].indexed)
 
   def testSetValueBadType(self):
     value = datastore.Value()
-    self.assertRaises(TypeError, set_value, value, 'a', object())
-    self.assertRaises(TypeError, set_value, value, object(), None)
+    self.assertRaises(TypeError, helper.set_value, value, 'a', object())
+    self.assertRaises(TypeError, helper.set_value, value, object(), None)
 
   def testSetPropertyIndexed(self):
     property = datastore.Property()
-    set_property(property, 'a', 1)
+    helper.set_property(property, 'a', 1)
     self.assertEquals(False, property.value.HasField('indexed'))
-    set_property(property, 'a', 1, indexed=True)
+    helper.set_property(property, 'a', 1, indexed=True)
     self.assertEquals(False, property.value.HasField('indexed'))
     self.assertEquals(True, property.value.indexed)
-    set_property(property, 'a', 1, indexed=False)
+    helper.set_property(property, 'a', 1, indexed=False)
     self.assertEquals(True, property.value.HasField('indexed'))
     self.assertEquals(False, property.value.indexed)
 
   def testQuery(self):
     q = datastore.Query()
-    set_kind(q, 'Foo')
+    helper.set_kind(q, 'Foo')
     self.assertEquals('Foo', q.kind[0].name)
-    add_property_orders(q, '-bar', 'foo')
+    helper.add_property_orders(q, '-bar', 'foo')
     self.assertEquals(datastore.PropertyOrder.DESCENDING,
                       q.order[0].direction)
     self.assertEquals('bar', q.order[0].property.name)
     self.assertEquals(datastore.PropertyOrder.ASCENDING,
                       q.order[1].direction)
     self.assertEquals('foo', q.order[1].property.name)
-    add_projection(q, '__key__', 'bar')
+    helper.add_projection(q, '__key__', 'bar')
     self.assertEquals('__key__', q.projection[0].property.name)
     self.assertEquals('bar', q.projection[1].property.name)
 
   def testFilter(self):
     f = datastore.Filter()
-    set_composite_filter(
+    helper.set_composite_filter(
         f,
         datastore.CompositeFilter.AND,
-        set_property_filter(datastore.Filter(),
+        helper.set_property_filter(datastore.Filter(),
                             'foo', datastore.PropertyFilter.EQUAL, u'bar'),
-        set_property_filter(datastore.Filter(),
+        helper.set_property_filter(datastore.Filter(),
                             'hop', datastore.PropertyFilter.GREATER_THAN, 2.0))
     cf = f.composite_filter
     pf = cf.filter[0].property_filter
@@ -184,6 +203,98 @@ class DatastoreHelperTest(unittest.TestCase):
     self.assertEquals(2.0, pf.value.double_value)
     self.assertEquals(datastore.PropertyFilter.GREATER_THAN, pf.operator)
     self.assertEquals(datastore.CompositeFilter.AND, cf.operator)
+
+class DatastoreEnvHelperTest(unittest.TestCase):
+
+  def setUp(self):
+    self.mox = mox.Mox()
+    self.certificate = tempfile.NamedTemporaryFile(delete=False)
+    self.certificate.write('not-a-secret-key')
+    self.certificate.close()
+
+  def tearDown(self):
+    os.unlink(self.certificate.name)
+    self.mox.UnsetStubs()
+    self.mox.ResetAll()
+
+  def testGetCredentialsFromEnvJwt(self):
+    self.mox.StubOutWithMock(os, 'getenv')
+    self.mox.StubOutWithMock(client, 'SignedJwtAssertionCredentials')
+    credentials = self.mox.CreateMockAnything()
+    os.getenv('DATASTORE_SERVICE_ACCOUNT').AndReturn('foo@bar.com')
+    os.getenv('DATASTORE_PRIVATE_KEY_FILE').AndReturn(self.certificate.name)
+    client.SignedJwtAssertionCredentials('foo@bar.com',
+                                         'not-a-secret-key',
+                                         connection.SCOPE).AndReturn(
+                                             credentials)
+    self.mox.ReplayAll()
+    self.assertIs(credentials, helper.get_credentials_from_env())
+    self.mox.VerifyAll()
+
+  def testGetCredentialsFromEnvCompute(self):
+    self.mox.StubOutWithMock(gce, 'AppAssertionCredentials')
+    credentials = self.mox.CreateMockAnything()
+    gce.AppAssertionCredentials(connection.SCOPE).AndReturn(credentials)
+    credentials.authorize(mox.IsA(httplib2.Http))
+    credentials.refresh(mox.IsA(httplib2.Http))
+    self.mox.ReplayAll()
+    self.assertIs(credentials, helper.get_credentials_from_env())
+    self.mox.VerifyAll()
+
+  def testGetCredentialsFromEnvLocal(self):
+    self.mox.StubOutWithMock(gce, 'AppAssertionCredentials')
+    credentials = self.mox.CreateMockAnything()
+    gce.AppAssertionCredentials(connection.SCOPE).AndReturn(credentials)
+    credentials.authorize(mox.IsA(httplib2.Http))
+    credentials.refresh(mox.IsA(httplib2.Http)).AndRaise(
+        httplib2.HttpLib2Error())
+    self.mox.ReplayAll()
+    self.assertIs(None, helper.get_credentials_from_env())
+    self.mox.VerifyAll()
+
+  def testGetDatastoreFromEnv(self):
+    self.mox.StubOutWithMock(os, 'getenv')
+    os.getenv('DATASTORE_DATASET').AndReturn('my-dataset-id')
+    self.mox.ReplayAll()
+    self.assertEquals('my-dataset-id', helper.get_dataset_from_env())
+    self.mox.VerifyAll()
+
+  def testGetDatastoreFromEnvCompute(self):
+    self.mox.StubOutWithMock(httplib2, 'Http')
+    http = self.mox.CreateMockAnything()
+    httplib2.Http().AndReturn(http)
+    http.request('http://metadata/computeMetadata/v1/project/project-id',
+                 headers={'X-Google-Metadata-Request': 'True'}).AndReturn(
+                     (self.mox.CreateMockAnything(), 'my-dataset-id'))
+    self.mox.ReplayAll()
+    self.assertEquals('my-dataset-id', helper.get_dataset_from_env())
+    self.mox.VerifyAll()
+
+  def testGetDatastoreFromEnvNone(self):
+    self.mox.StubOutWithMock(httplib2, 'Http')
+    http = self.mox.CreateMockAnything()
+    httplib2.Http().AndReturn(http)
+    http.request('http://metadata/computeMetadata/v1/project/project-id',
+                 headers={'X-Google-Metadata-Request': 'True'}).AndRaise(
+                     httplib2.HttpLib2Error())
+    self.mox.ReplayAll()
+    self.assertEquals(None, helper.get_dataset_from_env())
+    self.mox.VerifyAll()
+
+  def testDatetimeTimezone(self):
+    dt_secs = 10000000
+    dt = datetime.datetime.fromtimestamp(dt_secs,
+                                         pytz.timezone('US/Pacific'))
+    # We should fail if the datetime has a timezone set.
+    self.assertRaises(TypeError, helper.to_timestamp_usec, dt)
+    dt = dt.astimezone(pytz.utc)
+    # Even if the timezone is set to UTC, we should still fail since storing a
+    # datetime with UTC will be read from Datastore as a naive datetime.
+    self.assertRaises(TypeError, helper.to_timestamp_usec, dt)
+
+    dt = dt.replace(tzinfo=None)
+    self.assertEqual(dt_secs * 1000000L, helper.to_timestamp_usec(dt))
+
 
 if __name__ == '__main__':
   unittest.main()
