@@ -35,7 +35,7 @@ option java_package = "com.google.api.services.datastore";
 // Dataset ID:
 // A dataset id's value must never be "".
 // A dataset id's value must match
-// ([a-z\d\-]{1,100}~)?([a-z\d][a-z\d\-\.]{0,99}:)?([a-z\d][a-z\d\-]{0,99}
+// ([a-z\d\-]{1,100}~)?([a-z\d][a-z\d\-\.]{0,99}\:)?([a-z\d][a-z\d\-]{0,99})
 message PartitionId {
   // The dataset ID.
   optional string dataset_id = 3;
@@ -86,7 +86,7 @@ message Key {
   // are required to be in the path along with the entity identifier itself.
   // The only exception is that in some documented cases, the identifier in the
   // last path element (for the entity) itself may be omitted. A path can never
-  // be empty.
+  // be empty. The path can have at most 100 elements.
   repeated PathElement path_element = 2;
 }
 
@@ -110,8 +110,12 @@ message Value {
   // A blob key value.
   optional string blob_key_value = 16;
   // A UTF-8 encoded string value.
+  // When indexed is true, may have at most 500 characters.
+  // (But see exception below.)
   optional string string_value = 17;
   // A blob value.
+  // May be a maximum of 1,000,000 bytes.
+  // When indexed is true, may have at most 500 bytes.
   optional bytes blob_value = 18;
   // An entity value.
   // May have no key.
@@ -120,7 +124,8 @@ message Value {
   optional Entity entity_value = 6;
   // A list value.
   // Cannot contain another list value.
-  // Cannot also have a meaning and indexing set.
+  // A Value instance that sets field list_value must not set
+  // field meaning or field indexed.
   repeated Value list_value = 7;
 
   // The <code>meaning</code> field is reserved and should not be used.
@@ -132,7 +137,7 @@ message Value {
   // <code>null</code> value.
   // When <code>indexed</code> is <code>true</code>, <code>stringValue</code>
   // is limited to 500 characters and the blob value is limited to 500 bytes.
-  // Exception: If meaning is set to 2, string_value is limited to 2038
+  // Exception: If meaning is set to 2, string_value is limited to 2083
   // characters regardless of indexed.
   // When indexed is true, meaning 15 and 22 are not allowed, and meaning 16
   // will be ignored on input (and will never be set on output).
@@ -220,11 +225,11 @@ message Query {
 
   // A starting point for the query results. Optional. Query cursors are
   // returned in query result batches.
-  optional bytes /* serialized QueryCursor */ start_cursor = 7;
+  optional bytes start_cursor = 7;
 
   // An ending point for the query results. Optional. Query cursors are
   // returned in query result batches.
-  optional bytes /* serialized QueryCursor */ end_cursor = 8;
+  optional bytes end_cursor = 8;
 
   // The number of results to skip. Applies before limit, but after all other
   // constraints (optional, defaults to 0).
@@ -317,6 +322,7 @@ message PropertyFilter {
 
 // A GQL query.
 message GqlQuery {
+  // The query string.
   required string query_string = 1;
   // When false, the query string must not contain a literal.
   optional bool allow_literal = 2 [default = false];
@@ -363,7 +369,7 @@ message QueryResultBatch {
 
   // A cursor that points to the position after the last result in the batch.
   // May be absent.
-  optional bytes /* serialized QueryCursor */ end_cursor = 4;
+  optional bytes end_cursor = 4;
 
   // The state of the query after the current batch.
   required MoreResultsType more_results = 5;
@@ -429,7 +435,7 @@ message ReadOptions {
   optional ReadConsistency read_consistency = 1 [default=DEFAULT];
 
   // The transaction to use. Optional.
-  optional bytes /* serialized Transaction */ transaction = 2;
+  optional bytes transaction = 2;
 }
 
 // The request for Lookup.
@@ -511,7 +517,7 @@ message BeginTransactionRequest {
 message BeginTransactionResponse {
 
   // The transaction identifier (always present).
-  optional bytes /* serialized Transaction */ transaction = 1;
+  optional bytes transaction = 1;
 }
 
 // The request for Rollback.
@@ -519,7 +525,7 @@ message RollbackRequest {
 
   // The transaction identifier, returned by a call to
   // <code>beginTransaction</code>.
-  required bytes /* serialized Transaction */ transaction = 1;
+  required bytes transaction = 1;
 }
 
 // The response for Rollback.
@@ -537,11 +543,13 @@ message CommitRequest {
 
   // The transaction identifier, returned by a call to
   // <code>beginTransaction</code>. Must be set when mode is TRANSACTIONAL.
-  optional bytes /* serialized Transaction */ transaction = 1;
+  optional bytes transaction = 1;
   // The mutation to perform. Optional.
   optional Mutation mutation = 2;
   // The type of commit to perform. Either TRANSACTIONAL or NON_TRANSACTIONAL.
   optional Mode mode = 5 [default=TRANSACTIONAL];
+  // Ignore a user specified read-only period.
+  optional bool ignore_read_only = 7 [default = false];
 }
 
 // The response for Commit.

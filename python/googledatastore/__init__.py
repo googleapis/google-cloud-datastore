@@ -46,7 +46,7 @@ def set_options(**kwargs):
 def get_default_connection():
   """Return the default datastore connection.
 
-  Defaults dataset to os.getenv('DATASTORE_DATASET'), host to
+  dataset defaults to helper.get_dataset_from_env(), host to
   os.getenv('DATASTORE_HOST'), and credentials to
   helper.get_credentials_from_env().
 

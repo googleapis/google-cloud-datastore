@@ -25,6 +25,7 @@ import logging
 import sys
 
 import googledatastore as datastore
+from googledatastore.helper import *
 
 def main():
   # Set dataset id from command line argument.
@@ -80,10 +81,11 @@ def main():
     # Apply the insert mutation if the entity was not found and close
     # the transaction.
     datastore.commit(req)
+    props = get_property_dict(entity)
     # Get question property value.
-    question = entity.property[0].value.string_value
+    question = props['question'].string_value
     # Get answer property value.
-    answer = entity.property[1].value.integer_value
+    answer = props['answer'].integer_value
     # Print the question and read one line from stdin.
     print question
     result = raw_input('> ')
