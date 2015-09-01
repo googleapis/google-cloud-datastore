@@ -13,6 +13,7 @@ v1beta2-rev1-3.0.0
   - Fixes: https://github.com/GoogleCloudPlatform/google-cloud-datastore/issues/37.
 - Bring LocalDevelopmentDatastore into sync with the current `gcd` command line tool options.
 - Renamed `DatastoreHelper.getOptionsfromEnv()` to `DatastoreHelper.getOptionsFromEnv()`.
+- Assign a PEP 440-compatible identifier to the Python client library package.
 
 v1beta2-rev1-2.1.1
 ------------------
