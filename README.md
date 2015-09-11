@@ -64,7 +64,7 @@ pip install googledatastore
 <dependency>
   <groupId>com.google.apis</groupId>
   <artifactId>google-api-services-datastore-protobuf</artifactId>
-  <version>v1beta2-rev1-3.0.1</version>
+  <version>v1beta2-rev1-3.0.2</version>
 </dependency>
 ```
 
