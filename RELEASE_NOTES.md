@@ -1,6 +1,10 @@
 RELEASE NOTES
 =============
 
+v1beta2-rev1-3.0.2
+------------------
+- Fix QuerySplitter to support small queries that do not need to be split.
+
 v1beta2-rev1-3.0.0
 ------------------
 - Change to QuerySplitter interface.
