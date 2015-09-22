@@ -32,7 +32,7 @@ var SCOPES = [
  * It writes an entity to the datastore that represents a Trivia
  * question with its answer to your dataset. Does a lookup by key and
  * presents the question to the user. If the user gets the right
- * answer, it will greet him with a quote from a famous book.
+ * answer, it will greet them with a quote from a famous book.
  *
  * If not running from a Google Compute Engine instance, the path to
  * the Service Account's .json key must be set to the environment
