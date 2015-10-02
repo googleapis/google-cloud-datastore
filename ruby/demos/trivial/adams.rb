@@ -56,7 +56,7 @@ resp = client.execute(
   :body_object => {})
 
 # Get the transaction handle
-tx = Base64.encode64(resp.data.transaction)
+tx = JSON.parse(resp.response.body)['transaction']
 
 # Get the entity by key.
 resp = client.execute(
