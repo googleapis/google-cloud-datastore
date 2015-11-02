@@ -12,8 +12,11 @@ install:
   - pip install tox
 
 script:
-  - tox -e py27
-  - tox -e lint
+  - tox
+
+env:
+  - TOXENV=py27
+  - TOXENV=lint
 
 after_success:
   - tox -e coveralls
