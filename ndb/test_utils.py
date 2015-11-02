@@ -1,3 +1,19 @@
+#
+# Copyright 2008 Google Inc. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 """Test utilities for writing NDB tests.
 
 Useful set of utilities for correctly setting up the appengine testing
@@ -18,7 +34,7 @@ from . import model
 from . import tasklets
 from . import eventloop
 
-class NDBTest(unittest.TestCase):
+class NDBBaseTest(unittest.TestCase):
   """Base class for tests that interact with API stubs or create Models.
 
   NOTE: Care must be used when working with model classes using this test
@@ -98,6 +114,9 @@ class NDBTest(unittest.TestCase):
   # Set to the module under test to check its __all__ for inconsistencies.
   the_module = None
 
+
+class NDBTest(NDBBaseTest):
+  """A Base class for all tests that use an App Engine Datastore connection."""
   def testAllVariableIsConsistent(self):
     if self.the_module is None:
       return
@@ -122,7 +141,7 @@ class NDBTest(unittest.TestCase):
                      (modname, unlisted))
 
 
-class NDBCloudDatastoreV1Test(NDBTest):
+class NDBCloudDatastoreV1Test(NDBBaseTest):
   """NDB test base that uses a datastore V1 connection."""
 
   def setUp(self):

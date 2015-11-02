@@ -1,4 +1,20 @@
-"""Benchmark for keys_only fetch() -- see also dbench,py."""
+#
+# Copyright 2008 Google Inc. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+"""Benchmark for keys_only fetch() using *OLD* db -- see also kobench.py."""
 
 import cProfile
 import os
@@ -6,6 +22,7 @@ import pstats
 import sys
 
 from google.appengine.ext import testbed
+from google.appengine.ext import db
 
 from ndb import utils
 utils.DEBUG = False
@@ -23,20 +40,20 @@ from ndb import tasklets
 os.environ = dict(os.environ)
 
 
-class Foo(model.Model):
+class Foo(db.Model):
   pass
 
 
 def populate(n):
   xs = [Foo() for i in xrange(n)]
-  ks = model.put_multi(xs)
+  ks = db.put(xs)
 
 
-qry = Foo.query()
+qry = Foo.all(keys_only=True)
 
 
 def bench(n):
-  ks = qry.fetch(n,keys_only=True)
+  ks = qry.fetch(n)
   assert len(ks) == n
 
 

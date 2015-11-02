@@ -1,0 +1,19 @@
+language: python
+sudo: false
+cache:
+  directories:
+  - cache/
+
+before_install:
+  - ./get_app_engine_sdk.sh
+  - export GAE="./cache/google_appengine"
+
+install:
+  - pip install tox
+
+script:
+  - tox -e py27
+  - tox -e lint
+
+after_success:
+  - tox -e coveralls

@@ -1,0 +1,24 @@
+*.py[cod]
+*.pyc-2.4
+*~
+*.orig
+*#*
+*@*
+index.yaml
+.DS_Store
+workspace.xml
+
+# Packages
+*.egg
+*.egg-info
+
+# Unit test / coverage reports
+.coverage
+.coverage.*
+coverage.*
+htmlcov
+.tox
+nosetests.xml
+
+# Travis cache
+cache/
