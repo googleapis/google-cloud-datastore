@@ -12,7 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
 
 """Tests for tasklets.py."""
 
@@ -24,8 +23,11 @@ import StringIO
 import sys
 import time
 
+from .google_imports import datastore_pbs
+from .google_imports import datastore_rpc
 from .google_imports import namespace_manager
 from .google_test_imports import unittest
+from .google_test_imports import real_unittest
 
 from . import context
 from . import eventloop
@@ -758,6 +760,47 @@ class TaskletTests(test_utils.NDBTest):
     self.assertEqual(fn(m), True)
     self.assertEqual(key.Key(Employee, 'mykey').get().name, 'Patrick')
 
+  @real_unittest.skipUnless(
+      datastore_pbs._CLOUD_DATASTORE_ENABLED,
+      "V1 must be supported to run V1 tests.")
+  def testCloudDatastoreContext(self):
+    del os.environ['APPLICATION_ID'] # Clear APPLICATION_ID for test.
+    os.environ['DATASTORE_PROJECT_ID'] = 'project'
+    # Setting just a project id isn't enough info.
+    self.assertRaisesRegexp(ValueError,
+                            'Could not determine app id\..*',
+                            tasklets.make_default_context)
+    # Unless the override is specified.
+    os.environ['DATASTORE_USE_PROJECT_ID_AS_APP_ID'] = 'True'
+    ctx = tasklets.make_default_context()
+    self.assertEqual(datastore_rpc._CLOUD_DATASTORE_V1, ctx._conn._api_version)
+    os.environ['DATASTORE_APP_ID'] = 's~project'
+    # App id and override should not both be specified
+    self.assertRaisesRegexp(ValueError,
+                            'App id was provided .* but .* was set to true\.',
+                            tasklets.make_default_context)
+    del os.environ['DATASTORE_USE_PROJECT_ID_AS_APP_ID']
+    ctx = tasklets.make_default_context()
+    self.assertEqual(datastore_rpc._CLOUD_DATASTORE_V1, ctx._conn._api_version)
+    os.environ['DATASTORE_APP_ID'] = 's~anotherproject'
+    # The provided app id must resolve to the provided project id.
+    self.assertRaises(ValueError, tasklets.make_default_context)
+    os.environ['DATASTORE_APP_ID'] = 's~project'
+    os.environ['DATASTORE_ADDITIONAL_APP_IDS'] = 's~anotherapp,s~andanother'
+    ctx = tasklets.make_default_context()
+    converter = ctx._conn.adapter.get_entity_converter()
+    self.assertEquals('s~anotherapp', converter.project_to_app_id('anotherapp'))
+    self.assertEquals('s~andanother', converter.project_to_app_id('andanother'))
+
+  @real_unittest.skipUnless(
+      datastore_pbs._CLOUD_DATASTORE_ENABLED,
+      "V1 must be supported to run V1 tests.")
+  def testCloudDatastoreContextWithExistingApplicationId(self):
+    os.environ['DATASTORE_APP_ID'] = 's~project'
+    os.environ['DATASTORE_PROJECT_ID'] = 'project'
+    os.environ['APPLICATION_ID'] = 's~a-different-project'
+    # If things are set propertly but APPLICATION_ID is already set, we fail.
+    self.assertRaises(ValueError, tasklets.make_default_context)
 
 class TracebackTests(test_utils.NDBTest):
   """Checks that errors result in reasonable tracebacks."""

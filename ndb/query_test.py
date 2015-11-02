@@ -12,7 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
 
 """Tests for query.py."""
 
@@ -442,7 +441,7 @@ class BaseQueryTestMixin(object):
     key = Foo(p=1, q=2, r=[3, 4]).put()
     q = Foo.query(Foo.p >= 0)
     ent = q.get(projection=[Foo.p, 'q'])
-    self.assertEqual(ent._projection, ('pp', 'q'))
+    self.assertItemsEqual(ent._projection, ('pp', 'q'))
     self.assertEqual(ent.p, 1)
     self.assertEqual(ent.q, 2)
     self.assertRaises(model.UnprojectedPropertyError, lambda: ent.r)
@@ -568,9 +567,9 @@ class BaseQueryTestMixin(object):
 
     x = q.get(projection=[Outer.middle.inner.foo, 'mid.inner.bar'])
     self.assertEqual(x.middle.inner.foo, 'foo')
-    self.assertEqual(x.middle.inner._projection, ('bar', 'foo'))
-    self.assertEqual(x.middle._projection, ('inner.bar', 'inner.foo'))
-    self.assertEqual(x._projection, ('mid.inner.bar', 'mid.inner.foo'))
+    self.assertItemsEqual(x.middle.inner._projection, ('bar', 'foo'))
+    self.assertItemsEqual(x.middle._projection, ('inner.bar', 'inner.foo'))
+    self.assertItemsEqual(x._projection, ('mid.inner.bar', 'mid.inner.foo'))
     self.assertEqual(x,
                      Outer(key=one.key,
                            projection=['mid.inner.bar', 'mid.inner.foo'],
@@ -949,6 +948,42 @@ class BaseQueryTestMixin(object):
     self.assertEqual(before[3], after[2])
     self.assertEqual(before[3], after[3])  # !!!
 
+  def testCursorsForAugmentedQuery(self):
+    class Employee(model.Model):
+      name = model.StringProperty()
+      rank = model.IntegerProperty()
+    class Manager(Employee):
+      report = model.StructuredProperty(Employee, repeated=True)
+    reports_a = []
+    for i in range(3):
+      e = Employee(name=str(i), rank=i)
+      e.put()
+      e.key = None
+      reports_a.append(e)
+    reports_b = []
+    for i in range(3, 6):
+      e = Employee(name=str(i), rank=0)
+      e.put()
+      e.key = None
+      reports_b.append(e)
+    mgr_a = Manager(name='a', report=reports_a)
+    mgr_a.put()
+    mgr_b = Manager(name='b', report=reports_b)
+    mgr_b.put()
+    mgr_c = Manager(name='c', report=reports_a + reports_b)
+    mgr_c.put()
+    it = Manager.query(Manager.report == Employee(name='1', rank=1)).iter()
+
+    it.next()
+    self.assertRaises(NotImplementedError, it.cursor_before)
+    self.assertRaises(NotImplementedError, it.cursor_after)
+
+    it.next()
+    self.assertRaises(NotImplementedError, it.cursor_before)
+    self.assertRaises(NotImplementedError, it.cursor_after)
+
+    self.assertFalse(it.has_next())
+
   def testCursorsEfficientPaging(self):
     # We want to read a 'page' of data, get the cursor just past the
     # page, and know whether there is another page, all with a single
@@ -1249,6 +1284,18 @@ class BaseQueryTestMixin(object):
                            Foo.bar == Bar(a='a2', b='e')))
     q = q.order(Foo.rank.val)
     self.assertEqual([f1, f2], q.fetch())
+
+  def testProbablyHasNextWithMultiQuery(self):
+    class Foo(model.Model):
+      a = model.IntegerProperty()
+    keys = model.put_multi([Foo(a=i) for i in range(100)])
+    q = Foo.query(Foo.key.IN(keys)).order(Foo.a)
+    it = q.iter()
+    for i in range(0, 99):
+      it.next()
+      # Probably has next is conservative so it should always return True
+      # if there are in fact more results.
+      self.assertTrue(it.probably_has_next())
 
   def testNotEqualOperator(self):
     q = query.Query(kind='Foo').filter(Foo.rate != 2)
@@ -2025,6 +2072,24 @@ class QueryV3Tests(test_utils.NDBTest, BaseQueryTestMixin, IndexListTestMixin):
     # Keys only overrides projection but a projection is required for group_by.
     self.assertRaises(datastore_errors.BadRequestError,
                       qry.get, keys_only=True)
+
+  def testCursorsForMultiQuery(self):
+    # Only relevant for V3 since V1 has per result cursors.
+    # TODO(pcostello): This should throw a better error.
+    q1 = query.Query(kind='Foo').filter(Foo.tags == 'jill').order(Foo.name)
+    q2 = query.Query(kind='Foo').filter(Foo.tags == 'joe').order(Foo.name)
+    qq = query._MultiQuery([q1, q2])
+    it = qq.iter()
+
+    it.next()
+    it.cursor_before() # Start cursor
+    self.assertRaises(AttributeError, it.cursor_after)
+
+    it.next()
+    it.cursor_before() # Start of second query
+    it.cursor_after() # End of batch cursor
+
+    self.assertFalse(it.has_next())
 
 @real_unittest.skipUnless(datastore_pbs._CLOUD_DATASTORE_ENABLED,
     "V1 must be supported to run V1 tests.")

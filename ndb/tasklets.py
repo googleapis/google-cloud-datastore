@@ -12,7 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
 
 """A tasklet decorator.
 
@@ -86,6 +85,7 @@ from .google_imports import apiproxy_stub_map
 from .google_imports import apiproxy_rpc
 from .google_imports import datastore
 from .google_imports import datastore_errors
+from .google_imports import datastore_pbs
 from .google_imports import datastore_rpc
 from .google_imports import namespace_manager
 
@@ -1064,6 +1064,10 @@ def toplevel(func):
 
 _CONTEXT_KEY = '__CONTEXT__'
 
+_DATASTORE_APP_ID_ENV = 'DATASTORE_APP_ID'
+_DATASTORE_PROJECT_ID_ENV = 'DATASTORE_PROJECT_ID'
+_DATASTORE_ADDITIONAL_APP_IDS_ENV = 'DATASTORE_ADDITIONAL_APP_IDS'
+_DATASTORE_USE_PROJECT_ID_AS_APP_ID_ENV = 'DATASTORE_USE_PROJECT_ID_AS_APP_ID'
 
 def get_context():
   # XXX Docstring
@@ -1078,6 +1082,42 @@ def get_context():
 
 def make_default_context():
   # XXX Docstring
+  datastore_app_id = os.environ.get(_DATASTORE_APP_ID_ENV, None)
+  datastore_project_id = os.environ.get(_DATASTORE_PROJECT_ID_ENV, None)
+  if datastore_app_id or datastore_project_id:
+    # We will create a Cloud Datastore context.
+    app_id_override = bool(os.environ.get(
+        _DATASTORE_USE_PROJECT_ID_AS_APP_ID_ENV, False))
+    if not datastore_app_id and not app_id_override:
+      raise ValueError('Could not determine app id. To use project id (%s) '
+                       'instead, set %s=true. This will affect the '
+                       'serialized form of entities and should not be used '
+                       'if serialized entities will be shared between '
+                       'code running on App Engine and code running off '
+                       'App Engine. Alternatively, set %s=<app id>.'
+                       % (datastore_project_id,
+                          _DATASTORE_USE_PROJECT_ID_AS_APP_ID_ENV,
+                          _DATASTORE_APP_ID_ENV))
+    elif datastore_app_id:
+      if app_id_override:
+        raise ValueError('App id was provided (%s) but %s was set to true. '
+                         'Please unset either %s or %s.' %
+                         (datastore_app_id,
+                          _DATASTORE_USE_PROJECT_ID_AS_APP_ID_ENV,
+                          _DATASTORE_APP_ID_ENV,
+                          _DATASTORE_USE_PROJECT_ID_AS_APP_ID_ENV))
+      elif datastore_project_id:
+        # Project id and app id provided, make sure they are the same.
+        id_resolver = datastore_pbs.IdResolver([datastore_app_id])
+        if (datastore_project_id !=
+            id_resolver.resolve_project_id(datastore_app_id)):
+          raise ValueError('App id "%s" does not match project id "%s".'
+                           % (datastore_app_id, datastore_project_id))
+
+    datastore_app_id = datastore_project_id or datastore_app_id
+    additional_app_str = os.environ.get(_DATASTORE_ADDITIONAL_APP_IDS_ENV, '')
+    additional_apps = (app.strip() for app in additional_app_str.split(','))
+    return _make_cloud_datastore_context(datastore_app_id, additional_apps)
   return make_context()
 
 
@@ -1086,6 +1126,63 @@ def make_context(conn=None, config=None):
   # XXX Docstring
   from . import context  # Late import to deal with circular imports.
   return context.Context(conn=conn, config=config)
+
+
+def _make_cloud_datastore_context(app_id, external_app_ids=()):
+  """Creates a new context to connect to a remote Cloud Datastore instance.
+
+  This should only be used outside of Google App Engine.
+
+  Args:
+    app_id: The application id to connect to. This differs from the project
+      id as it may have an additional prefix, e.g. "s~" or "e~".
+    external_app_ids: A list of apps that may be referenced by data in your
+      application. For example, if you are connected to s~my-app and store keys
+      for s~my-other-app, you should include s~my-other-app in the external_apps
+      list.
+  Returns:
+    An ndb.Context that can connect to a Remote Cloud Datastore. You can use
+    this context by passing it to ndb.set_context.
+  """
+  from . import model  # Late import to deal with circular imports.
+  # Late import since it might not exist.
+  if not datastore_pbs._CLOUD_DATASTORE_ENABLED:
+    raise datastore_errors.BadArgumentError(
+        datastore_pbs.MISSING_CLOUD_DATASTORE_MESSAGE)
+  import googledatastore
+  try:
+    from google.appengine.datastore import cloud_datastore_v1_remote_stub
+  except ImportError:
+    from google3.apphosting.datastore import cloud_datastore_v1_remote_stub
+
+  current_app_id = os.environ.get('APPLICATION_ID', None)
+  if current_app_id and current_app_id != app_id:
+    # TODO(pcostello): We should support this so users can connect to different
+    # applications.
+    raise ValueError('Cannot create a Cloud Datastore context that connects '
+                     'to an application (%s) that differs from the application '
+                     'already connected to (%s).' % (app_id, current_app_id))
+  os.environ['APPLICATION_ID'] = app_id
+
+  id_resolver = datastore_pbs.IdResolver((app_id,) + tuple(external_app_ids))
+  project_id = id_resolver.resolve_project_id(app_id)
+  endpoint = googledatastore.helper.get_project_endpoint_from_env(project_id)
+  datastore = googledatastore.Datastore(
+      project_endpoint=endpoint,
+      credentials=googledatastore.helper.get_credentials_from_env())
+
+  conn = model.make_connection(_api_version=datastore_rpc._CLOUD_DATASTORE_V1,
+                               _id_resolver=id_resolver)
+
+  # If necessary, install the stubs
+  try:
+    stub = cloud_datastore_v1_remote_stub.CloudDatastoreV1RemoteStub(datastore)
+    apiproxy_stub_map.apiproxy.RegisterStub(datastore_rpc._CLOUD_DATASTORE_V1,
+                                            stub)
+  except:
+    pass  # The stub is already installed.
+  # TODO(pcostello): Ensure the current stub is connected to the right project.
+  return make_context(conn=conn)
 
 
 def set_context(new_context):
