@@ -12,7 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
 
 """Test utilities for writing NDB tests.
 
@@ -114,9 +113,7 @@ class NDBBaseTest(unittest.TestCase):
   # Set to the module under test to check its __all__ for inconsistencies.
   the_module = None
 
-
 class NDBTest(NDBBaseTest):
-  """A Base class for all tests that use an App Engine Datastore connection."""
   def testAllVariableIsConsistent(self):
     if self.the_module is None:
       return
@@ -148,7 +145,7 @@ class NDBCloudDatastoreV1Test(NDBBaseTest):
     super(NDBCloudDatastoreV1Test, self).setUp()
 
   def SetupContextCache(self):
-    """Set up the context cache to use the V4 API."""
+    """Set up the context cache to use the V1 API."""
     id_resolver = datastore_pbs.IdResolver([self.APP_ID])
     self.conn = model.make_connection(
         _api_version=datastore_rpc._CLOUD_DATASTORE_V1,

@@ -12,7 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
 
 """Tests for model.py."""
 
@@ -2875,58 +2874,202 @@ property <
           "Don't know how to convert %s to proto", entity_contents)
     return proto
 
-  def testStaticEmptyListBehavior(self):
+  def testEmptyListWithFloatProperty(self):
+    def static_instance_property_only_float(write_empty_list):
+
+      class Strung(model.Model):
+            string_list = (
+                model.FloatProperty(
+                    repeated=True,
+                    write_empty_list=write_empty_list))
+      return ("static_instance_property_only_float", Strung)
+
     self.RunEmptyListAndNoneBehaviorTest(
-        is_static=True,
+        model_config=static_instance_property_only_float,
+        write_empty_list=False,
         model_to_protobuf=(
             (None, db.BadValueError),
             ([None], db.BadValueError),
-            ([7],[7]),
             ([], self.empty_proto)
+        ),
+        protobuf_to_model=())
+
+    self.RunEmptyListAndNoneBehaviorTest(
+        model_config=static_instance_property_only_float,
+        write_empty_list=True,
+        model_to_protobuf=(
+            (None, db.BadValueError),
+            ([None], db.BadValueError),
+            ([], [])
         ),
         protobuf_to_model=(
             (self.empty_proto, []),
             (None, [None]),
             ([None], [None]),
-            ([7],[7]),
-            ([], [None]))
-    )
+            ([], [])))
+
+
+  def testEmptyListGlobalDefaults(self):
+    self.assertIsNone(model.Expando._write_empty_list_for_dynamic_properties)
+    self.assertFalse(model.Property._write_empty_list)
+
+  def testStaticEmptyListBehavior(self):
+
+    def static_model_property_only(write_empty_list):
+      model.Property._write_empty_list = write_empty_list
+
+      class Strung(model.Model):
+        string_list = model.GenericProperty(repeated=True)
+      return ("static_model_property_only", Strung)
+
+    def static_instance_property_only(write_empty_list):
+
+      class Strung(model.Model):
+            string_list = (
+                model.GenericProperty(
+                    repeated=True,
+                    write_empty_list=write_empty_list))
+      return ("static_instance_property_only", Strung)
+
+    def dynamic_with_static_prop(write_empty_list):
+
+      class Strung(model.Expando):
+        string_list = (
+                model.GenericProperty(
+                    repeated=True,
+                    write_empty_list=write_empty_list))
+      Strung._write_empty_list_for_dynamic_properties = not write_empty_list
+      return ("dynamic_with_static_prop", Strung)
+
+    def static_model_disagrees_with_prop(write_empty_list):
+      model.Property._write_empty_list = not write_empty_list
+
+      class Strung(model.Model):
+        string_list = (
+            model.GenericProperty(
+                repeated=True,
+                write_empty_list=write_empty_list))
+      return ("static_model_disagrees_with_prop", Strung)
+
+    for model_config in (
+        static_model_property_only,
+        static_instance_property_only,
+        dynamic_with_static_prop,
+        static_model_disagrees_with_prop):
+      self.RunEmptyListAndNoneBehaviorTest(
+          model_config=model_config,
+          write_empty_list=False,
+          model_to_protobuf=(
+              (None, db.BadValueError),
+              ([None], db.BadValueError),
+              ([7], [7]),
+              ([], self.empty_proto)
+          ),
+          protobuf_to_model=(
+              (self.empty_proto, []),
+              (None, [None]),
+              ([None], [None]),
+              ([7], [7]),
+              ([], [])))
+      self.RunEmptyListAndNoneBehaviorTest(
+        model_config=model_config,
+        write_empty_list=True,
+        model_to_protobuf=(
+            (None, db.BadValueError),
+            ([None], db.BadValueError),
+            ([7], [7]),
+            ([], [])
+        ),
+        protobuf_to_model=(
+            (self.empty_proto, []),
+            (None, [None]),
+            ([None], [None]),
+            ([7], [7]),
+            ([], [])))
 
   def testDynamicEmptyListBehavior(self):
-    self.RunEmptyListAndNoneBehaviorTest(
-        is_static=False,
+
+    def dynamic_model_property_only(write_empty_list):
+      model.Expando._write_empty_list_for_dynamic_properties = write_empty_list
+
+      class Strung(model.Expando):
+        pass
+      return ('dynamic_model_property_only', Strung)
+
+    def dynamic_instance_property_only(write_empty_list):
+
+      class Strung(model.Expando):
+        pass
+      Strung._write_empty_list_for_dynamic_properties = write_empty_list
+      return ("dynamic_instance_property_only", Strung)
+
+    def dynamic_set_from_prop_default(write_empty_list):
+      model.Property._write_empty_list = write_empty_list
+
+      class Strung(model.Expando):
+        pass
+      return ("dynamic_set_from_prop_default", Strung)
+
+    def dynamic_mismatch_between_props(write_empty_list):
+      model.Property._write_empty_list = not write_empty_list
+
+      class Strung(model.Expando):
+        pass
+      Strung._write_empty_list_for_dynamic_properties = write_empty_list
+      return ("dynamic_mismatch_between_props", Strung)
+
+    for model_config in (
+        dynamic_instance_property_only,
+        dynamic_model_property_only,
+        dynamic_set_from_prop_default,
+        dynamic_mismatch_between_props):
+      self.RunEmptyListAndNoneBehaviorTest(
+          model_config=model_config,
+          write_empty_list=False,
+          model_to_protobuf=(
+              (None, None),
+              ([None], db.BadValueError),
+              ([7], [7]),
+              ([], self.empty_proto)
+          ),
+          protobuf_to_model=(
+              (None, None),
+              ([None], [None]),
+              ([7], [7]),
+              ([], [])))
+      self.RunEmptyListAndNoneBehaviorTest(
+        model_config=model_config,
+        write_empty_list=True,
         model_to_protobuf=(
             (None, None),
             ([None], db.BadValueError),
-            ([7],[7]),
-            ([], self.empty_proto)
+            ([7], [7]),
+            ([], [])
         ),
         protobuf_to_model=(
             (None, None),
             ([None], [None]),
-            ([7],[7]),
-            ([], None))
-    )
+            ([7], [7]),
+            ([], [])))
 
   def RunEmptyListAndNoneBehaviorTest(
-      self, is_static, model_to_protobuf, protobuf_to_model):
-    test_config = 'static' if is_static else 'dynamic'
-    if is_static:
+      self, model_config, write_empty_list,
+      model_to_protobuf, protobuf_to_model):
+    try:
+      property_before = model.Property._write_empty_list
+      expando_before = model.Expando._write_empty_list_for_dynamic_properties
+      (test_config, db_model) = model_config(write_empty_list)
 
-      class Strung(model.Model):
-        string_list = model.GenericProperty(repeated=True)
-    else:
+      for input_, output in protobuf_to_model:
+        desc = 'proto(%s) -> %s model(%s) test ' % (input_, test_config, output)
+        self.RunOneEmptyListTest(True, input_, output, desc, db_model)
 
-      class Strung(model.Expando):
-        pass
-
-    for input_, output in protobuf_to_model:
-      desc = 'proto(%s) -> %s model(%s) test ' % (input_, test_config, output)
-      self.RunOneEmptyListTest(True, input_, output, desc, Strung)
-
-    for input_, output in model_to_protobuf:
-      desc = '%s model(%s) -> proto(%s) test ' % (input_, test_config, output)
-      self.RunOneEmptyListTest(False, input_, output, desc, Strung)
+      for input_, output in model_to_protobuf:
+        desc = '%s model(%s) -> proto(%s) test ' % (input_, test_config, output)
+        self.RunOneEmptyListTest(False, input_, output, desc, db_model)
+    finally:
+      model.Property._write_empty_list = property_before
+      model.Expando._write_empty_list_for_dynamic_properties = expando_before
 
   def RunOneEmptyListTest(
       self, is_proto_to_model, test_input, expected_output, desc, db_model):
@@ -3377,6 +3520,42 @@ property <
     [k] = self.conn.put([m])
     m.key = k  # Connection.put() doesn't do this!
     [m2] = self.conn.get([k])
+    self.assertEqual(m2, m)
+
+  def testEmptyListWorksWithStructuredPropertyWithRepeatedSubstructure(self):
+    class Address(model.Model):
+      label = model.StringProperty(repeated=True, write_empty_list=True)
+      text = model.StringProperty()
+
+    class Person(model.Model):
+      name = model.StringProperty()
+      address = model.StructuredProperty(Address)
+
+    m = Person(name='Google',
+               address=Address(label=[], text='San Francisco'))
+    m.key = model.Key(flat=['Person', None])
+    self.assertEqual(m.address.label, [])
+    self.assertEqual(m.address.text, 'San Francisco')
+    k = m.put()
+    m2 = k.get()
+    self.assertEqual(m2, m)
+
+  def testEmptyListWorksWithRepeatedStructuredPropertys(self):
+    class Address(model.Model):
+      label = model.StringProperty()
+      text = model.StringProperty()
+
+    class Person(model.Model):
+      name = model.StringProperty()
+      address = model.StructuredProperty(
+          Address, repeated=True, write_empty_list=True)
+
+    m = Person(name='Google',
+               address=[])
+    m.key = model.Key(flat=['Person', None])
+    self.assertEqual(m.address, [])
+    k = m.put()
+    m2 = k.get()
     self.assertEqual(m2, m)
 
   def testIdAndParentPut(self):
