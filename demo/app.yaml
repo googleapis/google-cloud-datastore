@@ -1,26 +1,14 @@
 # Demo app.
-application: ndb-experiment
-version: 1
 runtime: python27
 api_version: 1
 threadsafe: True
 
 handlers:
-
-- url: /django_middleware
-  script: django_middleware_test.app
-
 - url: /fibo.*
   script: fibo.app
 
-- url: /intest.*
-  script: intest.app
-
 - url: /hello.*
   script: hello.app
-
-##- url: /test.*
-##  script: test.py
 
 - url: /home
   script: main.app
