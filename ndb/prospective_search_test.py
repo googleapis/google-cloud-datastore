@@ -56,7 +56,7 @@ class ProspectiveSearchTests(test_utils.NDBTest):
                       int: ['rank'],
                       bool: ['flag'],
                       float: ['rand'],
-                      })
+                     })
 
   def testUnsubscribe(self):
     class Foo(model.Model):

@@ -44,8 +44,10 @@ class PolyModelTests(test_utils.NDBTest):
     # Test basic PolyModel functionality.
     class Shoe(PolyModel):
       color = model.StringProperty()
+
     class Moccasin(Shoe):
       leather = model.StringProperty()
+
     class Sneaker(Shoe):
       pump = model.BooleanProperty()
 
@@ -84,6 +86,7 @@ class PolyModelTests(test_utils.NDBTest):
   def testBlobKeyProperty(self):
     class MyModel(PolyModel):
       pass
+
     class MyDerivedModel(MyModel):
       image = model.BlobKeyProperty()
 
@@ -103,6 +106,7 @@ class PolyModelTests(test_utils.NDBTest):
     # Tests for the class_ property.
     class Animal(PolyModel):
       pass
+
     class Dog(Animal):
       pass
     fido = Dog()
@@ -114,6 +118,7 @@ class PolyModelTests(test_utils.NDBTest):
     # (See also testExpandoPoly, and the Ghoul class in testInheritance.)
     class Animal(PolyModel, model.Expando):
       pass
+
     class Mammal(Animal):
       pass
     cat = Mammal(name='Tom', naps=18, sound='purr')
@@ -129,6 +134,7 @@ class PolyModelTests(test_utils.NDBTest):
     # It should work either way.
     class Animal(model.Expando, PolyModel):
       pass
+
     class Mammal(Animal):
       pass
     cat = Mammal(name='Tom', naps=18, sound='purr')
@@ -143,22 +149,31 @@ class PolyModelTests(test_utils.NDBTest):
     # Tests focused on the inheritance model, including diamond inheritance.
     class NamedThing(model.Model):
       name = model.StringProperty()
+
     class Animal(PolyModel, NamedThing):
       legs = model.IntegerProperty(default=4)
+
     class Canine(Animal):
       pass
+
     class Dog(Canine):
       breed = model.StringProperty(default='mutt')
+
     class Wolf(Canine):
       mythical = model.BooleanProperty(default=False)
+
     class Feline(Animal):
       sound = model.StringProperty()
+
     class Cat(Feline):
       naps = model.IntegerProperty()
+
     class Panther(Feline):
       pass
+
     class Monster(Dog, Cat):
       ancestry = model.StringProperty()
+
     class Ghoul(Monster, model.Expando):
       pass
 
@@ -191,9 +206,9 @@ class PolyModelTests(test_utils.NDBTest):
     self.assertEqual(scary._get_kind(), 'Animal')
     self.assertEqual(scary._class_name(), 'Ghoul')
     self.assertEqual(scary._class_key(), ['Animal',
-                                         'Feline', 'Cat',
-                                         'Canine', 'Dog',
-                                         'Monster', 'Ghoul'])
+                                          'Feline', 'Cat',
+                                          'Canine', 'Dog',
+                                          'Monster', 'Ghoul'])
 
     k91 = k9.put().get()
     self.assertTrue(isinstance(k9, Canine))
@@ -219,8 +234,10 @@ class PolyModelTests(test_utils.NDBTest):
   def testPickling(self):
     # Test that PolyModel instances are pickled and unpickled properly.
     global Animal, Dog
+
     class Animal(PolyModel):
       name = model.StringProperty()
+
     class Dog(Animal):
       breed = model.StringProperty()
     for proto in 0, 1, 2:
@@ -236,9 +253,12 @@ class PolyModelTests(test_utils.NDBTest):
     # Test that overriding _class_name() works.
     class Animal(PolyModel):
       pass
+
     class Feline(Animal):
       pass
+
     class Cat(Feline):
+
       @classmethod
       def _class_name(cls):
         return 'Pussycat'
@@ -254,12 +274,16 @@ class PolyModelTests(test_utils.NDBTest):
   def testMixins(self):
     class Mixin(object):
       pass
+
     class Entity(polymodel.PolyModel):
       pass
+
     class ChildEntity(Entity):
       pass
+
     class RightMixinEntity(Entity, Mixin):
       pass
+
     class LeftMixinEntity(Mixin, Entity):
       pass
     self.assertEqual(Entity._get_kind(), 'Entity')
@@ -269,9 +293,14 @@ class PolyModelTests(test_utils.NDBTest):
 
   def testGql(self):
     # See issue 199.
-    class A(polymodel.PolyModel): pass
-    class B(A): pass
-    class C(A): pass
+    class A(polymodel.PolyModel):
+      pass
+
+    class B(A):
+      pass
+
+    class C(A):
+      pass
     b = B()
     b.put()
     c = C()
@@ -284,6 +313,7 @@ class PolyModelTests(test_utils.NDBTest):
     # Test that query on root class should not filter.
     class Animal(PolyModel):
       pass
+
     class Cat(Animal):
       pass
     self.assertEqual(Animal.query().filters, None)
@@ -350,8 +380,10 @@ class CompatibilityTests(test_utils.NDBTest):
   def testCompatibility(self):
     class Animal(PolyModel):
       name = model.StringProperty()
+
     class Feline(Animal):
       whiskers = model.BooleanProperty()
+
     class Cat(Feline):
       purr = model.StringProperty()
     tom = Cat(name='Tom', purr='loud', whiskers=True)

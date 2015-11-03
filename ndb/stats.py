@@ -45,7 +45,7 @@ __all__ = ['BaseKindStatistic',
            'NamespacePropertyTypeStat',
            'NamespaceStat',
            'PropertyTypeStat',
-           ]
+          ]
 
 
 class BaseStatistic(model.Model):
@@ -463,4 +463,4 @@ _DATASTORE_STATS_CLASSES_BY_KIND = {
         NamespaceKindPropertyNamePropertyTypeStat,
     NamespaceKindCompositeIndexStat.STORED_KIND_NAME:
         NamespaceKindCompositeIndexStat,
-    }
+}

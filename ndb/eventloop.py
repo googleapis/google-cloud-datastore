@@ -39,7 +39,7 @@ __all__ = ['EventLoop',
            'add_idle', 'queue_call', 'queue_rpc',
            'get_event_loop',
            'run', 'run0', 'run1',
-           ]
+          ]
 
 _logging_debug = utils.logging_debug
 
@@ -109,13 +109,15 @@ class EventLoop(object):
     """
 
     if lo < 0:
-        raise ValueError('lo must be non-negative')
+      raise ValueError('lo must be non-negative')
     if hi is None:
-        hi = len(self.queue)
+      hi = len(self.queue)
     while lo < hi:
-        mid = (lo + hi) // 2
-        if event[0] < self.queue[mid][0]: hi = mid
-        else: lo = mid + 1
+      mid = (lo + hi) // 2
+      if event[0] < self.queue[mid][0]:
+        hi = mid
+      else:
+        lo = mid + 1
     self.queue.insert(lo, event)
 
   def queue_call(self, delay, callback, *args, **kwds):
@@ -148,6 +150,7 @@ class EventLoop(object):
       if len(rpcs) > 1:
         # Don't call the callback until all sub-rpcs have completed.
         rpc.__done = False
+
         def help_multi_rpc_along(r=rpc, c=callback, a=args, k=kwds):
           if r.state == _FINISHING and not r.__done:
             r.__done = True

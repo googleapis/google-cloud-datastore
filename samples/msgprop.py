@@ -43,8 +43,8 @@ class GetNotesRequest(messages.Message):
   on_or_before = messages.IntegerField(2)
 
   class Order(messages.Enum):
-   WHEN = 1
-   TEXT = 2
+    WHEN = 1
+    TEXT = 2
   order = messages.EnumField(Order, 3, default=Order.WHEN)
 
 
@@ -78,7 +78,7 @@ def main():
   ent.put()
   print 'After:', ent.key.get()
 
-  print '-'*20
+  print '-' * 20
 
   note2 = Note(text=u'blooh\u1234\U00102345blooh', when=0)
   notes = Notes(notes=[note1, note2])
@@ -91,9 +91,10 @@ def main():
   ent2 = DbNotes._from_pb(pb)
   print 'After:', ent.key.get()
 
-  print '-'*20
+  print '-' * 20
 
   req = GetNotesRequest(on_or_before=42)
+
   class M(ndb.Model):
     req = MessageProperty(GetNotesRequest)
   m = M(req=req)

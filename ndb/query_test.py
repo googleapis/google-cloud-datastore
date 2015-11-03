@@ -34,9 +34,11 @@ from . import test_utils
 
 
 class BaseQueryTestMixin(object):
+
   def setUp(self):
     # Create class inside tests because kinds are cleared every test.
     global Foo
+
     class Foo(model.Model):
       name = model.StringProperty()
       rate = model.IntegerProperty()
@@ -123,13 +125,13 @@ class BaseQueryTestMixin(object):
     # default_options.
     q4 = Foo.query(default_options=query.QueryOptions(limit=3))
     self.assertEqual(
-      repr(q4),
-      "Query(kind='Foo', default_options=QueryOptions(limit=3))")
+        repr(q4),
+        "Query(kind='Foo', default_options=QueryOptions(limit=3))")
     q5 = Foo.query(projection=[Foo.name, 'tags'], distinct=True)
     self.assertEqual(
-      repr(q5),
-      "Query(kind='Foo', projection=['name', 'tags'], "
-      "group_by=['name', 'tags'])")
+        repr(q5),
+        "Query(kind='Foo', projection=['name', 'tags'], "
+        "group_by=['name', 'tags'])")
 
   def testRunToQueue(self):
     qry = Foo.query()
@@ -154,6 +156,7 @@ class BaseQueryTestMixin(object):
       name = model.StringProperty()
       age = model.IntegerProperty('Age')
       rank = model.IntegerProperty()
+
       @classmethod
       def seniors(cls, min_age, min_rank):
         q = cls.query().filter(cls.age >= min_age, cls.rank <= min_rank)
@@ -162,8 +165,8 @@ class BaseQueryTestMixin(object):
     q = Employee.seniors(42, 5)
     self.assertEqual(q.filters,
                      query.ConjunctionNode(
-                       query.FilterNode('Age', '>=', 42),
-                       query.FilterNode('rank', '<=', 5)))
+                         query.FilterNode('Age', '>=', 42),
+                         query.FilterNode('rank', '<=', 5)))
     self.assertEqual(query._orders_to_orderings(q.orders),
                      [('name', query._ASC), ('Age', query._DESC)])
 
@@ -177,8 +180,8 @@ class BaseQueryTestMixin(object):
     q = Employee.query(query.AND(Employee.age >= 42, Employee.rank <= 5))
     self.assertEqual(q.filters,
                      query.ConjunctionNode(
-                       query.FilterNode('Age', '>=', 42),
-                       query.FilterNode('rank', '<=', 5)))
+                         query.FilterNode('Age', '>=', 42),
+                         query.FilterNode('rank', '<=', 5)))
 
   def testOrQuery(self):
     class Employee(model.Model):
@@ -190,11 +193,12 @@ class BaseQueryTestMixin(object):
     q = Employee.query(query.OR(Employee.age < 42, Employee.rank > 5))
     self.assertEqual(q.filters,
                      query.DisjunctionNode(
-                       query.FilterNode('Age', '<', 42),
-                       query.FilterNode('rank', '>', 5)))
+                         query.FilterNode('Age', '<', 42),
+                         query.FilterNode('rank', '>', 5)))
 
   def testEmptyInFilter(self):
     self.ExpectWarnings()
+
     class Employee(model.Model):
       name = model.StringProperty()
     for arg in [], (), set(), frozenset():
@@ -220,8 +224,8 @@ class BaseQueryTestMixin(object):
     q = Employee.query(Employee.name.IN(['a', 'b']))
     self.assertEqual(q.filters,
                      query.DisjunctionNode(
-                       query.FilterNode('name', '=', 'a'),
-                       query.FilterNode('name', '=', 'b')))
+                         query.FilterNode('name', '=', 'a'),
+                         query.FilterNode('name', '=', 'b')))
     a = Employee(name='a')
     a.put()
     b = Employee(name='b')
@@ -272,6 +276,7 @@ class BaseQueryTestMixin(object):
     # Shouldn't be able to query for unindexed properties
     class SubModel(model.Model):
       booh = model.IntegerProperty(indexed=False)
+
     class Emp(model.Model):
       name = model.StringProperty()
       text = model.TextProperty()
@@ -294,13 +299,14 @@ class BaseQueryTestMixin(object):
                       lambda: Emp.struct == Foo(name='a'))
     # TODO: Make this fail?  See issue 89.  http://goo.gl/K4gbY
     # Currently StructuredProperty(..., indexed=False) has no effect.
-    ## self.assertRaises(datastore_errors.BadFilterError,
-    ##                   lambda: Emp.struct.name == 'a')
+    # self.assertRaises(datastore_errors.BadFilterError,
+    #                   lambda: Emp.struct.name == 'a')
     self.assertRaises(datastore_errors.BadFilterError,
                       lambda: Emp.local == Foo(name='a'))
 
   def testConstructor(self):
     self.ExpectWarnings()
+
     class Foo(model.Model):
       p = model.IntegerProperty('pp')  # Also check renaming.
       q = model.IntegerProperty(required=True)
@@ -366,6 +372,7 @@ class BaseQueryTestMixin(object):
 
   def testIndexOnlyPropertyValidation(self):
     self.ExpectWarnings()
+
     class Foo(model.Model):
       p = model.IntegerProperty('pp', indexed=False)  # Also check renaming.
       q = model.IntegerProperty(required=True)
@@ -396,6 +403,7 @@ class BaseQueryTestMixin(object):
 
   def testGroupByQuery(self):
     self.ExpectWarnings()
+
     class Foo(model.Model):
       p = model.IntegerProperty('pp')  # Also check renaming
       q = model.IntegerProperty(required=True)
@@ -432,6 +440,7 @@ class BaseQueryTestMixin(object):
 
   def testProjectionQuery(self):
     self.ExpectWarnings()
+
     class Foo(model.Model):
       p = model.IntegerProperty('pp')  # Also check renaming
       q = model.IntegerProperty(required=True)
@@ -475,7 +484,7 @@ class BaseQueryTestMixin(object):
               adatetime=datetime.datetime(2012, 5, 1, 8, 19, 42),
               adate=datetime.date(2012, 5, 1),
               atime=datetime.time(8, 19, 42),
-              )
+             )
     boo.put()
     qry = Foo.query()
     for prop in Foo._properties.itervalues():
@@ -520,10 +529,12 @@ class BaseQueryTestMixin(object):
       foo = model.StringProperty()
       bar = model.StringProperty()
       beh = model.StringProperty()
+
     class Middle(model.Model):
       baz = model.StringProperty()
       inner = model.StructuredProperty(Inner)
       inners = model.StructuredProperty(Inner, repeated=True)
+
     class Outer(model.Model):
       name = model.StringProperty()
       middle = model.StructuredProperty(Middle, 'mid')
@@ -653,6 +664,7 @@ class BaseQueryTestMixin(object):
 
   def testQueryForStructuredPropertyIn(self):
     self.ExpectWarnings()
+
     class Bar(model.Model):
       name = model.StringProperty()
       foo = model.StructuredProperty(Foo)
@@ -661,8 +673,8 @@ class BaseQueryTestMixin(object):
     b = Bar(name='b', foo=Foo(name='b'))
     b.put()
     self.assertEqual(
-      Bar.query(Bar.foo.IN((Foo(name='a'), Foo(name='b')))).fetch(),
-      [a, b])
+        Bar.query(Bar.foo.IN((Foo(name='a'), Foo(name='b')))).fetch(),
+        [a, b])
     self.assertEqual(Bar.query(Bar.foo.IN([Foo(name='a')])).fetch(), [a])
     # An IN query with empty argument can be constructed but not executed.
     q = Bar.query(Bar.foo.IN(set()))
@@ -679,8 +691,10 @@ class BaseQueryTestMixin(object):
     class Bar(model.Model):
       name = model.StringProperty()
       foo = model.StructuredProperty(Foo)
+
     class Bak(model.Model):
       bar = model.StructuredProperty(Bar)
+
     class Baz(model.Model):
       bar = model.StructuredProperty(Bar)
       bak = model.StructuredProperty(Bak)
@@ -698,6 +712,7 @@ class BaseQueryTestMixin(object):
     class Employee(model.Model):
       name = model.StringProperty()
       rank = model.IntegerProperty()
+
     class Manager(Employee):
       report = model.StructuredProperty(Employee, repeated=True)
     reports_a = []
@@ -742,6 +757,7 @@ class BaseQueryTestMixin(object):
     class Event(model.Model):
       what = model.StringProperty()
       when = model.DateProperty()  # Has non-trivial _datastore_type().
+
     class Outer(model.Model):
       who = model.StringProperty()
       events = model.StructuredProperty(Event, repeated=True)
@@ -753,9 +769,11 @@ class BaseQueryTestMixin(object):
     class A(model.Model):
       a1 = model.StringProperty()
       a2 = model.StringProperty()
+
     class B(model.Model):
       b1 = model.StructuredProperty(A)
       b2 = model.StructuredProperty(A)
+
     class C(model.Model):
       c = model.StructuredProperty(B)
     x = C(c=B(b1=A(a1='a1', a2='a2'), b2=A(a1='a3', a2='a4')))
@@ -766,6 +784,7 @@ class BaseQueryTestMixin(object):
   def testQueryForWholeStructureNone(self):
     class X(model.Model):
       name = model.StringProperty()
+
     class Y(model.Model):
       x = model.StructuredProperty(X)
     y = Y(x=None)
@@ -831,6 +850,7 @@ class BaseQueryTestMixin(object):
 
   def testIterAsync(self):
     q = query.Query(kind='Foo').filter(Foo.tags == 'jill').order(Foo.name)
+
     @tasklets.synctasklet
     def foo():
       it = iter(q)
@@ -844,6 +864,7 @@ class BaseQueryTestMixin(object):
   def testMap(self):
     q = query.Query(kind='Foo').filter(Foo.tags == 'jill').order(Foo.name)
     callback = lambda e: e.name
+
     @tasklets.tasklet
     def callback_async(e):
       yield tasklets.sleep(0.01)
@@ -857,10 +878,12 @@ class BaseQueryTestMixin(object):
   def testMapAsync(self):
     q = query.Query(kind='Foo').filter(Foo.tags == 'jill').order(Foo.name)
     callback = lambda e: e.name
+
     @tasklets.tasklet
     def callback_async(e):
       yield tasklets.sleep(0.01)
       raise tasklets.Return(e.name)
+
     @tasklets.synctasklet
     def foo():
       fut = q.map_async(callback)
@@ -879,6 +902,7 @@ class BaseQueryTestMixin(object):
 
   def testFetchAsync(self):
     q = query.Query(kind='Foo').filter(Foo.tags == 'jill').order(Foo.name)
+
     @tasklets.synctasklet
     def foo():
       res = yield q.fetch_async(10)
@@ -952,6 +976,7 @@ class BaseQueryTestMixin(object):
     class Employee(model.Model):
       name = model.StringProperty()
       rank = model.IntegerProperty()
+
     class Manager(Employee):
       report = model.StructuredProperty(Employee, repeated=True)
     reports_a = []
@@ -1070,6 +1095,7 @@ class BaseQueryTestMixin(object):
 
   def testCountAsync(self):
     q = query.Query(kind='Foo').filter(Foo.tags == 'jill').order(Foo.name)
+
     @tasklets.synctasklet
     def foo():
       res = yield q.count_async(10)
@@ -1087,6 +1113,7 @@ class BaseQueryTestMixin(object):
       name = model.StringProperty()
       rate = model.IntegerProperty()
       age = model.IntegerProperty()
+
     class Bar(model.Model):
       name = model.StringProperty()
       froo = model.StructuredProperty(Froo, repeated=True)
@@ -1165,6 +1192,7 @@ class BaseQueryTestMixin(object):
   def testMultiQueryIterator(self):
     q = query.Query(kind='Foo').filter(Foo.tags.IN(['joe', 'jill']))
     q = q.order(Foo.name)
+
     @tasklets.synctasklet
     def foo():
       it = iter(q)
@@ -1177,6 +1205,7 @@ class BaseQueryTestMixin(object):
 
   def testMultiQueryIteratorUnordered(self):
     q = query.Query(kind='Foo').filter(Foo.tags.IN(['joe', 'jill']))
+
     @tasklets.synctasklet
     def foo():
       it = iter(q)
@@ -1269,8 +1298,10 @@ class BaseQueryTestMixin(object):
     class Bar(model.Model):
       a = model.StringProperty()
       b = model.StringProperty()
+
     class Rank(model.Model):
       val = model.IntegerProperty()
+
     class Foo(model.Model):
       bar = model.StructuredProperty(Bar, repeated=True)
       rank = model.StructuredProperty(Rank)
@@ -1314,14 +1345,14 @@ class BaseQueryTestMixin(object):
     ConjunctionNode = query.ConjunctionNode
     FilterNode = query.FilterNode
     expected = DisjunctionNode(
-      ConjunctionNode(FilterNode('tags', '=', 'jill'),
-                      FilterNode('rate', '=', 1)),
-      ConjunctionNode(FilterNode('tags', '=', 'jill'),
-                      FilterNode('rate', '=', 2)),
-      ConjunctionNode(FilterNode('tags', '=', 'hello'),
-                      FilterNode('rate', '=', 1)),
-      ConjunctionNode(FilterNode('tags', '=', 'hello'),
-                      FilterNode('rate', '=', 2)))
+        ConjunctionNode(FilterNode('tags', '=', 'jill'),
+                        FilterNode('rate', '=', 1)),
+        ConjunctionNode(FilterNode('tags', '=', 'jill'),
+                        FilterNode('rate', '=', 2)),
+        ConjunctionNode(FilterNode('tags', '=', 'hello'),
+                        FilterNode('rate', '=', 1)),
+        ConjunctionNode(FilterNode('tags', '=', 'hello'),
+                        FilterNode('rate', '=', 2)))
     self.assertEqual(q.filters, expected)
 
   def testHalfDistributiveLaw(self):
@@ -1329,16 +1360,16 @@ class BaseQueryTestMixin(object):
     ConjunctionNode = query.ConjunctionNode
     FilterNode = query.FilterNode
     filters = ConjunctionNode(
-      FilterNode('tags', 'in', ['jill', 'hello']),
-      ConjunctionNode(FilterNode('rate', '=', 1),
-                      FilterNode('name', '=', 'moe')))
+        FilterNode('tags', 'in', ['jill', 'hello']),
+        ConjunctionNode(FilterNode('rate', '=', 1),
+                        FilterNode('name', '=', 'moe')))
     expected = DisjunctionNode(
-      ConjunctionNode(FilterNode('tags', '=', 'jill'),
-                      FilterNode('rate', '=', 1),
-                      FilterNode('name', '=', 'moe')),
-      ConjunctionNode(FilterNode('tags', '=', 'hello'),
-                      FilterNode('rate', '=', 1),
-                      FilterNode('name', '=', 'moe')))
+        ConjunctionNode(FilterNode('tags', '=', 'jill'),
+                        FilterNode('rate', '=', 1),
+                        FilterNode('name', '=', 'moe')),
+        ConjunctionNode(FilterNode('tags', '=', 'hello'),
+                        FilterNode('rate', '=', 1),
+                        FilterNode('name', '=', 'moe')))
     self.assertEqual(filters, expected)
 
   def testKeyFilter(self):
@@ -1368,6 +1399,7 @@ class BaseQueryTestMixin(object):
   def testUnicode(self):
     class MyModel(model.Model):
       n = model.IntegerProperty(u'\u4321')
+
       @classmethod
       def _get_kind(cls):
         return u'\u1234'.encode('utf-8')
@@ -1393,9 +1425,10 @@ class BaseQueryTestMixin(object):
   def testKindlessQuery(self):
     class ParentModel(model.Model):
       a = model.StringProperty()
+
     class ChildModel(model.Model):
       b = model.StringProperty()
-    p = ParentModel(a= "Test1")
+    p = ParentModel(a="Test1")
     p.put()
     c = ChildModel(parent=p.key, b="Test2")
     c.put()
@@ -1419,7 +1452,7 @@ class BaseQueryTestMixin(object):
                 'user': users.User('test@example.com', 'example.com', '123'),
                 'blobkey': model.BlobKey('blah'),
                 'none': None,
-                }
+               }
     for name, value in testdata.iteritems():
       foo = Foo()
       setattr(foo, name, value)
@@ -1483,8 +1516,8 @@ class BaseQueryTestMixin(object):
     self.assertEqual(qry.ancestor, None)
     self.assertEqual(qry.filters,
                      query.ConjunctionNode(
-                       query.FilterNode('name', '=', 'joe'),
-                       query.FilterNode('rate', '=', 1)))
+                         query.FilterNode('name', '=', 'joe'),
+                         query.FilterNode('rate', '=', 1)))
     self.assertEqual(qry.orders, None)
 
   def testGqlOrder(self):
@@ -1506,10 +1539,10 @@ class BaseQueryTestMixin(object):
     self.assertEqual(qry.ancestor, None)
     self.assertEqual(qry.filters,
                      query.ConjunctionNode(
-                       query.ParameterNode(Foo.name, '=',
-                                        query.Parameter(1)),
-                       query.ParameterNode(Foo.rate, '=',
-                                        query.Parameter('foo'))))
+                         query.ParameterNode(Foo.name, '=',
+                                             query.Parameter(1)),
+                         query.ParameterNode(Foo.rate, '=',
+                                             query.Parameter('foo'))))
     self.assertEqual(qry.orders, None)
 
   def testGqlBindParameters(self):
@@ -1522,7 +1555,7 @@ class BaseQueryTestMixin(object):
   def testGqlUnresolvedParameters(self):
     self.ExpectErrors()
     qry = query.gql(
-      'SELECT * FROM Foo WHERE name = :1')
+        'SELECT * FROM Foo WHERE name = :1')
     self.assertRaises(datastore_errors.BadArgumentError, qry.fetch)
     self.assertRaises(datastore_errors.BadArgumentError, qry.count)
     self.assertRaises(datastore_errors.BadArgumentError, list, qry)
@@ -1582,9 +1615,9 @@ class BaseQueryTestMixin(object):
                   fetch=lambda q: q.fetch())
 
 # XXX TODO: Make this work:
-##   def testGqlLimitQueryUsingFetch(self):
-##     self.checkGql([self.joe, self.jill], "SELECT * FROM Foo LIMIT 2",
-##                   fetch=lambda q: q.fetch(3))
+# def testGqlLimitQueryUsingFetch(self):
+#   self.checkGql([self.joe, self.jill], "SELECT * FROM Foo LIMIT 2",
+#                 fetch=lambda q: q.fetch(3))
 
   def testGqlOffsetQueryUsingFetchPage(self):
     q = query.gql("SELECT * FROM Foo LIMIT 2")
@@ -1594,11 +1627,11 @@ class BaseQueryTestMixin(object):
     res2, cur2, more2 = q.fetch_page(1, start_cursor=cur1)
     self.assertEqual([self.jill], res2)
     # XXX TODO: Gotta make this work:
-##     self.assertEqual(False, more2)
-##     res3, cur3, more3 = q.fetch_page(1, start_cursor=cur2)
-##     self.assertEqual([], res3)
-##     self.assertEqual(False, more3)
-##     self.assertEqual(None, cur3)
+    # self.assertEqual(False, more2)
+    # res3, cur3, more3 = q.fetch_page(1, start_cursor=cur2)
+    # self.assertEqual([], res3)
+    # self.assertEqual(False, more3)
+    # self.assertEqual(None, cur3)
 
   def testGqlLimitQueryUsingFetchPage(self):
     q = query.gql("SELECT * FROM Foo OFFSET 1")
@@ -1639,26 +1672,26 @@ class BaseQueryTestMixin(object):
     moeref = Bar(ref=self.moe.key)
     moeref.put()
     self.assertEqual(
-      [noref],
-      Bar.gql("WHERE ref = NULL").fetch())
+        [noref],
+        Bar.gql("WHERE ref = NULL").fetch())
     self.assertEqual(
-      [noref],
-      Bar.gql("WHERE ref = :1").bind(None).fetch())
+        [noref],
+        Bar.gql("WHERE ref = :1").bind(None).fetch())
     self.assertEqual(
-      [joeref],
-      Bar.gql("WHERE ref = :1").bind(self.joe.key).fetch())
+        [joeref],
+        Bar.gql("WHERE ref = :1").bind(self.joe.key).fetch())
     self.assertEqual(
-      [joeref],
-      Bar.gql("WHERE ref = KEY('%s')" % self.joe.key.urlsafe()).fetch())
+        [joeref],
+        Bar.gql("WHERE ref = KEY('%s')" % self.joe.key.urlsafe()).fetch())
     self.assertEqual(
-      [joeref],
-      Bar.gql("WHERE ref = KEY('Foo', %s)" % self.joe.key.id()).fetch())
+        [joeref],
+        Bar.gql("WHERE ref = KEY('Foo', %s)" % self.joe.key.id()).fetch())
     self.assertEqual(
-      [joeref],
-      Bar.gql("WHERE ref = KEY(:1)").bind(self.joe.key.urlsafe()).fetch())
+        [joeref],
+        Bar.gql("WHERE ref = KEY(:1)").bind(self.joe.key.urlsafe()).fetch())
     self.assertEqual(
-      [joeref],
-      Bar.gql("WHERE ref = KEY('Foo', :1)").bind(self.joe.key.id()).fetch())
+        [joeref],
+        Bar.gql("WHERE ref = KEY('Foo', :1)").bind(self.joe.key.id()).fetch())
 
   def testGqlKeyFunctionAncestor(self):
     class Bar(model.Model):
@@ -1670,18 +1703,19 @@ class BaseQueryTestMixin(object):
     moebar = Bar(parent=self.moe.key)
     moebar.put()
     self.assertEqual(
-      [joebar],
-      Bar.gql("WHERE ANCESTOR IS KEY('%s')" % self.joe.key.urlsafe()).fetch())
+        [joebar],
+        Bar.gql("WHERE ANCESTOR IS KEY('%s')" % self.joe.key.urlsafe()).fetch())
     self.assertEqual(
-      [joebar],
-      Bar.gql("WHERE ANCESTOR IS :1").bind(self.joe.key).fetch())
+        [joebar],
+        Bar.gql("WHERE ANCESTOR IS :1").bind(self.joe.key).fetch())
     self.assertEqual(
-      [joebar],
-      Bar.gql("WHERE ANCESTOR IS KEY(:1)").bind(self.joe.key.urlsafe()).fetch())
+        [joebar],
+        Bar.gql("WHERE ANCESTOR IS KEY(:1)").bind(
+            self.joe.key.urlsafe()).fetch())
     self.assertEqual(
-      [joebar],
-      Bar.gql("WHERE ANCESTOR IS KEY('Foo', :1)")
-         .bind(self.joe.key.id()).fetch())
+        [joebar],
+        Bar.gql("WHERE ANCESTOR IS KEY('Foo', :1)")
+        .bind(self.joe.key.id()).fetch())
 
   def testGqlAncestorFunctionError(self):
     self.assertRaises(TypeError,
@@ -1695,35 +1729,35 @@ class BaseQueryTestMixin(object):
       adate = model.DateProperty()
       atime = model.TimeProperty()
     abar = Bar(
-      auser=users.User('test@example.com'),
-      apoint=model.GeoPt(52.35, 4.9166667),
-      adatetime=datetime.datetime(2012, 2, 1, 14, 54, 0),
-      adate=datetime.date(2012, 2, 2),
-      atime=datetime.time(14, 54, 0),
-      )
+        auser=users.User('test@example.com'),
+        apoint=model.GeoPt(52.35, 4.9166667),
+        adatetime=datetime.datetime(2012, 2, 1, 14, 54, 0),
+        adate=datetime.date(2012, 2, 2),
+        atime=datetime.time(14, 54, 0),
+    )
     abar.put()
     bbar = Bar()
     bbar.put()
     self.assertEqual(
-      [abar.key],
-      query.gql("SELECT __key__ FROM Bar WHERE auser=USER(:1)")
-           .bind('test@example.com').fetch())
+        [abar.key],
+        query.gql("SELECT __key__ FROM Bar WHERE auser=USER(:1)")
+        .bind('test@example.com').fetch())
     self.assertEqual(
-      [abar.key],
-      query.gql("SELECT __key__ FROM Bar WHERE apoint=GEOPT(:1, :2)")
-           .bind(52.35, 4.9166667).fetch())
+        [abar.key],
+        query.gql("SELECT __key__ FROM Bar WHERE apoint=GEOPT(:1, :2)")
+        .bind(52.35, 4.9166667).fetch())
     self.assertEqual(
-      [abar.key],
-      query.gql("SELECT __key__ FROM Bar WHERE adatetime=DATETIME(:1)")
-           .bind('2012-02-01 14:54:00').fetch())
+        [abar.key],
+        query.gql("SELECT __key__ FROM Bar WHERE adatetime=DATETIME(:1)")
+        .bind('2012-02-01 14:54:00').fetch())
     self.assertEqual(
-      [abar.key],
-      query.gql("SELECT __key__ FROM Bar WHERE adate=DATE(:1, :2, :2)")
-           .bind(2012, 2).fetch())
+        [abar.key],
+        query.gql("SELECT __key__ FROM Bar WHERE adate=DATE(:1, :2, :2)")
+        .bind(2012, 2).fetch())
     self.assertEqual(
-      [abar.key],
-      query.gql("SELECT __key__ FROM Bar WHERE atime=TIME(:hour, :min, :sec)")
-           .bind(hour=14, min=54, sec=0).fetch())
+        [abar.key],
+        query.gql("SELECT __key__ FROM Bar WHERE atime=TIME(:hour, :min, :sec)")
+        .bind(hour=14, min=54, sec=0).fetch())
 
   def testGqlStructuredPropertyQuery(self):
     class Bar(model.Model):
@@ -1759,6 +1793,7 @@ class BaseQueryTestMixin(object):
   def testGqlExpandoInStructure(self):
     class Bar(model.Expando):
       pass
+
     class Baz(model.Model):
       bar = model.StructuredProperty(Bar)
     bazar = Baz(bar=Bar(bow=1, wow=2))
@@ -1916,6 +1951,7 @@ class BaseQueryTestMixin(object):
     try:
       datastore_stub_util._MAX_QUERY_OFFSET = 10
       ndb = model
+
       class M(ndb.Model):
         a = ndb.IntegerProperty()
       ms = [M(a=i, id='%04d' % i) for i in range(33)]
@@ -1951,6 +1987,7 @@ class BaseQueryTestMixin(object):
       return [result[2] for result in results]
 
     self.hugeOffsetTestHelper(fetch_from_queue)
+
 
 class IndexListTestMixin(object):
   """Tests for Index lists. Must be used with BaseQueryTestMixin."""
@@ -1991,15 +2028,15 @@ class IndexListTestMixin(object):
     q = Foo.query(Foo.name >= 'joe', Foo.tags == 'joe')
     qi = q.iter()
     qi.next()
-    properties=[model.IndexProperty(name='tags', direction='asc'),
-                model.IndexProperty(name='name', direction='asc')]
+    properties = [model.IndexProperty(name='tags', direction='asc'),
+                  model.IndexProperty(name='name', direction='asc')]
     self.assertEqual(qi.index_list(),
                      [model.IndexState(
-                       definition=model.Index(kind='Foo',
-                                              properties=properties,
-                                              ancestor=False),
-                       state='serving',
-                       id=0)])
+                         definition=model.Index(kind='Foo',
+                                                properties=properties,
+                                                ancestor=False),
+                         state='serving',
+                         id=0)])
 
   def testIndexListExhausted(self):
     # Test that the information is preserved after the iterator is
@@ -2007,15 +2044,15 @@ class IndexListTestMixin(object):
     q = Foo.query(Foo.name >= 'joe', Foo.tags == 'joe')
     qi = q.iter()
     list(qi)
-    properties=[model.IndexProperty(name='tags', direction='asc'),
-                model.IndexProperty(name='name', direction='asc')]
+    properties = [model.IndexProperty(name='tags', direction='asc'),
+                  model.IndexProperty(name='name', direction='asc')]
     self.assertEqual(qi.index_list(),
                      [model.IndexState(
-                       definition=model.Index(kind='Foo',
-                                              properties=properties,
-                                              ancestor=False),
-                       state='serving',
-                       id=0)])
+                         definition=model.Index(kind='Foo',
+                                                properties=properties,
+                                                ancestor=False),
+                         state='serving',
+                         id=0)])
 
   def testIndexListWithIndexAndOrder(self):
     # Test a non-trivial query with sort order and an actual composite
@@ -2027,15 +2064,15 @@ class IndexListTestMixin(object):
     qi.next()
     # TODO: This is a little odd, because that's not exactly the index
     # we created...?
-    properties=[model.IndexProperty(name='tags', direction='asc'),
-                model.IndexProperty(name='name', direction='desc')]
+    properties = [model.IndexProperty(name='tags', direction='asc'),
+                  model.IndexProperty(name='name', direction='desc')]
     self.assertEqual(qi.index_list(),
                      [model.IndexState(
-                       definition=model.Index(kind='Foo',
-                                              properties=properties,
-                                              ancestor=False),
-                       state='serving',
-                       id=0)])
+                         definition=model.Index(kind='Foo',
+                                                properties=properties,
+                                                ancestor=False),
+                         state='serving',
+                         id=0)])
 
   def testIndexListMultiQuery(self):
     self.create_index()
@@ -2082,17 +2119,18 @@ class QueryV3Tests(test_utils.NDBTest, BaseQueryTestMixin, IndexListTestMixin):
     it = qq.iter()
 
     it.next()
-    it.cursor_before() # Start cursor
+    it.cursor_before()  # Start cursor
     self.assertRaises(AttributeError, it.cursor_after)
 
     it.next()
-    it.cursor_before() # Start of second query
-    it.cursor_after() # End of batch cursor
+    it.cursor_before()  # Start of second query
+    it.cursor_after()  # End of batch cursor
 
     self.assertFalse(it.has_next())
 
+
 @real_unittest.skipUnless(datastore_pbs._CLOUD_DATASTORE_ENABLED,
-    "V1 must be supported to run V1 tests.")
+                          "V1 must be supported to run V1 tests.")
 class QueryV1Tests(test_utils.NDBCloudDatastoreV1Test, BaseQueryTestMixin):
   """Query tests that use a connection to a Cloud Datastore V1 stub."""
 

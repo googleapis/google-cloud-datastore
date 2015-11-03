@@ -44,6 +44,7 @@ def toplevel_put_async(m):
   m.put_async()
   raise tasklets.Return(True)
 
+
 class TaskletTests(test_utils.NDBTest):
 
   def setUp(self):
@@ -66,9 +67,10 @@ class TaskletTests(test_utils.NDBTest):
       self.assertRaises(TypeError, tasklets.add_flow_exception, str)
       tasklets.add_flow_exception(ZeroDivisionError)
       self.assertTrue(ZeroDivisionError in tasklets._flow_exceptions)
+
       @tasklets.tasklet
       def foo():
-        1/0
+        1 / 0
         yield
       self.assertRaises(ZeroDivisionError, foo().get_result)
     finally:
@@ -95,6 +97,7 @@ class TaskletTests(test_utils.NDBTest):
 
   def testFuture_Repr_TaskletWrapper(self):
     prefix = r'<Future [\da-f]+ created by '
+
     @tasklets.tasklet
     @utils.positional(1)
     def foo():
@@ -107,11 +110,11 @@ class TaskletTests(test_utils.NDBTest):
       yield f1
     f2 = foo()
     self.assertTrue(
-      re.match(prefix +
-               r'testFuture_Repr_TaskletWrapper\(tasklets_test.py:\d+\) '
-               r'for tasklet foo\(tasklets_test.py:\d+\).*; pending>$',
-               repr(f2)),
-      repr(f2))
+        re.match(prefix +
+                 r'testFuture_Repr_TaskletWrapper\(tasklets_test.py:\d+\) '
+                 r'for tasklet foo\(tasklets_test.py:\d+\).*; pending>$',
+                 repr(f2)),
+        repr(f2))
     f2.check_success()
 
   def testFuture_Done_State(self):
@@ -168,6 +171,7 @@ class TaskletTests(test_utils.NDBTest):
     for i in range(5):
       f = tasklets.Future()
       f.add_callback(self.universal_callback, f)
+
       def wake(fut, result):
         fut.set_result(result)
       self.ev.queue_call(i * 0.01, wake, f, i)
@@ -192,6 +196,7 @@ class TaskletTests(test_utils.NDBTest):
     # Ensure that tasklets sleep for the specified amount of time.
     # NOTE: May sleep too long if processor usage is high.
     log = []
+
     @tasklets.tasklet
     def foo():
       log.append(time.time())
@@ -209,6 +214,7 @@ class TaskletTests(test_utils.NDBTest):
     def foo(dt):
       yield tasklets.sleep(dt)
       raise tasklets.Return('foo-%s' % dt)
+
     @tasklets.tasklet
     def bar(n):
       for _ in range(n):
@@ -292,10 +298,10 @@ class TaskletTests(test_utils.NDBTest):
     r7 = repr(mf)
     for r in r1, r2, r3, r4, r5, r6, r7:
       self.assertTrue(
-        re.match(
-          r'<MultiFuture [\da-f]+ created by '
-          r'(testMultiFuture_Repr\(tasklets_test.py:\d+\)|\?) for info; ',
-          r))
+          re.match(
+              r'<MultiFuture [\da-f]+ created by '
+              r'(testMultiFuture_Repr\(tasklets_test.py:\d+\)|\?) for info; ',
+              r))
       if r is r7:
         self.assertTrue('result' in r)
       else:
@@ -303,16 +309,19 @@ class TaskletTests(test_utils.NDBTest):
 
   def testQueueFuture(self):
     q = tasklets.QueueFuture()
+
     @tasklets.tasklet
     def produce_one(i):
       yield tasklets.sleep(i * 0.01)
       raise tasklets.Return(i)
+
     @tasklets.tasklet
     def producer():
       q.putq(0)
       for i in range(1, 10):
         q.add_dependent(produce_one(i))
       q.complete()
+
     @tasklets.tasklet
     def consumer():
       for i in range(10):
@@ -320,6 +329,7 @@ class TaskletTests(test_utils.NDBTest):
         self.assertEqual(val, i)
       yield q
       self.assertRaises(EOFError, q.getq().get_result)
+
     @tasklets.tasklet
     def foo():
       yield producer(), consumer()
@@ -417,15 +427,18 @@ class TaskletTests(test_utils.NDBTest):
 
   def testSerialQueueFuture(self):
     q = tasklets.SerialQueueFuture()
+
     @tasklets.tasklet
     def produce_one(i):
       yield tasklets.sleep(random.randrange(10) * 0.01)
       raise tasklets.Return(i)
+
     @tasklets.tasklet
     def producer():
       for i in range(10):
         q.add_dependent(produce_one(i))
       q.complete()
+
     @tasklets.tasklet
     def consumer():
       for i in range(10):
@@ -434,6 +447,7 @@ class TaskletTests(test_utils.NDBTest):
       yield q
       self.assertRaises(EOFError, q.getq().get_result)
       yield q
+
     @tasklets.synctasklet
     def foo():
       yield producer(), consumer()
@@ -581,14 +595,14 @@ class TaskletTests(test_utils.NDBTest):
     self.assertEqual(rf.get_result(), 4)
 
   def testGetReturnValue(self):
-      r0 = tasklets.Return()
-      r1 = tasklets.Return(42)
-      r2 = tasklets.Return(42, 'hello')
-      r3 = tasklets.Return((1, 2, 3))
-      self.assertEqual(tasklets.get_return_value(r0), None)
-      self.assertEqual(tasklets.get_return_value(r1), 42)
-      self.assertEqual(tasklets.get_return_value(r2), (42, 'hello'))
-      self.assertEqual(tasklets.get_return_value(r3), (1, 2, 3))
+    r0 = tasklets.Return()
+    r1 = tasklets.Return(42)
+    r2 = tasklets.Return(42, 'hello')
+    r3 = tasklets.Return((1, 2, 3))
+    self.assertEqual(tasklets.get_return_value(r0), None)
+    self.assertEqual(tasklets.get_return_value(r1), 42)
+    self.assertEqual(tasklets.get_return_value(r2), (42, 'hello'))
+    self.assertEqual(tasklets.get_return_value(r3), (1, 2, 3))
 
   def testTasklets_Basic(self):
     @tasklets.tasklet
@@ -596,9 +610,11 @@ class TaskletTests(test_utils.NDBTest):
       a = yield t2(3)
       b = yield t3(2)
       raise tasklets.Return(a + b)
+
     @tasklets.tasklet
     def t2(n):
       raise tasklets.Return(n)
+
     @tasklets.tasklet
     def t3(n):
       return n
@@ -609,6 +625,7 @@ class TaskletTests(test_utils.NDBTest):
 
   def testTasklets_Raising(self):
     self.ExpectWarnings()
+
     @tasklets.tasklet
     def t1():
       f = t2(True)
@@ -617,6 +634,7 @@ class TaskletTests(test_utils.NDBTest):
       except RuntimeError, err:
         self.assertEqual(f.get_exception(), err)
         raise tasklets.Return(str(err))
+
     @tasklets.tasklet
     def t2(error):
       if error:
@@ -656,9 +674,11 @@ class TaskletTests(test_utils.NDBTest):
     @tasklets.tasklet
     def good():
       yield tasklets.sleep(0)
+
     @tasklets.tasklet
     def bad():
       raise ZeroDivisionError
+
     @tasklets.tasklet
     def foo():
       try:
@@ -670,13 +690,16 @@ class TaskletTests(test_utils.NDBTest):
 
   def testTasklet_YieldTupleTypeError(self):
     self.ExpectWarnings()
+
     @tasklets.tasklet
     def good():
       yield tasklets.sleep(0)
+
     @tasklets.tasklet
     def bad():
       raise ZeroDivisionError
       yield tasklets.sleep(0)
+
     @tasklets.tasklet
     def foo():
       try:
@@ -709,6 +732,7 @@ class TaskletTests(test_utils.NDBTest):
 
   def testAddContextDecorator(self):
     class Demo(object):
+
       @tasklets.toplevel
       def method(self, arg):
         return tasklets.get_context(), arg
@@ -732,6 +756,7 @@ class TaskletTests(test_utils.NDBTest):
   def testStickyDefaultNamespace(self):
     class Employee(model.Model):
       name = model.StringProperty()
+
     @tasklets.tasklet
     def create_async(name):
       emp = Employee(name=name)
@@ -764,7 +789,7 @@ class TaskletTests(test_utils.NDBTest):
       datastore_pbs._CLOUD_DATASTORE_ENABLED,
       "V1 must be supported to run V1 tests.")
   def testCloudDatastoreContext(self):
-    del os.environ['APPLICATION_ID'] # Clear APPLICATION_ID for test.
+    del os.environ['APPLICATION_ID']  # Clear APPLICATION_ID for test.
     os.environ['DATASTORE_PROJECT_ID'] = 'project'
     # Setting just a project id isn't enough info.
     self.assertRaisesRegexp(ValueError,
@@ -802,25 +827,30 @@ class TaskletTests(test_utils.NDBTest):
     # If things are set propertly but APPLICATION_ID is already set, we fail.
     self.assertRaises(ValueError, tasklets.make_default_context)
 
+
 class TracebackTests(test_utils.NDBTest):
   """Checks that errors result in reasonable tracebacks."""
 
   def testBasicError(self):
     self.ExpectWarnings()
     frames = [sys._getframe()]
+
     @tasklets.tasklet
     def level3():
       frames.append(sys._getframe())
       raise RuntimeError('hello')
       yield
+
     @tasklets.tasklet
     def level2():
       frames.append(sys._getframe())
       yield level3()
+
     @tasklets.tasklet
     def level1():
       frames.append(sys._getframe())
       yield level2()
+
     @tasklets.tasklet
     def level0():
       frames.append(sys._getframe())
@@ -853,9 +883,9 @@ class TracebackTests(test_utils.NDBTest):
       self.provoke_yield_error()
     except RuntimeError, err:
       self.assertTrue(re.match(
-        "A tasklet should not yield a plain value: "
-        ".*bad_user_code.*yielded 'abc'$",
-        str(err)))
+          "A tasklet should not yield a plain value: "
+          ".*bad_user_code.*yielded 'abc'$",
+          str(err)))
 
 
 if __name__ == '__main__':

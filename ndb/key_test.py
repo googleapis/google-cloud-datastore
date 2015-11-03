@@ -167,7 +167,7 @@ class KeyTests(test_utils.NDBTest):
     self.assertEqual(k.root(), p)
 
     k2 = key.Key('Subsubkind', 42, parent=k,
-                app=p.app(), namespace=p.namespace())
+                 app=p.app(), namespace=p.namespace())
     self.assertEqual(k2.flat(), ('Kind', 1,
                                  'Subkind', 'foobar',
                                  'Subsubkind', 42))
@@ -245,8 +245,8 @@ class KeyTests(test_utils.NDBTest):
     input = [a, b, c, d, e, f, g, h]
     actual = sorted(input)
     expected = sorted(
-      input,
-      key=lambda k: datastore_types.ReferenceToKeyValue(k.reference()))
+        input,
+        key=lambda k: datastore_types.ReferenceToKeyValue(k.reference()))
     self.assertEqual(actual, expected)
     for i in range(len(actual)):
       for j in range(len(actual)):
@@ -284,7 +284,9 @@ class KeyTests(test_utils.NDBTest):
   def testKindFromModel(self):
     class M(model.Model):
       pass
+
     class N(model.Model):
+
       @classmethod
       def _get_kind(cls):
         return 'NN'
@@ -298,16 +300,18 @@ class KeyTests(test_utils.NDBTest):
     self.assertRaises(Exception, key.Key, 42, 42)
 
   def testDeleteHooksCalled(self):
-    test = self # Closure for inside hook
+    test = self  # Closure for inside hook
     self.pre_counter = 0
     self.post_counter = 0
 
     class HatStand(model.Model):
+
       @classmethod
       def _pre_delete_hook(cls, key):
         test.pre_counter += 1
         if test.pre_counter == 1:  # Cannot test for key in delete_multi
           self.assertEqual(self.key, key)
+
       @classmethod
       def _post_delete_hook(cls, key, future):
         test.post_counter += 1
@@ -342,6 +346,7 @@ class KeyTests(test_utils.NDBTest):
     # See issue 58.  http://goo.gl/hPN6j
     ctx = tasklets.get_context()
     ctx.set_cache_policy(False)
+
     class EmptyModel(model.Model):
       pass
     entity = EmptyModel()
@@ -351,16 +356,18 @@ class KeyTests(test_utils.NDBTest):
                      'Delete hook queued default no-op.')
 
   def testGetHooksCalled(self):
-    test = self # Closure for inside hook
+    test = self  # Closure for inside hook
     self.pre_counter = 0
     self.post_counter = 0
 
     class HatStand(model.Model):
+
       @classmethod
       def _pre_get_hook(cls, key):
         test.pre_counter += 1
         if test.pre_counter == 1:  # Cannot test for key in get_multi
           self.assertEqual(key, self.key)
+
       @classmethod
       def _post_get_hook(cls, key, future):
         test.post_counter += 1
@@ -409,15 +416,19 @@ class KeyTests(test_utils.NDBTest):
 
     # TODO: Should the unused arguments to Monkey Patched tests be tested?
     class HatStand(model.Model):
+
       @classmethod
       def _pre_get_hook(cls, unused_key):
         self.pre_get_flag = True
+
       @classmethod
       def _post_get_hook(cls, unused_key, unused_future):
         self.post_get_flag = True
+
       @classmethod
       def _pre_delete_hook(cls, unused_key):
         self.pre_delete_flag = True
+
       @classmethod
       def _post_delete_hook(cls, unused_key, unused_future):
         self.post_delete_flag = True
@@ -436,9 +447,10 @@ class KeyTests(test_utils.NDBTest):
                       'Post get hook not called when model is monkey patched')
       key.delete()
       self.assertTrue(self.pre_delete_flag,
-                     'Pre delete hook not called when model is monkey patched')
+                      'Pre delete hook not called when model is monkey patched')
       self.assertTrue(self.post_delete_flag,
-                    'Post delete hook not called when model is monkey patched')
+                      'Post delete hook not called when model '
+                      'is monkey patched')
     finally:
       # Restore the original hooks
       for name in hook_attr_names:
@@ -446,9 +458,11 @@ class KeyTests(test_utils.NDBTest):
 
   def testPreHooksCannotCancelRPC(self):
     class Foo(model.Model):
+
       @classmethod
       def _pre_get_hook(cls, unused_key):
         raise tasklets.Return()
+
       @classmethod
       def _pre_delete_hook(cls, unused_key):
         raise tasklets.Return()
@@ -461,6 +475,7 @@ class KeyTests(test_utils.NDBTest):
     # See issue 58.  http://goo.gl/hPN6j
     ctx = tasklets.get_context()
     ctx.set_cache_policy(False)
+
     class EmptyModel(model.Model):
       pass
     entity = EmptyModel()
@@ -488,18 +503,25 @@ class KeyPickleTests(test_utils.NDBTest):
                          namespace='ns',
                          app='a-different-app')]
 
-  # When making changes to key.Key.__getstate__, add an additional list with
-  # the new output.
+    # When making changes to key.Key.__getstate__, add an additional list with
+    # the new output.
+    # pylint: disable=line-too-long
     self.pkeys = [
         [
-         "ccopy_reg\n_reconstructor\np0\n(c" + key.__name__ + "\nKey\np1\nc__builtin__\nobject\np2\nNtp3\nRp4\n((dp5\nS'namespace'\np6\nS''\np7\nsS'app'\np8\nS'ndb-test-app-id'\np9\nsS'pairs'\np10\n(lp11\n(S'Kind'\np12\nI1\ntp13\nastp14\nb.",
-         "ccopy_reg\n_reconstructor\np0\n(c" + key.__name__ + "\nKey\np1\nc__builtin__\nobject\np2\nNtp3\nRp4\n((dp5\nS'namespace'\np6\nS''\np7\nsS'app'\np8\nS'ndb-test-app-id'\np9\nsS'pairs'\np10\n(lp11\n(S'Kind'\np12\nI1\ntp13\na(S'Subkind'\np14\nS'foobar'\np15\ntp16\nastp17\nb.",
-         "ccopy_reg\n_reconstructor\np0\n(c" + key.__name__ + "\nKey\np1\nc__builtin__\nobject\np2\nNtp3\nRp4\n((dp5\nS'namespace'\np6\nS'ns'\np7\nsS'app'\np8\nS'a-different-app'\np9\nsS'pairs'\np9\n(lp10\n(S'Kind'\np11\nI1\ntp12\na(S'Subkind'\np13\nS'foobar'\np14\ntp15\nastp16\nb."
+            "ccopy_reg\n_reconstructor\np0\n(c" + key.__name__ +
+            "\nKey\np1\nc__builtin__\nobject\np2\nNtp3\nRp4\n((dp5\nS'namespace'\np6\nS''\np7\nsS'app'\np8\nS'ndb-test-app-id'\np9\nsS'pairs'\np10\n(lp11\n(S'Kind'\np12\nI1\ntp13\nastp14\nb.",
+            "ccopy_reg\n_reconstructor\np0\n(c" + key.__name__ +
+            "\nKey\np1\nc__builtin__\nobject\np2\nNtp3\nRp4\n((dp5\nS'namespace'\np6\nS''\np7\nsS'app'\np8\nS'ndb-test-app-id'\np9\nsS'pairs'\np10\n(lp11\n(S'Kind'\np12\nI1\ntp13\na(S'Subkind'\np14\nS'foobar'\np15\ntp16\nastp17\nb.",
+            "ccopy_reg\n_reconstructor\np0\n(c" + key.__name__ +
+            "\nKey\np1\nc__builtin__\nobject\np2\nNtp3\nRp4\n((dp5\nS'namespace'\np6\nS'ns'\np7\nsS'app'\np8\nS'a-different-app'\np9\nsS'pairs'\np9\n(lp10\n(S'Kind'\np11\nI1\ntp12\na(S'Subkind'\np13\nS'foobar'\np14\ntp15\nastp16\nb."
         ],
         [
-         "ccopy_reg\n_reconstructor\np0\n(c" + key.__name__ + "\nKey\np1\nc__builtin__\nobject\np2\nNtp3\nRp4\n((dp5\nS'app'\np6\nS'ndb-test-app-id'\np7\nsS'pairs'\np8\n((S'Kind'\np9\nI1\ntp10\ntp11\nsS'namespace'\np12\nS''\np13\nstp14\nb.",
-         "ccopy_reg\n_reconstructor\np0\n(c" + key.__name__ + "\nKey\np1\nc__builtin__\nobject\np2\nNtp3\nRp4\n((dp5\nS'app'\np6\nS'ndb-test-app-id'\np7\nsS'pairs'\np8\n((S'Kind'\np9\nI1\ntp10\n(S'Subkind'\np11\nS'foobar'\np12\ntp13\ntp14\nsS'namespace'\np15\nS''\np16\nstp17\nb.",
-         "ccopy_reg\n_reconstructor\np0\n(c" + key.__name__ + "\nKey\np1\nc__builtin__\nobject\np2\nNtp3\nRp4\n((dp5\nS'app'\np6\nS'a-different-app'\np7\nsS'pairs'\np8\n((S'Kind'\np9\nI1\ntp10\n(S'Subkind'\np11\nS'foobar'\np12\ntp13\ntp14\nsS'namespace'\np15\nS'ns'\np16\nstp17\nb."
+            "ccopy_reg\n_reconstructor\np0\n(c" + key.__name__ +
+            "\nKey\np1\nc__builtin__\nobject\np2\nNtp3\nRp4\n((dp5\nS'app'\np6\nS'ndb-test-app-id'\np7\nsS'pairs'\np8\n((S'Kind'\np9\nI1\ntp10\ntp11\nsS'namespace'\np12\nS''\np13\nstp14\nb.",
+            "ccopy_reg\n_reconstructor\np0\n(c" + key.__name__ +
+            "\nKey\np1\nc__builtin__\nobject\np2\nNtp3\nRp4\n((dp5\nS'app'\np6\nS'ndb-test-app-id'\np7\nsS'pairs'\np8\n((S'Kind'\np9\nI1\ntp10\n(S'Subkind'\np11\nS'foobar'\np12\ntp13\ntp14\nsS'namespace'\np15\nS''\np16\nstp17\nb.",
+            "ccopy_reg\n_reconstructor\np0\n(c" + key.__name__ +
+            "\nKey\np1\nc__builtin__\nobject\np2\nNtp3\nRp4\n((dp5\nS'app'\np6\nS'a-different-app'\np7\nsS'pairs'\np8\n((S'Kind'\np9\nI1\ntp10\n(S'Subkind'\np11\nS'foobar'\np12\ntp13\ntp14\nsS'namespace'\np15\nS'ns'\np16\nstp17\nb."
         ]]
 
   def testPickleBackwardsCompatibility(self):

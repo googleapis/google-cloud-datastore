@@ -33,6 +33,7 @@ from . import model
 from . import tasklets
 from . import eventloop
 
+
 class NDBBaseTest(unittest.TestCase):
   """Base class for tests that interact with API stubs or create Models.
 
@@ -113,7 +114,9 @@ class NDBBaseTest(unittest.TestCase):
   # Set to the module under test to check its __all__ for inconsistencies.
   the_module = None
 
+
 class NDBTest(NDBBaseTest):
+
   def testAllVariableIsConsistent(self):
     if self.the_module is None:
       return

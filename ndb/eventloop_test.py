@@ -26,6 +26,7 @@ from .google_test_imports import unittest
 from . import eventloop
 from . import test_utils
 
+
 class EventLoopTests(test_utils.NDBTest):
 
   def setUp(self):
@@ -38,7 +39,9 @@ class EventLoopTests(test_utils.NDBTest):
 
   def testQueueTasklet(self):
     def f(unused_number, unused_string, unused_a, unused_b): return 1
+
     def g(unused_number, unused_string): return 2
+
     def h(unused_c, unused_d): return 3
     t_before = time.time()
     eventloop.queue_call(1, f, 42, 'hello', unused_a=1, unused_b=2)
@@ -68,6 +71,7 @@ class EventLoopTests(test_utils.NDBTest):
 
   def testFifoOrderForEventsWithDelayNone(self):
     order = []
+
     def foo(arg): order.append(arg)
 
     eventloop.queue_call(None, foo, 2)
@@ -88,6 +92,7 @@ class EventLoopTests(test_utils.NDBTest):
 
   def testRun(self):
     record = []
+
     def foo(arg):
       record.append(arg)
     eventloop.queue_call(0.2, foo, 42)
@@ -97,6 +102,7 @@ class EventLoopTests(test_utils.NDBTest):
 
   def testRunWithRpcs(self):
     record = []
+
     def foo(arg):
       record.append(arg)
     eventloop.queue_call(0.1, foo, 42)
@@ -112,14 +118,17 @@ class EventLoopTests(test_utils.NDBTest):
 
   def testIdle(self):
     counters = [0, 0, 0]
+
     def idler1():
       logging.info('idler1 running')
       counters[0] += 1
       return False
+
     def idler2(a, b=None):
       logging.info('idler2 running: a=%s, b=%s', a, b)
       counters[1] += 1
       return False
+
     def idler3(k=None):
       logging.info('idler3 running: k=%s', k)
       counters[2] += 1
@@ -142,6 +151,7 @@ class EventLoopTests(test_utils.NDBTest):
     r1.wait()
     r2.wait()
     calls = []
+
     def callback():
       calls.append(1)
     eventloop.queue_rpc(rpc, callback)
@@ -151,7 +161,9 @@ class EventLoopTests(test_utils.NDBTest):
   def testCleanUpStaleEvents(self):
     # See issue 127.  http://goo.gl/2p5Pn
     from . import model
-    class M(model.Model): pass
+
+    class M(model.Model):
+      pass
     M().put()
     M().put()
     M().put()
@@ -168,4 +180,3 @@ class EventLoopTests(test_utils.NDBTest):
 
 if __name__ == '__main__':
   unittest.main()
-

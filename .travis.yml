@@ -17,6 +17,7 @@ script:
 env:
   - TOXENV=py27
   - TOXENV=lint
+  - TOXENV=lint-test
 
 after_success:
   - tox -e coveralls

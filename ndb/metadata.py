@@ -44,7 +44,7 @@ __all__ = ['Namespace', 'Kind', 'Property', 'EntityGroup',
            'get_namespaces', 'get_kinds',
            'get_properties_of_kind', 'get_representations_of_kind',
            'get_entity_group_version',
-           ]
+          ]
 
 
 class _BaseMetadata(model.Model):

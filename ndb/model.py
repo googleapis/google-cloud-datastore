@@ -333,7 +333,7 @@ __all__ = ['Key', 'BlobKey', 'GeoPt', 'Rollback',
            'delete_multi', 'delete_multi_async',
            'get_indexes', 'get_indexes_async',
            'make_connection',
-           ]
+          ]
 
 
 BlobKey = datastore_types.BlobKey
@@ -378,17 +378,17 @@ _MAX_STRING_LENGTH = datastore_types._MAX_STRING_LENGTH
 
 # Map index directions to human-readable strings.
 _DIR_MAP = {
-  entity_pb.Index_Property.ASCENDING: 'asc',
-  entity_pb.Index_Property.DESCENDING: 'desc',
-  }
+    entity_pb.Index_Property.ASCENDING: 'asc',
+    entity_pb.Index_Property.DESCENDING: 'desc',
+}
 
 # Map index states to human-readable strings.
 _STATE_MAP = {
-  entity_pb.CompositeIndex.ERROR: 'error',
-  entity_pb.CompositeIndex.DELETED: 'deleting',
-  entity_pb.CompositeIndex.READ_WRITE: 'serving',
-  entity_pb.CompositeIndex.WRITE_ONLY: 'building',
-  }
+    entity_pb.CompositeIndex.ERROR: 'error',
+    entity_pb.CompositeIndex.DELETED: 'deleting',
+    entity_pb.CompositeIndex.READ_WRITE: 'serving',
+    entity_pb.CompositeIndex.WRITE_ONLY: 'building',
+}
 
 
 class _NotEqualMixin(object):
@@ -705,11 +705,11 @@ class ModelAdapter(datastore_rpc.AbstractAdapter):
     index = Index(kind=index_def.entity_type(),
                   properties=properties,
                   ancestor=bool(index_def.ancestor()),
-                  )
+                 )
     index_state = IndexState(definition=index,
                              state=_STATE_MAP[pb.state()],
                              id=pb.id(),
-                             )
+                            )
     return index_state
 
 
@@ -724,6 +724,7 @@ def make_connection(config=None, default_model=None,
       adapter=ModelAdapter(default_model, id_resolver=_id_resolver),
       config=config,
       _api_version=_api_version)
+
 
 class ModelAttribute(object):
   """A Base class signifying the presence of a _fix_up() method."""
@@ -980,7 +981,7 @@ class Property(ModelAttribute):
     # NOTE: This is also used by query.gql().
     if not self._indexed:
       raise datastore_errors.BadFilterError(
-        'Cannot query for unindexed property %s' % self._name)
+          'Cannot query for unindexed property %s' % self._name)
     from .query import FilterNode  # Import late to avoid circular imports.
     if value is not None:
       value = self._do_validate(value)
@@ -1017,6 +1018,7 @@ class Property(ModelAttribute):
     """Return a FilterNode instance representing the '>=' comparison."""
     return self._comparison('>=', value)
 
+  # pylint: disable=invalid-name
   def _IN(self, value):
     """Comparison operator for the 'in' comparison operator.
 
@@ -1031,11 +1033,11 @@ class Property(ModelAttribute):
     """
     if not self._indexed:
       raise datastore_errors.BadFilterError(
-        'Cannot query for unindexed property %s' % self._name)
+          'Cannot query for unindexed property %s' % self._name)
     from .query import FilterNode  # Import late to avoid circular imports.
     if not isinstance(value, (list, tuple, set, frozenset)):
       raise datastore_errors.BadArgumentError(
-        'Expected list, tuple or set, got %r' % (value,))
+          'Expected list, tuple or set, got %r' % (value,))
     values = []
     for val in value:
       if val is not None:
@@ -1054,7 +1056,7 @@ class Property(ModelAttribute):
       Employee.query().order(-Employee.rank)
     """
     return datastore_query.PropertyOrder(
-      self._name, datastore_query.PropertyOrder.DESCENDING)
+        self._name, datastore_query.PropertyOrder.DESCENDING)
 
   def __pos__(self):
     """Return an ascending sort order on this Property.
@@ -1095,8 +1097,8 @@ class Property(ModelAttribute):
     if self._choices is not None:
       if value not in self._choices:
         raise datastore_errors.BadValueError(
-          'Value %r for property %s is not an allowed choice' %
-          (value, self._name))
+            'Value %r for property %s is not an allowed choice' %
+            (value, self._name))
     return value
 
   def _fix_up(self, cls, code_name):
@@ -1132,7 +1134,7 @@ class Property(ModelAttribute):
     """
     if entity._projection:
       raise ReadonlyPropertyError(
-        'You cannot set property values of a projection entity')
+          'You cannot set property values of a projection entity')
     if self._repeated:
       if not isinstance(value, (list, tuple, set, frozenset)):
         raise datastore_errors.BadValueError('Expected list or tuple, got %r' %
@@ -1365,7 +1367,7 @@ class Property(ModelAttribute):
     if entity._projection:
       if self._name not in entity._projection:
         raise UnprojectedPropertyError(
-          'Property %s is not in the projection' % (self._name,))
+            'Property %s is not in the projection' % (self._name,))
     return self._get_user_value(entity)
 
   def _delete_value(self, entity):
@@ -1424,12 +1426,12 @@ class Property(ModelAttribute):
 
     if self._indexed:
       create_prop = lambda: pb.add_property()
-    else :
+    else:
       create_prop = lambda: pb.add_raw_property()
 
     if self._repeated and not values and self._write_empty_list:
       # We want to write the empty list
-      p = create_prop();
+      p = create_prop()
       p.set_name(name)
       p.set_multiple(False)
       p.set_meaning(entity_pb.Property.EMPTY_LIST)
@@ -1437,7 +1439,7 @@ class Property(ModelAttribute):
     else:
       # We write a list, or a single property
       for val in values:
-        p = create_prop();
+        p = create_prop()
         p.set_name(name)
         p.set_multiple(self._repeated or parent_repeated)
         v = p.mutable_value()
@@ -1714,8 +1716,8 @@ class BlobProperty(Property):
         not isinstance(self, TextProperty) and
         len(value) > _MAX_STRING_LENGTH):
       raise datastore_errors.BadValueError(
-        'Indexed value %s must be at most %d bytes' %
-        (self._name, _MAX_STRING_LENGTH))
+          'Indexed value %s must be at most %d bytes' %
+          (self._name, _MAX_STRING_LENGTH))
 
   def _to_base_type(self, value):
     if self._compressed:
@@ -1779,8 +1781,8 @@ class TextProperty(BlobProperty):
                                            (value,))
     if self._indexed and length > _MAX_STRING_LENGTH:
       raise datastore_errors.BadValueError(
-        'Indexed value %s must be at most %d bytes' %
-        (self._name, _MAX_STRING_LENGTH))
+          'Indexed value %s must be at most %d bytes' %
+          (self._name, _MAX_STRING_LENGTH))
 
   def _to_base_type(self, value):
     if isinstance(value, unicode):
@@ -2016,7 +2018,7 @@ class KeyProperty(Property):
     if self._kind is not None:
       if value.kind() != self._kind:
         raise datastore_errors.BadValueError(
-          'Expected Key with kind=%r, got %r' % (self._kind, value))
+            'Expected Key with kind=%r, got %r' % (self._kind, value))
 
   def _db_set_value(self, v, unused_p, value):
     if not isinstance(value, Key):
@@ -2069,6 +2071,7 @@ class BlobKeyProperty(Property):
 
 # The Epoch (a zero POSIX timestamp).
 _EPOCH = datetime.datetime.utcfromtimestamp(0)
+
 
 class DateTimeProperty(Property):
   """A Property whose value is a datetime object.
@@ -2291,10 +2294,10 @@ class StructuredProperty(_StructuredGetForDictMixin):
   def _comparison(self, op, value):
     if op != '=':
       raise datastore_errors.BadFilterError(
-        'StructuredProperty filter can only use ==')
+          'StructuredProperty filter can only use ==')
     if not self._indexed:
       raise datastore_errors.BadFilterError(
-        'Cannot query for unindexed StructuredProperty %s' % self._name)
+          'Cannot query for unindexed StructuredProperty %s' % self._name)
     # Import late to avoid circular imports.
     from .query import ConjunctionNode, PostFilterNode
     from .query import RepeatedStructuredPropertyPredicate
@@ -2311,7 +2314,7 @@ class StructuredProperty(_StructuredGetForDictMixin):
       if prop._repeated:
         if vals:
           raise datastore_errors.BadFilterError(
-            'Cannot query for non-empty repeated property %s' % prop._name)
+              'Cannot query for non-empty repeated property %s' % prop._name)
         continue
       assert isinstance(vals, list) and len(vals) == 1, repr(vals)
       val = vals[0]
@@ -2322,7 +2325,7 @@ class StructuredProperty(_StructuredGetForDictMixin):
         match_keys.append(altprop._name)
     if not filters:
       raise datastore_errors.BadFilterError(
-        'StructuredProperty filter without any values')
+          'StructuredProperty filter without any values')
     if len(filters) == 1:
       return filters[0]
     if self._repeated:
@@ -2335,7 +2338,7 @@ class StructuredProperty(_StructuredGetForDictMixin):
   def _IN(self, value):
     if not isinstance(value, (list, tuple, set, frozenset)):
       raise datastore_errors.BadArgumentError(
-        'Expected list, tuple or set, got %r' % (value,))
+          'Expected list, tuple or set, got %r' % (value,))
     from .query import DisjunctionNode, FalseNode
     # Expand to a series of == filters.
     filters = [self._comparison('=', val) for val in value]
@@ -2395,8 +2398,8 @@ class StructuredProperty(_StructuredGetForDictMixin):
       else:
         # Serialize a single None
         super(StructuredProperty, self)._serialize(
-          entity, pb, prefix=prefix, parent_repeated=parent_repeated,
-          projection=projection)
+            entity, pb, prefix=prefix, parent_repeated=parent_repeated,
+            projection=projection)
 
   def _deserialize(self, entity, p, depth=1):
     if not self._repeated:
@@ -2467,7 +2470,7 @@ class StructuredProperty(_StructuredGetForDictMixin):
     if self._has_value(entity):
       # If an entire subentity has been set to None, we have to loop
       # to advance until we find the next partial entity.
-      while (next_index < self._get_value_size(entity)):
+      while next_index < self._get_value_size(entity):
         subentity = self._get_base_value_at_index(entity, next_index)
         if not isinstance(subentity, self._modelclass):
           raise TypeError('sub-entities must be instances '
@@ -2511,7 +2514,7 @@ class StructuredProperty(_StructuredGetForDictMixin):
     """
     if not rest:
       raise InvalidPropertyError(
-        'Structured property %s requires a subproperty' % self._name)
+          'Structured property %s requires a subproperty' % self._name)
     self._modelclass._check_properties([rest], require_indexed=require_indexed)
 
   def _get_base_value_at_index(self, entity, index):
@@ -2525,6 +2528,7 @@ class StructuredProperty(_StructuredGetForDictMixin):
     if values is None:
       return 0
     return len(values)
+
 
 class LocalStructuredProperty(_StructuredGetForDictMixin, BlobProperty):
   """Substructure that is serialized to an opaque blob.
@@ -2637,8 +2641,8 @@ class GenericProperty(Property):
         value = value.encode('utf-8')
       if isinstance(value, basestring) and len(value) > _MAX_STRING_LENGTH:
         raise datastore_errors.BadValueError(
-          'Indexed value %s must be at most %d bytes' %
-          (self._name, _MAX_STRING_LENGTH))
+            'Indexed value %s must be at most %d bytes' %
+            (self._name, _MAX_STRING_LENGTH))
 
   def _db_get_value(self, v, p):
     # This is awkward but there seems to be no faster way to inspect
@@ -2712,6 +2716,7 @@ class GenericProperty(Property):
     elif isinstance(value, bool):  # Must test before int!
       v.set_booleanvalue(value)
     elif isinstance(value, (int, long)):
+      # pylint: disable=superfluous-parens
       if not (-_MAX_LONG <= value < _MAX_LONG):
         raise TypeError('Property %s can only accept 64-bit integers; '
                         'received %s' % (self._name, value))
@@ -3006,7 +3011,7 @@ class Model(_NotEqualMixin):
     baddies = self._find_uninitialized()
     if baddies:
       raise datastore_errors.BadValueError(
-        'Entity has uninitialized properties: %s' % ', '.join(baddies))
+          'Entity has uninitialized properties: %s' % ', '.join(baddies))
 
   def __repr__(self):
     """Return an unambiguous string representation of an entity."""
@@ -3202,7 +3207,6 @@ class Model(_NotEqualMixin):
         if p.meaning() == entity_pb.Property.INDEX_VALUE:
           projection.append(p.name())
         ent._get_property_for(p, indexed)._deserialize(ent, p)
-
 
     ent._set_projection(projection)
     return ent
@@ -3874,13 +3878,13 @@ def non_transactional(func, args, kwds, allow_existing=True):
     return func(*args, **kwds)
   if not allow_existing:
     raise datastore_errors.BadRequestError(
-      '%s cannot be called within a transaction.' % func.__name__)
+        '%s cannot be called within a transaction.' % func.__name__)
   save_ctx = ctx
   while ctx.in_transaction():
     ctx = ctx._parent_context
     if ctx is None:
       raise datastore_errors.BadRequestError(
-        'Context without non-transactional ancestor')
+          'Context without non-transactional ancestor')
   save_ds_conn = datastore._GetConnection()
   try:
     if hasattr(save_ctx, '_old_ds_conn'):

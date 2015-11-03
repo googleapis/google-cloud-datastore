@@ -72,6 +72,7 @@ def workload(id, run):
 
 
 class Stress(threading.Thread):
+
   def run(self):
     global cache_policy, memcache_policy, datastore_policy
     ctx = tasklets.get_context()

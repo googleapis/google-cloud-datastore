@@ -39,8 +39,8 @@ def fibonacci(n):
   """A recursive Fibonacci to exercise task switching."""
   if n <= 1:
     raise tasklets.Return(n)
-  a = yield fibonacci(n-1)
-  b = yield fibonacci(n-2)
+  a = yield fibonacci(n - 1)
+  b = yield fibonacci(n - 2)
   raise tasklets.Return(a + b)
 
 

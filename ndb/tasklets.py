@@ -98,7 +98,7 @@ __all__ = ['Return', 'tasklet', 'synctasklet', 'toplevel', 'sleep',
            'make_default_context', 'make_context',
            'Future', 'MultiFuture', 'QueueFuture', 'SerialQueueFuture',
            'ReducingFuture',
-           ]
+          ]
 
 _logging_debug = utils.logging_debug
 
@@ -143,7 +143,7 @@ class _State(utils.threading_local):
     pending = []
     for fut in self.all_pending:
       if verbose:
-        line = fut.dump() + ('\n' + '-'*40)
+        line = fut.dump() + ('\n' + '-' * 40)
       else:
         line = fut.dump_stack()
       pending.append(line)
@@ -212,6 +212,7 @@ class Future(object):
 
   def __init__(self, info=None):
     # TODO: Make done a method, to match PEP 3148?
+    # pylint: disable=invalid-name
     __ndb_debug__ = 'SKIP'  # Hide this frame from self._where
     self._info = info  # Info from the caller about this Future's purpose.
     self._where = utils.get_stack()
@@ -249,7 +250,7 @@ class Future(object):
     if self._geninfo:
       line += ' %s' % self._geninfo
     return '<%s %x created by %s; %s>' % (
-      self.__class__.__name__, id(self), line, state)
+        self.__class__.__name__, id(self), line, state)
 
   def dump(self):
     return '%s\nCreated by %s' % (self.dump_stack(),
@@ -321,7 +322,7 @@ class Future(object):
         logging.info('Deadlock in %s', self)
         logging.info('All pending Futures:\n%s', _state.dump_all_pending())
         _logging_debug('All pending Futures (verbose):\n%s',
-                      _state.dump_all_pending(verbose=True))
+                       _state.dump_all_pending(verbose=True))
         self.set_exception(RuntimeError('Deadlock waiting for %s' % self))
 
   def get_exception(self):
@@ -367,6 +368,7 @@ class Future(object):
   def _help_tasklet_along(self, ns, ds_conn, gen, val=None, exc=None, tb=None):
     # XXX Docstring
     info = utils.gen_info(gen)
+    # pylint: disable=invalid-name
     __ndb_debug__ = info
     try:
       save_context = get_context()
@@ -380,7 +382,7 @@ class Future(object):
           datastore._SetConnection(ds_conn)
         if exc is not None:
           _logging_debug('Throwing %s(%s) into %s',
-                        exc.__class__.__name__, exc, info)
+                         exc.__class__.__name__, exc, info)
           value = gen.throw(exc.__class__, exc, tb)
         else:
           _logging_debug('Sending %r to %s', val, info)
@@ -414,7 +416,7 @@ class Future(object):
         # Flow exceptions aren't logged except in "heavy debug" mode,
         # and then only at DEBUG level, without a traceback.
         _logging_debug('%s raised %s(%s)',
-                      info, err.__class__.__name__, err)
+                       info, err.__class__.__name__, err)
       elif utils.DEBUG and logging.getLogger().level < logging.DEBUG:
         # In "heavy debug" mode, log a warning with traceback.
         # (This is the same condition as used in utils.logging_debug().)
@@ -489,6 +491,7 @@ class Future(object):
       val = future.get_result()  # This won't raise an exception.
       self._help_tasklet_along(ns, ds_conn, gen, val)
 
+
 def sleep(dt):
   """Public function to sleep some time.
 
@@ -538,6 +541,7 @@ class MultiFuture(Future):
   """
 
   def __init__(self, info=None):
+    # pylint: disable=invalid-name
     __ndb_debug__ = 'SKIP'  # Hide this frame from self._where
     self._full = False
     self._dependents = set()
@@ -725,10 +729,10 @@ class QueueFuture(Future):
     self._pass_result(fut, exc, tb, None)
 
   def _pass_result(self, fut, exc, tb, val):
-      if exc is not None:
-        fut.set_exception(exc, tb)
-      else:
-        fut.set_result(val)
+    if exc is not None:
+      fut.set_exception(exc, tb)
+    else:
+      fut.set_result(val)
 
 
 class SerialQueueFuture(Future):
@@ -1004,7 +1008,8 @@ def tasklet(func):
     # TODO: make most of this a public function so you can take a bare
     # generator and turn it into a tasklet dynamically.  (Monocle has
     # this I believe.)
-    # __ndb_debug__ = utils.func_info(func)
+    # pylint: disable=invalid-name
+    __ndb_debug__ = utils.func_info(func)
     fut = Future('tasklet %s' % utils.func_info(func))
     fut._context = get_context()
     try:
@@ -1032,8 +1037,10 @@ def synctasklet(func):
   webapp.RequestHandler.get method).
   """
   taskletfunc = tasklet(func)  # wrap at declaration time.
+
   @utils.wrapping(func)
   def synctasklet_wrapper(*args, **kwds):
+    # pylint: disable=invalid-name
     __ndb_debug__ = utils.func_info(func)
     return taskletfunc(*args, **kwds).get_result()
   return synctasklet_wrapper
@@ -1046,8 +1053,10 @@ def toplevel(func):
   webapp.RequestHandler.get() or Django view functions.
   """
   synctaskletfunc = synctasklet(func)  # wrap at declaration time.
+
   @utils.wrapping(func)
   def add_context_wrapper(*args, **kwds):
+    # pylint: disable=invalid-name
     __ndb_debug__ = utils.func_info(func)
     _state.clear_all_pending()
     # Create and install a new context.
@@ -1068,6 +1077,7 @@ _DATASTORE_APP_ID_ENV = 'DATASTORE_APP_ID'
 _DATASTORE_PROJECT_ID_ENV = 'DATASTORE_PROJECT_ID'
 _DATASTORE_ADDITIONAL_APP_IDS_ENV = 'DATASTORE_ADDITIONAL_APP_IDS'
 _DATASTORE_USE_PROJECT_ID_AS_APP_ID_ENV = 'DATASTORE_USE_PROJECT_ID_AS_APP_ID'
+
 
 def get_context():
   # XXX Docstring

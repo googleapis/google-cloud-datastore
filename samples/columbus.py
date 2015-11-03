@@ -26,6 +26,7 @@ tb.init_memcache_stub()
 
 from datetime import date
 
+
 class FuzzyDate(object):
 
   def __init__(self, first, last=None):
@@ -37,9 +38,11 @@ class FuzzyDate(object):
   def __repr__(self):
     return 'FuzzyDate(%r, %r)' % (self.first, self.last)
 
+
 class FuzzyDateModel(Model):
   first = DateProperty()
   last = DateProperty()
+
 
 class FuzzyDateProperty(StructuredProperty):
 
@@ -56,6 +59,8 @@ class FuzzyDateProperty(StructuredProperty):
     return FuzzyDate(value.first, value.last)
 
 # Class to record historic people and events in their life.
+
+
 class HistoricPerson(Model):
   name = StringProperty()
   birth = FuzzyDateProperty()

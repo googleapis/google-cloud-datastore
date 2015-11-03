@@ -203,7 +203,7 @@ class BlobstoreTests(test_utils.NDBTest):
   def testBlobstore_CreateUploadUrlAsync(self):
     urlf = blobstore.create_upload_url_async('/foo')
     self.assertTrue(isinstance(urlf, tasklets.Future), urlf)
-    url  = urlf.get_result()
+    url = urlf.get_result()
     self.assertTrue('/_ah/upload/' in url, url)
 
   def testBlobstore_ParseBlobInfo_Errors(self):
@@ -215,33 +215,33 @@ class BlobstoreTests(test_utils.NDBTest):
             'content-type': 'text/plain; blob-key=xxx'}
 
     fd = cStringIO.StringIO(
-      'Content-length: 42\n'
-      'X-AppEngine-Upload-Creation: 2012-01-24 17:35:00.000000\n'
-      'Content-MD5: eHh4\n'
-      '\n'
-      )
+        'Content-length: 42\n'
+        'X-AppEngine-Upload-Creation: 2012-01-24 17:35:00.000000\n'
+        'Content-MD5: eHh4\n'
+        '\n'
+    )
     fs = cgi.FieldStorage(fd, headers=hdrs, environ=env)
     self.assertRaises(blobstore.BlobInfoParseError,
                       blobstore.parse_blob_info, fs)
 
     fd = cStringIO.StringIO(
-      'Content-type: image/jpeg\n'
-      'Content-length: hello\n'
-      'X-AppEngine-Upload-Creation: 2012-01-24 17:35:00.000000\n'
-      'Content-MD5: eHh4\n'
-      '\n'
-      )
+        'Content-type: image/jpeg\n'
+        'Content-length: hello\n'
+        'X-AppEngine-Upload-Creation: 2012-01-24 17:35:00.000000\n'
+        'Content-MD5: eHh4\n'
+        '\n'
+    )
     fs = cgi.FieldStorage(fd, headers=hdrs, environ=env)
     self.assertRaises(blobstore.BlobInfoParseError,
                       blobstore.parse_blob_info, fs)
 
     fd = cStringIO.StringIO(
-      'Content-type: image/jpeg\n'
-      'Content-length: 42\n'
-      'X-AppEngine-Upload-Creation: BLAH-01-24 17:35:00.000000\n'
-      'Content-MD5: eHh4\n'
-      '\n'
-      )
+        'Content-type: image/jpeg\n'
+        'Content-length: 42\n'
+        'X-AppEngine-Upload-Creation: BLAH-01-24 17:35:00.000000\n'
+        'Content-MD5: eHh4\n'
+        '\n'
+    )
     fs = cgi.FieldStorage(fd, headers=hdrs, environ=env)
     self.assertRaises(blobstore.BlobInfoParseError,
                       blobstore.parse_blob_info, fs)
@@ -251,23 +251,23 @@ class BlobstoreTests(test_utils.NDBTest):
     hdrs = {'content-disposition': 'blah; filename=hello.txt; name=hello',
             'content-type': 'text/plain; blob-key=xxx'}
     fd = cStringIO.StringIO(
-      'Content-type: image/jpeg\n'
-      'Content-length: 42\n'
-      'X-AppEngine-Upload-Creation: 2012-01-24 17:35:00.000000\n'
-      'Content-MD5: eHh4\n'
-      '\n'
-      )
+        'Content-type: image/jpeg\n'
+        'Content-length: 42\n'
+        'X-AppEngine-Upload-Creation: 2012-01-24 17:35:00.000000\n'
+        'Content-MD5: eHh4\n'
+        '\n'
+    )
     fs = cgi.FieldStorage(fd, headers=hdrs, environ=env)
     bi = blobstore.parse_blob_info(fs)
     self.assertTrue(isinstance(bi, blobstore.BlobInfo))
     self.assertEqual(
-      bi,
-      blobstore.BlobInfo(key=model.Key(blobstore.BlobInfo, 'xxx'),
-                         content_type='image/jpeg',
-                         creation=datetime.datetime(2012, 1, 24, 17, 35),
-                         filename='hello.txt',
-                         md5_hash='xxx',
-                         size=42))
+        bi,
+        blobstore.BlobInfo(key=model.Key(blobstore.BlobInfo, 'xxx'),
+                           content_type='image/jpeg',
+                           creation=datetime.datetime(2012, 1, 24, 17, 35),
+                           filename='hello.txt',
+                           md5_hash='xxx',
+                           size=42))
 
   def testBlobstore_FetchData(self):
     self.create_blobinfo('xxx')

@@ -160,12 +160,12 @@ class HomePage(webapp.RequestHandler):
       summary = yield key.get_async()
       if not summary or summary.when < time.time() - UrlSummary.MAX_AGE:
         rpc = urlfetch.create_rpc(deadline=0.5)
-        urlfetch.make_fetch_call(rpc, url,allow_truncated=True)
+        urlfetch.make_fetch_call(rpc, url, allow_truncated=True)
         t0 = time.time()
         result = yield rpc
         t1 = time.time()
         logging.warning('url=%r, status=%r, dt=%.3f',
-                        url, result.status_code, t1-t0)
+                        url, result.status_code, t1 - t0)
         if result.status_code == 200:
           bodytext = result.content
           m = re.search(r'(?i)<title>([^<]+)</title>', bodytext)
@@ -257,7 +257,7 @@ class AccountPage(webapp.RequestHandler):
 urls = [
   ('/home', HomePage),
   ('/account', AccountPage),
-  ]
+]
 
 app = webapp.WSGIApplication(urls)
 

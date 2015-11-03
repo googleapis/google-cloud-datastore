@@ -36,7 +36,7 @@ from . import utils
 
 __all__ = ['Context', 'ContextOptions', 'TransactionOptions', 'AutoBatcher',
            'EVENTUAL_CONSISTENCY',
-           ]
+          ]
 
 _LOCK_TIME = 32  # Time to lock out memcache.add() after datastore updates.
 _LOCKED = 0  # Special value to store in memcache indicating locked value.
@@ -53,52 +53,52 @@ class ContextOptions(datastore_rpc.Configuration):
   def use_cache(value):
     if not isinstance(value, bool):
       raise datastore_errors.BadArgumentError(
-        'use_cache should be a bool (%r)' % (value,))
+          'use_cache should be a bool (%r)' % (value,))
     return value
 
   @datastore_rpc.ConfigOption
   def use_memcache(value):
     if not isinstance(value, bool):
       raise datastore_errors.BadArgumentError(
-        'use_memcache should be a bool (%r)' % (value,))
+          'use_memcache should be a bool (%r)' % (value,))
     return value
 
   @datastore_rpc.ConfigOption
   def use_datastore(value):
     if not isinstance(value, bool):
       raise datastore_errors.BadArgumentError(
-        'use_datastore should be a bool (%r)' % (value,))
+          'use_datastore should be a bool (%r)' % (value,))
     return value
 
   @datastore_rpc.ConfigOption
   def memcache_timeout(value):
     if not isinstance(value, (int, long)):
       raise datastore_errors.BadArgumentError(
-        'memcache_timeout should be an integer (%r)' % (value,))
+          'memcache_timeout should be an integer (%r)' % (value,))
     return value
 
   @datastore_rpc.ConfigOption
   def max_memcache_items(value):
     if not isinstance(value, (int, long)):
       raise datastore_errors.BadArgumentError(
-        'max_memcache_items should be an integer (%r)' % (value,))
+          'max_memcache_items should be an integer (%r)' % (value,))
     return value
 
   @datastore_rpc.ConfigOption
   def memcache_deadline(value):
     if not isinstance(value, (int, long)):
       raise datastore_errors.BadArgumentError(
-        'memcache_deadline should be an integer (%r)' % (value,))
+          'memcache_deadline should be an integer (%r)' % (value,))
     return value
+
 
 class TransactionOptions(ContextOptions, datastore_rpc.TransactionOptions):
   """Support both context options and transaction options."""
 
 
-
 # options and config can be used interchangeably.
 _OPTION_TRANSLATIONS = {
-  'options': 'config',
+    'options': 'config',
 }
 
 
@@ -311,7 +311,7 @@ class Context(object):
                       self._memcache_set_batcher,
                       self._memcache_del_batcher,
                       self._memcache_off_batcher,
-                      ]
+                     ]
     self._cache = {}
     self._memcache = memcache.Client()
     self._on_commit_queue = []
@@ -663,7 +663,6 @@ class Context(object):
     # If this returns None, the system default (typically, 5) will apply.
     return ContextOptions.memcache_deadline(options, self._conn.config)
 
-
   def _load_from_cache_if_available(self, key):
     """Returns a cached Model instance given the entity key if available.
 
@@ -957,11 +956,11 @@ class Context(object):
     if propagation == TransactionOptions.NESTED:
       if self.in_transaction():
         raise datastore_errors.BadRequestError(
-          'Nested transactions are not supported.')
+            'Nested transactions are not supported.')
     elif propagation == TransactionOptions.MANDATORY:
       if not self.in_transaction():
         raise datastore_errors.BadRequestError(
-          'Requires an existing transaction.')
+            'Requires an existing transaction.')
       result = callback()
       if isinstance(result, tasklets.Future):
         result = yield result
@@ -977,10 +976,10 @@ class Context(object):
         parent = parent._parent_context
         if parent is None:
           raise datastore_errors.BadRequestError(
-            'Context without non-transactional ancestor')
+              'Context without non-transactional ancestor')
     else:
       raise datastore_errors.BadArgumentError(
-        'Invalid propagation value (%s).' % (propagation,))
+          'Invalid propagation value (%s).' % (propagation,))
 
     app = TransactionOptions.app(options) or key_module._DefaultAppId()
     # Note: zero retries means try it once.
@@ -991,10 +990,10 @@ class Context(object):
     for _ in xrange(1 + max(0, retries)):
       transaction = yield parent._conn.async_begin_transaction(options, app)
       tconn = datastore_rpc.TransactionalConnection(
-        adapter=parent._conn.adapter,
-        config=parent._conn.config,
-        transaction=transaction,
-        _api_version=parent._conn._api_version)
+          adapter=parent._conn.adapter,
+          config=parent._conn.config,
+          transaction=transaction,
+          _api_version=parent._conn._api_version)
       tctx = parent.__class__(conn=tconn,
                               auto_batcher_class=parent._auto_batcher_class,
                               parent_context=parent)
@@ -1048,7 +1047,7 @@ class Context(object):
 
     # Out of retries
     raise datastore_errors.TransactionFailedError(
-      'The transaction could not be committed. Please try again.')
+        'The transaction could not be committed. Please try again.')
 
   def in_transaction(self):
     """Return whether a transaction is currently active."""
@@ -1158,7 +1157,7 @@ class Context(object):
       mapping[key] = delta
     rpc = memcache.create_rpc(deadline=deadline)
     results = yield self._memcache.offset_multi_async(
-      mapping, initial_value=initial_value, namespace=namespace, rpc=rpc)
+        mapping, initial_value=initial_value, namespace=namespace, rpc=rpc)
     for fut, (key, unused_delta) in todo:
       fut.set_result(results.get(key))
 
@@ -1257,7 +1256,7 @@ class Context(object):
       raise TypeError('delta must be a number; received %r' % delta)
     if initial_value is not None and not isinstance(initial_value, (int, long)):
       raise TypeError('initial_value must be a number or None; received %r' %
-                       initial_value)
+                      initial_value)
     if namespace is None:
       namespace = namespace_manager.get_namespace()
     return self._memcache_off_batcher.add((key, delta),
@@ -1271,7 +1270,7 @@ class Context(object):
       raise TypeError('delta must be a number; received %r' % delta)
     if initial_value is not None and not isinstance(initial_value, (int, long)):
       raise TypeError('initial_value must be a number or None; received %r' %
-                       initial_value)
+                      initial_value)
     if namespace is None:
       namespace = namespace_manager.get_namespace()
     return self._memcache_off_batcher.add((key, -delta),
