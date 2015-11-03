@@ -82,12 +82,12 @@ def timer(func, people):
   t0 = time.time()
   func(people)
   t1 = time.time()
-  print '%.3f seconds' % (t1-t0)
+  print '%.3f seconds' % (t1 - t0)
 
 
 def main(k=0):
   if k > 0:
-    return main(k-1)
+    return main(k - 1)
   try:
     n = int(sys.argv[-1])
   except:

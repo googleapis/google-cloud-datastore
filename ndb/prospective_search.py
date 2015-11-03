@@ -80,12 +80,12 @@ __all__ = ['get_document',
 _doc_class = prospective_search_pb.MatchRequest  # For testing get_document().
 
 _MODEL_TYPE_TO_PYTHON_TYPE = {
-  model.StringProperty: str,
-  model.IntegerProperty: int,
-  model.BooleanProperty: bool,
-  model.FloatProperty: float,
-  model.TextProperty: str,
-  }
+    model.StringProperty: str,
+    model.IntegerProperty: int,
+    model.BooleanProperty: bool,
+    model.FloatProperty: float,
+    model.TextProperty: str,
+}
 
 
 def _add_schema_entry(prop_class, name, schema):
@@ -125,12 +125,12 @@ def subscribe(document_class,
   topic = _get_document_topic(document_class, topic)
   schema = _model_to_entity_schema(document_class)
   return prospective_search.subscribe(
-    datastore.Entity,
-    query,
-    sub_id,
-    schema=schema,
-    topic=topic,
-    lease_duration_sec=lease_duration_sec)
+      datastore.Entity,
+      query,
+      sub_id,
+      schema=schema,
+      topic=topic,
+      lease_duration_sec=lease_duration_sec)
 
 
 def unsubscribe(document_class, sub_id, topic=None):
@@ -153,11 +153,11 @@ def list_subscriptions(document_class,
   """List subscriptions on a topic."""
   topic = _get_document_topic(document_class, topic)
   return prospective_search.list_subscriptions(
-    datastore.Entity,
-    sub_id_start=sub_id_start,
-    topic=topic,
-    max_results=max_results,
-    expires_before=expires_before)
+      datastore.Entity,
+      sub_id_start=sub_id_start,
+      topic=topic,
+      max_results=max_results,
+      expires_before=expires_before)
 
 
 list_topics = prospective_search.list_topics
@@ -176,13 +176,13 @@ def match(document,
   pb = document._to_pb()
   entity = datastore.Entity('temp-kind').FromPb(pb)
   return prospective_search.match(
-    entity,
-    topic=topic,
-    result_key=result_key,
-    result_relative_url=result_relative_url,
-    result_task_queue=result_task_queue,
-    result_batch_size=result_batch_size,
-    result_return_document=result_return_document)
+      entity,
+      topic=topic,
+      result_key=result_key,
+      result_relative_url=result_relative_url,
+      result_task_queue=result_task_queue,
+      result_batch_size=result_batch_size,
+      result_return_document=result_return_document)
 
 
 def get_document(request):

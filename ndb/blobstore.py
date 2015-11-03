@@ -330,9 +330,9 @@ def create_upload_url(success_path,
 
 @tasklets.tasklet
 def create_upload_url_async(success_path,
-                      max_bytes_per_blob=None,
-                      max_bytes_total=None,
-                      **options):
+                            max_bytes_per_blob=None,
+                            max_bytes_total=None,
+                            **options):
   """Async version of create_upload_url()."""
   rpc = blobstore.create_rpc(**options)
   rpc = blobstore.create_upload_url_async(success_path,
@@ -397,7 +397,7 @@ def parse_blob_info(field_storage):
                   filename=filename,
                   size=size,
                   md5_hash=md5_hash,
-                  )
+                 )
 
 
 def fetch_data(blob, start_index, end_index, **options):

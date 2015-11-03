@@ -1,0 +1,108 @@
+# PyLint config for 'datastore-ndb-python'.
+
+[MASTER]
+
+# Add files or directories to the blacklist. They should be base names, not
+# paths.
+# DEFAULT:  ignore=CVS
+# NOTE: This path must be relative due to the use of
+#       os.walk in astroid.modutils.get_module_files.
+
+# Pickle collected data for later comparisons.
+# DEFAULT:  persistent=yes
+
+# List of plugins (as comma separated values of python modules names) to load,
+# usually to register additional checkers.
+# DEFAULT:  load-plugins=
+# RATIONALE: We want to make sure our docstrings match the objects
+#            they document.
+load-plugins=pylint.extensions.check_docs
+
+disable =
+  similarities,
+  design,
+  import-error,
+  unused-import,
+  wildcard-import,
+  relative-import,
+  cyclic-import,
+  too-few-public-methods,
+  too-many-lines,
+  missing-docstring,
+  undefined-variable,
+  super-on-old-class
+
+[FORMAT]
+
+# RATIONALE: Google style dictates 80 character max length.
+max-line-length=80
+
+# RATIONALE: import statements are cleaner on a single line.
+# DEFAULT: ^\s*(# )?<?https?://\S+>?$
+ignore-long-lines=^(\s*(# )?<?https?://\S+>?)|(from .* import .*)$
+
+# Standard indent.
+# DEFAULT: '    '
+# RATIONALE: Google style dictates 2 spaces, not 4.
+indent-string='  '
+
+# RATIONALE: Match Google style guide instead of default.
+[BASIC]
+
+# Regular expression which should only match the name
+# of functions or classes which do not require a docstring.
+no-docstring-rgx=(__.*__|main)
+
+# Min length in lines of a function that requires a docstring.
+docstring-min-length=10
+
+# Regular expression which should only match correct module names. The
+# leading underscore is sanctioned for private modules by Google's style
+# guide.
+
+# There are exceptions to the basic rule (_?[a-z][a-z0-9_]*) to cover
+# requirements of Python's module system and of the presubmit framework.
+module-rgx=^(_?[a-z][a-z0-9_]*)|__init__|PRESUBMIT|PRESUBMIT_unittest$
+
+# Regular expression which should only match correct module level names
+# Also added class names since ndb plays some weird games with class names.
+const-rgx=^(_?[A-Z][A-Z0-9_]*|__[a-z0-9_]+__|_?[a-z][a-z0-9_]*|_?[A-Z][a-zA-Z0-9]*)$
+
+# Regular expression which should only match correct class attribute
+class-attribute-rgx=^(_?[A-Z][A-Z0-9_]*|__[a-z0-9_]+(__)?|_?[a-z][a-z0-9_]*)$
+
+# Regular expression which should only match correct class names
+class-rgx=^_?[A-Z][a-zA-Z0-9]*$
+
+# Regular expression which should only match correct function names
+function-rgx=^_?[a-zA-Z][a-zA-Z0-9_]*$
+
+# Regular expression which should only match correct method names
+method-rgx=^(_{0,2}[a-z][a-zA-Z0-9_]*|__[a-z0-9_]+__|next)$
+
+# Regular expression which should only match correct instance attribute names
+attr-rgx=^_{0,2}[a-z][a-z0-9_]*$
+
+# Regular expression which should only match correct argument names
+# Arguments may start with _ to indicate they are api "private".
+argument-rgx=^_{0,1}[a-z][a-z0-9_]*$
+
+# Regular expression which should only match correct variable names
+variable-rgx=^[a-zA-Z][a-zA-Z0-9_]*$
+
+# Regular expression which should only match correct list comprehension /
+# generator expression variable names
+inlinevar-rgx=^[a-z][a-z0-9_]*$
+
+# Good variable names which should always be accepted, separated by a comma
+good-names=main,_
+
+# Bad variable names which should always be refused, separated by a comma
+bad-names=
+
+[VARIABLES]
+
+# DEFAULT: _$|dummy
+# RATIONALE: We start some arguments with unused_
+dummy-variables-rgx=_$|dummy|unused_.*
+

@@ -278,14 +278,14 @@ def _make_model_class(message_type, indexed_fields, **props):
     if isinstance(field, messages.MessageField):
       if not sub_fields:
         raise ValueError(
-          'MessageField %s cannot be indexed, only sub-fields' % field_name)
+            'MessageField %s cannot be indexed, only sub-fields' % field_name)
       sub_model_class = _make_model_class(field.type, sub_fields)
       prop = model.StructuredProperty(sub_model_class, field_name,
                                       repeated=field.repeated)
     else:
       if sub_fields is not None:
         raise ValueError(
-          'Unstructured field %s cannot have indexed sub-fields' % field_name)
+            'Unstructured field %s cannot have indexed sub-fields' % field_name)
       if isinstance(field, messages.EnumField):
         prop = EnumProperty(field.type, field_name, repeated=field.repeated)
       elif isinstance(field, messages.BytesField):

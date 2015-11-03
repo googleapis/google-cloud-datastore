@@ -32,7 +32,9 @@ class Greeting(ndb.Model):
   def QueryBook(cls, ancestor_key):
     return cls.query(ancestor=ancestor_key).order(-cls.date)
 
+
 class MainPage(webapp.RequestHandler):
+
   def get(self):
     self.response.out.write('<html><body>')
     guestbook_name = self.request.get('guestbook_name')
@@ -53,16 +55,18 @@ class MainPage(webapp.RequestHandler):
           <input type="submit" value="switch"></form>
         </body>
       </html>""" % (urllib.urlencode({'guestbook_name': guestbook_name}),
-                          cgi.escape(guestbook_name)))
+                    cgi.escape(guestbook_name)))
+
 
 class Guestbook(webapp.RequestHandler):
+
   def post(self):
     # We set the parent key on each 'Greeting' to ensure each guestbook's
     # greetings are in the same entity group.
     guestbook_name = self.request.get('guestbook_name')
     greeting = Greeting(parent=ndb.Key("Book",
                                        guestbook_name or "*fakebook*"),
-                        content = self.request.get('content'))
+                        content=self.request.get('content'))
     greeting.put()
     self.redirect('/?' + urllib.urlencode({'guestbook_name': guestbook_name}))
 

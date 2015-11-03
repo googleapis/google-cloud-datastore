@@ -38,26 +38,26 @@ class StatsTests(test_utils.NDBTest):
     """Insert stat entities into the datastore."""
     # GlobalStat
     self.CreateStatEntity(stats.GlobalStat.STORED_KIND_NAME,
-        has_entity_bytes=True,
-        has_builtin_index_stats=True,
-        has_composite_index_stats=True)
+                          has_entity_bytes=True,
+                          has_builtin_index_stats=True,
+                          has_composite_index_stats=True)
 
     # NamespaceStat
     self.CreateStatEntity(stats.NamespaceStat.STORED_KIND_NAME,
-        subject_namespace='name-space',
-        has_entity_bytes=True,
-        has_builtin_index_stats=True,
-        has_composite_index_stats=True)
+                          subject_namespace='name-space',
+                          has_entity_bytes=True,
+                          has_builtin_index_stats=True,
+                          has_composite_index_stats=True)
 
     # KindStat
     self.CreateStatEntity(stats.KindStat.STORED_KIND_NAME, 'foo',
-        has_entity_bytes=True,
-        has_builtin_index_stats=True,
-        has_composite_index_stats=True)
+                          has_entity_bytes=True,
+                          has_builtin_index_stats=True,
+                          has_composite_index_stats=True)
     self.CreateStatEntity(stats.KindStat.STORED_KIND_NAME, 'foo2',
-        has_entity_bytes=True,
-        has_builtin_index_stats=True,
-        has_composite_index_stats=True)
+                          has_entity_bytes=True,
+                          has_builtin_index_stats=True,
+                          has_composite_index_stats=True)
 
     # KindRootEntityStat
     self.CreateStatEntity(stats.KindRootEntityStat.STORED_KIND_NAME, 'foo3',
@@ -73,47 +73,47 @@ class StatsTests(test_utils.NDBTest):
 
     # PropertyTypeStat
     self.CreateStatEntity(stats.PropertyTypeStat.STORED_KIND_NAME,
-        property_type='pt1',
-        has_entity_bytes=True,
-        has_builtin_index_stats=True)
+                          property_type='pt1',
+                          has_entity_bytes=True,
+                          has_builtin_index_stats=True)
     self.CreateStatEntity(stats.PropertyTypeStat.STORED_KIND_NAME,
-        property_type='pt2',
-        has_entity_bytes=True,
-        has_builtin_index_stats=True)
+                          property_type='pt2',
+                          has_entity_bytes=True,
+                          has_builtin_index_stats=True)
 
     # KindPropertyTypeStat
     self.CreateStatEntity(stats.KindPropertyTypeStat.STORED_KIND_NAME,
-        kind_name='foo1',
-        property_type='pt1',
-        has_entity_bytes=True,
-        has_builtin_index_stats=True)
+                          kind_name='foo1',
+                          property_type='pt1',
+                          has_entity_bytes=True,
+                          has_builtin_index_stats=True)
     self.CreateStatEntity(stats.KindPropertyTypeStat.STORED_KIND_NAME,
-        kind_name='foo1',
-        property_type='pt2',
-        has_entity_bytes=True,
-        has_builtin_index_stats=True)
+                          kind_name='foo1',
+                          property_type='pt2',
+                          has_entity_bytes=True,
+                          has_builtin_index_stats=True)
     self.CreateStatEntity(stats.KindPropertyTypeStat.STORED_KIND_NAME,
-        kind_name='foo2',
-        property_type='pt2',
-        has_entity_bytes=True,
-        has_builtin_index_stats=True)
+                          kind_name='foo2',
+                          property_type='pt2',
+                          has_entity_bytes=True,
+                          has_builtin_index_stats=True)
 
     # KindPropertyNameStat
     self.CreateStatEntity(stats.KindPropertyNameStat.STORED_KIND_NAME,
-        kind_name='foo11',
-        property_name='pn1',
-        has_entity_bytes=True,
-        has_builtin_index_stats=True)
+                          kind_name='foo11',
+                          property_name='pn1',
+                          has_entity_bytes=True,
+                          has_builtin_index_stats=True)
     self.CreateStatEntity(stats.KindPropertyNameStat.STORED_KIND_NAME,
-        kind_name='foo11',
-        property_name='pn2',
-        has_entity_bytes=True,
-        has_builtin_index_stats=True)
+                          kind_name='foo11',
+                          property_name='pn2',
+                          has_entity_bytes=True,
+                          has_builtin_index_stats=True)
     self.CreateStatEntity(stats.KindPropertyNameStat.STORED_KIND_NAME,
-        kind_name='foo21',
-        property_name='pn2',
-        has_entity_bytes=True,
-        has_builtin_index_stats=True)
+                          kind_name='foo21',
+                          property_name='pn2',
+                          has_entity_bytes=True,
+                          has_builtin_index_stats=True)
 
     # KindPropertyNamePropertyTypeStat
     self.CreateStatEntity(
@@ -281,7 +281,7 @@ class StatsTests(test_utils.NDBTest):
     self.assertEquals(1, res[0].builtin_index_bytes)
 
     query = stats.KindPropertyTypeStat.query(
-      stats.KindPropertyTypeStat.kind_name == 'foo2')
+        stats.KindPropertyTypeStat.kind_name == 'foo2')
     res = query.fetch()
     self.assertEquals(1, len(res))
     self.assertEquals('foo2', res[0].kind_name)
@@ -301,7 +301,7 @@ class StatsTests(test_utils.NDBTest):
     self.assertEquals(1, res[0].builtin_index_bytes)
 
     query = stats.KindPropertyNameStat.query(
-      stats.KindPropertyNameStat.kind_name == 'foo21')
+        stats.KindPropertyNameStat.kind_name == 'foo21')
     res = query.fetch()
     self.assertEquals(1, len(res))
     self.assertEquals('foo21', res[0].kind_name)
@@ -324,7 +324,7 @@ class StatsTests(test_utils.NDBTest):
     self.assertEquals(1, res[0].builtin_index_bytes)
 
     query = stats.KindPropertyNamePropertyTypeStat.query(
-      stats.KindPropertyNamePropertyTypeStat.kind_name == 'foo22')
+        stats.KindPropertyNamePropertyTypeStat.kind_name == 'foo22')
     res = query.fetch()
     self.assertEquals(1, len(res))
     self.assertEquals('foo22', res[0].kind_name)

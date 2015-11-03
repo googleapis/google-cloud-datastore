@@ -70,6 +70,7 @@ class MsgPropTests(test_utils.NDBTest):
   def setUp(self):
     super(MsgPropTests, self).setUp()
     global Greeting
+
     class Greeting(messages.Message):
       text = messages.StringField(1, required=True)
       when = messages.IntegerField(2)
@@ -94,9 +95,11 @@ class MsgPropTests(test_utils.NDBTest):
 
   def testValidator(self):
     logs = []
+
     def validator(prop, value):
       logs.append((prop, value))
       return value
+
     class Storage(model.Model):
       greet = msgprop.MessageProperty(Greeting, indexed_fields=['text'],
                                       validator=validator)
@@ -112,8 +115,8 @@ class MsgPropTests(test_utils.NDBTest):
                      "MessageProperty(Greeting, 'foo', protocol='protojson')")
     greet3 = msgprop.MessageProperty(Greeting, 'foo', indexed_fields=['text'])
     self.assertEqual(
-      repr(greet3),
-      "MessageProperty(Greeting, 'foo', indexed_fields=('text',))")
+        repr(greet3),
+        "MessageProperty(Greeting, 'foo', indexed_fields=('text',))")
     greets = msgprop.MessageProperty(Greeting, 'foo', repeated=True)
     self.assertEqual(repr(greets),
                      "MessageProperty(Greeting, 'foo', repeated=True)")
@@ -216,6 +219,7 @@ class MsgPropTests(test_utils.NDBTest):
     class AltGreeting(messages.Message):
       lines = messages.StringField(1, repeated=True)
       when = messages.IntegerField(2)
+
     class Store(model.Model):
       altg = msgprop.MessageProperty(AltGreeting, indexed_fields=['lines'])
     s1 = Store(altg=AltGreeting(lines=['foo', 'bar'], when=123))
@@ -236,6 +240,7 @@ class MsgPropTests(test_utils.NDBTest):
     class BytesGreeting(messages.Message):
       data = messages.BytesField(1)
       when = messages.IntegerField(2)
+
     class Store(model.Model):
       greet = msgprop.MessageProperty(BytesGreeting, indexed_fields=['data'])
     bg = BytesGreeting(data='\xff', when=123)
@@ -248,9 +253,11 @@ class MsgPropTests(test_utils.NDBTest):
     class Inner(messages.Message):
       count = messages.IntegerField(1)
       greet = messages.MessageField(Greeting, 2)
+
     class Outer(messages.Message):
       inner = messages.MessageField(Inner, 1)
       extra = messages.StringField(2)
+
     class Store(model.Model):
       outer = msgprop.MessageProperty(Outer,
                                       indexed_fields=['inner.greet.text'])
@@ -265,6 +272,7 @@ class MsgPropTests(test_utils.NDBTest):
   def testNestedMessageFieldIsNone(self):
     class Outer(messages.Message):
       greeting = messages.MessageField(Greeting, 1)
+
     class Store(model.Model):
       outer = msgprop.MessageProperty(Outer, indexed_fields=['greeting.text'])
     outer1 = Outer(greeting=None)
@@ -277,6 +285,7 @@ class MsgPropTests(test_utils.NDBTest):
     class Outer(messages.Message):
       greeting = messages.MessageField(Greeting, 1)
       extra = messages.IntegerField(2)
+
     class Store(model.Model):
       outers = msgprop.MessageProperty(Outer, repeated=True,
                                        indexed_fields=['greeting.text'])
@@ -297,6 +306,7 @@ class MsgPropTests(test_utils.NDBTest):
     class Outer(messages.Message):
       greetings = messages.MessageField(Greeting, 1, repeated=True)
       extra = messages.IntegerField(2)
+
     class Store(model.Model):
       outer = msgprop.MessageProperty(Outer, indexed_fields=['greetings.text',
                                                              'extra'])
@@ -340,6 +350,7 @@ class MsgPropTests(test_utils.NDBTest):
   def testDoubleNestedRepeatErrors(self):
     class Inner(messages.Message):
       greets = messages.MessageField(Greeting, 1, repeated=True)
+
     class Outer(messages.Message):
       inner = messages.MessageField(Inner, 1)
       inners = messages.MessageField(Inner, 2, repeated=True)
@@ -350,7 +361,7 @@ class MsgPropTests(test_utils.NDBTest):
     self.assertRaises(TypeError, msgprop.MessageProperty, Outer,
                       indexed_fields=['inners.greets.text'])
     self.assertRaises(TypeError, msgprop.MessageProperty, Outer,
-                       repeated=True, indexed_fields=['inner.greets.text'])
+                      repeated=True, indexed_fields=['inner.greets.text'])
 
   def testEnumProperty(self):
     class Foo(model.Model):
@@ -365,6 +376,7 @@ class MsgPropTests(test_utils.NDBTest):
     self.assertEqual(res, [foo1])
     res = Foo.query(Foo.colors == Color.RED).fetch()
     self.assertEqual(res, [foo1, foo2])
+
     class FooBar(model.Model):
       color = msgprop.EnumProperty(Color, indexed=False,
                                    verbose_name='The Color String',
@@ -387,6 +399,7 @@ class MsgPropTests(test_utils.NDBTest):
     foo2.colors.append(42)
     self.ExpectWarnings()
     self.assertRaises(TypeError, foo2.put)  # Late-stage validation
+
     class Bar(model.Model):
       color = msgprop.EnumProperty(Color, required=True)
     bar1 = Bar()
@@ -405,6 +418,7 @@ class MsgPropTests(test_utils.NDBTest):
     greet1 = Greeting(text='abc', when=123)
     store1 = Storage(greeting=greet1)
     key1 = store1.put()
+
     class Storage(model.Model):
       greeting = msgprop.MessageProperty(Greeting, protocol='protojson')
     store2 = key1.get()
@@ -413,6 +427,7 @@ class MsgPropTests(test_utils.NDBTest):
   def testProjectionQueries(self):
     class Wrapper(messages.Message):
       greet = messages.MessageField(Greeting, 1)
+
     class Storage(model.Model):
       wrap = msgprop.MessageProperty(Wrapper, indexed_fields=['greet.text',
                                                               'greet.when'])
@@ -430,6 +445,7 @@ class MsgPropTests(test_utils.NDBTest):
   def testProjectionQueriesRepeatedField(self):
     class Wrapper(messages.Message):
       greets = messages.MessageField(Greeting, 1, repeated=True)
+
     class Storage(model.Model):
       wrap = msgprop.MessageProperty(Wrapper, indexed_fields=['greets.text',
                                                               'greets.when'])

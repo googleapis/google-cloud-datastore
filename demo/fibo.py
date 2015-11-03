@@ -33,7 +33,7 @@ def fibonacci(n):
   """A recursive Fibonacci to exercise task switching."""
   if n <= 1:
     raise ndb.Return(n)
-  a, b = yield fibonacci(n-1),fibonacci(n-2)
+  a, b = yield fibonacci(n - 1), fibonacci(n - 2)
   raise ndb.Return(a + b)
 
 
@@ -54,8 +54,8 @@ def memoizing_fibonacci(n):
     logging.info('memo hit: %d -> %d', n, memo.value)
     raise ndb.Return(memo.value)
   logging.info('memo fail: %d', n)
-  a = yield memoizing_fibonacci(n-1)
-  b = yield memoizing_fibonacci(n-2)
+  a = yield memoizing_fibonacci(n - 1)
+  b = yield memoizing_fibonacci(n - 2)
   ans = a + b
   memo = FibonacciMemo(key=key, arg=n, value=ans)
   logging.info('memo write: %d -> %d', n, memo.value)
@@ -87,12 +87,12 @@ class FiboHandler(webapp.RequestHandler):
       ans = yield fibonacci(num)
     t1 = time.time()
     self.response.out.write('%sfibonacci(%d) == %d # computed in %.3f\n' %
-                            (memo_type, num, ans, t1-t0))
+                            (memo_type, num, ans, t1 - t0))
 
 
 urls = [
   ('/fibo', FiboHandler),
-  ]
+]
 
 app = webapp.WSGIApplication(urls)
 
