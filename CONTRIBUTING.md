@@ -1,120 +1,79 @@
-Contributing
-============================
+# Contributing
 
 - **Please sign one of the contributor license agreements below.**
 - Fork the repo, develop and test your code changes, add docs.
 - Make sure that your commit messages clearly describe the changes.
 - Send a pull request.
 
-Here are some guidelines for hacking on `ndb`.
+## Getting Started
 
-Using a Development Checkout
-----------------------------
+You need to separately download and install the App Engine SDK.
 
-You'll have to create a development environment to hack on `ndb`,
-using a Git checkout:
+Note: There is no guarantee older versions of the App Engine SDK will
+work with the current version of ndb.
 
--   While logged into your GitHub account, navigate to the `ndb` repo on
-GitHub.
+You can setup your environment by running:
 
-```
-https://github.com/pcostell/appengine-ndb-experiment
-```
+    gcloud components update app-engine-python
+    export GAE=$GCLOUD_PATH/platform/google_appengine
 
--   Fork and clone the `ndb` repository to your GitHub account by
-clicking the "Fork" button.
+If you haven't downloaded `gcloud` yet, you can find it and instructions
+about using it on the [Cloud SDK page][1].
 
--   Clone your fork of `ndb` from your GitHub account to your local
-computer, substituting your account username and specifying the destination
-as `hack-on-ndb`. For example:
+## Code Structure
 
-```
-$ cd ~
-$ git clone git@github.com:USERNAME/appengine-ndb-experiment.git hack-on-ndb
-$ cd hack-on-ndb
-# Configure remotes such that you can pull changes from the ndb-git
-# repository into your local repository.
-$ git remote add upstream https://github.com:pcostell/appengine-ndb-experiment
-# fetch and merge changes from upstream into master
-$ git fetch upstream
-$ git merge upstream/master
-```
+The code is structured into four subdirectories:
 
-Now your local repo is set up such that you will push changes to your GitHub
-repo, from which you can submit a pull request.
+- ndb: This is the main code base.  Notable submodules are
+  key.py, model.py, query.py, eventloop.py, tasklets.py, and context.py.
+  For each module foo.py there's a corresponding foo_test.py which
+  contains unit tests for that module.
+- demo: This is where demo programs live.  Check out guestbook.py and
+  main.py.
+- samples: This is where sample code lives.
+- tests: This is where additional ndb tests live.
 
--   Create a virtualenv in which to install `ndb`:
+The main directory contains some scripts and auxiliary files.
 
-```
-$ cd ~/hack-on-ndb
-$ virtualenv -ppython2.7 env
-```
+## Working on ndb
 
-Note that very old versions of `virtualenv` (versions below, say,
-  1.10 or thereabouts) require you to pass a `--no-site-packages` flag to
-  get a completely isolated environment.
+We accept contributions, so if you see something wrong file an issue or
+send us a pull request! 
 
-  You can choose which Python version you want to use by passing a `-p`
-  flag to `virtualenv`.  For example, `virtualenv -ppython2.7`
-  chooses the Python 2.7 interpreter to be installed.
+Note: Because this library is included in the App Engine python runtime,
+we currently cannot accept any changes that break our existing API
+(for now). Additionally, there are restrictions on adding any extra
+third party dependencies. 
 
-  From here on in within these instructions, the `~/hack-on-ndb/env`
-  virtual environment you created above will be referred to as `${VENV}`.
-  To use the instructions in the steps that follow literally, use the
+### Running Tests
 
-  ```
-  $ export VENV=~/hack-on-ndb/env
-  ```
+Tests can be run using tox.
 
-  command.
+    tox -e py27
 
-  -   Install `ndb` from the checkout into the virtualenv using
-  `setup.py develop`. Running `setup.py develop` **must** be done while
-  the current working directory is the `ndb-git` checkout directory:
+Lint can also be run using tox. This will fire off two pylint commands, one
+for the main ndb library and one for the tests which have slightly relaxed
+requirements.
 
-  ```
-  $ cd ~/hack-on-ndb
-  $ ${VENV}/bin/python setup.py develop
-  ```
+    tox -e lint
 
-  Running Tests
-  --------------
+to run coverage tests, run
 
-  -   To run all tests for `ndb`, run
+    tox -e cover
 
-  ```
-  $ make runtests
-  ```
-
-  -   In order to install the App Engine SDK for Python, you can either
-  [download][1] the source as a zip file.
-
-  If you already have the [Google Cloud SDK][2] (`gcloud` CLI tool)
-  installed, then you can install via:
-
-  ```
-  $ gcloud components update gae-python
-  ```
-
-  If the Google Cloud SDK installed in `${GOOGLE_CLOUD_SDK}`,
-  then the App Engine SDK can be found in
-  `${GOOGLE_CLOUD_SDK}/platform/google_appengine` (as of January 2014).
-
-  Contributor License Agreements
-  ------------------------------
-
+## Contributor License Agreements
+  
   Before we can accept your pull requests you'll need to sign a Contributor
   License Agreement (CLA):
 
   - **If you are an individual writing original source code** and **you own the
-  intellectual property**, then you'll need to sign an [individual CLA][3].
+  intellectual property**, then you'll need to sign an [individual CLA][2].
   - **If you work for a company that wants to allow you to contribute your work**,
-  then you'll need to sign a [corporate CLA][4].
+  then you'll need to sign a [corporate CLA][3].
 
   You can sign these electronically (just scroll to the bottom). After that,
   we'll be able to accept your pull requests.
 
-  [1]: https://cloud.google.com/appengine/downloads
-  [2]: https://cloud.google.com/sdk/
-  [3]: https://developers.google.com/open-source/cla/individual
-  [4]: https://developers.google.com/open-source/cla/corporate
+  [1]: https://cloud.google.com/sdk/
+  [2]: https://developers.google.com/open-source/cla/individual
+  [3]: https://developers.google.com/open-source/cla/corporate
