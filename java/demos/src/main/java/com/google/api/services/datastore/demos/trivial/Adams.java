@@ -24,6 +24,7 @@ import com.google.protobuf.ByteString;
 
 import java.io.IOException;
 import java.security.GeneralSecurityException;
+import java.util.Map;
 
 /**
  * A trivial command-line application using the Datastore API.
@@ -104,10 +105,10 @@ public class Adams {
       // the transaction.
       datastore.commit(creq.build());
       // Get `question` property value.
-      String question = entity.getProperty(0).getValue().getStringValue();
+      Map<String, Value> properties = DatastoreHelper.getPropertyMap(entity);
+      System.out.println(properties.get("question").getStringValue());      
       // Get `answer` property value.
-      Long answer = entity.getProperty(1).getValue().getIntegerValue();
-      System.out.println(question);
+      Long answer = properties.get("answer").getIntegerValue();
       String result = System.console().readLine("> ");
       if (result.equals(answer.toString())) {
         System.out.println("fascinating, extraordinary and, " +
