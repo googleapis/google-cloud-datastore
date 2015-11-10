@@ -104,10 +104,16 @@ public class Adams {
       // the transaction.
       datastore.commit(creq.build());
       // Get `question` property value.
-      String question = entity.getProperty(0).getValue().getStringValue();
-      // Get `answer` property value.
-      Long answer = entity.getProperty(1).getValue().getIntegerValue();
+      // The "question" property can be in either index 0 or index 1, and the
+      // other property is the "answer".
+      int questionIndex = 0;
+      if (!"question".equals(entity.getProperty(questionIndex).getName())) {
+        questionIndex = 1;
+      }
+      String question = entity.getProperty(questionIndex).getValue().getStringValue();
       System.out.println(question);
+      // Get `answer` property value.
+      Long answer = entity.getProperty((questionIndex + 1) % 2).getValue().getIntegerValue();
       String result = System.console().readLine("> ");
       if (result.equals(answer.toString())) {
         System.out.println("fascinating, extraordinary and, " +
