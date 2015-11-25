@@ -53,9 +53,14 @@ except ImportError:
     normal_environment = False
   except ImportError:
     # If we are running locally but outside the context of App Engine.
-    set_appengine_imports()
-    from google.appengine.datastore import entity_pb
-    normal_environment = True
+    try:
+      set_appengine_imports()
+      from google.appengine.datastore import entity_pb
+      normal_environment = True
+    except ImportError:
+      raise ImportError('Unable to find the App Engine SDK. '
+                        'Did you remember to set the "GAE" environment '
+                        'variable to be the path to the App Engine SDK?')
 
 if normal_environment:
   from google.appengine.api.blobstore import blobstore as api_blobstore
