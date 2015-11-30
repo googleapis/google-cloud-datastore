@@ -63,42 +63,15 @@ class ContextTestMixin(object):
 
   the_module = context
 
-  def testContext_AutoBatcher_Get(self):
-    @tasklets.tasklet
-    def foo():
-      key1 = model.Key(flat=['Foo', 1])
-      key2 = model.Key(flat=['Foo', 2])
-      key3 = model.Key(flat=['Foo', 3])
-      fut1 = self.ctx.get(key1)
-      fut2 = self.ctx.get(key2)
-      fut3 = self.ctx.get(key3)
-      ent1 = yield fut1
-      ent2 = yield fut2
-      ent3 = yield fut3
-      raise tasklets.Return([ent1, ent2, ent3])
-    ents = foo().get_result()
-    self.assertEqual(ents, [None, None, None])
-    log = MyAutoBatcher._log
-    self.assertEqual(len(log), 4)
-    name, todo = log[0]
-    self.assertEqual(name, '_memcache_get_tasklet')
-    self.assertEqual(len(todo), 3)
-    name, todo = log[1]
-    self.assertEqual(name, '_memcache_set_tasklet')
-    self.assertEqual(len(todo), 3)
-    name, todo = log[2]
-    self.assertEqual(name, '_memcache_get_tasklet')
-    self.assertEqual(len(todo), 3)
-    name, todo = log[3]
-    self.assertEqual(name, '_get_tasklet')
-    self.assertEqual(len(todo), 3)
-
   @tasklets.tasklet
-  def create_entities(self):
+  def create_entities(self, auto_id=False):
     key0 = model.Key(flat=['Foo', None])
-    ent1 = model.Model(key=key0)
-    ent2 = model.Model(key=key0)
-    ent3 = model.Model(key=key0)
+    key1 = model.Key(flat=['Foo', 1])
+    key2 = model.Key(flat=['Foo', 2])
+    key3 = model.Key(flat=['Foo', 3])
+    ent1 = model.Model(key=(key0 if auto_id else key1))
+    ent2 = model.Model(key=(key0 if auto_id else key2))
+    ent3 = model.Model(key=(key0 if auto_id else key3))
     fut1 = self.ctx.put(ent1)
     fut2 = self.ctx.put(ent2)
     fut3 = self.ctx.put(ent3)
@@ -110,102 +83,13 @@ class ContextTestMixin(object):
   def make_bad_transaction(*arg, **kwargs):
     raise NotImplementedError
 
-  def testContext_AutoBatcher_Put(self):
-    keys = self.create_entities().get_result()
-    self.assertEqual(len(keys), 3)
-    self.assertTrue(None not in keys)
-    log = MyAutoBatcher._log
-    self.assertEqual(len(log), 2)
-    name, todo = log[0]
-    self.assertEqual(name, '_put_tasklet')
-    self.assertEqual(len(todo), 3)
-    name, todo = log[1]
-    self.assertEqual(name, '_memcache_del_tasklet')
-    self.assertEqual(len(todo), 3)
-
-  def testContext_AutoBatcher_Delete(self):
-    @tasklets.tasklet
-    def foo():
-      key1 = model.Key(flat=['Foo', 1])
-      key2 = model.Key(flat=['Foo', 2])
-      key3 = model.Key(flat=['Foo', 3])
-      fut1 = self.ctx.delete(key1)
-      fut2 = self.ctx.delete(key2)
-      fut3 = self.ctx.delete(key3)
-      yield fut1
-      yield fut2
-      yield fut3
-    foo().check_success()
-    self.assertEqual(len(MyAutoBatcher._log), 2)
-    name, todo = MyAutoBatcher._log[0]
-    self.assertEqual(name, '_memcache_set_tasklet')
-    self.assertEqual(len(todo), 3)
-    name, todo = MyAutoBatcher._log[1]
-    self.assertEqual(name, '_delete_tasklet')
-    self.assertEqual(len(todo), 3)
-
-  def testContext_AutoBatcher_Limit(self):
-    # Check that the default limit is taken from the connection.
-    self.assertEqual(self.ctx._get_batcher._limit,
-                     datastore_rpc.Connection.MAX_GET_KEYS)
-    # Create a Connection with config options that will be overridden
-    # by later config options
-    conn_config = context.ContextOptions(max_put_entities=3,
-                                         max_memcache_items=7)
-    conn = model.make_connection(config=conn_config,
-                                 default_model=model.Expando)
-    real_config = context.ContextOptions(max_put_entities=25,
-                                         max_memcache_items=100)
-    self.ctx = context.Context(
-        conn=conn,
-        auto_batcher_class=MyAutoBatcher,
-        config=real_config)
-
-    @tasklets.tasklet
-    def foo():
-      es = [model.Model(key=model.Key('Foo', None)) for _ in range(49)]
-      fs = [self.ctx.put(e) for e in es]
-      self.ctx.flush()
-      ks = yield fs
-      self.assertEqual(len(ks), 49)
-      self.assertTrue(all(isinstance(k, model.Key) for k in ks))
-    foo().get_result()
-    self.assertEqual(len(MyAutoBatcher._log), 4)
-    for name, todo in MyAutoBatcher._log[2:]:
-      self.assertEqual(name, '_memcache_del_tasklet')
-      self.assertTrue(len(todo) in (24, 25))
-    for name, todo in MyAutoBatcher._log[:2]:
-      self.assertEqual(name, '_put_tasklet')
-      self.assertTrue(len(todo) in (24, 25))
-
-  def testContext_AutoBatcher_Errors(self):
-    # Test that errors are properly distributed over all Futures.
-    self.ExpectWarnings()
-
-    class Blobby(model.Model):
-      blob = model.BlobProperty()
-    ent1 = Blobby()
-    ent2 = Blobby(blob='x' * 2000000)
-    fut1 = self.ctx.put(ent1)
-    fut2 = self.ctx.put(ent2)  # Error
-    err1 = fut1.get_exception()
-    err2 = fut2.get_exception()
-    self.assertTrue(isinstance(err1, apiproxy_errors.RequestTooLargeError))
-    self.assertTrue(err1 is err2)
-    # Try memcache as well (different tasklet, different error).
-    fut1 = self.ctx.memcache_set('key1', 'x')
-    fut2 = self.ctx.memcache_set('key2', 'x' * 1000001)
-    err1 = fut1.get_exception()
-    err2 = fut1.get_exception()
-    self.assertTrue(isinstance(err1, ValueError))
-    self.assertTrue(err1 is err2)
-
   def testContext_MultiRpc(self):
     # This test really tests the proper handling of MultiRpc by
     # queue_rpc() in eventloop.py.  It's easier to test from here, and
     # gives more assurance that it works.
     config = datastore_rpc.Configuration(max_get_keys=3, max_put_entities=3)
-    self.ctx._conn = model.make_connection(config, default_model=model.Expando)
+    self.ctx._conn = self.MakeConnection(config=config,
+                                         default_model=model.Expando)
 
     @tasklets.tasklet
     def foo():
@@ -236,28 +120,6 @@ class ContextTestMixin(object):
       self.ctx.clear_cache()
       self.assertEqual(self.ctx._cache, {})  # Whitebox.
     foo().check_success()
-
-  def testContext_CacheMemcache(self):
-    # Test that when get() finds the value in memcache, it updates
-    # _cache.
-    class Foo(model.Model):
-      pass
-    ctx = self.ctx
-    ctx.set_cache_policy(False)
-    ctx.set_memcache_policy(False)
-    ent = Foo()
-    key = ent.put()
-    mkey = ctx._memcache_prefix + key.urlsafe()
-    self.assertFalse(key in ctx._cache)
-    self.assertEqual(None, memcache.get(mkey))
-    ctx.set_memcache_policy(True)
-    key.get()
-    self.assertFalse(key in ctx._cache)
-    self.assertNotEqual(None, memcache.get(mkey))
-    eventloop.run()
-    ctx.set_cache_policy(True)
-    key.get()  # Satisfied from memcache
-    self.assertTrue(key in ctx._cache)
 
   def testContext_CacheMisses(self):
     # Test that get() caches misses if use_datastore is true but not
@@ -318,272 +180,6 @@ class ContextTestMixin(object):
     self.ctx.set_cache_policy(lambda unused_key: False)
     self.assertEqual(self.ctx.get(key1).get_result(), ent1)
 
-  def testContext_NamespaceBonanza(self):
-    # Test that memcache ops issued for datastore caching use the
-    # correct namespace.
-    def assertNone(expr):
-      self.assertTrue(expr is None, repr(expr))
-
-    def assertNotNone(expr):
-      self.assertTrue(expr is not None, repr(expr))
-
-    def assertLocked(expr):
-      self.assertTrue(expr is context._LOCKED, repr(expr))
-
-    def assertProtobuf(expr, ent):
-      self.assertEqual(expr,
-                       ent._to_pb(set_key=False).SerializePartialToString())
-
-    class Foo(model.Model):
-      pass
-    k1 = model.Key(Foo, 1, namespace='a')
-    k2 = model.Key(Foo, 2, namespace='b')
-    mk1 = self.ctx._memcache_prefix + k1.urlsafe()
-    mk2 = self.ctx._memcache_prefix + k2.urlsafe()
-    e1 = Foo(key=k1)
-    e2 = Foo(key=k2)
-    self.ctx.set_cache_policy(False)
-    self.ctx.set_memcache_policy(True)
-
-    self.ctx.set_datastore_policy(False)  # This will vary in subtests
-
-    # Test put with datastore policy off
-    k1 = self.ctx.put(e1).get_result()
-    k2 = self.ctx.put(e2).get_result()
-    # Nothing should be in the empty namespace
-    assertNone(memcache.get(mk1, namespace=''))
-    assertNone(memcache.get(mk2, namespace=''))
-    # Only k1 is found in namespace 'a'
-    assertProtobuf(memcache.get(mk1, namespace='a'), e1)
-    assertNone(memcache.get(mk2, namespace='a'))
-    # Only k2 is found in namespace 'b'
-    assertNone(memcache.get(mk1, namespace='b'))
-    assertProtobuf(memcache.get(mk2, namespace='b'), e2)
-
-    memcache.flush_all()
-    self.ctx.set_datastore_policy(True)
-
-    # Test put with datastore policy on
-    k1_fut = self.ctx.put(e1)
-    while not self.ctx._put_batcher._running:
-      eventloop.run0()
-    # Nothing should be in the empty namespace
-    assertNone(memcache.get(mk1, namespace=''))
-    assertNone(memcache.get(mk2, namespace=''))
-    # Only k1 is found in namespace 'a', as _LOCKED
-    assertLocked(memcache.get(mk1, namespace='a'))
-    assertNone(memcache.get(mk2, namespace='a'))
-    self.assertEqual(k1_fut.get_result(), k1)
-    # Have to test one at a time, otherwise _LOCKED value may not be set
-    k2_fut = self.ctx.put(e2)
-    while not self.ctx._put_batcher._running:
-      eventloop.run0()
-    # Only k2 is found in namespace 'b', as _LOCKED
-    assertNone(memcache.get(mk1, namespace='b'))
-    assertLocked(memcache.get(mk2, namespace='b'))
-    # Keys should be identical
-    self.assertEqual(k2_fut.get_result(), k2)
-
-    memcache.flush_all()
-
-    # Test get with cold cache
-    e1 = self.ctx.get(k1).get_result()
-    e2 = self.ctx.get(k2).get_result()
-    eventloop.run()  # Wait for memcache RPCs to run
-    # Neither is found in the empty namespace
-    assertNone(memcache.get(mk1, namespace=''))
-    assertNone(memcache.get(mk2, namespace=''))
-    # Only k1 is found in namespace 'a'
-    assertProtobuf(memcache.get(mk1, namespace='a'), e1)
-    assertNone(memcache.get(mk2, namespace='a'))
-    # Only k2 is found in namespace 'b'
-    assertNone(memcache.get(mk1, namespace='b'))
-    assertProtobuf(memcache.get(mk2, namespace='b'), e2)
-
-    self.ctx.set_datastore_policy(False)
-
-    # Test get with warm cache
-    self.ctx.get(k1).get_result()
-    self.ctx.get(k2).get_result()
-    eventloop.run()  # Wait for memcache RPCs to run
-    # Neither is found in the empty namespace
-    assertNone(memcache.get(mk1, namespace=''))
-    assertNone(memcache.get(mk2, namespace=''))
-    # Only k1 is found in namespace 'a'
-    assertNotNone(memcache.get(mk1, namespace='a'))
-    assertNone(memcache.get(mk2, namespace='a'))
-    # Only k2 is found in namespace 'b'
-    assertNone(memcache.get(mk1, namespace='b'))
-    assertNotNone(memcache.get(mk2, namespace='b'))
-
-    self.ctx.set_datastore_policy(True)
-
-    # Test delete
-    self.ctx.delete(k1).check_success()
-    self.ctx.delete(k2).check_success()
-    # Nothing should be in the empty namespace
-    assertNone(memcache.get(mk1, namespace=''))
-    assertNone(memcache.get(mk2, namespace=''))
-    # Only k1 is found in namespace 'a', as _LOCKED
-    assertLocked(memcache.get(mk1, namespace='a'))
-    assertNone(memcache.get(mk2, namespace='a'))
-    # Only k2 is found in namespace 'b', as _LOCKED
-    assertNone(memcache.get(mk1, namespace='b'))
-    assertLocked(memcache.get(mk2, namespace='b'))
-
-    memcache.flush_all()
-
-    # Test _clear_memcache (it deletes the keys)
-    self.ctx._clear_memcache([k1, k2]).check_success()
-    # Nothing should be in the empty namespace
-    assertNone(memcache.get(mk1, namespace=''))
-    assertNone(memcache.get(mk2, namespace=''))
-    # Nothing should be in namespace 'a'
-    assertNone(memcache.get(mk1, namespace='a'))
-    assertNone(memcache.get(mk2, namespace='a'))
-    # Nothing should be in namespace 'b'
-    assertNone(memcache.get(mk1, namespace='b'))
-    assertNone(memcache.get(mk2, namespace='b'))
-
-  def testContext_Memcache(self):
-    @tasklets.tasklet
-    def foo():
-      key1 = model.Key(flat=('Foo', 1))
-      key2 = model.Key(flat=('Foo', 2))
-      ent1 = model.Expando(key=key1, foo=42, bar='hello')
-      ent2 = model.Expando(key=key2, foo=1, bar='world')
-      self.ctx.set_memcache_policy(False)  # Disable writing _LOCKED
-      k1, k2 = yield self.ctx.put(ent1), self.ctx.put(ent2)
-      self.ctx.set_memcache_policy(True)
-      self.assertEqual(k1, key1)
-      self.assertEqual(k2, key2)
-      # Write to memcache.
-      yield (self.ctx.get(k1, use_cache=False),
-             self.ctx.get(k2, use_cache=False))
-      eventloop.run()  # Let other tasklet complete.
-      keys = [k1.urlsafe(), k2.urlsafe()]
-      results = memcache.get_multi(keys, key_prefix=self.ctx._memcache_prefix)
-      self.assertEqual(
-          results,
-          {key1.urlsafe():
-               ent1._to_pb(set_key=False).SerializePartialToString(),
-           key2.urlsafe():
-               ent2._to_pb(set_key=False).SerializePartialToString(),
-          })
-    foo().check_success()
-
-  def testContext_MemcacheMissingKind(self):
-    ctx = context.Context(
-        conn=model.make_connection(default_model=None),
-        auto_batcher_class=MyAutoBatcher)
-    ctx.set_memcache_policy(False)
-    ctx.set_cache_policy(False)
-
-    class Foo(model.Model):
-      foo = model.IntegerProperty()
-      bar = model.StringProperty()
-
-    key1 = model.Key(flat=('Foo', 1))
-    ent1 = Foo(key=key1, foo=42, bar='hello')
-    ctx.put(ent1).get_result()
-    ctx.set_memcache_policy(True)
-    ctx.get(key1).get_result()  # Pull entity into memcache
-
-    model.Model._reset_kind_map()
-    self.assertRaises(model.KindError, ctx.get(key1).get_result)
-
-    ctx = context.Context(
-        conn=model.make_connection(default_model=Foo),
-        auto_batcher_class=MyAutoBatcher)
-    ctx.set_memcache_policy(True)
-    ctx.set_cache_policy(False)
-
-    ent1_res = ctx.get(key1).get_result()
-    self.assertEqual(ent1, ent1_res)
-
-  def testContext_MemcachePolicy(self):
-    badkeys = []
-
-    def tracking_add_async(*args, **kwds):
-      try:
-        res = save_add_async(*args, **kwds)
-        if badkeys and not res:
-          res = badkeys
-        track.append((args, kwds, res, None))
-        return res
-      except Exception, err:
-        track.append((args, kwds, None, err))
-        raise
-
-    @tasklets.tasklet
-    def foo():
-      k1, k2 = yield self.ctx.put(ent1), self.ctx.put(ent2)
-      self.assertEqual(k1, key1)
-      self.assertEqual(k2, key2)
-      # Write to memcache.
-      yield (self.ctx.get(k1, use_cache=False),
-             self.ctx.get(k2, use_cache=False))
-      eventloop.run()  # Let other tasklet complete.
-    key1 = model.Key('Foo', 1)
-    key2 = model.Key('Foo', 2)
-    ent1 = model.Expando(key=key1, foo=42, bar='hello')
-    ent2 = model.Expando(key=key2, foo=1, bar='world')
-    save_add_multi_async = self.ctx._memcache.add_multi_async
-    try:
-      self.ctx._memcache.add_multi_async = tracking_add_multi_async
-      yield self.ctx._memcache.flush_all_async()
-
-      track = []
-      foo().check_success()
-      self.assertEqual(len(track), 1)
-      self.assertEqual(track[0][0],
-                       ({key1.urlsafe(): ent1._to_pb(),
-                         key2.urlsafe(): ent2._to_pb()},))
-      self.assertEqual(track[0][1], {'key_prefix': self.ctx._memcache_prefix,
-                                     'time': 0})
-      yield self.ctx._memcache.flush_all_async()
-
-      track = []
-      self.ctx.set_memcache_policy(lambda unused_key: False)
-      foo().check_success()
-      self.assertEqual(len(track), 0)
-      yield self.ctx._memcache.flush_all_async()
-
-      track = []
-      self.ctx.set_memcache_policy(lambda key: key == key1)
-      foo().check_success()
-      self.assertEqual(len(track), 1)
-      self.assertEqual(track[0][0],
-                       ({key1.urlsafe(): ent1._to_pb()},))
-      self.assertEqual(track[0][1], {'key_prefix': self.ctx._memcache_prefix,
-                                     'time': 0})
-      yield self.ctx._memcache.flush_all_async()
-
-      track = []
-      self.ctx.set_memcache_policy(lambda unused_key: True)
-      self.ctx.set_memcache_timeout_policy(lambda key: key.id())
-      foo().check_success()
-      self.assertEqual(len(track), 2)
-      self.assertEqual(track[0][0],
-                       ({key1.urlsafe(): ent1._to_pb()},))
-      self.assertEqual(track[0][1], {'key_prefix': self.ctx._memcache_prefix,
-                                     'time': 1})
-      self.assertEqual(track[1][0],
-                       ({key2.urlsafe(): ent2._to_pb()},))
-      self.assertEqual(track[1][1], {'key_prefix': self.ctx._memcache_prefix,
-                                     'time': 2})
-      yield self.ctx._memcache.flush_all_async()
-
-      track = []
-      badkeys = [key2.urlsafe()]
-      self.ctx.set_memcache_timeout_policy(lambda unused_key: 0)
-      foo().check_success()
-      self.assertEqual(len(track), 1)
-      self.assertEqual(track[0][2], badkeys)
-      yield self.ctx._memcache.flush_all_async()
-    finally:
-      self.ctx._memcache.add_multi_async = save_add_multi_async
-
   def testContext_CacheQuery(self):
     @tasklets.tasklet
     def foo():
@@ -605,16 +201,6 @@ class ContextTestMixin(object):
       self.assertEqual(results, [ent1, ent2])
       self.assertTrue(results[0] is self.ctx._cache[ent1.key])
       self.assertTrue(results[1] is self.ctx._cache[ent2.key])
-    foo().check_success()
-
-  def testContext_AllocateIds(self):
-    @tasklets.tasklet
-    def foo():
-      key = model.Key(flat=('Foo', 1))
-      lo_hi = yield self.ctx.allocate_ids(key, size=10)
-      self.assertEqual(lo_hi, (1, 10))
-      lo_hi = yield self.ctx.allocate_ids(key, max=20)
-      self.assertEqual(lo_hi, (11, 20))
     foo().check_success()
 
   def testContext_MapQuery(self):
@@ -811,68 +397,6 @@ class ContextTestMixin(object):
 
     self.assertEqual(key.get(), None)
 
-  def testContext_TransactionAddTask(self):
-    self.ExpectWarnings()
-    key = model.Key('Foo', 1)
-
-    @tasklets.tasklet
-    def foo():
-      ent = model.Expando(key=key, bar=1)
-
-      @tasklets.tasklet
-      def callback():
-        ctx = tasklets.get_context()
-        yield ctx.put(ent)
-        taskqueue.add(url='/', transactional=True)
-      yield self.ctx.transaction(callback)
-    foo().check_success()
-
-  def testContext_TransactionMemcache(self):
-    class Foo(model.Model):
-      name = model.StringProperty()
-
-    foo1 = Foo(name='foo1')
-    foo2 = Foo(name='foo2')
-    key1 = foo1.put()
-    key2 = foo2.put()
-    skey1 = self.ctx._memcache_prefix + key1.urlsafe()
-    skey2 = self.ctx._memcache_prefix + key2.urlsafe()
-
-    # Be sure nothing is in memcache.
-    self.assertEqual(memcache.get(skey1), None)
-    self.assertEqual(memcache.get(skey2), None)
-
-    # Be sure nothing is in the context cache.
-    self.ctx.clear_cache()
-
-    # Run some code in a transaction.
-    def txn():
-      ctx = tasklets.get_context()
-      self.assertTrue(ctx is not self.ctx)
-      f1 = key1.get()
-      f2 = key1.get()
-      f1.name += 'a'
-      f1.put()
-      # Don't put f2.
-      # Verify the state of memcache.
-      self.assertEqual(memcache.get(skey1), context._LOCKED)
-      self.assertEqual(memcache.get(skey2), None)
-    self.ctx.transaction(txn).wait()
-
-    # Verify memcache is cleared.
-    self.assertEqual(memcache.get(skey1), None)
-    self.assertEqual(memcache.get(skey2), None)
-
-    # Clear the context cache.
-    self.ctx.clear_cache()
-
-    # Non-transactional get() updates memcache.
-    f1 = key1.get()
-    f2 = key2.get()
-    eventloop.run()  # Wait for memcache.set() RPCs
-    self.assertNotEqual(memcache.get(skey1), None)
-    self.assertNotEqual(memcache.get(skey2), None)
-
   def testContext_TransactionCallBackTasklet(self):
     class Foo(model.Model):
       n = model.IntegerProperty()
@@ -1013,7 +537,7 @@ class ContextTestMixin(object):
 
   def testKindError(self):
     self.ExpectWarnings()
-    ctx = context.Context()
+    ctx = self.MakeContext()
     # If the cache is enabled, attempts to retrieve the object we just put will
     # be satisfied from the cache, so the adapter we're testing will never get
     # called.
@@ -1027,6 +551,295 @@ class ContextTestMixin(object):
       yield ctx.put(ent1)
       yield ctx.get(key1)
     self.assertRaises(model.KindError, foo().check_success)
+
+  def testAsyncInTransaction(self):
+    # See issue 81.  http://goo.gl/F097l
+    class Bar(model.Model):
+      name = model.StringProperty()
+
+    bar = Bar(id='bar', name='bar')
+    bar.put()
+
+    @tasklets.tasklet
+    def trans():
+      bar = Bar.get_by_id('bar')
+      bar.name = 'updated-bar'
+      bar.put_async()  # PROBLEM IS HERE, with yield it properly works
+    model.transaction_async(trans).get_result()
+
+    bar = bar.key.get()
+    self.assertEqual(bar.name, 'updated-bar')
+
+  def start_test_server(self):
+    host = '127.0.0.1'
+    s = socket.socket()
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    for i in range(10):
+      port = random.randrange(32768, 60000)
+      try:
+        s.bind((host, port))
+        break
+      except socket.error:
+        continue
+    else:
+      self.fail('Could not find an unused port in 10 tries')
+    s.listen(1)
+
+    def run():
+      c, addr = s.accept()
+      s.close()
+      c.recv(1000)  # Throw away request.
+      c.send('HTTP/1.0 200 Ok\r\n\r\n')  # Emptiest response.
+      c.close()
+    t = threading.Thread(target=run)
+    t.setDaemon(True)
+    t.start()
+    return host, port
+
+  def testUrlFetch(self):
+    self.testbed.init_urlfetch_stub()
+    host, port = self.start_test_server()
+    fut = self.ctx.urlfetch('http://%s:%d' % (host, port))
+    result = fut.get_result()
+    self.assertEqual(result.status_code, 200)
+    self.assertTrue(isinstance(result.content, str))
+
+  def testDatastoreConnectionIsRestored(self):
+    # See issue 209.  http://goo.gl/7TEyM
+    class TestData(model.Model):
+      pass
+
+    @tasklets.tasklet
+    def txn():
+      conn1 = datastore._GetConnection()
+      self.assertTrue(
+          isinstance(conn1, datastore_rpc.TransactionalConnection), conn1)
+      yield TestData().put_async()
+      conn2 = datastore._GetConnection()
+      self.assertEqual(conn1, conn2)
+
+    @tasklets.synctasklet
+    def many_txns():
+      # Exactly how many transactions are needed to make this fail
+      # appears to be random.  With 100 it always seems to fail
+      # (unless the bug is fixed).
+      conn_a = datastore._GetConnection()
+      ts = [model.transaction_async(txn) for i in range(100)]
+      conn_b = datastore._GetConnection()
+      self.assertEqual(conn_a, conn_b)
+      yield ts
+      conn_c = datastore._GetConnection()
+      self.assertEqual(conn_b, conn_c)
+    conn_before = datastore._GetConnection()
+    many_txns()
+    conn_after = datastore._GetConnection()
+    self.assertEqual(conn_before, conn_after)
+
+
+class ContextMemcacheTestMixin(object):
+
+  def testContext_CacheMemcache(self):
+    # Test that when get() finds the value in memcache, it updates
+    # _cache.
+    class Foo(model.Model):
+      pass
+    ctx = self.ctx
+    ctx.set_cache_policy(False)
+    ctx.set_memcache_policy(False)
+    ent = Foo()
+    key = ent.put()
+    mkey = ctx._memcache_prefix + key.urlsafe()
+    self.assertFalse(key in ctx._cache)
+    self.assertEqual(None, memcache.get(mkey))
+    ctx.set_memcache_policy(True)
+    key.get()
+    self.assertFalse(key in ctx._cache)
+    self.assertNotEqual(None, memcache.get(mkey))
+    eventloop.run()
+    ctx.set_cache_policy(True)
+    key.get()  # Satisfied from memcache
+    self.assertTrue(key in ctx._cache)
+
+  def testContext_MemcacheMissingKind(self):
+    ctx = self.MakeContext(default_model=None, auto_batcher_class=MyAutoBatcher)
+    ctx.set_memcache_policy(False)
+    ctx.set_cache_policy(False)
+
+    class Foo(model.Model):
+      foo = model.IntegerProperty()
+      bar = model.StringProperty()
+
+    key1 = model.Key(flat=('Foo', 1))
+    ent1 = Foo(key=key1, foo=42, bar='hello')
+    ctx.put(ent1).get_result()
+    ctx.set_memcache_policy(True)
+    ctx.get(key1).get_result()  # Pull entity into memcache
+
+    model.Model._reset_kind_map()
+    self.assertRaises(model.KindError, ctx.get(key1).get_result)
+
+    ctx = self.MakeContext(default_model=Foo, auto_batcher_class=MyAutoBatcher)
+    ctx.set_memcache_policy(True)
+    ctx.set_cache_policy(False)
+
+    ent1_res = ctx.get(key1).get_result()
+    self.assertEqual(ent1, ent1_res)
+
+  def testContext_MemcachePolicy(self):
+    badkeys = []
+
+    def tracking_add_async(*args, **kwds):
+      try:
+        res = save_add_async(*args, **kwds)
+        if badkeys and not res:
+          res = badkeys
+        track.append((args, kwds, res, None))
+        return res
+      except Exception, err:
+        track.append((args, kwds, None, err))
+        raise
+
+    @tasklets.tasklet
+    def foo():
+      k1, k2 = yield self.ctx.put(ent1), self.ctx.put(ent2)
+      self.assertEqual(k1, key1)
+      self.assertEqual(k2, key2)
+      # Write to memcache.
+      yield (self.ctx.get(k1, use_cache=False),
+             self.ctx.get(k2, use_cache=False))
+      eventloop.run()  # Let other tasklet complete.
+    key1 = model.Key('Foo', 1)
+    key2 = model.Key('Foo', 2)
+    ent1 = model.Expando(key=key1, foo=42, bar='hello')
+    ent2 = model.Expando(key=key2, foo=1, bar='world')
+    save_add_multi_async = self.ctx._memcache.add_multi_async
+    try:
+      self.ctx._memcache.add_multi_async = tracking_add_multi_async
+      yield self.ctx._memcache.flush_all_async()
+
+      track = []
+      foo().check_success()
+      self.assertEqual(len(track), 1)
+      self.assertEqual(track[0][0],
+                       ({key1.urlsafe(): ent1._to_pb(),
+                         key2.urlsafe(): ent2._to_pb()},))
+      self.assertEqual(track[0][1], {'key_prefix': self.ctx._memcache_prefix,
+                                     'time': 0})
+      yield self.ctx._memcache.flush_all_async()
+
+      track = []
+      self.ctx.set_memcache_policy(lambda unused_key: False)
+      foo().check_success()
+      self.assertEqual(len(track), 0)
+      yield self.ctx._memcache.flush_all_async()
+
+      track = []
+      self.ctx.set_memcache_policy(lambda key: key == key1)
+      foo().check_success()
+      self.assertEqual(len(track), 1)
+      self.assertEqual(track[0][0],
+                       ({key1.urlsafe(): ent1._to_pb()},))
+      self.assertEqual(track[0][1], {'key_prefix': self.ctx._memcache_prefix,
+                                     'time': 0})
+      yield self.ctx._memcache.flush_all_async()
+
+      track = []
+      self.ctx.set_memcache_policy(lambda unused_key: True)
+      self.ctx.set_memcache_timeout_policy(lambda key: key.id())
+      foo().check_success()
+      self.assertEqual(len(track), 2)
+      self.assertEqual(track[0][0],
+                       ({key1.urlsafe(): ent1._to_pb()},))
+      self.assertEqual(track[0][1], {'key_prefix': self.ctx._memcache_prefix,
+                                     'time': 1})
+      self.assertEqual(track[1][0],
+                       ({key2.urlsafe(): ent2._to_pb()},))
+      self.assertEqual(track[1][1], {'key_prefix': self.ctx._memcache_prefix,
+                                     'time': 2})
+      yield self.ctx._memcache.flush_all_async()
+
+      track = []
+      badkeys = [key2.urlsafe()]
+      self.ctx.set_memcache_timeout_policy(lambda unused_key: 0)
+      foo().check_success()
+      self.assertEqual(len(track), 1)
+      self.assertEqual(track[0][2], badkeys)
+      yield self.ctx._memcache.flush_all_async()
+    finally:
+      self.ctx._memcache.add_multi_async = save_add_multi_async
+
+  def testContext_Memcache(self):
+    @tasklets.tasklet
+    def foo():
+      key1 = model.Key(flat=('Foo', 1))
+      key2 = model.Key(flat=('Foo', 2))
+      ent1 = model.Expando(key=key1, foo=42, bar='hello')
+      ent2 = model.Expando(key=key2, foo=1, bar='world')
+      self.ctx.set_memcache_policy(False)  # Disable writing _LOCKED
+      k1, k2 = yield self.ctx.put(ent1), self.ctx.put(ent2)
+      self.ctx.set_memcache_policy(True)
+      self.assertEqual(k1, key1)
+      self.assertEqual(k2, key2)
+      # Write to memcache.
+      yield (self.ctx.get(k1, use_cache=False),
+             self.ctx.get(k2, use_cache=False))
+      eventloop.run()  # Let other tasklet complete.
+      keys = [k1.urlsafe(), k2.urlsafe()]
+      results = memcache.get_multi(keys, key_prefix=self.ctx._memcache_prefix)
+      self.assertEqual(
+          results,
+          {key1.urlsafe():
+               ent1._to_pb(set_key=False).SerializePartialToString(),
+           key2.urlsafe():
+               ent2._to_pb(set_key=False).SerializePartialToString(),
+          })
+    foo().check_success()
+
+  def testContext_TransactionMemcache(self):
+    class Foo(model.Model):
+      name = model.StringProperty()
+
+    foo1 = Foo(name='foo1')
+    foo2 = Foo(name='foo2')
+    key1 = foo1.put()
+    key2 = foo2.put()
+    skey1 = self.ctx._memcache_prefix + key1.urlsafe()
+    skey2 = self.ctx._memcache_prefix + key2.urlsafe()
+
+    # Be sure nothing is in memcache.
+    self.assertEqual(memcache.get(skey1), None)
+    self.assertEqual(memcache.get(skey2), None)
+
+    # Be sure nothing is in the context cache.
+    self.ctx.clear_cache()
+
+    # Run some code in a transaction.
+    def txn():
+      ctx = tasklets.get_context()
+      self.assertTrue(ctx is not self.ctx)
+      f1 = key1.get()
+      f2 = key1.get()
+      f1.name += 'a'
+      f1.put()
+      # Don't put f2.
+      # Verify the state of memcache.
+      self.assertEqual(memcache.get(skey1), context._LOCKED)
+      self.assertEqual(memcache.get(skey2), None)
+    self.ctx.transaction(txn).wait()
+
+    # Verify memcache is cleared.
+    self.assertEqual(memcache.get(skey1), None)
+    self.assertEqual(memcache.get(skey2), None)
+
+    # Clear the context cache.
+    self.ctx.clear_cache()
+
+    # Non-transactional get() updates memcache.
+    f1 = key1.get()
+    f2 = key2.get()
+    eventloop.run()  # Wait for memcache.set() RPCs
+    self.assertNotEqual(memcache.get(skey1), None)
+    self.assertNotEqual(memcache.get(skey2), None)
 
   def testMemcachePolicy(self):
     # Bug reported by Jack Hebert.
@@ -1119,8 +932,8 @@ class ContextTestMixin(object):
   def testMemcacheCAS(self):
     @tasklets.tasklet
     def foo():
-      c1 = context.Context()
-      c2 = context.Context()
+      c1 = self.MakeContext()
+      c2 = self.MakeContext()
       k1 = u'k1'
       k2 = 'k2'
       yield c1.memcache_set(k1, 'a'), c1.memcache_set(k2, 'b')
@@ -1243,24 +1056,6 @@ class ContextTestMixin(object):
     log = MyAutoBatcher._log
     self.assertEqual(len(log), 1, log)
 
-  def testAsyncInTransaction(self):
-    # See issue 81.  http://goo.gl/F097l
-    class Bar(model.Model):
-      name = model.StringProperty()
-
-    bar = Bar(id='bar', name='bar')
-    bar.put()
-
-    @tasklets.tasklet
-    def trans():
-      bar = Bar.get_by_id('bar')
-      bar.name = 'updated-bar'
-      bar.put_async()  # PROBLEM IS HERE, with yield it properly works
-    model.transaction_async(trans).get_result()
-
-    bar = bar.key.get()
-    self.assertEqual(bar.name, 'updated-bar')
-
   def testMemcacheProtobufEncoding(self):
     # Test that when memcache is used implicitly, it stores encoded
     # protobufs, not pickled ones.
@@ -1272,7 +1067,8 @@ class ContextTestMixin(object):
     eventloop.run()
     ks = self.ctx._memcache_prefix + k.urlsafe()
     v = memcache.get(ks)
-    self.assertTrue(isinstance(v, str))
+    self.assertTrue(isinstance(v, str),
+                    'Expected instanceof "str", got "%s"' % type(v))
 
   def testCorruptMemcache(self):
     # Check that corrupt memcache entries silently fail.
@@ -1390,44 +1186,10 @@ class ContextTestMixin(object):
     finally:
       memcache.create_rpc = orig_create_rpc
 
-  def start_test_server(self):
-    host = '127.0.0.1'
-    s = socket.socket()
-    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    for i in range(10):
-      port = random.randrange(32768, 60000)
-      try:
-        s.bind((host, port))
-        break
-      except socket.error:
-        continue
-    else:
-      self.fail('Could not find an unused port in 10 tries')
-    s.listen(1)
-
-    def run():
-      c, addr = s.accept()
-      s.close()
-      c.recv(1000)  # Throw away request.
-      c.send('HTTP/1.0 200 Ok\r\n\r\n')  # Emptiest response.
-      c.close()
-    t = threading.Thread(target=run)
-    t.setDaemon(True)
-    t.start()
-    return host, port
-
-  def testUrlFetch(self):
-    self.testbed.init_urlfetch_stub()
-    host, port = self.start_test_server()
-    fut = self.ctx.urlfetch('http://%s:%d' % (host, port))
-    result = fut.get_result()
-    self.assertEqual(result.status_code, 200)
-    self.assertTrue(isinstance(result.content, str))
-
   def testTooBigForMemcache(self):
+    self.ctx.set_memcache_policy(True)
+    self.ctx.set_cache_policy(False)
     class Blobby(model.Model):
-      _use_memcache = True
-      _use_cache = False
       blob = model.BlobProperty()
     small = Blobby(blob='x')
     huge = Blobby(blob='x' * 1000000)  # Fits in datastore, not in memcache
@@ -1452,37 +1214,6 @@ class ContextTestMixin(object):
     self.assertEqual(small, small.key.get())
     self.assertEqual(None, huge.key.get())
 
-  def testDatastoreConnectionIsRestored(self):
-    # See issue 209.  http://goo.gl/7TEyM
-    class TestData(model.Model):
-      pass
-
-    @tasklets.tasklet
-    def txn():
-      conn1 = datastore._GetConnection()
-      self.assertTrue(
-          isinstance(conn1, datastore_rpc.TransactionalConnection), conn1)
-      yield TestData().put_async()
-      conn2 = datastore._GetConnection()
-      self.assertEqual(conn1, conn2)
-
-    @tasklets.synctasklet
-    def many_txns():
-      # Exactly how many transactions are needed to make this fail
-      # appears to be random.  With 100 it always seems to fail
-      # (unless the bug is fixed).
-      conn_a = datastore._GetConnection()
-      ts = [model.transaction_async(txn) for i in range(100)]
-      conn_b = datastore._GetConnection()
-      self.assertEqual(conn_a, conn_b)
-      yield ts
-      conn_c = datastore._GetConnection()
-      self.assertEqual(conn_b, conn_c)
-    conn_before = datastore._GetConnection()
-    many_txns()
-    conn_after = datastore._GetConnection()
-    self.assertEqual(conn_before, conn_after)
-
   def testMemcacheAndContextCache(self):
     self.ctx.set_datastore_policy(True)
     self.ctx.set_cache_policy(False)
@@ -1497,20 +1228,233 @@ class ContextTestMixin(object):
     e1, e2 = f1.get_result(), f2.get_result()
     self.assertTrue(e1 is e2)
 
+  def testContext_NamespaceBonanza(self):
+    # Test that memcache ops issued for datastore caching use the
+    # correct namespace.
+    def assertNone(expr):
+      self.assertTrue(expr is None, repr(expr))
 
-class ContextV3Tests(ContextTestMixin, test_utils.NDBTest):
-  """Context tests that use a Datastore V3 connection."""
+    def assertNotNone(expr):
+      self.assertTrue(expr is not None, repr(expr))
 
-  def setUp(self):
-    super(ContextV3Tests, self).setUp()
-    MyAutoBatcher.reset_log()
-    self.ctx = context.Context(
-        conn=model.make_connection(default_model=model.Expando),
-        auto_batcher_class=MyAutoBatcher)
-    tasklets.set_context(self.ctx)
+    def assertLocked(expr):
+      self.assertTrue(expr is context._LOCKED, repr(expr))
 
-  def make_bad_transaction(*arg, **kwargs):
-    return datastore_rpc.datastore_pb.Transaction()
+    def assertProtobuf(expr, ent):
+      self.assertEqual(expr,
+                       ent._to_pb(set_key=False).SerializePartialToString())
+
+    class Foo(model.Model):
+      pass
+    k1 = model.Key(Foo, 1, namespace='a')
+    k2 = model.Key(Foo, 2, namespace='b')
+    mk1 = self.ctx._memcache_prefix + k1.urlsafe()
+    mk2 = self.ctx._memcache_prefix + k2.urlsafe()
+    e1 = Foo(key=k1)
+    e2 = Foo(key=k2)
+    self.ctx.set_cache_policy(False)
+    self.ctx.set_memcache_policy(True)
+
+    self.ctx.set_datastore_policy(False)  # This will vary in subtests
+
+    # Test put with datastore policy off
+    k1 = self.ctx.put(e1).get_result()
+    k2 = self.ctx.put(e2).get_result()
+    # Nothing should be in the empty namespace
+    assertNone(memcache.get(mk1, namespace=''))
+    assertNone(memcache.get(mk2, namespace=''))
+    # Only k1 is found in namespace 'a'
+    assertProtobuf(memcache.get(mk1, namespace='a'), e1)
+    assertNone(memcache.get(mk2, namespace='a'))
+    # Only k2 is found in namespace 'b'
+    assertNone(memcache.get(mk1, namespace='b'))
+    assertProtobuf(memcache.get(mk2, namespace='b'), e2)
+
+    memcache.flush_all()
+    self.ctx.set_datastore_policy(True)
+
+    # Test put with datastore policy on
+    k1_fut = self.ctx.put(e1)
+    while not self.ctx._put_batcher._running:
+      eventloop.run0()
+    # Nothing should be in the empty namespace
+    assertNone(memcache.get(mk1, namespace=''))
+    assertNone(memcache.get(mk2, namespace=''))
+    # Only k1 is found in namespace 'a', as _LOCKED
+    assertLocked(memcache.get(mk1, namespace='a'))
+    assertNone(memcache.get(mk2, namespace='a'))
+    self.assertEqual(k1_fut.get_result(), k1)
+    # Have to test one at a time, otherwise _LOCKED value may not be set
+    k2_fut = self.ctx.put(e2)
+    while not self.ctx._put_batcher._running:
+      eventloop.run0()
+    # Only k2 is found in namespace 'b', as _LOCKED
+    assertNone(memcache.get(mk1, namespace='b'))
+    assertLocked(memcache.get(mk2, namespace='b'))
+    # Keys should be identical
+    self.assertEqual(k2_fut.get_result(), k2)
+
+    memcache.flush_all()
+
+    # Test get with cold cache
+    e1 = self.ctx.get(k1).get_result()
+    e2 = self.ctx.get(k2).get_result()
+    eventloop.run()  # Wait for memcache RPCs to run
+    # Neither is found in the empty namespace
+    assertNone(memcache.get(mk1, namespace=''))
+    assertNone(memcache.get(mk2, namespace=''))
+    # Only k1 is found in namespace 'a'
+    assertProtobuf(memcache.get(mk1, namespace='a'), e1)
+    assertNone(memcache.get(mk2, namespace='a'))
+    # Only k2 is found in namespace 'b'
+    assertNone(memcache.get(mk1, namespace='b'))
+    assertProtobuf(memcache.get(mk2, namespace='b'), e2)
+
+    self.ctx.set_datastore_policy(False)
+
+    # Test get with warm cache
+    self.ctx.get(k1).get_result()
+    self.ctx.get(k2).get_result()
+    eventloop.run()  # Wait for memcache RPCs to run
+    # Neither is found in the empty namespace
+    assertNone(memcache.get(mk1, namespace=''))
+    assertNone(memcache.get(mk2, namespace=''))
+    # Only k1 is found in namespace 'a'
+    assertNotNone(memcache.get(mk1, namespace='a'))
+    assertNone(memcache.get(mk2, namespace='a'))
+    # Only k2 is found in namespace 'b'
+    assertNone(memcache.get(mk1, namespace='b'))
+    assertNotNone(memcache.get(mk2, namespace='b'))
+
+    self.ctx.set_datastore_policy(True)
+
+    # Test delete
+    self.ctx.delete(k1).check_success()
+    self.ctx.delete(k2).check_success()
+    # Nothing should be in the empty namespace
+    assertNone(memcache.get(mk1, namespace=''))
+    assertNone(memcache.get(mk2, namespace=''))
+    # Only k1 is found in namespace 'a', as _LOCKED
+    assertLocked(memcache.get(mk1, namespace='a'))
+    assertNone(memcache.get(mk2, namespace='a'))
+    # Only k2 is found in namespace 'b', as _LOCKED
+    assertNone(memcache.get(mk1, namespace='b'))
+    assertLocked(memcache.get(mk2, namespace='b'))
+
+    memcache.flush_all()
+
+    # Test _clear_memcache (it deletes the keys)
+    self.ctx._clear_memcache([k1, k2]).check_success()
+    # Nothing should be in the empty namespace
+    assertNone(memcache.get(mk1, namespace=''))
+    assertNone(memcache.get(mk2, namespace=''))
+    # Nothing should be in namespace 'a'
+    assertNone(memcache.get(mk1, namespace='a'))
+    assertNone(memcache.get(mk2, namespace='a'))
+    # Nothing should be in namespace 'b'
+    assertNone(memcache.get(mk1, namespace='b'))
+    assertNone(memcache.get(mk2, namespace='b'))
+
+  def testContext_AutoBatcher_Get(self):
+    @tasklets.tasklet
+    def foo():
+      key1 = model.Key(flat=['Foo', 1])
+      key2 = model.Key(flat=['Foo', 2])
+      key3 = model.Key(flat=['Foo', 3])
+      fut1 = self.ctx.get(key1)
+      fut2 = self.ctx.get(key2)
+      fut3 = self.ctx.get(key3)
+      ent1 = yield fut1
+      ent2 = yield fut2
+      ent3 = yield fut3
+      raise tasklets.Return([ent1, ent2, ent3])
+    ents = foo().get_result()
+    self.assertEqual(ents, [None, None, None])
+    log = MyAutoBatcher._log
+    self.assertEqual(len(log), 4)
+    name, todo = log[0]
+    self.assertEqual(name, '_memcache_get_tasklet')
+    self.assertEqual(len(todo), 3)
+    name, todo = log[1]
+    self.assertEqual(name, '_memcache_set_tasklet')
+    self.assertEqual(len(todo), 3)
+    name, todo = log[2]
+    self.assertEqual(name, '_memcache_get_tasklet')
+    self.assertEqual(len(todo), 3)
+    name, todo = log[3]
+    self.assertEqual(name, '_get_tasklet')
+    self.assertEqual(len(todo), 3)
+
+  def testContext_AutoBatcher_Put(self):
+    keys = self.create_entities(True).get_result()
+    self.assertEqual(len(keys), 3)
+    self.assertTrue(None not in keys)
+    log = MyAutoBatcher._log
+    self.assertEqual(len(log), 2)
+    name, todo = log[0]
+    self.assertEqual(name, '_put_tasklet')
+    self.assertEqual(len(todo), 3)
+    name, todo = log[1]
+    self.assertEqual(name, '_memcache_del_tasklet')
+    self.assertEqual(len(todo), 3)
+
+  def testContext_AutoBatcher_Delete(self):
+    @tasklets.tasklet
+    def foo():
+      key1 = model.Key(flat=['Foo', 1])
+      key2 = model.Key(flat=['Foo', 2])
+      key3 = model.Key(flat=['Foo', 3])
+      fut1 = self.ctx.delete(key1)
+      fut2 = self.ctx.delete(key2)
+      fut3 = self.ctx.delete(key3)
+      yield fut1
+      yield fut2
+      yield fut3
+    foo().check_success()
+    self.assertEqual(len(MyAutoBatcher._log), 2)
+    name, todo = MyAutoBatcher._log[0]
+    self.assertEqual(name, '_memcache_set_tasklet')
+    self.assertEqual(len(todo), 3)
+    name, todo = MyAutoBatcher._log[1]
+    self.assertEqual(name, '_delete_tasklet')
+    self.assertEqual(len(todo), 3)
+
+  def testContext_AutoBatcher_Limit(self):
+    # Check that the default limit is taken from the connection.
+    self.assertEqual(self.ctx._get_batcher._limit,
+                     datastore_rpc.Connection.MAX_GET_KEYS)
+    # Create a Connection with config options that will be overridden
+    # by later config options
+    conn_config = context.ContextOptions(max_put_entities=3,
+                                         max_memcache_items=7)
+    conn = self.MakeConnection(config=conn_config,
+                               default_model=model.Expando)
+    real_config = context.ContextOptions(max_put_entities=25,
+                                         max_memcache_items=100)
+    self.ctx = self.MakeContext(
+        conn=conn,
+        auto_batcher_class=MyAutoBatcher,
+        config=real_config)
+
+    @tasklets.tasklet
+    def foo():
+      es = [model.Model(key=model.Key('Foo', None)) for _ in range(49)]
+      fs = [self.ctx.put(e) for e in es]
+      self.ctx.flush()
+      ks = yield fs
+      self.assertEqual(len(ks), 49)
+      self.assertTrue(all(isinstance(k, model.Key) for k in ks))
+    foo().get_result()
+    self.assertEqual(len(MyAutoBatcher._log), 4)
+    for name, todo in MyAutoBatcher._log[2:]:
+      self.assertEqual(name, '_memcache_del_tasklet')
+      self.assertTrue(len(todo) in (24, 25))
+    for name, todo in MyAutoBatcher._log[:2]:
+      self.assertEqual(name, '_put_tasklet')
+      self.assertTrue(len(todo) in (24, 25))
+
+
+class ContextTaskQueueTestMixin(object):
 
   def testContext_TransactionAddTask(self):
     self.ExpectWarnings()
@@ -1529,25 +1473,93 @@ class ContextV3Tests(ContextTestMixin, test_utils.NDBTest):
     foo().check_success()
 
 
-@real_unittest.skipUnless(datastore_pbs._CLOUD_DATASTORE_ENABLED,
-                          "V1 must be supported to run V1 tests.")
-class ContextV1Tests(ContextTestMixin, test_utils.NDBCloudDatastoreV1Test):
-  """Context tests that use a Cloud Datastore V1 connection."""
+class ContextV3Tests(ContextTestMixin,
+                     ContextMemcacheTestMixin,
+                     ContextTaskQueueTestMixin,
+                     test_utils.NDBTest):
+  """Context tests that use a Datastore V3 connection."""
 
   def setUp(self):
-    super(ContextV1Tests, self).setUp()
+    super(ContextV3Tests, self).setUp()
+    MyAutoBatcher.reset_log()
+    self.ctx = self.MakeContext(default_model=model.Expando,
+                                auto_batcher_class=MyAutoBatcher)
+    tasklets.set_context(self.ctx)
+
+  def make_bad_transaction(*arg, **kwargs):
+    return datastore_rpc.datastore_pb.Transaction()
+
+  def testContext_AutoBatcher_Errors(self):
+    # V1 will throw a BadRequestError instead of a RequestTooLargeError.
+    # However, in certain test environments it throws a RequestTooLargeError,
+    # so we will just disable the test.
+
+    # Test that errors are properly distributed over all Futures.
+    self.ExpectWarnings()
+
+    class Blobby(model.Model):
+      blob = model.BlobProperty()
+    ent1 = Blobby()
+    ent2 = Blobby(blob='x' * 2000000)
+    fut1 = self.ctx.put(ent1)
+    fut2 = self.ctx.put(ent2)  # Error
+    err1 = fut1.get_exception()
+    err2 = fut2.get_exception()
+    self.assertTrue(isinstance(err1, apiproxy_errors.RequestTooLargeError))
+    self.assertTrue(err1 is err2)
+    # Try memcache as well (different tasklet, different error).
+    fut1 = self.ctx.memcache_set('key1', 'x')
+    fut2 = self.ctx.memcache_set('key2', 'x' * 1000001)
+    err1 = fut1.get_exception()
+    err2 = fut1.get_exception()
+    self.assertTrue(isinstance(err1, ValueError))
+    self.assertTrue(err1 is err2)
+
+
+  def testContext_AllocateIds(self):
+    # V1 does not support Allocate id range.
+    @tasklets.tasklet
+    def foo():
+      key = model.Key(flat=('Foo', 1))
+      lo_hi = yield self.ctx.allocate_ids(key, size=10)
+      self.assertEqual(lo_hi, (1, 10))
+      lo_hi = yield self.ctx.allocate_ids(key, max=20)
+      self.assertEqual(lo_hi, (11, 20))
+    foo().check_success()
+
+  def MakeContext(self, *args, **kwargs):
+    ctx = super(ContextV3Tests, self).MakeContext(*args, **kwargs)
+    # Re-enable default cache policy.
+    ctx.set_cache_policy(None)
+    ctx.set_memcache_policy(None)
+    return ctx
+
+
+@real_unittest.skipUnless(datastore_pbs._CLOUD_DATASTORE_ENABLED,
+                          "V1 must be supported to run V1 tests.")
+class ContextV1WithRemoteAPITests(ContextTestMixin,
+                                 ContextMemcacheTestMixin,
+                                 ContextTaskQueueTestMixin,
+                                 test_utils.NDBCloudDatastoreV1Test):
+  """Context tests that use a Cloud Datastore V1 connection.
+
+  These tests run with memcache and taskqueue stubs available."""
+
+  def setUp(self):
+    super(ContextV1WithRemoteAPITests, self).setUp()
+    self.testbed.init_memcache_stub()
+    self.testbed.init_taskqueue_stub()
     self.HRTest()
     MyAutoBatcher.reset_log()
-    self.ctx = context.Context(
-        conn=model.make_connection(default_model=model.Expando,
-                                   _api_version=datastore_rpc._CLOUD_DATASTORE_V1),
-        auto_batcher_class=MyAutoBatcher)
+    self.ctx = self.MakeContext(default_model=model.Expando,
+                                auto_batcher_class=MyAutoBatcher)
     tasklets.set_context(self.ctx)
 
   def make_bad_transaction(*arg, **kwargs):
     return ''
 
   def testContext_TransactionAddTask(self):
+    # Transactional AddTask still will be unavailable.
     self.ExpectWarnings()
     key = model.Key('Foo', 1)
 
@@ -1563,6 +1575,57 @@ class ContextV1Tests(ContextTestMixin, test_utils.NDBCloudDatastoreV1Test):
       yield self.ctx.transaction(callback)
     self.assertRaises(ValueError, foo().check_success)
 
+  def MakeContext(self, *args, **kwargs):
+    ctx = super(ContextV1WithRemoteAPITests, self).MakeContext(*args, **kwargs)
+    # Re-enable default cache policy.
+    ctx.set_cache_policy(None)
+    ctx.set_memcache_policy(None)
+    return ctx
+
+@real_unittest.skipUnless(datastore_pbs._CLOUD_DATASTORE_ENABLED,
+                          "V1 must be supported to run V1 tests.")
+class ContextV1Tests(ContextTestMixin,
+                     test_utils.NDBCloudDatastoreV1Test):
+  """Context tests that use a Cloud Datastore V1 connection.
+
+  These tests run with memcache and taskqueue stubs available."""
+
+  def setUp(self):
+    super(ContextV1Tests, self).setUp()
+    self.testbed.init_memcache_stub()
+    self.testbed.init_taskqueue_stub()
+    self.HRTest()
+    MyAutoBatcher.reset_log()
+    self.ctx = self.MakeContext(default_model=model.Expando,
+                                auto_batcher_class=MyAutoBatcher)
+    tasklets.set_context(self.ctx)
+
+  def make_bad_transaction(*arg, **kwargs):
+    return ''
+
+  def testContext_TransactionAddTask(self):
+    # Transactional AddTask still will be unavailable.
+    self.ExpectWarnings()
+    key = model.Key('Foo', 1)
+
+    @tasklets.tasklet
+    def foo():
+      ent = model.Expando(key=key, bar=1)
+
+      @tasklets.tasklet
+      def callback():
+        ctx = tasklets.get_context()
+        yield ctx.put(ent)
+        taskqueue.add(url='/', transactional=True)
+      yield self.ctx.transaction(callback)
+    self.assertRaises(ValueError, foo().check_success)
+
+  def MakeContext(self, *args, **kwargs):
+    ctx = super(ContextV1Tests, self).MakeContext(*args, **kwargs)
+    # Re-enable in-context cache. Memcache must remain off because
+    # the stub is not enabled.
+    ctx.set_cache_policy(None)
+    return ctx
 
 class ContextFutureCachingTests(test_utils.NDBTest):
   # See issue 62.  http://goo.gl/5zLkK
@@ -1571,9 +1634,9 @@ class ContextFutureCachingTests(test_utils.NDBTest):
     super(ContextFutureCachingTests, self).setUp()
     MyAutoBatcher.reset_log()
     config = context.ContextOptions(max_get_keys=1, max_memcache_items=1)
-    self.ctx = context.Context(
-        conn=model.make_connection(default_model=model.Expando),
-        auto_batcher_class=MyAutoBatcher, config=config)
+    self.ctx = self.MakeContext(default_model=model.Expando,
+                                auto_batcher_class=MyAutoBatcher,
+                                config=config)
     self.ctx.set_cache_policy(False)
     tasklets.set_context(self.ctx)
 
