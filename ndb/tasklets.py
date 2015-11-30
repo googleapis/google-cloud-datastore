@@ -1192,6 +1192,18 @@ def _make_cloud_datastore_context(app_id, external_app_ids=()):
   except:
     pass  # The stub is already installed.
   # TODO(pcostello): Ensure the current stub is connected to the right project.
+
+  # Install a memcache and taskqueue stub which throws on everything.
+  try:
+    apiproxy_stub_map.apiproxy.RegisterStub('memcache', _ThrowingStub())
+  except:
+    pass  # The stub is already installed.
+  try:
+    apiproxy_stub_map.apiproxy.RegisterStub('taskqueue', _ThrowingStub())
+  except:
+    pass  # The stub is already installed.
+
+
   return make_context(conn=conn)
 
 
@@ -1200,6 +1212,17 @@ def set_context(new_context):
   os.environ[_CONTEXT_KEY] = '1'
   _state.current_context = new_context
 
+class _ThrowingStub(object):
+  """A Stub implementation which always throws a NotImplementedError."""
+
+  # pylint: disable=invalid-name
+  def MakeSyncCall(self, service, call, request, response):
+    raise NotImplementedError('In order to use %s.%s you must '
+                              'install the Remote API.' % (service, call))
+
+  # pylint: disable=invalid-name
+  def CreateRPC(self):
+    return apiproxy_rpc.RPC(stub=self)
 
 # TODO: Rework the following into documentation.
 
