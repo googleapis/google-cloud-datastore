@@ -21,17 +21,27 @@ and other environment variables.
 """
 
 import logging
+import tempfile
 
+from .google_imports import apiproxy_stub_map
 from .google_imports import datastore
 from .google_imports import datastore_pbs
 from .google_imports import datastore_rpc
+from .google_test_imports import cloud_datastore_v1_remote_stub
 from .google_test_imports import datastore_stub_util
 from .google_test_imports import testbed
 from .google_test_imports import unittest
 
+from . import context
 from . import model
 from . import tasklets
 from . import eventloop
+
+
+_STARTUP_OPTIONS = [
+    '--dev_appserver_option='
+    '--property=datastore.auto_id_allocation_policy=SEQUENTIAL',
+]
 
 
 class NDBBaseTest(unittest.TestCase):
@@ -54,23 +64,14 @@ class NDBBaseTest(unittest.TestCase):
     self.testbed = testbed.Testbed()
     self.testbed.setup_env(overwrite=True, app_id=self.APP_ID)
     self.testbed.activate()
-    self.testbed.init_datastore_v3_stub()
-    self.testbed.init_memcache_stub()
-    self.testbed.init_taskqueue_stub()
-
-    self.conn = model.make_connection()
 
     self.ResetKindMap()
-    self.SetupContextCache()
+    self.conn = self.MakeConnection()
+    self.ctx = self.MakeContext(conn=self.conn)
+    tasklets.set_context(self.ctx)
 
     self._logger = logging.getLogger()
     self._old_log_level = self._logger.getEffectiveLevel()
-
-  def HRTest(self):
-    ds_stub = self.testbed.get_stub('datastore_v3')
-    hrd_policy = datastore_stub_util.PseudoRandomHRConsistencyPolicy(
-        probability=1)
-    ds_stub.SetConsistencyPolicy(hrd_policy)
 
   def ExpectErrors(self):
     if self.DefaultLogging():
@@ -85,6 +86,7 @@ class NDBBaseTest(unittest.TestCase):
 
   def tearDown(self):
     """Tear down test framework."""
+    self.testbed.deactivate()
     self._logger.setLevel(self._old_log_level)
     ev = eventloop.get_event_loop()
     stragglers = 0
@@ -94,28 +96,31 @@ class NDBBaseTest(unittest.TestCase):
       logging.info('Processed %d straggler events after test completed',
                    stragglers)
     self.ResetKindMap()
-    self.testbed.deactivate()
 
   def ResetKindMap(self):
     model.Model._reset_kind_map()
 
-  def SetupContextCache(self):
-    """Set up the context cache.
-
-    We only need cache active when testing the cache, so the default behavior
-    is to disable it to avoid misleading test results. Override this when
-    needed.
-    """
-    ctx = tasklets.make_default_context()
-    tasklets.set_context(ctx)
+  def MakeContext(self, config=None, auto_batcher_class=context.AutoBatcher,
+                  default_model=None, conn=None):
+    if not conn:
+      conn = self.MakeConnection(config=config,
+                                 default_model=default_model)
+    ctx = context.Context(
+        conn=conn,
+        auto_batcher_class=auto_batcher_class,
+        config=config)
+    # We only need cache active when testing the cache, so the default behavior
+    # is to disable it to avoid misleading test results. Override this when
+    # needed.
     ctx.set_cache_policy(False)
     ctx.set_memcache_policy(False)
-
-  # Set to the module under test to check its __all__ for inconsistencies.
-  the_module = None
+    return ctx
 
 
 class NDBTest(NDBBaseTest):
+
+  # Set to the module under test to check its __all__ for inconsistencies.
+  the_module = None
 
   def testAllVariableIsConsistent(self):
     if self.the_module is None:
@@ -140,20 +145,55 @@ class NDBTest(NDBBaseTest):
                      '%s defines some names that are not in __all__: %s' %
                      (modname, unlisted))
 
+  def HRTest(self):
+    ds_stub = self.testbed.get_stub('datastore_v3')
+    hrd_policy = datastore_stub_util.PseudoRandomHRConsistencyPolicy(
+        probability=1)
+    ds_stub.SetConsistencyPolicy(hrd_policy)
+
+  def setUp(self):
+    super(NDBTest, self).setUp()
+    self.testbed.init_datastore_v3_stub()
+    self.testbed.init_memcache_stub()
+    self.testbed.init_taskqueue_stub()
+
+  def MakeConnection(self, *args, **kwargs):
+    return model.make_connection(*args, **kwargs)
+
 
 class NDBCloudDatastoreV1Test(NDBBaseTest):
   """NDB test base that uses a datastore V1 connection."""
 
+  @classmethod
+  def setUpClass(cls):
+    # Late import so that tests can still run if googledatastore is not
+    # available.
+    from . import local_cloud_datastore_factory
+    factory = local_cloud_datastore_factory.LocalCloudDatastoreFactory()
+    cls.datastore = factory.Create(cls.APP_ID, _STARTUP_OPTIONS)
+
+  @classmethod
+  def tearDownClass(cls):
+    cls.datastore.Stop()
+
   def setUp(self):
     super(NDBCloudDatastoreV1Test, self).setUp()
+    self.datastore.Clear()
+    stub = cloud_datastore_v1_remote_stub.CloudDatastoreV1RemoteStub(
+        self.datastore.GetDatastore())
+    apiproxy_stub_map.apiproxy.ReplaceStub(datastore_rpc._CLOUD_DATASTORE_V1,
+                                           stub)
 
-  def SetupContextCache(self):
-    """Set up the context cache to use the V1 API."""
-    id_resolver = datastore_pbs.IdResolver([self.APP_ID])
-    self.conn = model.make_connection(
-        _api_version=datastore_rpc._CLOUD_DATASTORE_V1,
-        _id_resolver=id_resolver)
-    ctx = tasklets.make_context(conn=self.conn)
-    tasklets.set_context(ctx)
-    ctx.set_cache_policy(False)
-    ctx.set_memcache_policy(False)
+  def tearDown(self):
+    super(NDBCloudDatastoreV1Test, self).tearDown()
+    self.datastore.Clear()
+
+  def HRTest(self):
+    pass
+
+  def MakeConnection(self, *args, **kwargs):
+    if '_api_version' not in kwargs:
+      kwargs['_api_version'] = datastore_rpc._CLOUD_DATASTORE_V1
+    if '_id_resolver' not in kwargs:
+      kwargs['_id_resolver'] = datastore_pbs.IdResolver([self.APP_ID])
+    return model.make_connection(*args, **kwargs)

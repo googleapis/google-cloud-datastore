@@ -6,7 +6,9 @@ cache:
 
 before_install:
   - ./get_app_engine_sdk.sh
+  - ./get_gcd_zip.sh
   - export GAE="./cache/google_appengine"
+  - export GCD_ZIP="./cache/gcd-v1beta3-0.0.1.zip"
 
 install:
   - pip install tox

@@ -19,11 +19,16 @@ from setuptools import find_packages
 
 
 REQUIREMENTS = [
+    # This requirement will eventually be 'googledatastore==4.0.0b1'.
+    'testing-v1beta3-googledatastore==4.0.0b4',
+]
+TEST_REQUIREMENTS = [
+    'portpicker',
 ]
 
 setup(
     name='ndb',
-    version='1.0.12',
+    version='1.0.13b1',
     description='Google App Engine NDB',
     author='Patrick Costello',
     author_email='pcostello@google.com',
@@ -35,6 +40,7 @@ setup(
     include_package_data=True,
     zip_safe=False,
     install_requires=REQUIREMENTS,
+    tests_require=TEST_REQUIREMENTS,
     classifiers=[
         'Development Status :: 1 - Planning',
         'Intended Audience :: Developers',
