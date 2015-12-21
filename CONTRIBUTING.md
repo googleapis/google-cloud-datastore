@@ -51,12 +51,6 @@ Tests can be run using tox.
 
     tox -e py27
 
-Lint can also be run using tox. This will fire off two pylint commands, one
-for the main ndb library and one for the tests which have slightly relaxed
-requirements.
-
-    tox -e lint
-
 to run coverage tests, run
 
     tox -e cover
