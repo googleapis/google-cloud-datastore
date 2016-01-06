@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 #
 # Copyright 2013 Google Inc. All Rights Reserved.
 #
@@ -17,7 +15,7 @@
 #
 from setuptools import setup
 
-__version__ = '3.0.2b1'
+__version__ = '3.0.3b1'
 
 setup(
     name='googledatastore',
@@ -29,14 +27,6 @@ setup(
     url='https://github.com/GoogleCloudPlatform/google-cloud-datastore',
     packages=['googledatastore'],
     package_dir={'googledatastore': 'googledatastore'},
-    install_requires=['protobuf==2.5.0', 'oauth2client==1.2',
-                      'uritemplate==0.6'],
-    classifiers=[
-            "Development Status :: 4 - Beta",
-            "Topic :: Database",
-            "License :: OSI Approved :: Apache Software License",
-            "Operating System :: OS Independent",
-            "Programming Language :: Python :: 2",
-            "Programming Language :: Python :: 2.7",
-        ],
+    install_requires=['protobuf>=2.5,<3', 'oauth2client>=1.2,<2',
+                      'uritemplate==0.6']
 )

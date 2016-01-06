@@ -1,6 +1,10 @@
 RELEASE NOTES
 =============
 
+v1beta2-rev1-3.0.3
+------------------
+- Make the dependency requirements in the Python client more permissive.
+
 v1beta2-rev1-3.0.2
 ------------------
 - Fix QuerySplitter to support small queries that do not need to be split.
