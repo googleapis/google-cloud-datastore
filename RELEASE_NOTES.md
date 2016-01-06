@@ -1,7 +1,7 @@
 RELEASE NOTES
 =============
 
-v1beta2-rev1-3.0.3
+v1beta2-rev1-3.0.4
 ------------------
 - Make the dependency requirements in the Python client more permissive.
 

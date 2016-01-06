@@ -10,7 +10,7 @@
     <dependency>
       <groupId>com.google.apis</groupId>
       <artifactId>google-api-services-datastore-protobuf-demos</artifactId>
-      <version>v1beta2-rev1-3.0.3</version>
+      <version>v1beta2-rev1-3.0.4</version>
     </dependency>
   </dependencies>
   <build>
@@ -39,6 +39,6 @@
   <parent>
     <groupId>com.google.apis</groupId>
     <artifactId>google-api-services-datastore-protobuf-parent</artifactId>
-    <version>v1beta2-rev1-3.0.3</version>
+    <version>v1beta2-rev1-3.0.4</version>
   </parent>
 </project>

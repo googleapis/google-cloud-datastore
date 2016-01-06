@@ -15,7 +15,7 @@
 #
 from setuptools import setup
 
-__version__ = '3.0.3b1'
+__version__ = '3.0.4b1'
 
 setup(
     name='googledatastore',
