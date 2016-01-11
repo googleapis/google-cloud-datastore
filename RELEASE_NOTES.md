@@ -1,6 +1,10 @@
 RELEASE NOTES
 =============
 
+v1beta2-rev1-4.0.0
+------------------
+- Switch to version 3.0.0b1 of protocol buffer compiler.
+
 v1beta2-rev1-3.0.4
 ------------------
 - Make the dependency requirements in the Python client more permissive.

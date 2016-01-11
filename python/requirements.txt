@@ -1,6 +1,6 @@
 httplib2==0.8
-oauth2client==1.2
-protobuf==2.5.0
+oauth2client>=1.2,<2
+protobuf==3.0.0b1
 pycrypto==2.6
 pyopenssl==0.13
 uritemplate==0.6

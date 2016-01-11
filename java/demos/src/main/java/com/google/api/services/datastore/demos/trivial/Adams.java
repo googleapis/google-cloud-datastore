@@ -106,7 +106,7 @@ public class Adams {
       datastore.commit(creq.build());
       // Get `question` property value.
       Map<String, Value> properties = DatastoreHelper.getPropertyMap(entity);
-      System.out.println(properties.get("question").getStringValue());      
+      System.out.println(properties.get("question").getStringValue());
       // Get `answer` property value.
       Long answer = properties.get("answer").getIntegerValue();
       String result = System.console().readLine("> ");

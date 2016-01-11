@@ -15,7 +15,7 @@
 #
 from setuptools import setup
 
-__version__ = '3.0.4b1'
+__version__ = '4.0.0b1'
 
 setup(
     name='googledatastore',
@@ -27,6 +27,6 @@ setup(
     url='https://github.com/GoogleCloudPlatform/google-cloud-datastore',
     packages=['googledatastore'],
     package_dir={'googledatastore': 'googledatastore'},
-    install_requires=['protobuf>=2.5,<3', 'oauth2client>=1.2,<2',
+    install_requires=['protobuf==3.0.0b1', 'oauth2client>=1.2,<2',
                       'uritemplate==0.6']
 )

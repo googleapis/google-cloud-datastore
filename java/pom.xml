@@ -5,7 +5,7 @@
   <artifactId>google-api-services-datastore-protobuf-parent</artifactId>
   <packaging>pom</packaging>
   <name>google-api-services-datastore-protobuf-parent</name>
-  <version>v1beta2-rev1-3.0.4</version>
+  <version>v1beta2-rev1-4.0.0</version>
   <modules>
     <module>datastore</module>
     <module>demos</module>
@@ -17,9 +17,24 @@
     <project.http.version>1.15.0-rc</project.http.version>
     <project.oauth.version>1.15.0-rc</project.oauth.version>
     <project.googleapi.version>1.15.0-rc</project.googleapi.version>
+    <project.protobuf-java.version>3.0.0-beta-1</project.protobuf-java.version>
     <project.javadocExecutable></project.javadocExecutable>
   </properties>
+  <pluginRepositories>
+    <pluginRepository>
+      <!-- For maven-protoc-plugin. -->
+      <id>protoc-plugin</id>
+      <url>https://dl.bintray.com/sergei-ivanov/maven/</url>
+    </pluginRepository>
+  </pluginRepositories>
   <build>
+    <extensions>
+      <extension>
+        <groupId>kr.motd.maven</groupId>
+        <artifactId>os-maven-plugin</artifactId>
+        <version>1.2.3.Final</version>
+      </extension>
+    </extensions>
     <pluginManagement>
       <plugins>
         <plugin>
@@ -32,13 +47,24 @@
           </configuration>
         </plugin>
         <plugin>
-          <groupId>com.github.igor-petruk.protobuf</groupId>
-          <artifactId>protobuf-maven-plugin</artifactId>
-          <version>0.6.3</version>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-jar-plugin</artifactId>
+          <version>2.5</version>
+        </plugin>
+        <plugin>
+          <groupId>com.google.protobuf.tools</groupId>
+          <artifactId>maven-protoc-plugin</artifactId>
+          <version>0.4.2</version>
+          <configuration>
+            <protocArtifact>com.google.protobuf:protoc:${project.protobuf-java.version}:exe:${os.detected.classifier}</protocArtifact>
+            <!-- Exclude the actual protos from the package. -->
+            <attachProtoSources>false</attachProtoSources>
+          </configuration>
           <executions>
             <execution>
+              <phase>generate-sources</phase>
               <goals>
-                <goal>run</goal>
+                <goal>compile</goal>
               </goals>
             </execution>
           </executions>
@@ -63,16 +89,16 @@
           <executions>
             <execution>
               <id>attach-sources</id>
-                <goals>
-                  <goal>jar</goal>
-                </goals>
+              <goals>
+                <goal>jar</goal>
+              </goals>
             </execution>
           </executions>
         </plugin>
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-shade-plugin</artifactId>
-          <version>2.0</version>
+          <version>2.1</version>
           <executions>
             <execution>
               <phase>package</phase>
