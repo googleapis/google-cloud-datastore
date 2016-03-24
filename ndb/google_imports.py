@@ -18,6 +18,7 @@
 All other NDB code should import its Google App Engine modules from
 this module.  If necessary, add new imports here (in both places).
 """
+# pylint: disable=unused-import, g-import-not-at-top
 
 import os
 import sys
@@ -86,6 +87,10 @@ if normal_environment:
   from google.appengine.ext.blobstore import blobstore as ext_blobstore
   from google.appengine.ext import db
   from google.appengine.ext import gql
+  try:
+    from google.appengine.ext.vmruntime import callback
+  except ImportError:
+    callback = None
   from google.appengine.runtime import apiproxy_errors
   from google.net.proto import ProtocolBuffer
 else:
@@ -107,6 +112,7 @@ else:
   from google3.apphosting.ext.blobstore import blobstore as ext_blobstore
   from google3.apphosting.ext import db
   from google3.apphosting.ext import gql
+  from google3.apphosting.ext.vmruntime import callback
   from google3.apphosting.runtime import apiproxy_errors
   from google3.net.proto import ProtocolBuffer
   # Prospective search is optional.
