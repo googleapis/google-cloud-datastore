@@ -27,16 +27,16 @@ fi
 
 cd cache
 
-if [[ -f google_appengine_1.9.28.zip ]]; then
+if [[ -f google_appengine_1.9.35.zip ]]; then
   echo "App Engine SDK already downloaded. Doing nothing."
 else
-  wget https://storage.googleapis.com/appengine-sdks/featured/google_appengine_1.9.28.zip -nv
+  wget https://storage.googleapis.com/appengine-sdks/featured/google_appengine_1.9.35.zip -nv
 fi
 
 if [[ -d google_appengine ]]; then
   echo "App Engine SDK already unzipped. Doing nothing."
 else
-  unzip -q google_appengine_1.9.28.zip
+  unzip -q google_appengine_1.9.35.zip
 fi
 
 echo "Cache contents after getting SDK:"

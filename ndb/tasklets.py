@@ -80,6 +80,7 @@ import logging
 import os
 import sys
 import types
+import weakref
 
 from .google_imports import apiproxy_stub_map
 from .google_imports import apiproxy_rpc
@@ -88,6 +89,7 @@ from .google_imports import datastore_errors
 from .google_imports import datastore_pbs
 from .google_imports import datastore_rpc
 from .google_imports import namespace_manager
+from .google_imports import callback as _request_callback
 
 from . import eventloop
 from . import utils
@@ -102,6 +104,8 @@ __all__ = ['Return', 'tasklet', 'synctasklet', 'toplevel', 'sleep',
 
 _logging_debug = utils.logging_debug
 
+_CALLBACK_KEY = '__CALLBACK__'
+
 
 def _is_generator(obj):
   """Helper to test for a generator object.
@@ -115,11 +119,21 @@ def _is_generator(obj):
 class _State(utils.threading_local):
   """Hold thread-local state."""
 
-  current_context = None
-
   def __init__(self):
     super(_State, self).__init__()
+    self.current_context = None
+    self.all_generators = weakref.WeakSet()
     self.all_pending = set()
+
+  def set_context(self, ctx):
+    if _request_callback and _CALLBACK_KEY not in os.environ:
+      _request_callback.SetRequestEndCallback(self.reset)
+      os.environ[_CALLBACK_KEY] = '1'
+    self.current_context = ctx
+
+  def add_generator(self, gen):
+    _logging_debug('all_generators: add %s', gen)
+    self.all_generators.add(gen)
 
   def add_pending(self, fut):
     _logging_debug('all_pending: add %s', fut)
@@ -132,9 +146,18 @@ class _State(utils.threading_local):
     else:
       _logging_debug('all_pending: %s: not found %s', status, fut)
 
+  def clear_all_generators(self):
+    if self.all_generators:
+      _logging_debug('all_generators: clear %s', self.all_generators)
+      for gen in self.all_generators:
+        gen.close()
+      self.all_generators.clear()
+    else:
+      _logging_debug('all_generators: clear no-op')
+
   def clear_all_pending(self):
     if self.all_pending:
-      logging.info('all_pending: clear %s', self.all_pending)
+      _logging_debug('all_pending: clear %s', self.all_pending)
       self.all_pending.clear()
     else:
       _logging_debug('all_pending: clear no-op')
@@ -148,6 +171,13 @@ class _State(utils.threading_local):
         line = fut.dump_stack()
       pending.append(line)
     return '\n'.join(pending)
+
+  def reset(self):
+    self.current_context = None
+    ev = eventloop.get_event_loop()
+    ev.clear()
+    self.clear_all_pending()
+    self.clear_all_generators()
 
 
 _state = _State()
@@ -1021,6 +1051,7 @@ def tasklet(func):
     if _is_generator(result):
       ns = namespace_manager.get_namespace()
       ds_conn = datastore._GetConnection()
+      _state.add_generator(result)
       eventloop.queue_call(None, fut._help_tasklet_along, ns, ds_conn, result)
     else:
       fut.set_result(result)
@@ -1210,7 +1241,7 @@ def _make_cloud_datastore_context(app_id, external_app_ids=()):
 def set_context(new_context):
   # XXX Docstring
   os.environ[_CONTEXT_KEY] = '1'
-  _state.current_context = new_context
+  _state.set_context(new_context)
 
 class _ThrowingStub(object):
   """A Stub implementation which always throws a NotImplementedError."""
