@@ -14,6 +14,7 @@
 # limitations under the License.
 #
 
+
 from setuptools import setup
 from setuptools import find_packages
 
@@ -29,12 +30,12 @@ TEST_REQUIREMENTS = [
 setup(
     name='ndb',
     version='1.0.13b1',
-    description='Google App Engine NDB',
-    author='Patrick Costello',
-    author_email='pcostello@google.com',
+    description='NDB Client Library for Cloud Datastore',
+    author='Google Cloud Datastore Team',
+    author_email='gcd-discuss@googlegroups.com',
     scripts=[],
     url='https://github.com/GoogleCloudPlatform/datastore-ndb-python',
-    packages=find_packages(),
+    packages=find_packages(exclude=['demo']),
     license='Apache 2.0',
     platforms='Posix; MacOS X; Windows',
     include_package_data=True,
