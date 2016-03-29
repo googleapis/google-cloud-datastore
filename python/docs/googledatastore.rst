@@ -17,14 +17,6 @@ googledatastore Package
     :undoc-members:
     :show-inheritance:
 
-:mod:`datastore_v1_pb2` Module
-------------------------------
-
-.. automodule:: googledatastore.datastore_v1_pb2
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
 :mod:`helper` Module
 --------------------
 

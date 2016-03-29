@@ -16,54 +16,54 @@
 """googledatastore connection."""
 
 import logging
-import os
 import httplib2
 
-from googledatastore import datastore_v1_pb2
+from googledatastore import helper
+from google.datastore.v1beta3 import datastore_pb2
+from google.protobuf import timestamp_pb2
+from google.rpc import code_pb2
+from google.rpc import status_pb2
+from google.type import latlng_pb2
 
 __all__ = [
     'Datastore',
     'Error',
-    'HTTPError',
     'RPCError',
     'AuthError',
     'BadArgumentError'
 ]
 
-SCOPE = ('https://www.googleapis.com/auth/datastore '
-         'https://www.googleapis.com/auth/userinfo.email')
-GOOGLEAPIS_URL = 'https://www.googleapis.com'
-API_VERSION = 'v1beta2'
-
 
 class Datastore(object):
   """Datastore client connection constructor."""
 
-  def __init__(self, dataset, credentials=None, host=None):
+  def __init__(self, project_id=None, credentials=None, project_endpoint=None):
     """Datastore client connection constructor.
 
     Args:
-      dataset: dataset to send the RPC to.
+      project_id: the Cloud project to use. Exactly one of
+          project_endpoint and project_id must be set.
       credentials: oauth2client.Credentials to authorize the
-      connection, default to no credentials.
-      host: the host used to construct the datastore API. Defaults to
-      'https://www.googleapis.com'.
+          connection, default to no credentials.
+      project_endpoint: the Datastore endpoint to use. Exactly one of
+          project_endpoint and project_id must be set.
 
     Usage: demos/trivial.py for example usages.
 
     Raises:
-      TypeError: when dataset is needed, but not provided.
+      TypeError: when neither or both of project_endpoint and project_id
+      are set.
     """
     self._http = httplib2.Http()
-    if not dataset:
-      raise TypeError('dataset argument is required')
-    if not host:
-      host = GOOGLEAPIS_URL
-    url_internal_override = os.getenv('DATASTORE_URL_INTERNAL_OVERRIDE')
-    if url_internal_override:
-      self._url = '%s/datasets/%s/' % (url_internal_override, dataset)
-    else:
-      self._url = '%s/datastore/%s/datasets/%s/' % (host, API_VERSION, dataset)
+    if not project_endpoint and not project_id:
+      raise TypeError('project_endpoint or project_id argument is required.')
+    if project_endpoint and project_id:
+      raise TypeError('only one of project_endpoint or project_id argument '
+                      'is allowed.')
+
+    self._url = (project_endpoint
+                 or helper.get_project_endpoint_from_env(project_id=project_id))
+
     if credentials:
       self._credentials = credentials
       credentials.authorize(self._http)
@@ -81,10 +81,10 @@ class Datastore(object):
 
     Raises:
       RPCError: The underlying RPC call failed with an HTTP error.
-      (See: .response attribute)
+          (See: .response attribute)
     """
     return self._call_method('lookup', request,
-                             datastore_v1_pb2.LookupResponse)
+                             datastore_pb2.LookupResponse)
 
   def run_query(self, request):
     """Query for entities.
@@ -97,10 +97,10 @@ class Datastore(object):
 
     Raises:
       RPCError: The underlying RPC call failed with an HTTP error.
-      (See: .response attribute)
+          (See: .response attribute)
     """
     return self._call_method('runQuery', request,
-                             datastore_v1_pb2.RunQueryResponse)
+                             datastore_pb2.RunQueryResponse)
 
   def begin_transaction(self, request):
     """Begin a new transaction.
@@ -113,10 +113,10 @@ class Datastore(object):
 
     Raises:
       RPCError: The underlying RPC call failed with an HTTP error.
-      (See: .response attribute)
+          (See: .response attribute)
     """
     return self._call_method('beginTransaction', request,
-                             datastore_v1_pb2.BeginTransactionResponse)
+                             datastore_pb2.BeginTransactionResponse)
 
   def commit(self, request):
     """Commit a mutation, transaction or mutation in a transaction.
@@ -129,10 +129,10 @@ class Datastore(object):
 
     Raises:
       RPCError: The underlying RPC call failed with an HTTP error.
-      (See: .response attribute)
+          (See: .response attribute)
     """
     return self._call_method('commit', request,
-                             datastore_v1_pb2.CommitResponse)
+                             datastore_pb2.CommitResponse)
 
   def rollback(self, request):
     """Rollback a transaction.
@@ -145,10 +145,10 @@ class Datastore(object):
 
     Raises:
       RPCError: The underlying RPC call failed with an HTTP error.
-      (See: .response attribute)
+          (See: .response attribute)
     """
     return self._call_method('rollback', request,
-                             datastore_v1_pb2.RollbackResponse)
+                             datastore_pb2.RollbackResponse)
 
   def allocate_ids(self, request):
     """Allocate ids for incomplete keys.
@@ -161,10 +161,10 @@ class Datastore(object):
 
     Raises:
       RPCError: The underlying RPC call failed with an HTTP error.
-      (See: .response attribute)
+          (See: .response attribute)
     """
     return self._call_method('allocateIds', request,
-                             datastore_v1_pb2.AllocateIdsResponse)
+                             datastore_pb2.AllocateIdsResponse)
 
   def _call_method(self, method, req, resp_class):
     """_call_method call the given RPC method over HTTP.
@@ -181,21 +181,37 @@ class Datastore(object):
       Deserialized resp_class protobuf message instance.
 
     Raises:
-      BadArgumentError: No dataset has been defined.
+      BadArgumentError: No project has been defined.
       RPCError: The rpc method call failed.
     """
     payload = req.SerializeToString()
     headers = {
         'Content-Type': 'application/x-protobuf',
-        'Content-Length': str(len(payload))
+        'Content-Length': str(len(payload)),
+        'X-Goog-Api-Format-Version': '2'
         }
     response, content = self._http.request(
-        self._url + method, method='POST', body=payload, headers=headers)
+        '%s:%s' % (self._url, method),
+        method='POST', body=payload, headers=headers)
     if response.status != 200:
-      raise RPCError(method, response, content)
+      raise _make_rpc_error(method, response, content)
     resp = resp_class()
     resp.ParseFromString(content)
     return resp
+
+
+def _make_rpc_error(method, response, content):
+  try:
+    status = status_pb2.Status()
+    status.ParseFromString(content)
+    code_string = code_pb2.Code.Name(status.code)
+    return RPCError(
+        method, status.code,
+        'Error code: %s. Message: %s' % (code_string, status.message))
+  except Exception:
+    return RPCError(
+        method, code_pb2.INTERNAL,
+        'HTTP status code: %s. Message: %s' % (response.status, content))
 
 
 class Error(Exception):
@@ -203,32 +219,22 @@ class Error(Exception):
   pass
 
 
-class HTTPError(Error):
-  """An HTTP error occured."""
-
-  response = None
-
-
-class RPCError(HTTPError):
+class RPCError(Error):
   """The Datastore RPC failed."""
 
   method = None
-  reason = None
-  _failure_format = ('{method} RPC {failure_type} failure '
-                     'with HTTP({http_status}) {http_reason}: {failure_reason}')
+  code = None
+  message = None
 
-  def __init__(self, method, response, content):
+  _failure_format = ('datastore call {method} failed: {message}')
+
+  def __init__(self, method, code, message):
     self.method = method
-    self.response = response
-    self.reason = content
+    self.code = code
+    self.message = message
     super(RPCError, self).__init__(self._failure_format.format(
         method=method,
-        failure_type=('server' if response.status >= 500
-                      else 'client'),
-        http_status=response.status,
-        http_reason=response.reason,
-        failure_reason=content
-        ))
+        message=message))
 
 
 class AuthError(Error):

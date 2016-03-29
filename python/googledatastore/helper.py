@@ -22,12 +22,12 @@ import os
 
 import httplib2
 from oauth2client import client
-from oauth2client import gce
-from googledatastore import connection
-from googledatastore.connection import datastore_v1_pb2
+from google.datastore.v1beta3 import entity_pb2
+from google.datastore.v1beta3 import query_pb2
 
 __all__ = [
     'get_credentials_from_env',
+    'get_project_endpoint_from_env',
     'add_key_path',
     'add_properties',
     'set_property',
@@ -39,90 +39,124 @@ __all__ = [
     'add_projection',
     'set_property_filter',
     'set_composite_filter',
-    'to_timestamp_usec',
-    'from_timestamp_usec',
+    'to_timestamp',
+    'from_timestamp',
 ]
+
+SCOPE = 'https://www.googleapis.com/auth/datastore'
+GOOGLEAPIS_URL = 'https://datastore.googleapis.com'
+API_VERSION = 'v1beta3'
+
+# Value types for which their proto value is the user value type.
+__native_value_types = frozenset(['string_value',
+                                  'blob_value',
+                                  'boolean_value',
+                                  'integer_value',
+                                  'double_value',
+                                  'key_value',
+                                  'entity_value'])
+
+_DATASTORE_PROJECT_ID_ENV = 'DATASTORE_PROJECT_ID'
+_DATASTORE_EMULATOR_HOST_ENV = 'DATASTORE_EMULATOR_HOST'
+_DATASTORE_SERVICE_ACCOUNT_ENV = 'DATASTORE_SERVICE_ACCOUNT'
+_DATASTORE_PRIVATE_KEY_FILE_ENV = 'DATASTORE_PRIVATE_KEY_FILE'
+_DATASTORE_URL_OVERRIDE_ENV = '__DATASTORE_URL_OVERRIDE'
+_DATASTORE_USE_STUB_CREDENTIAL_FOR_TEST_ENV = (
+    '__DATASTORE_USE_STUB_CREDENTIAL_FOR_TEST')
+# Deprecated
+_DATASTORE_HOST_ENV = 'DATASTORE_HOST'
 
 
 def get_credentials_from_env():
-  """Get datastore credentials from the environment.
+  """Get credentials from environment variables.
 
-  Try and fallback on the following credentials in that order:
+  Preference of credentials is:
+  - No credentials if DATASTORE_EMULATOR_HOST is set.
   - Google APIs Signed JWT credentials based on
   DATASTORE_SERVICE_ACCOUNT and DATASTORE_PRIVATE_KEY_FILE
-  environment variables
-  - Compute Engine service account
-  - No credentials (development server)
+  environments variables
+  - Google Application Default
+  https://developers.google.com/identity/protocols/application-default-credentials
 
   Returns:
-    datastore credentials.
+    credentials or None.
+
   """
-  # If DATASTORE_SERVICE_ACCOUNT and DATASTORE_PRIVATE_KEY_FILE
-  # environment variables are defined: use Google APIs Console Service
-  # Accounts (signed JWT). Note that the corresponding service account
-  # should be an admin of the datastore application.
-  service_account = os.getenv('DATASTORE_SERVICE_ACCOUNT')
-  key_path = os.getenv('DATASTORE_PRIVATE_KEY_FILE')
-  if service_account and key_path:
-    with open(key_path, 'rb') as f:
+  if os.getenv(_DATASTORE_USE_STUB_CREDENTIAL_FOR_TEST_ENV):
+    logging.info('connecting without credentials because %s is set.',
+                 _DATASTORE_USE_STUB_CREDENTIAL_FOR_TEST_ENV)
+    return None
+  if os.getenv(_DATASTORE_EMULATOR_HOST_ENV):
+    logging.info('connecting without credentials because %s is set.',
+                 _DATASTORE_EMULATOR_HOST_ENV)
+    return None
+  if (os.getenv(_DATASTORE_SERVICE_ACCOUNT_ENV)
+      and os.getenv(_DATASTORE_PRIVATE_KEY_FILE_ENV)):
+    with open(os.getenv(_DATASTORE_PRIVATE_KEY_FILE_ENV), 'rb') as f:
       key = f.read()
-      credentials = client.SignedJwtAssertionCredentials(
-          service_account, key, connection.SCOPE)
-      logging.info('connecting using DatastoreSignedJwtCredentials')
-      return credentials
-  try:
-    # Fallback on getting Compute Engine credentials from the metadata server
-    # to connect to the datastore service. Note that the corresponding
-    # service account should be an admin of the datastore application.
-    credentials = gce.AppAssertionCredentials(connection.SCOPE)
-    http = httplib2.Http()
-    credentials.authorize(http)
-    # Force first credentials refresh to detect if we are running on
-    # Compute Engine.
-    credentials.refresh(http)
-    logging.info('connecting using compute credentials')
+    credentials = client.SignedJwtAssertionCredentials(
+        os.getenv(_DATASTORE_SERVICE_ACCOUNT_ENV), key, SCOPE)
+    logging.info('connecting using private key file.')
     return credentials
-  except (client.AccessTokenRefreshError, httplib2.HttpLib2Error):
-    # Fallback on no credentials if no DATASTORE_ environment
-    # variables are defined and Compute Engine auth failed. Note that
-    # it will only authorize calls to the development server.
-    logging.info('connecting using no credentials')
-    return None
+  try:
+    credentials = client.GoogleCredentials.get_application_default()
+    credentials = credentials.create_scoped(SCOPE)
+    logging.info('connecting using Google Application Default Credentials.')
+    return credentials
+  except client.ApplicationDefaultCredentialsError, e:
+    logging.error('Unable to find any credentials to use. '
+                  'If you are running locally, make sure to set the '
+                  '%s environment variable.', _DATASTORE_EMULATOR_HOST_ENV)
+    raise e
 
-def get_dataset_from_env():
-  """Get datastore dataset_id from the environment.
 
-  Try and fallback on the following sources in that order:
-  - DATASTORE_DATASET environment variables
-  - Cloud Project ID from Compute Engine metadata server.
-  - None
+def get_project_endpoint_from_env(project_id=None):
+  """Get Datastore project endpoint from environment variables.
+
+  Args:
+    project_id: The cloud project, defaults to the environment
+        variable DATASTORE_PROJECT_ID.
 
   Returns:
-    datastore dataset id.
+    the endpoint to use, for example
+    https://datastore.googleapis.com/v1beta3/projects/my-project
+
+  Raises:
+    ValueError: if the wrong environment variable was set or a project_id was
+        not provided.
   """
-  # If DATASTORE_DATASET environment variable is defined return it.
-  dataset_id = os.getenv('DATASTORE_DATASET')
-  if dataset_id:
-    return dataset_id
-  # Fallback on returning the Cloud Project ID from Compute Engine
-  # metadata server.
-  try:
-    _, content = httplib2.Http().request(
-        'http://metadata/computeMetadata/v1/project/project-id',
-        headers={'X-Google-Metadata-Request': 'True'})
-    return content
-  except httplib2.HttpLib2Error:
-    return None
+  project_id = project_id or os.getenv(_DATASTORE_PROJECT_ID_ENV)
+  if not project_id:
+    raise ValueError('project_id was not provided. Either pass it in '
+                     'directly or set DATASTORE_PROJECT_ID.')
+  # DATASTORE_HOST is deprecated.
+  host = os.getenv(_DATASTORE_HOST_ENV)
+  if host:
+    logging.warning('Ignoring value of environment variable DATASTORE_HOST. '
+                    'To point datastore to a host running locally, use the '
+                    'environment variable DATASTORE_EMULATOR_HOST')
+
+  url_override = os.getenv(_DATASTORE_URL_OVERRIDE_ENV)
+  if url_override:
+    return '%s/projects/%s' % (url_override, project_id)
+
+  localhost = os.getenv(_DATASTORE_EMULATOR_HOST_ENV)
+  if localhost:
+    return ('http://%s/datastore/%s/projects/%s'
+            % (localhost, API_VERSION, project_id))
+
+  return '%s/%s/projects/%s' % (GOOGLEAPIS_URL, API_VERSION, project_id)
+
 
 def add_key_path(key_proto, *path_elements):
   """Add path elements to the given datastore.Key proto message.
 
   Args:
     key_proto: datastore.Key proto message.
-    path_elements: list of ancestors to add to the key.
-    (kind1, id1/name1, ..., kindN, idN/nameN), the last 2 elements
-    represent the entity key, if no terminating id/name: they key
-    will be an incomplete key.
+    *path_elements: list of ancestors to add to the key.
+        (kind1, id1/name1, ..., kindN, idN/nameN), the last 2 elements
+        represent the entity key, if no terminating id/name: they key
+        will be an incomplete key.
 
   Raises:
     TypeError: the given id or name has the wrong type.
@@ -142,7 +176,7 @@ def add_key_path(key_proto, *path_elements):
   """
   for i in range(0, len(path_elements), 2):
     pair = path_elements[i:i+2]
-    elem = key_proto.path_element.add()
+    elem = key_proto.path.add()
     elem.kind = pair[0]
     if len(pair) == 1:
       return  # incomplete key
@@ -158,15 +192,16 @@ def add_key_path(key_proto, *path_elements):
   return key_proto
 
 
-def add_properties(entity_proto, property_dict, indexed=None):
+def add_properties(entity_proto, property_dict, exclude_from_indexes=None):
   """Add values to the given datastore.Entity proto message.
 
   Args:
     entity_proto: datastore.Entity proto message.
     property_dict: a dictionary from property name to either a python object or
-      datastore.Value.
-    indexed: if the property values should be indexed. None leaves indexing as
-      is (defaults to True if value is a python object).
+        datastore.Value.
+    exclude_from_indexes: if the value should be exclude from indexes. None
+        leaves indexing as is (defaults to False if value is not a Value
+        message).
 
   Usage:
     >>> add_properties(proto, {'foo': u'a', 'bar': [1, 2]})
@@ -175,18 +210,18 @@ def add_properties(entity_proto, property_dict, indexed=None):
     TypeError: if a given property value type is not supported.
   """
   for name, value in property_dict.iteritems():
-    set_property(entity_proto.property.add(), name, value, indexed)
+    set_property(entity_proto.properties, name, value, exclude_from_indexes)
 
 
-def set_property(property_proto, name, value, indexed=None):
+def set_property(property_map, name, value, exclude_from_indexes=None):
   """Set property value in the given datastore.Property proto message.
 
   Args:
-    property_proto: datastore.Property proto message.
+    property_map: a string->datastore.Value protobuf map.
     name: name of the property.
     value: python object or datastore.Value.
-    indexed: if the value should be indexed. None leaves indexing as is
-      (defaults to True if value is a python object).
+    exclude_from_indexes: if the value should be exclude from indexes. None
+        leaves indexing as is (defaults to False if value is not a Value message).
 
   Usage:
     >>> set_property(property_proto, 'foo', u'a')
@@ -194,21 +229,20 @@ def set_property(property_proto, name, value, indexed=None):
   Raises:
     TypeError: if the given value type is not supported.
   """
-  property_proto.Clear()
-  property_proto.name = name
-  set_value(property_proto.value, value, indexed)
+  set_value(property_map[name], value, exclude_from_indexes)
 
 
-def set_value(value_proto, value, indexed=None):
+def set_value(value_proto, value, exclude_from_indexes=None):
   """Set the corresponding datastore.Value _value field for the given arg.
 
   Args:
     value_proto: datastore.Value proto message.
     value: python object or datastore.Value. (unicode value will set a
-      datastore string value, str value will set a blob string value).
-      Undefined behavior if value is/contains value_proto.
-    indexed: if the value should be indexed. None leaves indexing as is
-      (defaults to True if value is not a Value message).
+        datastore string value, str value will set a blob string value).
+        Undefined behavior if value is/contains value_proto.
+    exclude_from_indexes: if the value should be exclude from indexes. None
+        leaves indexing as is (defaults to False if value is not a Value
+        message).
 
   Raises:
     TypeError: if the given value type is not supported.
@@ -217,10 +251,11 @@ def set_value(value_proto, value, indexed=None):
 
   if isinstance(value, (list, tuple)):
     for sub_value in value:
-      set_value(value_proto.list_value.add(), sub_value, indexed)
+      set_value(value_proto.array_value.values.add(), sub_value,
+                exclude_from_indexes)
     return  # do not set indexed for a list property.
 
-  if isinstance(value, datastore_v1_pb2.Value):
+  if isinstance(value, entity_pb2.Value):
     value_proto.MergeFrom(value)
   elif isinstance(value, unicode):
     value_proto.string_value = value
@@ -228,26 +263,21 @@ def set_value(value_proto, value, indexed=None):
     value_proto.blob_value = value
   elif isinstance(value, bool):
     value_proto.boolean_value = value
-  elif isinstance(value, int):
-    value_proto.integer_value = value
-  elif isinstance(value, long):
-    # Proto will complain if the value is too large.
+  elif isinstance(value, (int, long)):
     value_proto.integer_value = value
   elif isinstance(value, float):
     value_proto.double_value = value
   elif isinstance(value, datetime.datetime):
-    value_proto.timestamp_microseconds_value = to_timestamp_usec(value)
-  elif isinstance(value, datastore_v1_pb2.Key):
+    to_timestamp(value, value_proto.timestamp_value)
+  elif isinstance(value, entity_pb2.Key):
     value_proto.key_value.CopyFrom(value)
-  elif isinstance(value, datastore_v1_pb2.Entity):
+  elif isinstance(value, entity_pb2.Entity):
     value_proto.entity_value.CopyFrom(value)
   else:
     raise TypeError('value type: %r not supported' % (value,))
 
-  if isinstance(indexed, bool) and indexed:
-    value_proto.ClearField('indexed')  # The default is true.
-  elif indexed is not None:
-    value_proto.indexed = indexed
+  if exclude_from_indexes is not None:
+    value_proto.exclude_from_indexes = exclude_from_indexes
 
 
 def get_value(value_proto):
@@ -260,21 +290,14 @@ def get_value(value_proto):
     the corresponding python object value. timestamps are converted to
     datetime, and datastore.Value is returned for blob_key_value.
   """
-  for f in ('string_value',
-            'blob_value',
-            'boolean_value',
-            'integer_value',
-            'double_value',
-            'key_value',
-            'entity_value'):
-    if value_proto.HasField(f):
-      return getattr(value_proto, f)
-  if value_proto.HasField('timestamp_microseconds_value'):
-    return from_timestamp_usec(value_proto.timestamp_microseconds_value)
-  if value_proto.HasField('blob_key_value'):
-    return value_proto
-  if value_proto.list_value:
-    return [get_value(sub_value) for sub_value in value_proto.list_value]
+  field = value_proto.WhichOneof('value_type')
+  if field in __native_value_types:
+      return getattr(value_proto, field)
+  if field == 'timestamp_value':
+    return from_timestamp(value_proto.timestamp_value)
+  if field == 'array_value':
+    return [get_value(sub_value)
+            for sub_value in value_proto.array_value.values]
   return None
 
 
@@ -291,7 +314,7 @@ def get_property_dict(entity_proto):
   Returns:
     dict of entity properties.
   """
-  return dict((p.name, p.value) for p in entity_proto.property)
+  return dict((p.key, p.value) for p in entity_proto.property)
 
 
 def set_kind(query_proto, kind):
@@ -316,7 +339,9 @@ def add_property_orders(query_proto, *orders):
     proto = query_proto.order.add()
     if order[0] == '-':
       order = order[1:]
-      proto.direction = datastore_v1_pb2.PropertyOrder.DESCENDING
+      proto.direction = query_pb2.PropertyOrder.DESCENDING
+    else:
+      proto.direction = query_pb2.PropertyOrder.ASCENDING
     proto.property.name = order
 
 
@@ -337,7 +362,7 @@ def set_property_filter(filter_proto, name, op, value):
     value: property value
 
   Returns:
-   the same datastore.Filter.
+    the same datastore.Filter.
 
   Usage:
     >>> set_property_filter(filter_proto, 'foo',
@@ -346,7 +371,7 @@ def set_property_filter(filter_proto, name, op, value):
   filter_proto.Clear()
   pf = filter_proto.property_filter
   pf.property.name = name
-  pf.operator = op
+  pf.op = op
   set_value(pf.value, value)
   return filter_proto
 
@@ -369,28 +394,48 @@ def set_composite_filter(filter_proto, op, *filters):
   """
   filter_proto.Clear()
   cf = filter_proto.composite_filter
-  cf.operator = op
+  cf.op = op
   for f in filters:
-    cf.filter.add().CopyFrom(f)
+    cf.filters.add().CopyFrom(f)
   return filter_proto
 
 
 _EPOCH = datetime.datetime.utcfromtimestamp(0)
+_MICROS_PER_SECOND = 1000000L
+_NANOS_PER_MICRO = 1000L
 
 
-def from_timestamp_usec(timestamp):
-  """Convert microsecond timestamp to datetime."""
-  return _EPOCH + datetime.timedelta(microseconds=timestamp)
+def micros_from_timestamp(timestamp):
+  """Convert protobuf Timestamp to microseconds from utc epoch."""
+  return (timestamp.seconds * _MICROS_PER_SECOND
+          + int(timestamp.nanos / _NANOS_PER_MICRO))
 
 
-def to_timestamp_usec(dt):
-  """Convert datetime to microsecond timestamp.
+def from_timestamp(timestamp):
+  """Convert a protobuf Timestamp to datetime."""
+  return _EPOCH + datetime.timedelta(
+      microseconds=micros_from_timestamp(timestamp))
+
+
+def micros_to_timestamp(micros, timestamp):
+  """Convert microseconds from utc epoch to google.protobuf.timestamp.
+
+  Args:
+    micros: a long, number of microseconds since utc epoch.
+    timestamp: a google.protobuf.timestamp.Timestamp to populate.
+  """
+  seconds = long(micros / _MICROS_PER_SECOND)
+  micro_remainder = micros % _MICROS_PER_SECOND
+  timestamp.seconds = seconds
+  timestamp.nanos = micro_remainder * _NANOS_PER_MICRO
+
+
+def to_timestamp(dt, timestamp):
+  """Convert datetime to google.protobuf.Timestamp.
 
   Args:
     dt: a timezone naive datetime.
-
-  Returns:
-    a microsecond timestamp as a long.
+    timestamp: a google.protobuf.Timestamp to populate.
 
   Raises:
     TypeError: if a timezone aware datetime was provided.
@@ -399,4 +444,5 @@ def to_timestamp_usec(dt):
     # this is an "aware" datetime with an explicit timezone. Throw an error.
     raise TypeError('Cannot store a timezone aware datetime. '
                     'Convert to UTC and store the naive datetime.')
-  return long(calendar.timegm(dt.timetuple()) * 1000000L) + dt.microsecond
+  timestamp.seconds = calendar.timegm(dt.timetuple())
+  timestamp.nanos = dt.microsecond * _NANOS_PER_MICRO

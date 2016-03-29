@@ -17,9 +17,7 @@
 """Adams datastore demo.
 
 Usage:
-export DATASTORE_SERVICE_ACCOUNT=..  # not required on
-export DATASTORE_PRIVATE_KEY_FILE=.. # Google Compute Engine
-adams.py <DATASET_ID>
+adams.py <PROJECT_ID>
 """
 import logging
 import sys
@@ -28,12 +26,12 @@ import googledatastore as datastore
 from googledatastore.helper import *
 
 def main():
-  # Set dataset id from command line argument.
+  # Set project id from command line argument.
   if len(sys.argv) < 2:
-    print 'Usage: adams.py <DATASET_ID>'
+    print 'Usage: adams.py <PROJECT_ID>'
     sys.exit(1)
-  # Set the dataset from the command line parameters.
-  datastore.set_options(dataset=sys.argv[1])
+  # Set the project from the command line parameters.
+  datastore.set_options(project_id=sys.argv[1])
   try:
     # Create a RPC request to begin a new transaction.
     req = datastore.BeginTransactionRequest()
@@ -45,12 +43,12 @@ def main():
     req = datastore.LookupRequest()
     # Create a new entity key.
     key = datastore.Key()
-    # Set the entity key with only one `path_element`: no parent.
-    path = key.path_element.add()
-    path.kind = 'Trivia'
-    path.name = 'hgtg'
+    # Set the entity key with only one `path` element: no parent.
+    elem = key.path.add()
+    elem.kind = 'Trivia'
+    elem.name = 'hgtg'
     # Add one key to the lookup request.
-    req.key.extend([key])
+    req.keys.extend([key])
     # Set the transaction, so we get a consistent snapshot of the
     # entity at the time the transaction started.
     req.read_options.transaction = tx
@@ -65,27 +63,22 @@ def main():
       entity = resp.found[0].entity
     else:
       # If no entity was found, insert a new one in the commit request mutation.
-      entity = req.mutation.insert.add()
+      entity = req.mutations.add().insert
       # Copy the entity key.
       entity.key.CopyFrom(key)
       # Add two entity properties:
       # - a utf-8 string: `question`
-      prop = entity.property.add()
-      prop.name = 'question'
-      prop.value.string_value = 'Meaning of life?'
+      entity.properties['question'].string_value ='Meaning of life?'
       # - a 64bit integer: `answer`
-      prop = entity.property.add()
-      prop.name = 'answer'
-      prop.value.integer_value = 42
+      prop = entity.properties['answer'].integer_value = 42
     # Execute the Commit RPC synchronously and ignore the response:
     # Apply the insert mutation if the entity was not found and close
     # the transaction.
     datastore.commit(req)
-    props = get_property_dict(entity)
     # Get question property value.
-    question = props['question'].string_value
+    question = entity.properties['question'].string_value
     # Get answer property value.
-    answer = props['answer'].integer_value
+    answer = entity.properties['answer'].integer_value
     # Print the question and read one line from stdin.
     print question
     result = raw_input('> ')
@@ -96,15 +89,13 @@ def main():
       print "Don't Panic!"
   except datastore.RPCError as e:
     # RPCError is raised if any error happened during a RPC.
-    # It includes the `method` called and the `reason` of the
-    # failure as well as the original `HTTPResponse` object.
+    # It includes the `method` called, the canonical error code `code`,
+    # and the `message` of the failure.
     logging.error('Error while doing datastore operation')
     logging.error('RPCError: %(method)s %(reason)s',
                   {'method': e.method,
-                   'reason': e.reason})
-    logging.error('HTTPError: %(status)s %(reason)s',
-                  {'status': e.response.status,
-                   'reason': e.response.reason})
+                   'code': e.code,
+                   'reason': e.message})
     return
 
 if __name__ == '__main__':

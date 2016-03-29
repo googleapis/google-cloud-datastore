@@ -1,7 +1,7 @@
 googledatastore
 ===============
 
-Google Cloud Datastore Protobuf Buffers client.
+Google Cloud Datastore Protocol Buffer client.
 
 Google Cloud Datastore is a fully managed, schemaless, non-relational
 datastore accessible through Google APIs infrastructure. It provides
@@ -13,11 +13,11 @@ Usage
 .. code-block:: pycon
 
     >>> import googledatastore as datastore
-    >>> datastore.set_options(dataset='dataset-id')
+    >>> datastore.set_options(project_id='project-id')
     >>> req = datastore.BeginTransactionRequest()
     >>> datastore.begin_transaction(req)
-    <datastore.datastore_v1_pb2.BeginTransactionResponse object at ...>
-    
+    <google.datastore.v1beta3.datastore-pb2.BeginTransactionResponse ...>
+
 
 Installation
 ------------
