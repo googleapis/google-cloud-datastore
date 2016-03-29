@@ -24,34 +24,12 @@ resources related to Google Cloud Datastore:
 
 ## Client libraries
 
-### JSON
-
-- [Node.js][17]:
-
-```
-npm install googleapis
-```
-
-- [Ruby (google-api-client)][23]
-
-```
-gem install google-api-client
-```
-
-- [Ruby (ActiveDatastore)][22] (v1beta2)
-
-```
-gem install active_datastore
-```
-
-- [[Add yours here][16]]
-
 ### Proto
 
 - [Python][18] ([readthedocs][19]):
 
 ```
-pip install googledatastore
+pip install --pre googledatastore
 ```
 
 - Maven/Java:
@@ -60,7 +38,7 @@ pip install googledatastore
 <dependency>
   <groupId>com.google.cloud.datastore</groupId>
   <artifactId>datastore-v1beta3-proto-client</artifactId>
-  <version>0.0.1-SNAPSHOT</version>
+  <version>1.0.0-beta</version>
 </dependency>
 ```
 
@@ -92,8 +70,8 @@ pip install googledatastore
 [1]: python/demos/trivial/adams.py
 [2]: java/demos/src/main/java/com/google/datastore/v1beta3/demos/trivial/Adams.java
 [4]: https://cloud.google.com/datastore
-[5]: https://cloud.google.com/datastore/reference/rest/index
-[6]: https://cloud.google.com/datastore/reference/rpc/index
+[5]: https://cloud.google.com/datastore/reference/rest
+[6]: https://cloud.google.com/datastore/reference/rpc
 [7]: CONTRIB.md
 [8]: LICENSE
 [9]: python

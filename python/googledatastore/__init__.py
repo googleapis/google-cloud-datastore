@@ -48,8 +48,8 @@ from google.rpc.status_pb2 import Status
 from google.rpc import code_pb2
 from google.type.latlng_pb2 import LatLng
 
-__version__ = '4.0.0b1'
-VERSION = (4, 0, 0, 'b1')
+__version__ = '5.0.0-beta'
+VERSION = (5, 0, 0, 'beta')
 
 _conn_holder = {}  # thread id -> thread-local connection.
 _options = {}  # Global options.

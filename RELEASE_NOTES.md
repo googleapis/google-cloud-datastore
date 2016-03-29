@@ -8,16 +8,16 @@ Starting with the v1beta3 release:
 
 ## Java Client
 
-### java-v1beta3-1.0.0
+### java-v1beta3-1.0.0-beta
 
   - Support for [Google Application Default Credentials](https://developers.google.com/identity/protocols/application-default-credentials).
   - Fixes:
     https://github.com/GoogleCloudPlatform/google-cloud-datastore/issues/37
   - Environment variable `DATASTORE_DATASET_ID` is now `DATASTORE_PROJECT_ID`.
-  - Environment variable `DATASTORE_HOST` is now `DATASTORE_LOCAL_HOST` and
+  - Environment variable `DATASTORE_HOST` is now `DATASTORE_EMULATOR_HOST` and
     its value no longer includes the URL scheme. For example:
 
-      `DATASTORE_LOCAL_HOST=localhost:8080`
+      `DATASTORE_EMULATOR_HOST=localhost:8080`
 
     instead of:
 
@@ -40,16 +40,16 @@ Starting with the v1beta3 release:
 
 ## Python Client
 
-### python-4.0.0b1 (v1beta3)
+### python-5.0.0-beta (v1beta3)
 
   - Support for [Google Application Default Credentials](https://developers.google.com/identity/protocols/application-default-credentials).
   - Fixes:
     <https://github.com/GoogleCloudPlatform/google-cloud-datastore/issues/37>
   - Environment variable `DATASTORE_DATASET_ID` is now `DATASTORE_PROJECT_ID`.
-  - Environment variable `DATASTORE_HOST` is now `DATASTORE_LOCAL_HOST` and
+  - Environment variable `DATASTORE_HOST` is now `DATASTORE_EMULATOR_HOST` and
     its value no longer includes the URL scheme. For example:
 
-      `DATASTORE_LOCAL_HOST=localhost:8080`
+      `DATASTORE_EMULATOR_HOST=localhost:8080`
 
     instead of:
 
