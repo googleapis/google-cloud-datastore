@@ -38,13 +38,12 @@ DELETE /todos
 <
 
 Usage:
-DATASTORE_SERVICE_ACCOUNT=.. DATASTORE_PRIVATE_KEY_FILE=.. \
-todos.py <DATASET_ID>
+todos.py <PROJECT_ID>
 Then browse http://localhost:5000/static/index.html
 """
 
 
-from datetime import datetime
+import datetime
 import json
 import sys
 
@@ -55,6 +54,8 @@ from flask import request
 import googledatastore as datastore
 from googledatastore.helper import *
 
+
+_EPOCH = datetime.datetime.utcfromtimestamp(0)
 
 class TodoList(object):
   """Todo list model."""
@@ -73,7 +74,7 @@ class TodoList(object):
   def save(self):
     req = datastore.CommitRequest()
     req.mode = datastore.CommitRequest.NON_TRANSACTIONAL
-    entity = req.mutation.upsert.add()
+    entity = req.mutations.add().upsert
     add_key_path(entity.key, *self.key_path)
     datastore.commit(req)
     return self
@@ -91,7 +92,7 @@ class Todo(object):
             'id': obj.id,
             'text': obj.text,
             'done': obj.done,
-            'created': to_timestamp_usec(obj.created)/1e6
+            'created': int((obj.created - _EPOCH).total_seconds() * 1000000)
             }
       return json.JSONEncoder.default(self, obj)
 
@@ -100,22 +101,23 @@ class Todo(object):
     self.text = params['text']
     self.done = params.get('done', False)
     created = params.get('created', None)
-    if isinstance(created, float):
-      self.created = from_timestamp_usec(created*1e6)
-    elif isinstance(created, datetime):
+    if isinstance(created, (float, int)):
+      self.created = _EPOCH + datetime.timedelta(microseconds=created)
+    elif isinstance(created, datetime.datetime):
       self.created = created
     else:
-      self.created = datetime.now()
+      self.created = datetime.datetime.now()
 
   @classmethod
   def from_proto(cls, entity):
-    d = {'id': entity.key.path_element[-1].id}
-    d.update((p.name, get_value(p.value)) for p in entity.property)
+    d = {'id': entity.key.path[-1].id}
+    d.update((name, get_value(value))
+             for name, value in entity.properties.iteritems())
     return Todo(d)
 
   def to_proto(self):
     entity = datastore.Entity()
-    entity.key.path_element.extend(default_todo_list.key.path_element)
+    entity.key.path.extend(default_todo_list.key.path)
     if self.id:
       add_key_path(entity.key, 'Todo', self.id)
     else:
@@ -127,16 +129,17 @@ class Todo(object):
 
   @classmethod
   def get_all(cls):
-    """Query for all Todo items ordered by creation date."""
+    """Query for all Todo items ordered by creation date.
+
+    This method is eventually consistent to avoid the need for an extra index.
+    """
 
     req = datastore.RunQueryRequest()
     q = req.query
     set_kind(q, kind='Todo')
-    set_property_filter(q.filter, '__key__',
-                        datastore.PropertyFilter.HAS_ANCESTOR,
-                        default_todo_list.key)
+    add_property_orders(q, 'created')
     resp = datastore.run_query(req)
-    todos = [Todo.from_proto(r.entity) for r in resp.batch.entity_result]
+    todos = [Todo.from_proto(r.entity) for r in resp.batch.entity_results]
     return todos
 
   @classmethod
@@ -160,10 +163,10 @@ class Todo(object):
                              '__key__', datastore.PropertyFilter.HAS_ANCESTOR,
                              default_todo_list.key))
     resp = datastore.run_query(req)
-    keys = [r.entity.key for r in resp.batch.entity_result]
     req = datastore.CommitRequest()
     req.transaction = tx
-    req.mutation.delete.extend(keys)
+    for result in resp.batch.entity_results:
+      req.mutations.add().delete.CopyFrom(result.entity.key)
     resp = datastore.commit(req)
     return ''
 
@@ -171,18 +174,14 @@ class Todo(object):
     """Update or insert a Todo item."""
     req = datastore.CommitRequest()
     req.mode = datastore.CommitRequest.NON_TRANSACTIONAL
-    proto = self.to_proto()
-    mutation = req.mutation.upsert if self.id else req.mutation.insert_auto_id
-    mutation.extend([proto])
+    req.mutations.add().upsert.CopyFrom(self.to_proto())
     resp = datastore.commit(req)
     if not self.id:
-      keys = resp.mutation_result.insert_auto_id_key
-      self.id = keys[0].path_element[-1].id
+      self.id = resp.mutation_results[0].key.path[-1].id
     return self
 
 
 app = Flask(__name__)
-default_todo_list = TodoList('default').save()
 
 @app.route('/todos', methods=['GET', 'POST', 'DELETE'])
 def TodoService():
@@ -197,13 +196,15 @@ def TodoService():
     abort(405)
   except datastore.RPCError as e:
     app.logger.error(str(e))
-    abort(e.response.status)
+    abort(-1)
 
 
 if __name__ == '__main__':
-  # Set dataset from command line argument.
+  # Set project from command line argument.
   if len(sys.argv) < 2:
-    print 'Usage: todos.py <DATASET_ID>'
+    print 'Usage: todos.py <PROJECT_ID>'
     sys.exit(1)
-  datastore.set_options(dataset=sys.argv[1])
+  datastore.set_options(project_id=sys.argv[1])
+  default_todo_list = TodoList('default').save()
+  print 'Application running, visit localhost:5000/static/index.html'
   app.run(host='0.0.0.0', debug=True)

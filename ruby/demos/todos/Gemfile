@@ -1,5 +1,0 @@
-source "https://rubygems.org"
-
-gem 'sinatra'
-gem 'active_datastore', '~> 0.0.4'
-gem 'http_logger'
