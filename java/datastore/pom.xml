@@ -25,7 +25,9 @@
   <name>${project.groupId}:${project.artifactId}</name>
 
   <packaging>jar</packaging>
-
+  <description>
+    Low level client for accessing Google Cloud Datastore v1beta3.
+  </description>
   <parent>
     <groupId>com.google.cloud.datastore</groupId>
     <artifactId>datastore-v1beta3-proto-client-parent</artifactId>
@@ -97,6 +99,11 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-javadoc-plugin</artifactId>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-gpg-plugin</artifactId>
       </plugin>
     </plugins>
   </build>
