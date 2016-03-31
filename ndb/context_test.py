@@ -1536,64 +1536,16 @@ class ContextV3Tests(ContextTestMixin,
 
 
 @real_unittest.skipUnless(datastore_pbs._CLOUD_DATASTORE_ENABLED,
-                          "V1 must be supported to run V1 tests.")
-class ContextV1WithRemoteAPITests(ContextTestMixin,
-                                 ContextMemcacheTestMixin,
-                                 ContextTaskQueueTestMixin,
-                                 test_utils.NDBCloudDatastoreV1Test):
-  """Context tests that use a Cloud Datastore V1 connection.
-
-  These tests run with memcache and taskqueue stubs available."""
-
-  def setUp(self):
-    super(ContextV1WithRemoteAPITests, self).setUp()
-    self.testbed.init_memcache_stub()
-    self.testbed.init_taskqueue_stub()
-    self.HRTest()
-    MyAutoBatcher.reset_log()
-    self.ctx = self.MakeContext(default_model=model.Expando,
-                                auto_batcher_class=MyAutoBatcher)
-    tasklets.set_context(self.ctx)
-
-  def make_bad_transaction(*arg, **kwargs):
-    return ''
-
-  def testContext_TransactionAddTask(self):
-    # Transactional AddTask still will be unavailable.
-    self.ExpectWarnings()
-    key = model.Key('Foo', 1)
-
-    @tasklets.tasklet
-    def foo():
-      ent = model.Expando(key=key, bar=1)
-
-      @tasklets.tasklet
-      def callback():
-        ctx = tasklets.get_context()
-        yield ctx.put(ent)
-        taskqueue.add(url='/', transactional=True)
-      yield self.ctx.transaction(callback)
-    self.assertRaises(ValueError, foo().check_success)
-
-  def MakeContext(self, *args, **kwargs):
-    ctx = super(ContextV1WithRemoteAPITests, self).MakeContext(*args, **kwargs)
-    # Re-enable default cache policy.
-    ctx.set_cache_policy(None)
-    ctx.set_memcache_policy(None)
-    return ctx
-
-@real_unittest.skipUnless(datastore_pbs._CLOUD_DATASTORE_ENABLED,
-                          "V1 must be supported to run V1 tests.")
+                          'V1 must be supported to run V1 tests.')
 class ContextV1Tests(ContextTestMixin,
                      test_utils.NDBCloudDatastoreV1Test):
   """Context tests that use a Cloud Datastore V1 connection.
 
-  These tests run with memcache and taskqueue stubs available."""
+  These tests run with memcache and taskqueue stubs available.
+  """
 
   def setUp(self):
     super(ContextV1Tests, self).setUp()
-    self.testbed.init_memcache_stub()
-    self.testbed.init_taskqueue_stub()
     self.HRTest()
     MyAutoBatcher.reset_log()
     self.ctx = self.MakeContext(default_model=model.Expando,
@@ -1603,22 +1555,20 @@ class ContextV1Tests(ContextTestMixin,
   def make_bad_transaction(*arg, **kwargs):
     return ''
 
+  def testContext_AutoBatcher_Errors(self):
+    # Performs tests via direct memcache call, which is disabled by default
+    # in V1.
+    pass
+
+  def testContext_AllocateIds(self):
+    # V1 does not support Allocate id range.
+    pass
+
   def testContext_TransactionAddTask(self):
     # Transactional AddTask still will be unavailable.
-    self.ExpectWarnings()
-    key = model.Key('Foo', 1)
-
-    @tasklets.tasklet
     def foo():
-      ent = model.Expando(key=key, bar=1)
-
-      @tasklets.tasklet
-      def callback():
-        ctx = tasklets.get_context()
-        yield ctx.put(ent)
-        taskqueue.add(url='/', transactional=True)
-      yield self.ctx.transaction(callback)
-    self.assertRaises(ValueError, foo().check_success)
+      taskqueue.add(url='/', transactional=True)
+    self.assertRaises(ValueError, model.transaction, foo)
 
   def MakeContext(self, *args, **kwargs):
     ctx = super(ContextV1Tests, self).MakeContext(*args, **kwargs)
@@ -1626,6 +1576,52 @@ class ContextV1Tests(ContextTestMixin,
     # the stub is not enabled.
     ctx.set_cache_policy(None)
     return ctx
+
+
+@real_unittest.skipUnless(datastore_pbs._CLOUD_DATASTORE_ENABLED,
+                          'V1 must be supported to run V1 tests.')
+class ContextV1WithRemoteAPITests(ContextV1Tests,
+                                  ContextMemcacheTestMixin,
+                                  ContextTaskQueueTestMixin):
+  """Context tests that use a Cloud Datastore V1 connection.
+
+  These tests run with memcache and taskqueue stubs available.
+  """
+
+  def setUp(self):
+    # testbed needs to get set up first.
+    super(ContextV1WithRemoteAPITests, self).setUp()
+    self.testbed.init_memcache_stub()
+    self.testbed.init_taskqueue_stub()
+
+  def testContext_AutoBatcher_Errors(self):
+    # Test that errors are properly distributed over all Futures.
+    self.ExpectWarnings()
+
+    class Blobby(model.Model):
+      blob = model.BlobProperty()
+    ent1 = Blobby()
+    ent2 = Blobby(blob='x' * 2000000)
+    fut1 = self.ctx.put(ent1)
+    fut2 = self.ctx.put(ent2)  # Error
+    err1 = fut1.get_exception()
+    err2 = fut2.get_exception()
+    self.assertTrue(isinstance(err1, datastore_errors.BadRequestError))
+    self.assertTrue(err1 is err2)
+    # Try memcache as well (different tasklet, different error).
+    fut1 = self.ctx.memcache_set('key1', 'x')
+    fut2 = self.ctx.memcache_set('key2', 'x' * 1000001)
+    err1 = fut1.get_exception()
+    err2 = fut1.get_exception()
+    self.assertTrue(isinstance(err1, ValueError))
+    self.assertTrue(err1 is err2)
+
+  def MakeContext(self, *args, **kwargs):
+    ctx = super(ContextV1WithRemoteAPITests, self).MakeContext(*args, **kwargs)
+    # Re-enable memcache.
+    ctx.set_memcache_policy(None)
+    return ctx
+
 
 class ContextFutureCachingTests(test_utils.NDBTest):
   # See issue 62.  http://goo.gl/5zLkK
