@@ -3,7 +3,7 @@
 Starting with the v1beta3 release:
 
   - Release notes for the API and `gcd` tool can be found at:
-    <https://cloud.google.com.com/datastore/docs/release-notes>
+    <https://cloud.google.com/datastore/release-notes>
   - Release notes are grouped by library.
 
 ## Java Client
