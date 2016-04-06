@@ -29,8 +29,6 @@ __all__ = [
     'Datastore',
     'Error',
     'RPCError',
-    'AuthError',
-    'BadArgumentError'
 ]
 
 
@@ -181,7 +179,6 @@ class Datastore(object):
       Deserialized resp_class protobuf message instance.
 
     Raises:
-      BadArgumentError: No project has been defined.
       RPCError: The rpc method call failed.
     """
     payload = req.SerializeToString()
@@ -235,13 +232,3 @@ class RPCError(Error):
     super(RPCError, self).__init__(self._failure_format.format(
         method=method,
         message=message))
-
-
-class AuthError(Error):
-  """Authentication failed."""
-  pass
-
-
-class BadArgumentError(Error):
-  """Argument validation failed."""
-  pass
