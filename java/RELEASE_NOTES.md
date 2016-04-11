@@ -1,6 +1,11 @@
 # Java Client
 
-## java-v1beta3-1.0.0-beta
+## v1beta3-1.0.0-beta.1
+ 
+  - Use try-with-resource to close RPC streams.
+  - Removed unnecessary logging information.
+
+## v1beta3-1.0.0-beta
 
   - Support for [Google Application Default Credentials](https://developers.google.com/identity/protocols/application-default-credentials).
   - Fixes:
@@ -14,7 +19,7 @@
     instead of:
 
       `DATASTORE_HOST=http://localhost:8080`
-- `DatastoreHelper.getOptionsFromEnv()` now
+  - `DatastoreHelper.getOptionsFromEnv()` now
     supports automatic detection of the project ID when running on
     Compute Engine.
   - The client and generated proto classes are now in the

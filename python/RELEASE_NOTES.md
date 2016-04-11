@@ -1,7 +1,12 @@
 # Python Client
 
-## python-5.0.0-beta (v1beta3)
+## 5.0.0-beta1
 
+  - Upgraded proto library to 1.0.0.beta.2.
+
+## 5.0.0-beta
+ 
+  - Support for [Google Cloud Datastore API v1beta3](https://cloud.google.com/datastore/reference/rpc/)
   - Support for [Google Application Default Credentials](https://developers.google.com/identity/protocols/application-default-credentials).
   - Fixes:
     <https://github.com/GoogleCloudPlatform/google-cloud-datastore/issues/37>
