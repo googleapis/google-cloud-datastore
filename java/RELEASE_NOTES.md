@@ -1,5 +1,9 @@
 # Java Client
 
+## v1beta3-1.0.0-beta.2
+
+  - Allow IP address to be used in local host option.
+
 ## v1beta3-1.0.0-beta.1
  
   - Use try-with-resource to close RPC streams.
