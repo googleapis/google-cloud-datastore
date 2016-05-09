@@ -20,7 +20,7 @@
 
   <groupId>com.google.cloud.datastore</groupId>
   <artifactId>datastore-v1beta3-proto-client-parent</artifactId>
-  <version>1.0.0-beta.1</version>
+  <version>1.0.0-beta.2</version>
 
   <name>${project.groupId}:${project.artifactId}</name>
   <url>https://cloud.google.com/datastore/</url>
