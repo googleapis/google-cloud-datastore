@@ -4,7 +4,7 @@ googledatastore
 Google Cloud Datastore Protocol Buffer client.
 
 Google Cloud Datastore is a fully managed, schemaless, non-relational
-datastore accessible through Google APIs infrastructure. It provides
+database accessible through Google APIs infrastructure. It provides
 a rich set of query capabilities, supports atomic transactions, and
 automatically scales up and down in response to load.
 
@@ -27,7 +27,7 @@ Installation
 
 Documentation
 -------------
-https://developers.google.com/datastore
+https://cloud.google.com/datastore/docs/
 
 Contribute
 ----------
