@@ -106,6 +106,12 @@ _logging_debug = utils.logging_debug
 
 _CALLBACK_KEY = '__CALLBACK__'
 
+# Python 2.5 compatability.
+if hasattr(weakref, 'WeakSet'):
+  _set = weakref.WeakSet
+else:
+  _set = set
+
 
 def _is_generator(obj):
   """Helper to test for a generator object.
@@ -122,20 +128,25 @@ class _State(utils.threading_local):
   def __init__(self):
     super(_State, self).__init__()
     self.current_context = None
-    self.all_generators = weakref.WeakSet()
+    self.all_generators = _set()
     self.all_pending = set()
 
   def set_context(self, ctx):
-    if _request_callback and _CALLBACK_KEY not in os.environ:
-      _request_callback.SetRequestEndCallback(self.reset)
-      os.environ[_CALLBACK_KEY] = '1'
     self.current_context = ctx
 
   def add_generator(self, gen):
+    if _request_callback and _CALLBACK_KEY not in os.environ:
+      _request_callback.SetRequestEndCallback(self.reset)
+      os.environ[_CALLBACK_KEY] = '1'
+
     _logging_debug('all_generators: add %s', gen)
     self.all_generators.add(gen)
 
   def add_pending(self, fut):
+    if _request_callback and _CALLBACK_KEY not in os.environ:
+      _request_callback.SetRequestEndCallback(self.reset)
+      os.environ[_CALLBACK_KEY] = '1'
+
     _logging_debug('all_pending: add %s', fut)
     self.all_pending.add(fut)
 
@@ -172,7 +183,7 @@ class _State(utils.threading_local):
       pending.append(line)
     return '\n'.join(pending)
 
-  def reset(self):
+  def reset(self, unused_req_id):
     self.current_context = None
     ev = eventloop.get_event_loop()
     ev.clear()

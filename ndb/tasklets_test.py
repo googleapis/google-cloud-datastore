@@ -855,31 +855,50 @@ class CloudDatastoreContextCreationTests(test_utils.NDBCloudDatastoreV1Test):
   def setUp(self):
     super(CloudDatastoreContextCreationTests, self).setUp()
     self.HRTest()
-    self.ctx = tasklets._make_cloud_datastore_context(self.APP_ID)
-    tasklets.set_context(self.ctx)
-
-  def testCloudDatastoreContext(self):
+    self.old_env = dict(os.environ)
     del os.environ['APPLICATION_ID']  # Clear APPLICATION_ID for test.
+
+  def tearDown(self):
+    super(CloudDatastoreContextCreationTests, self).setUp()
+    os.environ.clear()
+    os.environ.update(self.old_env)
+
+  def testCloudDatastoreContext_ProjectIdNotSufficient(self):
     os.environ['DATASTORE_PROJECT_ID'] = 'project'
     # Setting just a project id isn't enough info.
     self.assertRaisesRegexp(ValueError,
                             'Could not determine app id\..*',
                             tasklets.make_default_context)
-    # Unless the override is specified.
-    os.environ['DATASTORE_USE_PROJECT_ID_AS_APP_ID'] = 'True'
+
+  def testCloudDatastoreContext_UseProjectIdAsAppId(self):
+    os.environ['DATASTORE_PROJECT_ID'] = 'project'
+    os.environ['DATASTORE_USE_PROJECT_ID_AS_APP_ID'] = 'true'
     ctx = tasklets.make_default_context()
     self.assertEqual(datastore_rpc._CLOUD_DATASTORE_V1, ctx._conn._api_version)
+
+  def testCloudDatastoreContext_AppIdAndUseProjectIdAsAppId(self):
+    os.environ['DATASTORE_PROJECT_ID'] = 'project'
+    os.environ['DATASTORE_USE_PROJECT_ID_AS_APP_ID'] = 'true'
     os.environ['DATASTORE_APP_ID'] = 's~project'
     # App id and override should not both be specified
     self.assertRaisesRegexp(ValueError,
                             'App id was provided .* but .* was set to true\.',
                             tasklets.make_default_context)
-    del os.environ['DATASTORE_USE_PROJECT_ID_AS_APP_ID']
+
+  def testCloudDatastoreContext_AppId(self):
+    os.environ['DATASTORE_PROJECT_ID'] = 'project'
+    os.environ['DATASTORE_APP_ID'] = 's~project'
     ctx = tasklets.make_default_context()
     self.assertEqual(datastore_rpc._CLOUD_DATASTORE_V1, ctx._conn._api_version)
+
+  def testCloudDatastoreContext_DifferentAppId(self):
+    os.environ['DATASTORE_PROJECT_ID'] = 'project'
     os.environ['DATASTORE_APP_ID'] = 's~anotherproject'
     # The provided app id must resolve to the provided project id.
     self.assertRaises(ValueError, tasklets.make_default_context)
+
+  def testCloudDatastoreContext_ManyAppIds(self):
+    os.environ['DATASTORE_PROJECT_ID'] = 'project'
     os.environ['DATASTORE_APP_ID'] = 's~project'
     os.environ['DATASTORE_ADDITIONAL_APP_IDS'] = 's~anotherapp,s~andanother'
     ctx = tasklets.make_default_context()
@@ -895,6 +914,9 @@ class CloudDatastoreContextCreationTests(test_utils.NDBCloudDatastoreV1Test):
     self.assertRaises(ValueError, tasklets.make_default_context)
 
   def testContext_MemcacheUnavailable(self):
+    os.environ['DATASTORE_PROJECT_ID'] = self.APP_ID
+    os.environ['DATASTORE_USE_PROJECT_ID_AS_APP_ID'] = 'true'
+    tasklets.set_context(tasklets.make_default_context())
     key = model.Key('Foo', 1)
     ent = model.Expando(key=key, bar=1)
     ctx = tasklets.get_context()
@@ -902,6 +924,9 @@ class CloudDatastoreContextCreationTests(test_utils.NDBCloudDatastoreV1Test):
     self.assertRaises(NotImplementedError, ctx.put(ent).get_result)
 
   def testContext_TaskQueueUnavailable(self):
+    os.environ['DATASTORE_PROJECT_ID'] = self.APP_ID
+    os.environ['DATASTORE_USE_PROJECT_ID_AS_APP_ID'] = 'true'
+    tasklets.set_context(tasklets.make_default_context())
     self.assertRaises(NotImplementedError, taskqueue.add, url='/')
 
 

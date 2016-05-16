@@ -22,6 +22,7 @@ and other environment variables.
 
 import logging
 import tempfile
+import os
 
 from .google_imports import apiproxy_stub_map
 from .google_imports import datastore
@@ -178,6 +179,10 @@ class NDBCloudDatastoreV1Test(NDBBaseTest):
 
   def setUp(self):
     super(NDBCloudDatastoreV1Test, self).setUp()
+    # The host doesn't get used since we override the stub, however the
+    # existence of this environment variable can break if we try to get
+    # credentials.
+    os.environ['DATASTORE_EMULATOR_HOST'] = 'localhost:1234'
     self.datastore.Clear()
     stub = cloud_datastore_v1_remote_stub.CloudDatastoreV1RemoteStub(
         self.datastore.GetDatastore())

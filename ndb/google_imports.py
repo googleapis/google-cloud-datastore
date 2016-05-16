@@ -88,9 +88,17 @@ if normal_environment:
   from google.appengine.ext import db
   from google.appengine.ext import gql
   try:
+    # For the python-compat runtime.
     from google.appengine.ext.vmruntime import callback
   except ImportError:
-    callback = None
+    # For the python 2.7 runtime.
+    try:
+      from google.appengine.runtime import apiproxy as callback
+      # Python 2.5 and dev_appserver is not supported.
+      if not hasattr(callback, 'SetRequestEndCallback'):
+        callback = None
+    except ImportError:
+      callback = None
   from google.appengine.runtime import apiproxy_errors
   from google.net.proto import ProtocolBuffer
 else:
