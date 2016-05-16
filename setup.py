@@ -20,8 +20,7 @@ from setuptools import find_packages
 
 
 REQUIREMENTS = [
-    # This requirement will eventually be 'googledatastore==4.0.0b1'.
-    'testing-v1beta3-googledatastore==4.0.0b4',
+    'googledatastore==5.0.0b0',
 ]
 TEST_REQUIREMENTS = [
     'portpicker',
