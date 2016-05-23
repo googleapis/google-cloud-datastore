@@ -457,6 +457,9 @@ class ParameterNode(Node):
     obj.__param = param
     return obj
 
+  def __getnewargs__(self):
+    return self.__prop, self.__op, self.__param
+
   def __repr__(self):
     return 'ParameterNode(%r, %r, %r)' % (self.__prop, self.__op, self.__param)
 
@@ -505,6 +508,9 @@ class FilterNode(Node):
     self.__value = value
     return self
 
+  def __getnewargs__(self):
+    return self.__name, self.__opsymbol, self.__value
+
   def __repr__(self):
     return '%s(%r, %r, %r)' % (self.__class__.__name__,
                                self.__name, self.__opsymbol, self.__value)
@@ -543,13 +549,16 @@ class PostFilterNode(Node):
     self.predicate = predicate
     return self
 
+  def __getnewargs__(self):
+    return self.predicate,
+
   def __repr__(self):
     return '%s(%s)' % (self.__class__.__name__, self.predicate)
 
   def __eq__(self, other):
     if not isinstance(other, PostFilterNode):
       return NotImplemented
-    return self is other
+    return self is other or self.__dict__ == other.__dict__
 
   def _to_filter(self, post=False):
     if post:
@@ -597,6 +606,9 @@ class ConjunctionNode(Node):
     self = super(ConjunctionNode, cls).__new__(cls)
     self.__nodes = clauses[0]
     return self
+
+  def __getnewargs__(self):
+    return tuple(self.__nodes)
 
   def __iter__(self):
     return iter(self.__nodes)
@@ -658,6 +670,9 @@ class DisjunctionNode(Node):
       else:
         self.__nodes.append(node)
     return self
+
+  def __getnewargs__(self):
+    return tuple(self.__nodes)
 
   def __iter__(self):
     return iter(self.__nodes)
