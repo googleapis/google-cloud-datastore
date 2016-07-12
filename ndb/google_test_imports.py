@@ -21,17 +21,11 @@ This imports the testbed package and some stubs.
 from . import google_imports
 
 if google_imports.normal_environment:
-  from google.appengine.api.prospective_search import prospective_search_stub
   from google.appengine.datastore import cloud_datastore_v1_remote_stub
   from google.appengine.datastore import datastore_stub_util
   from google.appengine.ext import testbed
   import unittest
 else:
-  # Prospective search is optional.
-  try:
-    from google3.apphosting.api.prospective_search import prospective_search_stub
-  except ImportError:
-    pass
   from google3.apphosting.datastore import cloud_datastore_v1_remote_stub
   from google3.apphosting.datastore import datastore_stub_util
   from google3.apphosting.ext import testbed
