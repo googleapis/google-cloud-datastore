@@ -46,6 +46,20 @@ def toplevel_put_async(m):
   raise tasklets.Return(True)
 
 
+class MockClock(eventloop._Clock):
+  """A clock that is set manually."""
+
+  def __init__(self):
+    self._now = 0
+
+  def now(self):
+    return self._now
+
+  def sleep(self, seconds):
+    """Sleeps for the specified number of seconds."""
+    self._now += seconds
+
+
 class TaskletTests(test_utils.NDBTest):
 
   def setUp(self):
@@ -195,20 +209,23 @@ class TaskletTests(test_utils.NDBTest):
 
   def testSleep(self):
     # Ensure that tasklets sleep for the specified amount of time.
-    # NOTE: May sleep too long if processor usage is high.
+    clock = MockClock()
     log = []
+
+    eventloop.get_event_loop()
+    eventloop._state.event_loop = eventloop.EventLoop(clock)
 
     @tasklets.tasklet
     def foo():
-      log.append(time.time())
       yield tasklets.sleep(0.1)
-      log.append(time.time())
+      log.append('COMPLETE')
+
     foo()
+    self.assertEqual(len(log), 0, 'Task should not have run yet.')
     eventloop.run()
-    t0, t1 = log
-    dt = t1 - t0
-    self.assertTrue(0.08 <= dt <= 0.12,
-                    'slept too long or too short: dt=%.03f' % dt)
+    self.assertEqual(len(log), 1, 'Expected task to have run.')
+    self.assertEqual(clock.now(), 0.1,
+                     'Expected the clock to have advanced exactly 0.1 seconds.')
 
   def testMultiFuture(self):
     @tasklets.tasklet

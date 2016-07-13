@@ -48,12 +48,26 @@ _RUNNING = apiproxy_rpc.RPC.RUNNING
 _FINISHING = apiproxy_rpc.RPC.FINISHING
 
 
+class _Clock(object):
+  """A clock to determine the current time, in seconds."""
+
+  def now(self):
+    """Returns the number of seconds since epoch."""
+    return time.time()
+
+  def sleep(self, seconds):
+    """Sleeps for the desired number of seconds."""
+    time.sleep(seconds)
+
+
 class EventLoop(object):
   """An event loop."""
 
-  def __init__(self):
+  def __init__(self, clock=None):
     """Constructor.
 
+    Args:
+      clock: an eventloop._Clock object. Defaults to a time-based clock.
     Fields:
       current: a FIFO list of (callback, args, kwds). These callbacks
         run immediately when the eventloop runs.
@@ -66,6 +80,7 @@ class EventLoop(object):
       rpcs: a map from rpc to (callback, args, kwds). Callback is called
         when the rpc finishes.
     """
+    self.clock = clock or _Clock()
     self.current = collections.deque()
     self.idlers = collections.deque()
     self.inactive = 0  # How many idlers in a row were no-ops
@@ -126,7 +141,7 @@ class EventLoop(object):
       self.current.append((callback, args, kwds))
       return
     if delay < 1e9:
-      when = delay + time.time()
+      when = delay + self.clock.now()
     else:
       # Times over a billion seconds are assumed to be absolute.
       when = delay
@@ -218,7 +233,7 @@ class EventLoop(object):
       return 0
     delay = None
     if self.queue:
-      delay = self.queue[0][0] - time.time()
+      delay = self.queue[0][0] - self.clock.now()
       if delay <= 0:
         self.inactive = 0
         _, callback, args, kwds = self.queue.pop(0)
@@ -254,7 +269,7 @@ class EventLoop(object):
     if delay is None:
       return False
     if delay > 0:
-      time.sleep(delay)
+      self.clock.sleep(delay)
     return True
 
   def run(self):
