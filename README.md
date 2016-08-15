@@ -22,7 +22,7 @@ You can learn more about client libraries for Cloud Datastore [here][24].
 - [Python][18]:
 
 ```
-pip install --pre googledatastore
+pip install googledatastore
 ```
 
 - Java (Maven):
@@ -31,7 +31,7 @@ pip install --pre googledatastore
 <dependency>
   <groupId>com.google.cloud.datastore</groupId>
   <artifactId>datastore-v1-protos</artifactId>
-  <version>1.0.0</version>
+  <version>1.0.1</version>
 </dependency>
 <dependency>
   <groupId>com.google.cloud.datastore</groupId>

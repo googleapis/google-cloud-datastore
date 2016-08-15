@@ -30,7 +30,7 @@ setup(
     install_requires=[
         'httplib2==0.8',
         'oauth2client==2.0.1',
-        'proto-google-datastore-v1==1.0.0',
+        'proto-google-datastore-v1==1.0.1',
         'pycrypto==2.6',
         'pyOpenSSL',
         'six',
