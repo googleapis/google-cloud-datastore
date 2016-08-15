@@ -16,7 +16,7 @@ Usage
     >>> datastore.set_options(project_id='project-id')
     >>> req = datastore.BeginTransactionRequest()
     >>> datastore.begin_transaction(req)
-    <google.datastore.v1beta3.datastore-pb2.BeginTransactionResponse ...>
+    <google.datastore.v1.datastore-pb2.BeginTransactionResponse ...>
 
 
 Installation

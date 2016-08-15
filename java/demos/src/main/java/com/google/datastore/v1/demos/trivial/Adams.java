@@ -13,21 +13,21 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.google.datastore.v1beta3.demos.trivial;
+package com.google.datastore.v1.demos.trivial;
 
-import com.google.datastore.v1beta3.BeginTransactionRequest;
-import com.google.datastore.v1beta3.BeginTransactionResponse;
-import com.google.datastore.v1beta3.CommitRequest;
-import com.google.datastore.v1beta3.CommitResponse;
-import com.google.datastore.v1beta3.Entity;
-import com.google.datastore.v1beta3.Key;
-import com.google.datastore.v1beta3.LookupRequest;
-import com.google.datastore.v1beta3.LookupResponse;
-import com.google.datastore.v1beta3.Value;
-import com.google.datastore.v1beta3.client.Datastore;
-import com.google.datastore.v1beta3.client.DatastoreException;
-import com.google.datastore.v1beta3.client.DatastoreFactory;
-import com.google.datastore.v1beta3.client.DatastoreHelper;
+import com.google.datastore.v1.BeginTransactionRequest;
+import com.google.datastore.v1.BeginTransactionResponse;
+import com.google.datastore.v1.CommitRequest;
+import com.google.datastore.v1.CommitResponse;
+import com.google.datastore.v1.Entity;
+import com.google.datastore.v1.Key;
+import com.google.datastore.v1.LookupRequest;
+import com.google.datastore.v1.LookupResponse;
+import com.google.datastore.v1.Value;
+import com.google.datastore.v1.client.Datastore;
+import com.google.datastore.v1.client.DatastoreException;
+import com.google.datastore.v1.client.DatastoreFactory;
+import com.google.datastore.v1.client.DatastoreHelper;
 import com.google.protobuf.ByteString;
 
 import java.io.IOException;

@@ -1,5 +1,16 @@
 # Java Client
 
+## v1-1.0.0
+
+  - Support for [Google Cloud Datastore API v1](https://cloud.google.com/datastore/reference/rpc/).
+  - The client and generated proto classes are now in the
+    `com.google.datastore.v1` Java package.
+  - The Maven artifacts are still found under groupId `com.google.cloud.datastore`.
+    The artifactIds are:
+      - `datastore-v1-proto-client-parent`
+      - `datastore-v1-proto-client`
+      - `datastore-v1-protos`
+
 ## v1beta3-1.0.0-beta.2
 
   - Allow IP address to be used in local host option.

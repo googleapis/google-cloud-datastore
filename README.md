@@ -30,13 +30,13 @@ pip install --pre googledatastore
 ```
 <dependency>
   <groupId>com.google.cloud.datastore</groupId>
-  <artifactId>datastore-v1beta3-protos</artifactId>
-  <version>1.0.0-beta</version>
+  <artifactId>datastore-v1-protos</artifactId>
+  <version>1.0.0</version>
 </dependency>
 <dependency>
   <groupId>com.google.cloud.datastore</groupId>
-  <artifactId>datastore-v1beta3-proto-client</artifactId>
-  <version>1.0.0-beta.2</version>
+  <artifactId>datastore-v1-proto-client</artifactId>
+  <version>1.0.0</version>
 </dependency>
 ```
 
@@ -61,7 +61,7 @@ For more information, see the [Cloud Datastore documentation][4].
 - See [LICENSE][8]
 
 [1]: python/demos/trivial/adams.py
-[2]: java/demos/src/main/java/com/google/datastore/v1beta3/demos/trivial/Adams.java
+[2]: java/demos/src/main/java/com/google/datastore/v1/demos/trivial/Adams.java
 [4]: https://cloud.google.com/datastore
 [6]: https://cloud.google.com/datastore/reference/rpc
 [7]: CONTRIB.md

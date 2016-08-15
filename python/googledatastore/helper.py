@@ -22,8 +22,8 @@ import os
 
 import httplib2
 from oauth2client import client
-from google.datastore.v1beta3 import entity_pb2
-from google.datastore.v1beta3 import query_pb2
+from google.datastore.v1 import entity_pb2
+from google.datastore.v1 import query_pb2
 
 __all__ = [
     'get_credentials_from_env',
@@ -45,7 +45,7 @@ __all__ = [
 
 SCOPE = 'https://www.googleapis.com/auth/datastore'
 GOOGLEAPIS_URL = 'https://datastore.googleapis.com'
-API_VERSION = 'v1beta3'
+API_VERSION = 'v1'
 
 # Value types for which their proto value is the user value type.
 __native_value_types = frozenset(['string_value',
@@ -119,7 +119,7 @@ def get_project_endpoint_from_env(project_id=None):
 
   Returns:
     the endpoint to use, for example
-    https://datastore.googleapis.com/v1beta3/projects/my-project
+    https://datastore.googleapis.com/v1/projects/my-project
 
   Raises:
     ValueError: if the wrong environment variable was set or a project_id was

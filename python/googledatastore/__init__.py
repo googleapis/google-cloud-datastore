@@ -23,7 +23,7 @@ from . import connection
 from .connection import *
 # Import the Datastore protos. These are listed separately to avoid importing
 # the Datastore service, which conflicts with our Datastore class.
-from google.datastore.v1beta3.datastore_pb2 import (
+from google.datastore.v1.datastore_pb2 import (
     LookupRequest,
     LookupResponse,
     RunQueryRequest,
@@ -39,8 +39,8 @@ from google.datastore.v1beta3.datastore_pb2 import (
     Mutation,
     MutationResult,
     ReadOptions)
-from google.datastore.v1beta3.entity_pb2 import *
-from google.datastore.v1beta3.query_pb2 import *
+from google.datastore.v1.entity_pb2 import *
+from google.datastore.v1.query_pb2 import *
 
 from google.protobuf.timestamp_pb2 import Timestamp
 from google.protobuf.struct_pb2 import NULL_VALUE
@@ -48,8 +48,8 @@ from google.rpc.status_pb2 import Status
 from google.rpc import code_pb2
 from google.type.latlng_pb2 import LatLng
 
-__version__ = '5.0.0-beta'
-VERSION = (5, 0, 0, 'beta')
+__version__ = '6.0.0'
+VERSION = (6, 0, 0, '~')
 
 _conn_holder = {}  # thread id -> thread-local connection.
 _options = {}  # Global options.
