@@ -15,7 +15,7 @@
 #
 from setuptools import setup
 
-__version__ = '5.0.0-beta.1'
+__version__ = '6.0.0'
 
 setup(
     name='googledatastore',
@@ -30,14 +30,14 @@ setup(
     install_requires=[
         'httplib2==0.8',
         'oauth2client==2.0.1',
-        'proto-google-datastore-v1beta3==1.0.0-beta.2',
+        'proto-google-datastore-v1==1.0.1',
         'pycrypto==2.6',
         'pyOpenSSL',
         'six',
         'uritemplate==0.6',
     ],
     classifiers=[
-        'Development Status :: 4 - Beta',
+        'Development Status :: 5 - Production/Stable',
         'Topic :: Database',
         'License :: OSI Approved :: Apache Software License',
         'Operating System :: OS Independent',

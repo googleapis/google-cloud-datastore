@@ -196,7 +196,7 @@ class DatastoreHelperTest(unittest.TestCase):
     os.getenv('DATASTORE_EMULATOR_HOST').AndReturn('localhost:1234')
     self.mox.ReplayAll()
     endpoint = get_project_endpoint_from_env(project_id='bar')
-    self.assertEqual('http://localhost:1234/datastore/v1beta3/projects/bar',
+    self.assertEqual('http://localhost:1234/datastore/v1/projects/bar',
                      endpoint)
     self.mox.VerifyAll()
 
@@ -208,7 +208,7 @@ class DatastoreHelperTest(unittest.TestCase):
     os.getenv('DATASTORE_EMULATOR_HOST').AndReturn('localhost:1234')
     self.mox.ReplayAll()
     endpoint = get_project_endpoint_from_env()
-    self.assertEqual('http://localhost:1234/datastore/v1beta3/projects/bar',
+    self.assertEqual('http://localhost:1234/datastore/v1/projects/bar',
                      endpoint)
     self.mox.VerifyAll()
 
@@ -220,7 +220,7 @@ class DatastoreHelperTest(unittest.TestCase):
     os.getenv('DATASTORE_EMULATOR_HOST').AndReturn(None)
     self.mox.ReplayAll()
     endpoint = get_project_endpoint_from_env()
-    self.assertEqual('https://datastore.googleapis.com/v1beta3/projects/bar',
+    self.assertEqual('https://datastore.googleapis.com/v1/projects/bar',
                      endpoint)
     self.mox.VerifyAll()
 

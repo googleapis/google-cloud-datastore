@@ -48,7 +48,7 @@ class DatastoreTest(unittest.TestCase):
   def setUp(self):
     self.mox = mox.Mox()
     self.conn = datastore.Datastore(
-        project_endpoint='https://example.com/datastore/v1beta3/projects/foo')
+        project_endpoint='https://example.com/datastore/v1/projects/foo')
 
   def tearDown(self):
     self.mox.UnsetStubs()
@@ -90,7 +90,7 @@ class DatastoreTest(unittest.TestCase):
     payload = request.SerializeToString()
     response = self.makeLookupResponse()
     self.expectRequest(
-        'https://example.com/datastore/v1beta3/projects/foo:lookup',
+        'https://example.com/datastore/v1/projects/foo:lookup',
         method='POST', body=payload,
         headers=self.makeExpectedHeaders(payload)).AndReturn((
             TestResponse(status=200, reason='Found'),
@@ -108,7 +108,7 @@ class DatastoreTest(unittest.TestCase):
     response.code = 3  # Code.INVALID_ARGUMENT
     response.message = 'An error message.'
     self.expectRequest(
-        'https://example.com/datastore/v1beta3/projects/foo:lookup',
+        'https://example.com/datastore/v1/projects/foo:lookup',
         method='POST',
         body=payload,
         headers=self.makeExpectedHeaders(payload)).AndReturn((
@@ -127,7 +127,7 @@ class DatastoreTest(unittest.TestCase):
     request = self.makeLookupRequest()
     payload = request.SerializeToString()
     self.expectRequest(
-        'https://example.com/datastore/v1beta3/projects/foo:lookup',
+        'https://example.com/datastore/v1/projects/foo:lookup',
         method='POST',
         body=payload,
         headers=self.makeExpectedHeaders(payload)).AndReturn((
@@ -148,7 +148,7 @@ class DatastoreTest(unittest.TestCase):
     payload = request.SerializeToString()
     response = datastore.RunQueryResponse()
     self.expectRequest(
-        'https://example.com/datastore/v1beta3/projects/foo:runQuery',
+        'https://example.com/datastore/v1/projects/foo:runQuery',
         method='POST', body=payload,
         headers=self.makeExpectedHeaders(payload)).AndReturn((
             TestResponse(status=200, reason='Found'),
@@ -164,7 +164,7 @@ class DatastoreTest(unittest.TestCase):
     payload = request.SerializeToString()
     response = datastore.BeginTransactionResponse()
     self.expectRequest(
-        'https://example.com/datastore/v1beta3/projects/foo:beginTransaction',
+        'https://example.com/datastore/v1/projects/foo:beginTransaction',
         method='POST', body=payload,
         headers=self.makeExpectedHeaders(payload)).AndReturn((
             TestResponse(status=200, reason='Found'),
@@ -181,7 +181,7 @@ class DatastoreTest(unittest.TestCase):
     payload = request.SerializeToString()
     response = datastore.CommitResponse()
     self.expectRequest(
-        'https://example.com/datastore/v1beta3/projects/foo:commit',
+        'https://example.com/datastore/v1/projects/foo:commit',
         method='POST', body=payload,
         headers=self.makeExpectedHeaders(payload)).AndReturn((
             TestResponse(status=200, reason='Found'),
@@ -198,7 +198,7 @@ class DatastoreTest(unittest.TestCase):
     payload = request.SerializeToString()
     response = datastore.RollbackResponse()
     self.expectRequest(
-        'https://example.com/datastore/v1beta3/projects/foo:rollback',
+        'https://example.com/datastore/v1/projects/foo:rollback',
         method='POST', body=payload,
         headers=self.makeExpectedHeaders(payload)).AndReturn((
             TestResponse(status=200, reason='Found'),
@@ -214,7 +214,7 @@ class DatastoreTest(unittest.TestCase):
     payload = request.SerializeToString()
     response = datastore.AllocateIdsResponse()
     self.expectRequest(
-        'https://example.com/datastore/v1beta3/projects/foo:allocateIds',
+        'https://example.com/datastore/v1/projects/foo:allocateIds',
         method='POST', body=payload,
         headers=self.makeExpectedHeaders(payload)).AndReturn((
             TestResponse(status=200, reason='Found'),
@@ -231,7 +231,7 @@ class DatastoreTest(unittest.TestCase):
     payload = request.SerializeToString()
     response = self.makeLookupResponse()
     self.expectRequest(
-        'https://datastore.googleapis.com/v1beta3/projects/foo:lookup',
+        'https://datastore.googleapis.com/v1/projects/foo:lookup',
         method='POST', body=payload,
         headers=self.makeExpectedHeaders(payload)).AndReturn((
             TestResponse(status=200, reason='Found'),
@@ -263,7 +263,7 @@ class DatastoreTest(unittest.TestCase):
 
     self.mox.StubOutWithMock(helper, 'get_credentials_from_env')
     self.mox.StubOutWithMock(helper, 'get_project_endpoint_from_env')
-    endpoint = 'http://localhost:8080/datastore/v1beta3/projects/%s'
+    endpoint = 'http://localhost:8080/datastore/v1/projects/%s'
     helper.get_project_endpoint_from_env(project_id='foo').AndReturn(
         endpoint % 'foo')
     helper.get_project_endpoint_from_env(project_id='foo').AndReturn(
@@ -302,14 +302,14 @@ class DatastoreTest(unittest.TestCase):
     # The new connections are still different for each thread.
     self.assertIsNot(t1_conn2, t2_conn2)
     # The old connections has the old settings.
-    self.assertEqual('http://localhost:8080/datastore/v1beta3/projects/foo',
+    self.assertEqual('http://localhost:8080/datastore/v1/projects/foo',
                      t1_conn1._url)
-    self.assertEqual('http://localhost:8080/datastore/v1beta3/projects/foo',
+    self.assertEqual('http://localhost:8080/datastore/v1/projects/foo',
                      t2_conn1._url)
     # The new connections has the new settings.
-    self.assertEqual('http://localhost:8080/datastore/v1beta3/projects/bar',
+    self.assertEqual('http://localhost:8080/datastore/v1/projects/bar',
                      t1_conn2._url)
-    self.assertEqual('http://localhost:8080/datastore/v1beta3/projects/bar',
+    self.assertEqual('http://localhost:8080/datastore/v1/projects/bar',
                      t2_conn2._url)
     self.assertEqual(FakeCredentialsFromEnv, type(t1_conn2._credentials))
     self.assertEqual(FakeCredentialsFromEnv, type(t2_conn2._credentials))
@@ -318,7 +318,7 @@ class DatastoreTest(unittest.TestCase):
   def testFunctions(self):
     datastore.set_options(
         credentials=FakeCredentialsFromEnv(),
-        project_endpoint='http://localhost:8080/datastore/v1beta3/projects/foo')
+        project_endpoint='http://localhost:8080/datastore/v1/projects/foo')
     def caml(s): return ''.join(p[0].upper()+p[1:] for p in s.split('_'))
     rpcs = ['lookup', 'run_query', 'begin_transaction',
             'commit', 'rollback', 'allocate_ids']

@@ -1,5 +1,9 @@
 # Python Client
 
+## 6.0.0
+
+  - Support for [Google Cloud Datastore API v1](https://cloud.google.com/datastore/reference/rpc/)
+
 ## 5.0.0-beta1
 
   - Upgraded proto library to 1.0.0.beta.2.

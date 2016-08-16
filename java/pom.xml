@@ -19,14 +19,14 @@
   <modelVersion>4.0.0</modelVersion>
 
   <groupId>com.google.cloud.datastore</groupId>
-  <artifactId>datastore-v1beta3-proto-client-parent</artifactId>
-  <version>1.0.0-beta.2</version>
+  <artifactId>datastore-v1-proto-client-parent</artifactId>
+  <version>1.0.0</version>
 
   <name>${project.groupId}:${project.artifactId}</name>
   <url>https://cloud.google.com/datastore/</url>
 
   <description>
-    Low level client for accessing Google Cloud Datastore v1beta3.
+    Low level client for accessing Google Cloud Datastore v1.
   </description>
   <licenses>
     <license>
@@ -62,8 +62,8 @@
     <dependencies>
       <dependency>
         <groupId>com.google.cloud.datastore</groupId>
-        <artifactId>datastore-v1beta3-protos</artifactId>
-        <version>1.0.0-beta</version>
+        <artifactId>datastore-v1-protos</artifactId>
+        <version>1.0.1</version>
       </dependency>
 
       <dependency>

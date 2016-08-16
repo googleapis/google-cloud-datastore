@@ -161,8 +161,8 @@ class LocalCloudDatastore(object):
     subprocess.Popen(cmd)
     if not self._WaitForStartup(deadline):
       raise IOError('datastore did not respond within %ds' % deadline)
-    endpoint = '%s/datastore/v1beta3/projects/%s' % (self._host,
-                                                     self._project_id)
+    endpoint = '%s/datastore/v1/projects/%s' % (self._host,
+                                                self._project_id)
     self.__datastore = connection.Datastore(project_endpoint=endpoint)
     self.__running = True
 

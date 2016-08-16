@@ -19,7 +19,7 @@ import logging
 import httplib2
 
 from googledatastore import helper
-from google.datastore.v1beta3 import datastore_pb2
+from google.datastore.v1 import datastore_pb2
 from google.protobuf import timestamp_pb2
 from google.rpc import code_pb2
 from google.rpc import status_pb2
