@@ -1,5 +1,9 @@
 # Java Client
 
+## v1-1.1.0
+
+  - Update `DatastoreHelper.localHost` so it works with the Cloud Datastore Emulator.
+
 ## v1-1.0.0
 
   - Support for [Google Cloud Datastore API v1](https://cloud.google.com/datastore/reference/rpc/).

@@ -1,5 +1,9 @@
 # Python Client
 
+## 6.1.0
+
+- Update `helper.py` so it works with the Cloud Datastore Emulator.
+
 ## 6.0.0
 
   - Support for [Google Cloud Datastore API v1](https://cloud.google.com/datastore/reference/rpc/)

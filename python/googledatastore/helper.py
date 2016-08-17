@@ -142,7 +142,7 @@ def get_project_endpoint_from_env(project_id=None):
 
   localhost = os.getenv(_DATASTORE_EMULATOR_HOST_ENV)
   if localhost:
-    return ('http://%s/datastore/%s/projects/%s'
+    return ('http://%s/%s/projects/%s'
             % (localhost, API_VERSION, project_id))
 
   return '%s/%s/projects/%s' % (GOOGLEAPIS_URL, API_VERSION, project_id)
