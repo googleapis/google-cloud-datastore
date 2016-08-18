@@ -36,7 +36,7 @@ pip install googledatastore
 <dependency>
   <groupId>com.google.cloud.datastore</groupId>
   <artifactId>datastore-v1-proto-client</artifactId>
-  <version>1.0.0</version>
+  <version>1.1.0</version>
 </dependency>
 ```
 
