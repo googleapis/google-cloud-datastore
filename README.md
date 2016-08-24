@@ -1,5 +1,8 @@
 # Google Cloud Datastore
 
+> Note: This repository contains low-level Java and Python client libraries for Google Cloud Datastore.
+> For more idiomatic and usable client libraries in these languages, please visit the [Google Cloud Client Libraries for Java][26] and [Google Cloud Client Libraries for Python][27] repositories. You can also find the full list of supported client libraries in a variety of languages on the [Client Libraries page][24] of Cloud Datastore.
+
 Cloud Datastore is a highly-scalable NoSQL database for your applications. Cloud Datastore automatically handles sharding and replication, providing you with a highly available and durable database that scales automatically to handle your applications' load. Cloud Datastore provides a myriad of capabilities such as ACID transactions, SQL-like queries, indexes and much more. For more information, see the [Cloud Datastore documentation][4].
 
 This repository contains clients that are deliberately low-level and map directly to the underlying Datastore RPC model. They're designed to provide more flexibility to developers and higher level library implementers.
@@ -73,3 +76,5 @@ For more information, see the [Cloud Datastore documentation][4].
 [18]: https://pypi.python.org/pypi/googledatastore
 [24]: https://cloud.google.com/datastore/docs/client-libraries
 [25]: https://cloud.google.com/datastore/docs/support
+[26]: https://github.com/GoogleCloudPlatform/gcloud-java
+[27]: https://github.com/GoogleCloudPlatform/gcloud-python
