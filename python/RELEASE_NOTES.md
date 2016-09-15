@@ -1,8 +1,12 @@
 # Python Client
 
+## 6.2.0
+
+  - Rename `local_cloud_datastore.py` to `datastore_emulator.py` and update it to use the Cloud Datastore emulator.
+
 ## 6.1.0
 
-- Update `helper.py` so it works with the Cloud Datastore Emulator.
+  - Update `helper.py` so it works with the Cloud Datastore Emulator.
 
 ## 6.0.0
 
