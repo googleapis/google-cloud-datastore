@@ -1,5 +1,10 @@
 # Java Client
 
+## v1-1.2.0
+
+  - Rename `LocalDevelopmentDatastore.*` classes to `DatastoreEmulator.*` and update them to use the Cloud Datastore emulator.
+  - Update `datastore-v1-protos` dependency to a version that uses `protobuf-java` 3.0.0 and does not package the `com.google.protobuf` classes.
+
 ## v1-1.1.0
 
   - Update `DatastoreHelper.localHost` so it works with the Cloud Datastore Emulator.
