@@ -3981,16 +3981,16 @@ property <
     self.assertFalse(ent3 is ent2)
     self.assertEqual(ent3.name, 'yo')
     self.assertEqual(ent_copy.name, 'yoyo')  # Should not have changed.
-    # Get it from the datastore.
+    # Get it from Cloud Datastore.
     ent4 = key.get(use_cache=False, use_memcache=False)
     self.assertFalse(ent4 is ent)
     self.assertFalse(ent4 is ent2)
     self.assertFalse(ent4 is ent3)
     self.assertFalse(ent4 is ent_copy)
     self.assertEqual(ent4.name, 'yoyo')
-    # Delete it from the datastore but leave it in the caches.
+    # Delete it from Cloud Datastore but leave it in the caches.
     key.delete(use_cache=False, use_memcache=False)
-    # Assure it is gone from the datastore.
+    # Assure it is gone from Cloud Datastore.
     [ent5] = model.get_multi([key],
                              use_cache=False, use_memcache=False)
     self.assertEqual(ent5, None)
@@ -4047,7 +4047,7 @@ property <
     e3 = MyModel(name='3')
     e4 = MyModel(name='4')
     e5 = MyModel(name='5')
-    # Test that the timeouts make it through to memcache and the datastore.
+    # Test that the timeouts make it through to memcache and Cloud Datastore.
     try:
       ctx._memcache.cas_multi_async = mock_memcache_cas_multi_async
       ctx._conn.async_put = mock_conn_async_put

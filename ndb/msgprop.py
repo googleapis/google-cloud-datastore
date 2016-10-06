@@ -25,7 +25,7 @@ Let's assume you have a protorpc.messages.Message subclass, like this:
     text = messages.StringField(1, required=True)
     when = messages.IntegerField(2)
 
-Now suppose you'd like to store Notes in the datastore.  Create a
+Now suppose you'd like to store Notes in Cloud Datastore.  Create a
 model class to hold your notes, as follows:
 
   from google.appengine.ext import ndb
@@ -91,7 +91,7 @@ query for subfields:
   stores = MyNoteStore.query(MyNoteStore.foo.notes.when < 123).fetch()
 
 A final option for MessageProperty is 'protocol'.  This lets you
-specify how the message object is serialized to the datastore.  The
+specify how the message object is serialized to Cloud Datastore.  The
 values are protocol names as used by protorpc.remote.Protocols class.
 Supported protocol names are 'protobuf' and 'protojson'; the default
 is 'protobuf'.  (In the future this will use the global protocols
@@ -146,7 +146,7 @@ _default_protocol = 'protobuf'
 
 
 class EnumProperty(model.IntegerProperty):
-  """Enums are represented in the datastore as integers.
+  """Enums are represented in Cloud Datastore as integers.
 
   While this is less user-friendly in the Datastore viewer, it matches
   the representation of enums in the protobuf serialization (although
@@ -300,7 +300,7 @@ def _make_model_class(message_type, indexed_fields, **props):
 
 
 class MessageProperty(model.StructuredProperty):
-  """Messages are represented in the datastore as structured properties.
+  """Messages are represented in Cloud Datastore as structured properties.
 
   By default, the structured property has a single subproperty
   containing the serialized message.  This property is named 'blob_'

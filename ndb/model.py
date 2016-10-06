@@ -22,35 +22,35 @@ to create entities.
 
 All model classes must inherit (directly or indirectly) from Model.
 Through the magic of metaclasses, straightforward assignments in the
-model class definition can be used to declare the model's structure:
+model class definition can be used to declare the model's structure::
 
   class Person(Model):
     name = StringProperty()
     age = IntegerProperty()
 
-We can now create a Person entity and write it to the datastore:
+We can now create a Person entity and write it to Cloud Datastore::
 
   p = Person(name='Arthur Dent', age=42)
   k = p.put()
 
 The return value from put() is a Key (see the documentation for
-ndb/key.py), which can be used to retrieve the same entity later:
+ndb/key.py), which can be used to retrieve the same entity later::
 
   p2 = k.get()
   p2 == p  # Returns True
 
 To update an entity, simple change its attributes and write it back
-(note that this doesn't change the key):
+(note that this doesn't change the key)::
 
   p2.name = 'Arthur Philip Dent'
   p2.put()
 
-We can also delete an entity (by using the key):
+We can also delete an entity (by using the key)::
 
   k.delete()
 
 The property definitions in the class body tell the system the names
-and the types of the fields to be stored in the datastore, whether
+and the types of the fields to be stored in Cloud Datastore, whether
 they must be indexed, their default value, and more.
 
 Many different Property types exist.  Most are indexed by default, the
@@ -77,7 +77,7 @@ exceptions indicated in the list below:
 
 - GeoPtProperty: a geographical location, i.e. (latitude, longitude)
 
-- KeyProperty: a datastore Key value, optionally constrained to
+- KeyProperty: a Cloud Datastore Key value, optionally constrained to
   referring to a specific kind
 
 - UserProperty: a User object (for backwards compatibility only)
@@ -90,19 +90,19 @@ exceptions indicated in the list below:
 
 - ComputedProperty: a property whose value is computed from other
   properties by a user-defined function.  The property value is
-  written to the datastore so that it can be used in queries, but the
-  value from the datastore is not used when the entity is read back
+  written to Cloud Datastore so that it can be used in queries, but the
+  value from Cloud Datastore is not used when the entity is read back
 
 - GenericProperty: a property whose type is not constrained; mostly
   used by the Expando class (see below) but also usable explicitly
 
 - JsonProperty: a property whose value is any object that can be
-  serialized using JSON; the value written to the datastore is a JSON
+  serialized using JSON; the value written to Cloud Datastore is a JSON
   representation of that object
 
 - PickleProperty: a property whose value is any object that can be
   serialized using Python's pickle protocol; the value written to the
-  datastore is the pickled representation of that object, using the
+  Cloud Datastore is the pickled representation of that object, using the
   highest available pickle protocol
 
 Most Property classes have similar constructor signatures.  They
@@ -155,13 +155,13 @@ validated.  Since it is also possible to mutate lists in place,
 repeated properties are re-validated before they are written to the
 datastore.
 
-No validation happens when an entity is read from the datastore;
+No validation happens when an entity is read from Cloud Datastore;
 however property values read that have the wrong type (e.g. a string
 value for an IntegerProperty) are ignored.
 
 For non-repeated properties, None is always a possible value, and no
 validation is called when the value is set to None.  However for
-required properties, writing the entity to the datastore requires
+required properties, writing the entity to Cloud Datastore requires
 the value to be something other than None (and valid).
 
 The StructuredProperty is different from most other properties; it
@@ -171,7 +171,7 @@ instance of that model class.  However it is not stored in the
 datastore as a separate entity; instead, its attribute values are
 included in the parent entity using a naming convention (the name of
 the structured attribute followed by a dot followed by the name of the
-subattribute).  For example:
+subattribute).  For example::
 
   class Address(Model):
     street = StringProperty()
@@ -187,7 +187,7 @@ subattribute).  For example:
   k.put()
 
 This would write a single 'Person' entity with three attributes (as
-you could verify using the Datastore Viewer in the Admin Console):
+you could verify using the Datastore Viewer in the Admin Console)::
 
   name = 'Harry Potter'
   address.street = '4 Privet Drive'
@@ -203,7 +203,7 @@ class and as for a structured property; however queries for the model
 class will only return the top-level entities.
 
 The LocalStructuredProperty works similar to StructuredProperty on the
-Python side.  For example:
+Python side.  For example::
 
   class Address(Model):
     street = StringProperty()
@@ -218,7 +218,7 @@ Python side.  For example:
                              city='Little Whinging'))
   k.put()
 
-However the data written to the datastore is different; it writes a
+However the data written to Cloud Datastore is different; it writes a
 'Person' entity with a 'name' attribute as before and a single
 'address' attribute whose value is a blob which encodes the Address
 value (using the standard"protocol buffer" encoding).
@@ -226,7 +226,7 @@ value (using the standard"protocol buffer" encoding).
 Sometimes the set of properties is not known ahead of time.  In such
 cases you can use the Expando class.  This is a Model subclass that
 creates properties on the fly, both upon assignment and when loading
-an entity from the datastore.  For example:
+an entity from Cloud Datastore.  For example::
 
   class SuperPerson(Expando):
     name = StringProperty()
@@ -260,19 +260,19 @@ object returns the entities matching the query one at a time.
 Query objects are fully described in the docstring for query.py, but
 there is one handy shortcut that is only available through
 Model.query(): positional arguments are interpreted as filter
-expressions which are combined through an AND operator.  For example:
+expressions which are combined through an AND operator.  For example::
 
   Person.query(Person.name == 'Harry Potter', Person.age >= 11)
 
-is equivalent to:
+is equivalent to::
 
   Person.query().filter(Person.name == 'Harry Potter', Person.age >= 11)
 
 Keyword arguments passed to .query() are passed along to the Query()
 constructor.
 
-It is possible to query for field values of stuctured properties.  For
-example:
+It is possible to query for field values of structured properties.  For
+example::
 
   qry = Person.query(Person.address.city == 'London')
 
@@ -283,8 +283,8 @@ A number of top-level functions also live in this module:
 - put_multi() writes multiple entities at once
 - delete_multi() deletes multiple entities at once
 
-All these have a corresponding *_async() variant as well.
-The *_multi_async() functions return a list of Futures.
+All these have a corresponding ``*_async()`` variant as well.
+The ``*_multi_async()`` functions return a list of Futures.
 
 And finally these (without async variants):
 
@@ -764,7 +764,7 @@ class _BaseValue(_NotEqualMixin):
 
 
 class Property(ModelAttribute):
-  """A class describing a typed, persisted attribute of a datastore entity.
+  """A class describing a typed, persisted attribute of a Cloud Datastore entity.
 
   Not to be confused with Python's 'property' built-in.
 
@@ -786,7 +786,7 @@ class Property(ModelAttribute):
     application code using standard attributes on the entity.
 
   - A 'base value' is a value such as would be serialized to
-    and deserialized from the datastore.
+    and deserialized from Cloud Datastore.
 
   The values stored in ent._values[name] and accessed by
   _store_value() and _retrieve_value() can be either user values or
@@ -1023,7 +1023,7 @@ class Property(ModelAttribute):
     """Comparison operator for the 'in' comparison operator.
 
     The Python 'in' operator cannot be overloaded in the way we want
-    to, so we define a method.  For example:
+    to, so we define a method.  For example::
 
       Employee.query(Employee.rank.IN([4, 5, 6]))
 
@@ -1051,7 +1051,7 @@ class Property(ModelAttribute):
   def __neg__(self):
     """Return a descending sort order on this Property.
 
-    For example:
+    For example::
 
       Employee.query().order(-Employee.rank)
     """
@@ -1062,7 +1062,7 @@ class Property(ModelAttribute):
     """Return an ascending sort order on this Property.
 
     Note that this is redundant but provided for consistency with
-    __neg__.  For example, the following two are equivalent:
+    __neg__.  For example, the following two are equivalent::
 
       Employee.query().order(+Employee.rank)
       Employee.query().order(Employee.rank)
@@ -1264,7 +1264,7 @@ class Property(ModelAttribute):
     An example: suppose the class hierarchy is A -> B -> C ->
     Property, and suppose A defines _validate() only, but B and C
     define _validate() and _to_base_type().  The full list of
-    methods called by _call_to_base_type() is:
+    methods called by _call_to_base_type() is::
 
       A._validate()
       B._validate()
@@ -1525,7 +1525,7 @@ class Property(ModelAttribute):
     returned by entity._to_dict() to contain a different value.  The
     main use case is StructuredProperty and LocalStructuredProperty.
 
-    NOTES:
+    NOTES::
 
     - If you override _get_for_dict() to return a different type, you
       must override _validate() to accept values of that type and
@@ -1900,8 +1900,8 @@ class UserProperty(Property):
   """A Property whose value is a User object.
 
   Note: this exists for backwards compatibility with existing
-  datastore schemas only; we do not recommend storing User objects
-  directly in the datastore, but instead recommend storing the
+  Cloud Datastore schemas only; we do not recommend storing User objects
+  directly in Cloud Datastore, but instead recommend storing the
   user.user_id() value.
   """
 
@@ -2140,7 +2140,7 @@ class DateTimeProperty(Property):
 
 
 def _date_to_datetime(value):
-  """Convert a date to a datetime for datastore storage.
+  """Convert a date to a datetime for Cloud Datastore storage.
 
   Args:
     value: A datetime.date object.
@@ -2155,7 +2155,7 @@ def _date_to_datetime(value):
 
 
 def _time_to_datetime(value):
-  """Convert a time to a datetime for datastore storage.
+  """Convert a time to a datetime for Cloud Datastore storage.
 
   Args:
     value: A datetime.time object.
@@ -2534,7 +2534,7 @@ class LocalStructuredProperty(_StructuredGetForDictMixin, BlobProperty):
   """Substructure that is serialized to an opaque blob.
 
   This looks like StructuredProperty on the Python side, but is
-  written like a BlobProperty in the datastore.  It is not indexed
+  written like a BlobProperty in Cloud Datastore.  It is not indexed
   and you cannot query for subproperties.  On the other hand, the
   on-disk representation is more efficient and can be made even more
   efficient by passing compressed=True, which compresses the blob
@@ -2604,7 +2604,7 @@ class GenericProperty(Property):
   """A Property whose value can be (almost) any basic type.
 
   This is mainly used for Expando and for orphans (values present in
-  the datastore but not represented in the Model subclass) but can
+  Cloud Datastore but not represented in the Model subclass) but can
   also be used explicitly for properties with dynamically-typed
   values.
 
@@ -2771,7 +2771,7 @@ class ComputedProperty(GenericProperty):
   """A Property whose value is determined by a user-supplied function.
 
   Computed properties cannot be set directly, but are instead generated by a
-  function when required. They are useful to provide fields in the datastore
+  function when required. They are useful to provide fields in Cloud Datastore
   that can be used for filtering or sorting without having to manually set the
   value in code - for example, sorting on the length of a BlobProperty, or
   using an equality filter to check if another field is not empty.
@@ -2856,7 +2856,7 @@ class MetaModel(type):
 
 
 class Model(_NotEqualMixin):
-  """A class describing datastore entities.
+  """A class describing Cloud Datastore entities.
 
   Model instances are usually called entities.  All model classes
   inheriting from Model automatically have MetaModel as their
@@ -2865,7 +2865,7 @@ class Model(_NotEqualMixin):
 
   Because of this, you cannot use the same Property object to describe
   multiple properties -- you must create separate Property objects for
-  each property.  E.g. this does not work:
+  each property.  E.g. this does not work::
 
     wrong_prop = StringProperty()
     class Wrong(Model):
@@ -2874,7 +2874,7 @@ class Model(_NotEqualMixin):
 
   The kind is normally equal to the class name (exclusive of the
   module name or any other parent scope).  To override the kind,
-  define a class method named _get_kind(), as follows:
+  define a class method named _get_kind(), as follows::
 
     class MyModel(Model):
       @classmethod
@@ -2901,7 +2901,7 @@ class Model(_NotEqualMixin):
   def __init__(*args, **kwds):
     """Creates a new instance of this model (a.k.a. an entity).
 
-    The new entity must be written to the datastore using an explicit
+    The new entity must be written to Cloud Datastore using an explicit
     call to .put().
 
     Keyword Args:
@@ -3447,7 +3447,7 @@ class Model(_NotEqualMixin):
   gql = _gql
 
   def _put(self, **ctx_options):
-    """Write this entity to the datastore.
+    """Write this entity to Cloud Datastore.
 
     If the operation creates or completes a key, the entity's key
     attribute is set to the new, complete key.
@@ -3459,7 +3459,7 @@ class Model(_NotEqualMixin):
   put = _put
 
   def _put_async(self, **ctx_options):
-    """Write this entity to the datastore.
+    """Write this entity to Cloud Datastore.
 
     This is the asynchronous version of Model._put().
     """
@@ -3701,7 +3701,7 @@ class Expando(Model):
   # properties default to unindexed.
   _default_indexed = True
 
-  # Set this to True to write [] to datastore instead of no property
+  # Set this to True to write [] to Cloud Datastore instead of no property
   _write_empty_list_for_dynamic_properties = None
 
   def _set_attributes(self, kwds):

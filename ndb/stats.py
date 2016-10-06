@@ -52,11 +52,11 @@ class BaseStatistic(model.Model):
   """Base Statistic Model class.
 
   Attributes:
-    bytes: the total number of bytes taken up in the datastore for the
+    bytes: the total number of bytes taken up in Cloud Datastore for the
       statistic instance.
     count: attribute is the total number of occurrences of the statistic
-      in the datastore.
-    timestamp: the time the statistic instance was written to the datastore.
+      in Cloud Datastore.
+    timestamp: the time the statistic instance was written to Cloud Datastore.
   """
   # This is necessary for the _get_kind() classmethod override.
   STORED_KIND_NAME = '__BaseStatistic__'
@@ -67,7 +67,7 @@ class BaseStatistic(model.Model):
   # The number of entity records.
   count = model.IntegerProperty()
 
-  # When this statistic was inserted into the datastore.
+  # When this statistic was inserted into Cloud Datastore.
   timestamp = model.DateTimeProperty()
 
   @classmethod
@@ -82,7 +82,7 @@ class BaseKindStatistic(BaseStatistic):
   Attributes:
     kind_name: the name of the kind associated with the statistic instance.
     entity_bytes: the number of bytes taken up to store the statistic
-      in the datastore minus the cost of storing indices.
+      in Cloud Datastore minus the cost of storing indices.
   """
   # This is necessary for the _get_kind() classmethod override.
   STORED_KIND_NAME = '__BaseKindStatistic__'
@@ -99,12 +99,12 @@ class BaseKindStatistic(BaseStatistic):
 class GlobalStat(BaseStatistic):
   """An aggregate of all entities across the entire application.
 
-  This statistic only has a single instance in the datastore that contains the
+  This statistic only has a single instance in Cloud Datastore that contains the
   total number of entities stored and the total number of bytes they take up.
 
   Attributes:
     entity_bytes: the number of bytes taken up to store the statistic
-      in the datastore minus the cost of storing indices.
+      in Cloud Datastore minus the cost of storing indices.
     builtin_index_bytes: the number of bytes taken up to store builtin-in
       index entries
     builtin_index_count: the number of built-in index entries.
@@ -141,7 +141,7 @@ class NamespaceStat(BaseStatistic):
   Attributes:
     subject_namespace: the namespace associated with the statistic instance.
     entity_bytes: the number of bytes taken up to store the statistic
-      in the datastore minus the cost of storing indices.
+      in Cloud Datastore minus the cost of storing indices.
     builtin_index_bytes: the number of bytes taken up to store builtin-in
       index entries
     builtin_index_count: the number of built-in index entries.
@@ -200,7 +200,7 @@ class KindStat(BaseKindStatistic):
 
 
 class KindRootEntityStat(BaseKindStatistic):
-  """Statistics of the number of root entities in the datastore by Kind.
+  """Statistics of the number of root entities in Cloud Datastore by Kind.
 
   There is an instance of the KindRootEntityState for every Kind that is in the
   application's datastore and has an instance that is a root entity.  This stat
@@ -210,7 +210,7 @@ class KindRootEntityStat(BaseKindStatistic):
 
 
 class KindNonRootEntityStat(BaseKindStatistic):
-  """Statistics of the number of non root entities in the datastore by Kind.
+  """Statistics of the number of non root entities in Cloud Datastore by Kind.
 
   There is an instance of the KindNonRootEntityStat for every Kind that is in
   the application's datastore that is a not a root entity.  This stat contains
@@ -229,7 +229,7 @@ class PropertyTypeStat(BaseStatistic):
   Attributes:
     property_type: the property type associated with the statistic instance.
     entity_bytes: the number of bytes taken up to store the statistic
-      in the datastore minus the cost of storing indices.
+      in Cloud Datastore minus the cost of storing indices.
     builtin_index_bytes: the number of bytes taken up to store builtin-in
       index entries
     builtin_index_count: the number of built-in index entries.
@@ -299,7 +299,8 @@ class KindPropertyNameStat(BaseKindStatistic):
 
 
 class KindPropertyNamePropertyTypeStat(BaseKindStatistic):
-  """Statistic on (kind, property_name, property_type) tuples in the datastore.
+  """Statistic on (kind, property_name, property_type) tuples in Cloud
+  Datastore.
 
   There is an instance of the KindPropertyNamePropertyTypeStat for every
   (kind, property_name, property_type) tuple in the application's datastore.
@@ -328,7 +329,7 @@ class KindPropertyNamePropertyTypeStat(BaseKindStatistic):
 
 
 class KindCompositeIndexStat(BaseStatistic):
-  """Statistic on (kind, composite_index_id) tuples in the datastore.
+  """Statistic on (kind, composite_index_id) tuples in Cloud Datastore.
 
   There is an instance of the KindCompositeIndexStat for every unique
   (kind, composite_index_id) tuple in the application's datastore indexes.
@@ -348,7 +349,7 @@ class KindCompositeIndexStat(BaseStatistic):
 
 
 # The following specify namespace-specific stats.
-# These types are specific to the datastore namespace they are located
+# These types are specific to Cloud Datastore namespace they are located
 # within. These will only be produced if datastore entities exist
 # in a namespace other than the empty namespace (i.e. namespace="").
 

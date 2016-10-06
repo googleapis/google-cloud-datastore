@@ -35,7 +35,7 @@ class StatsTests(test_utils.NDBTest):
   the_module = stats
 
   def PopulateStatEntities(self):
-    """Insert stat entities into the datastore."""
+    """Insert stat entities into Cloud Datastore."""
     # GlobalStat
     self.CreateStatEntity(stats.GlobalStat.STORED_KIND_NAME,
                           has_entity_bytes=True,

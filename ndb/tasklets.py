@@ -25,7 +25,7 @@ that RPC to complete.
 The @tasklet decorator wraps generator function so that when it is
 called, a Future is returned while the generator is executed by the
 event loop.  Within the tasklet, any yield of a Future waits for and
-returns the Future's result.  For example:
+returns the Future's result.  For example::
 
   @tasklet
   def foo():
@@ -41,7 +41,7 @@ returns the Future's result.  For example:
 Note that blocking until the Future's result is available using
 get_result() is somewhat inefficient (though not vastly -- it is not
 busy-waiting).  In most cases such code should be rewritten as a tasklet
-instead:
+instead::
 
   @tasklet
   def main_tasklet():
@@ -49,7 +49,7 @@ instead:
     x = yield f
     print x
 
-Calling a tasklet automatically schedules it with the event loop:
+Calling a tasklet automatically schedules it with the event loop::
 
   def main():
     f = main_tasklet()
@@ -58,7 +58,7 @@ Calling a tasklet automatically schedules it with the event loop:
 
 As a special feature, if the wrapped function is not a generator
 function, its return value is returned via the Future.  This makes the
-following two equivalent:
+following two equivalent::
 
   @tasklet
   def foo():
@@ -550,7 +550,7 @@ class MultiFuture(Future):
   This is used internally by 'v1, v2, ... = yield f1, f2, ...'; the
   semantics (e.g. error handling) are constrained by that use case.
 
-  The protocol from the caller's POV is:
+  The protocol from the caller's POV is::
 
     mf = MultiFuture()
     mf.add_dependent(<some other Future>)  -OR- mf.putq(<some value>)
@@ -1306,7 +1306,7 @@ class _ThrowingStub(object):
 #   it schedules the call to be run by the event loop.)
 
 # - Code not running in a tasklet can call f.get_result() or f.wait() on
-#   a future.  This is implemented by a simple loop like the following:
+#   a future.  This is implemented by a simple loop like the following::
 
 #     while not self._done:
 #       eventloop.run1()

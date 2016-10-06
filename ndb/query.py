@@ -22,7 +22,7 @@ represent filters on property values, and supports AND and OR
 operations (implemented as functions -- Python's 'and' and 'or'
 operators cannot be overloaded, and the '&' and '|' operators have a
 priority that conflicts with the priority of comparison operators).
-For example:
+For example::
 
   class Employee(Model):
     name = StringProperty()
@@ -41,31 +41,31 @@ For example:
     print emp.name, emp.age, emp.rank
 
 The 'in' operator cannot be overloaded, but is supported through the
-IN() method.  For example:
+IN() method.  For example::
 
   Employee.query().filter(Employee.rank.IN([4, 5, 6]))
 
 Sort orders are supported through the order() method; unary minus is
-overloaded on the Property class to represent a descending order:
+overloaded on the Property class to represent a descending order::
 
   Employee.query().order(Employee.name, -Employee.age)
 
 Besides using AND() and OR(), filters can also be combined by
-repeatedly calling .filter():
+repeatedly calling .filter()::
 
   q1 = Employee.query()  # A query that returns all employees
   q2 = q1.filter(Employee.age >= 30)  # Only those over 30
   q3 = q2.filter(Employee.age < 40)  # Only those in their 30s
 
 A further shortcut is calling .filter() with multiple arguments; this
-implies AND():
+implies AND()::
 
   q1 = Employee.query()  # A query that returns all employees
   q3 = q1.filter(Employee.age >= 30,
                  Employee.age < 40)  # Only those in their 30s
 
 And finally you can also pass one or more filter expressions directly
-to the .query() method:
+to the .query() method::
 
   q3 = Employee.query(Employee.age >= 30,
                       Employee.age < 40)  # Only those in their 30s
@@ -76,22 +76,22 @@ other hand, operations that are effectively no-ops may return the
 original Query object.)
 
 Sort orders can also be combined this way, and .filter() and .order()
-calls may be intermixed:
+calls may be intermixed::
 
   q4 = q3.order(-Employee.age)
   q5 = q4.order(Employee.name)
   q6 = q5.filter(Employee.rank == 5)
 
-Again, multiple .order() calls can be combined:
+Again, multiple .order() calls can be combined::
 
   q5 = q3.order(-Employee.age, Employee.name)
 
-The simplest way to retrieve Query results is a for-loop:
+The simplest way to retrieve Query results is a for-loop::
 
   for emp in q3:
     print emp.name, emp.age
 
-Some other methods to run a query and access its results:
+Some other methods to run a query and access its results::
 
   q.iter() # Return an iterator; same as iter(q) but more flexible
   q.map(callback) # Call the callback function for each query result
@@ -105,14 +105,14 @@ options, either in the form of keyword arguments such as
 keys_only=True, or as QueryOptions object passed with
 options=QueryOptions(...).  The most important query options are:
 
-  keys_only: bool, if set the results are keys instead of entities
-  limit: int, limits the number of results returned
-  offset: int, skips this many results first
-  start_cursor: Cursor, start returning results after this position
-  end_cursor: Cursor, stop returning results after this position
-  batch_size: int, hint for the number of results returned per RPC
-  prefetch_size: int, hint for the number of results in the first RPC
-  produce_cursors: bool, return Cursor objects with the results
+- keys_only: bool, if set the results are keys instead of entities
+- limit: int, limits the number of results returned
+- offset: int, skips this many results first
+- start_cursor: Cursor, start returning results after this position
+- end_cursor: Cursor, stop returning results after this position
+- batch_size: int, hint for the number of results returned per RPC
+- prefetch_size: int, hint for the number of results in the first RPC
+- produce_cursors: bool, return Cursor objects with the results
 
 For additional (obscure) query options and more details on them,
 including an explanation of Cursors, see datastore_query.py.
@@ -120,7 +120,7 @@ including an explanation of Cursors, see datastore_query.py.
 All of the above methods except for iter() have asynchronous variants
 as well, which return a Future; to get the operation's ultimate
 result, yield the Future (when inside a tasklet) or call the Future's
-get_result() method (outside a tasklet):
+get_result() method (outside a tasklet)::
 
   q.map_async(callback)  # Callback may be a task or a plain function
   q.fetch_async(N)
@@ -129,12 +129,13 @@ get_result() method (outside a tasklet):
   q.fetch_page_async(N, start_cursor=cursor)
 
 Finally, there's an idiom to efficiently loop over the Query results
-in a tasklet, properly yielding when appropriate:
+in a tasklet, properly yielding when appropriate::
 
   it = q.iter()
   while (yield it.has_next_async()):
     emp = it.next()
     print emp.name, emp.age
+
 """
 
 from __future__ import with_statement
@@ -178,7 +179,7 @@ _KEY = datastore_types._KEY_SPECIAL_PROPERTY
 # Table of supported comparison operators.
 _OPS = frozenset(['=', '!=', '<', '<=', '>', '>=', 'in'])
 
-# Default limit value.  (Yes, the datastore uses int32!)
+# Default limit value.
 _MAX_LIMIT = 2 ** 31 - 1
 
 
@@ -519,8 +520,7 @@ class FilterNode(Node):
     if not isinstance(other, FilterNode):
       return NotImplemented
     # TODO: Should nodes with values that compare equal but have
-    # different types really be considered equal?  IIUC the datastore
-    # doesn't consider 1 equal to 1.0 when it compares property values.
+    # different types really be considered equal?
     return (self.__name == other.__name and
             self.__opsymbol == other.__opsymbol and
             self.__value == other.__value)
@@ -1623,7 +1623,7 @@ class QueryIterator(object):
   exception.  Once the loop is exhausted, both return the cursor after
   the last item returned.  Calling it.has_next() does not affect the
   cursors; you must call it.next() before the cursors move.  Note that
-  sometimes requesting a cursor requires a datastore roundtrip (but
+  sometimes requesting a cursor requires a Cloud Datastore roundtrip (but
   not if you happen to request a cursor corresponding to a batch
   boundary).  If produce_cursors is not set, both methods always raise
   an exception.
@@ -1869,7 +1869,7 @@ class _MultiQuery(object):
 
   # TODO: Need a way to specify the unification of two queries that
   # are identical except one has an ancestor and the other doesn't.
-  # The HR datastore makes that a useful special case.
+  # Cloud Datastore makes that a useful special case.
 
   def __init__(self, subqueries):
     if not isinstance(subqueries, list):
@@ -1931,7 +1931,7 @@ class _MultiQuery(object):
               '_MultiQuery with cursors requires __key__ order')
 
     # Decide if we need to modify the options passed to subqueries.
-    # NOTE: It would seem we can sometimes let the datastore handle
+    # NOTE: It would seem we can sometimes let Cloud Datastore handle
     # the offset natively, but this would thwart the duplicate key
     # detection, so we always have to emulate the offset here.
     # We can set the limit we pass along to offset + limit though,
