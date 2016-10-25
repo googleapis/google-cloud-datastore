@@ -28,8 +28,8 @@ setup(
     packages=['googledatastore'],
     package_dir={'googledatastore': 'googledatastore'},
     install_requires=[
-        'httplib2==0.8',
-        'oauth2client==2.0.1',
+        'httplib2>=0.9.1,<0.10',
+        'oauth2client>=2.0.1,<4.0.0',
         'proto-google-datastore-v1==1.2.0',
         'pycrypto==2.6',
         'pyOpenSSL',
