@@ -1,5 +1,9 @@
 # Python Client
 
+## 6.3.0
+
+  - Update required versions of `httplib2` and `oauth2client`.
+
 ## 6.2.0
 
   - Rename `local_cloud_datastore.py` to `datastore_emulator.py` and update it to use the Cloud Datastore emulator.
