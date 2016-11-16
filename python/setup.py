@@ -31,10 +31,6 @@ setup(
         'httplib2>=0.9.1,<0.10',
         'oauth2client>=2.0.1,<4.0.0',
         'proto-google-datastore-v1==1.2.0',
-        'pycrypto==2.6',
-        'pyOpenSSL',
-        'six',
-        'uritemplate==0.6',
     ],
     classifiers=[
         'Development Status :: 5 - Production/Stable',
