@@ -1,5 +1,9 @@
 # Python Client
 
+## 6.4.0
+
+  - Removed unnecessary dependencies from `setup.py`.
+
 ## 6.3.0
 
   - Update required versions of `httplib2` and `oauth2client`.
