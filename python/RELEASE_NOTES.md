@@ -1,5 +1,9 @@
 # Python Client
 
+## 6.4.1
+
+  - Updated version of `proto-google-datastore-v1` dependency.
+
 ## 6.4.0
 
   - Removed unnecessary dependencies from `setup.py`.
