@@ -1,5 +1,9 @@
 # Python Client
 
+## 6.5.0
+
+  - Updated version of `proto-google-datastore-v1` dependency.
+
 ## 6.4.1
 
   - Updated version of `proto-google-datastore-v1` dependency.
