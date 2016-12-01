@@ -30,7 +30,7 @@ setup(
     install_requires=[
         'httplib2>=0.9.1,<0.10',
         'oauth2client>=2.0.1,<4.0.0',
-        'proto-google-datastore-v1==1.3.1',
+        'proto-google-datastore-v1==1.4.0',
     ],
     classifiers=[
         'Development Status :: 5 - Production/Stable',
