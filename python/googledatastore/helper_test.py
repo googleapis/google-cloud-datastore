@@ -189,7 +189,19 @@ class DatastoreHelperTest(unittest.TestCase):
     self.assertEqual(dt_secs, ts.seconds)
     self.assertEqual(0, ts.nanos)
 
-  def testEndpointHost(self):
+  def testEndpointWithHost(self):
+    self.mox.StubOutWithMock(os, 'getenv')
+    os.getenv('DATASTORE_HOST').AndReturn('ignored')
+    os.getenv('__DATASTORE_URL_OVERRIDE').AndReturn(None)
+    os.getenv('DATASTORE_EMULATOR_HOST').AndReturn(None)
+    self.mox.ReplayAll()
+    endpoint = get_project_endpoint_from_env(project_id='bar',
+                                             host='a.b.c')
+    self.assertEqual('https://a.b.c/v1/projects/bar',
+                     endpoint)
+    self.mox.VerifyAll()
+
+  def testEndpointWithEmulatorHostAndHost(self):
     self.mox.StubOutWithMock(os, 'getenv')
     os.getenv('DATASTORE_HOST').AndReturn('ignored')
     os.getenv('__DATASTORE_URL_OVERRIDE').AndReturn(None)
@@ -200,7 +212,20 @@ class DatastoreHelperTest(unittest.TestCase):
                      endpoint)
     self.mox.VerifyAll()
 
-  def testEndpointHostAndProject(self):
+  def testEndpointWithEmulatorHost(self):
+    self.mox.StubOutWithMock(os, 'getenv')
+    os.getenv('DATASTORE_HOST').AndReturn('ignored')
+    os.getenv('__DATASTORE_URL_OVERRIDE').AndReturn(None)
+    os.getenv('DATASTORE_EMULATOR_HOST').AndReturn('localhost:1234')
+    self.mox.ReplayAll()
+    endpoint = get_project_endpoint_from_env(project_id='bar',
+                                             host='a.b.c')
+    # DATASTORE_EMULATOR_HOST wins.
+    self.assertEqual('http://localhost:1234/v1/projects/bar',
+                     endpoint)
+    self.mox.VerifyAll()
+
+  def testEndpointWithEmulatorHostAndProject(self):
     self.mox.StubOutWithMock(os, 'getenv')
     os.getenv('DATASTORE_PROJECT_ID').AndReturn('bar')
     os.getenv('DATASTORE_HOST').AndReturn('ignored')
@@ -212,7 +237,7 @@ class DatastoreHelperTest(unittest.TestCase):
                      endpoint)
     self.mox.VerifyAll()
 
-  def testEndpointProject(self):
+  def testEndpointWithProject(self):
     self.mox.StubOutWithMock(os, 'getenv')
     os.getenv('DATASTORE_PROJECT_ID').AndReturn('bar')
     os.getenv('DATASTORE_HOST').AndReturn('ignored')
@@ -224,13 +249,13 @@ class DatastoreHelperTest(unittest.TestCase):
                      endpoint)
     self.mox.VerifyAll()
 
-  def testEndpointNoProjectId(self):
+  def testEndpointWithNoProjectId(self):
     self.assertRaisesRegexp(
         ValueError,
         'project_id was not provided.*',
         get_project_endpoint_from_env)
 
-  def testEndpointSetUrlOverride(self):
+  def testEndpointWithUrlOverride(self):
     self.mox.StubOutWithMock(os, 'getenv')
     os.getenv('DATASTORE_HOST').AndReturn('ignored')
     os.getenv('__DATASTORE_URL_OVERRIDE').AndReturn(

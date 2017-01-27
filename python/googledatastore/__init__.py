@@ -65,8 +65,11 @@ def set_options(**kwargs):
         project_endpoint and project_id must be set.
     credentials: oauth2client.Credentials to authorize the
         connection.
-    project_endpoint: the endpoint of the datastore API, default to Google
-        APIs production server.
+    project_endpoint: the Cloud Datastore API project endpoint to use.
+        Defaults to the Google APIs production server. Must not be set if host
+        is also set.
+    host: the Cloud Datastore API host to use. Defaults to the Google APIs
+        production server. Must not be set if project_endpoint is also set.
   """
   with(_rlock):
     _options.update(kwargs)
