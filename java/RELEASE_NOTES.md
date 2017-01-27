@@ -1,5 +1,9 @@
 # Java Client
 
+## v1-1.4.0
+
+  - Add method `host()` to `DatastoreOptions`.
+
 ## v1-1.3.0
 
   - Update `datastore-v1-protos` dependency to a version that does not package the `com.google.api`, `com.google.rpc`, or `com.google.type` classes.
