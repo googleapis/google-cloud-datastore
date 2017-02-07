@@ -23,7 +23,7 @@ from . import connection
 from .connection import *
 # Import the Datastore protos. These are listed separately to avoid importing
 # the Datastore service, which conflicts with our Datastore class.
-from google.datastore.v1.datastore_pb2 import (
+from google.cloud.proto.datastore.v1.datastore_pb2 import (
     LookupRequest,
     LookupResponse,
     RunQueryRequest,
@@ -39,8 +39,8 @@ from google.datastore.v1.datastore_pb2 import (
     Mutation,
     MutationResult,
     ReadOptions)
-from google.datastore.v1.entity_pb2 import *
-from google.datastore.v1.query_pb2 import *
+from google.cloud.proto.datastore.v1.entity_pb2 import *
+from google.cloud.proto.datastore.v1.query_pb2 import *
 
 from google.protobuf.timestamp_pb2 import Timestamp
 from google.protobuf.struct_pb2 import NULL_VALUE
