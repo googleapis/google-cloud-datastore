@@ -117,7 +117,7 @@ def get_project_endpoint_from_env(project_id=None, host=None):
   Args:
     project_id: The Cloud project, defaults to the environment
         variable DATASTORE_PROJECT_ID.
-    host: The Cloud APIs hostname...TODO(eddavisson)
+    host: The Cloud Datastore API host to use.
 
   Returns:
     the endpoint to use, for example
