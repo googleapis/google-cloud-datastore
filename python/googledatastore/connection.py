@@ -35,7 +35,8 @@ __all__ = [
 class Datastore(object):
   """Datastore client connection constructor."""
 
-  def __init__(self, project_id=None, credentials=None, project_endpoint=None):
+  def __init__(self, project_id=None, credentials=None, project_endpoint=None,
+               host=None):
     """Datastore client connection constructor.
 
     Args:
@@ -43,24 +44,30 @@ class Datastore(object):
           project_endpoint and project_id must be set.
       credentials: oauth2client.Credentials to authorize the
           connection, default to no credentials.
-      project_endpoint: the Datastore endpoint to use. Exactly one of
-          project_endpoint and project_id must be set.
+      project_endpoint: the Cloud Datastore API project endpoint to use. Exactly one of
+          project_endpoint and project_id must be set. Must not be set if
+          host is also set.
+      host: the Cloud Datastore API host to use. Must not be set if project_endpoint
+         is also set.
 
     Usage: demos/trivial.py for example usages.
 
     Raises:
       TypeError: when neither or both of project_endpoint and project_id
-      are set.
+      are set or when both project_endpoint and host are set.
     """
     self._http = httplib2.Http()
     if not project_endpoint and not project_id:
       raise TypeError('project_endpoint or project_id argument is required.')
     if project_endpoint and project_id:
-      raise TypeError('only one of project_endpoint or project_id argument '
+      raise TypeError('only one of project_endpoint and project_id argument '
                       'is allowed.')
+    if project_endpoint and host:
+      raise TypeError('only one of project_endpoint and host is allowed.')
 
     self._url = (project_endpoint
-                 or helper.get_project_endpoint_from_env(project_id=project_id))
+                 or helper.get_project_endpoint_from_env(project_id=project_id,
+                                                         host=host))
 
     if credentials:
       self._credentials = credentials

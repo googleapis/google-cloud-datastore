@@ -264,13 +264,17 @@ class DatastoreTest(unittest.TestCase):
     self.mox.StubOutWithMock(helper, 'get_credentials_from_env')
     self.mox.StubOutWithMock(helper, 'get_project_endpoint_from_env')
     endpoint = 'http://localhost:8080/datastore/v1/projects/%s'
-    helper.get_project_endpoint_from_env(project_id='foo').AndReturn(
+    helper.get_project_endpoint_from_env(project_id='foo',
+                                         host=None).AndReturn(
         endpoint % 'foo')
-    helper.get_project_endpoint_from_env(project_id='foo').AndReturn(
+    helper.get_project_endpoint_from_env(project_id='foo',
+                                         host=None).AndReturn(
         endpoint % 'foo')
-    helper.get_project_endpoint_from_env(project_id='bar').AndReturn(
+    helper.get_project_endpoint_from_env(project_id='bar',
+                                         host=None).AndReturn(
         endpoint % 'bar')
-    helper.get_project_endpoint_from_env(project_id='bar').AndReturn(
+    helper.get_project_endpoint_from_env(project_id='bar',
+                                         host=None).AndReturn(
         endpoint % 'bar')
 
     helper.get_credentials_from_env().AndReturn(FakeCredentialsFromEnv())

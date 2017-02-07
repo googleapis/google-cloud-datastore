@@ -44,7 +44,8 @@ __all__ = [
 ]
 
 SCOPE = 'https://www.googleapis.com/auth/datastore'
-GOOGLEAPIS_URL = 'https://datastore.googleapis.com'
+GOOGLEAPIS_HOST = 'datastore.googleapis.com'
+GOOGLEAPIS_URL = 'https://%s' % GOOGLEAPIS_HOST
 API_VERSION = 'v1'
 
 # Value types for which their proto value is the user value type.
@@ -110,12 +111,13 @@ def get_credentials_from_env():
     raise e
 
 
-def get_project_endpoint_from_env(project_id=None):
+def get_project_endpoint_from_env(project_id=None, host=None):
   """Get Datastore project endpoint from environment variables.
 
   Args:
-    project_id: The cloud project, defaults to the environment
+    project_id: The Cloud project, defaults to the environment
         variable DATASTORE_PROJECT_ID.
+    host: The Cloud Datastore API host to use.
 
   Returns:
     the endpoint to use, for example
@@ -130,8 +132,7 @@ def get_project_endpoint_from_env(project_id=None):
     raise ValueError('project_id was not provided. Either pass it in '
                      'directly or set DATASTORE_PROJECT_ID.')
   # DATASTORE_HOST is deprecated.
-  host = os.getenv(_DATASTORE_HOST_ENV)
-  if host:
+  if os.getenv(_DATASTORE_HOST_ENV):
     logging.warning('Ignoring value of environment variable DATASTORE_HOST. '
                     'To point datastore to a host running locally, use the '
                     'environment variable DATASTORE_EMULATOR_HOST')
@@ -145,7 +146,8 @@ def get_project_endpoint_from_env(project_id=None):
     return ('http://%s/%s/projects/%s'
             % (localhost, API_VERSION, project_id))
 
-  return '%s/%s/projects/%s' % (GOOGLEAPIS_URL, API_VERSION, project_id)
+  host = host or GOOGLEAPIS_HOST
+  return 'https://%s/%s/projects/%s' % (host, API_VERSION, project_id)
 
 
 def add_key_path(key_proto, *path_elements):
