@@ -22,6 +22,7 @@ import pickle
 import re
 
 from .google_imports import datastore_errors
+from .google_imports import datastore_pbs
 from .google_imports import datastore_types
 from .google_imports import db
 from .google_imports import entity_pb
@@ -29,6 +30,7 @@ from .google_imports import memcache
 from .google_imports import namespace_manager
 from .google_imports import users
 from .google_test_imports import datastore_stub_util
+from .google_test_imports import real_unittest
 from .google_test_imports import unittest
 
 try:
@@ -463,17 +465,19 @@ property <
 """
 
 
-class ModelTests(test_utils.NDBTest):
+class BaseModelTestMixin(object):
 
   def assertBetween(self, x, a, b):
     '''Asserts a <= x <= b.'''
     if not a <= x <= b:
       self.fail('%s is not between %s and %s' % (x, a, b))
 
+  def setUp(self):
+    pass
+
   def tearDown(self):
     self.assertTrue(model.Model._properties == {})
     self.assertTrue(model.Expando._properties == {})
-    super(ModelTests, self).tearDown()
 
   the_module = model
 
@@ -1122,12 +1126,6 @@ class ModelTests(test_utils.NDBTest):
       def _get_kind(cls):
         return u'Fancier'
 
-    class FanciestModel(model.Model):
-
-      @classmethod
-      def _get_kind(cls):
-        return '\xff'
-
     class MyModel(model.Model):
       basic = model.KeyProperty(kind=None)
       ref = model.KeyProperty(kind=RefModel)
@@ -1135,15 +1133,13 @@ class ModelTests(test_utils.NDBTest):
       fancy = model.KeyProperty(kind=FancyModel)
       fancee = model.KeyProperty(kind='Fancy')
       fancier = model.KeyProperty(kind=FancierModel)
-      fanciest = model.KeyProperty(kind=FanciestModel)
-      faanceest = model.KeyProperty(kind=u'\xff')
+
     a = MyModel(basic=model.Key('Foo', 1),
                 ref=model.Key(RefModel, 1),
                 refs=[model.Key(RefModel, 2), model.Key(RefModel, 3)],
                 fancy=model.Key(FancyModel, 1),
                 fancee=model.Key(FancyModel, 2),
-                fancier=model.Key('Fancier', 1),
-                fanciest=model.Key(FanciestModel, 1))
+                fancier=model.Key('Fancier', 1))
     a.put()
     b = a.key.get()
     self.assertEqual(a, b)
@@ -1162,6 +1158,23 @@ class ModelTests(test_utils.NDBTest):
                       setattr, a, 'ref', model.Key('Bar', 1))
     self.assertRaises(datastore_errors.BadValueError,
                       setattr, a, 'refs', [model.Key('Bar', 1)])
+
+  def testKeyPropertyNonUtf8Kind(self):
+
+    class FanciestModel(model.Model):
+
+      @classmethod
+      def _get_kind(cls):
+        return '\xff'
+
+    class MyModel(model.Model):
+      fanciest = model.KeyProperty(kind=FanciestModel)
+      faanceest = model.KeyProperty(kind=u'\xff')
+
+    a = MyModel(fanciest=model.Key(FanciestModel, 1))
+    a.put()
+    b = a.key.get()
+    self.assertEqual(a, b)
 
   def testKeyPropertyPositionalKind(self):
     class RefModel(model.Model):
@@ -1462,16 +1475,19 @@ class ModelTests(test_utils.NDBTest):
     self.PrepareForPutTests(args[0])
     ctx.set_datastore_policy(False)
 
+    # Run tests against process cache
+    ctx.set_cache_policy(True)
+    self.DateAndOrTimePropertyTest(*args)
+    self.PrepareForPutTests(args[0])
+
+  def MultiDateAndOrTimePropertyTestMemcache(self, *args):
+    ctx = tasklets.get_context()
+
     # Run tests against memcache
     ctx.set_memcache_policy(True)
     self.DateAndOrTimePropertyTest(*args)
     self.PrepareForPutTests(args[0])
     ctx.set_memcache_policy(False)
-
-    # Run tests against process cache
-    ctx.set_cache_policy(True)
-    self.DateAndOrTimePropertyTest(*args)
-    self.PrepareForPutTests(args[0])
 
   def testDateTimeProperty(self):
     self.MultiDateAndOrTimePropertyTest(model.DateTimeProperty,
@@ -1479,17 +1495,38 @@ class ModelTests(test_utils.NDBTest):
                                         datetime.datetime(1982, 12, 1, 9, 0, 0),
                                         datetime.datetime(1995, 4, 15, 5, 0, 0))
 
+  def testDateTimePropertyMemcache(self):
+    self.MultiDateAndOrTimePropertyTestMemcache(
+        model.DateTimeProperty,
+        datetime.datetime.utcnow,
+        datetime.datetime(1982, 12, 1, 9, 0, 0),
+        datetime.datetime(1995, 4, 15, 5, 0, 0))
+
   def testDateProperty(self):
     self.MultiDateAndOrTimePropertyTest(model.DateProperty,
                                         lambda: datetime.datetime.utcnow().date(),
                                         datetime.date(1982, 12, 1),
                                         datetime.date(1995, 4, 15))
 
+  def testDatePropertyMemcache(self):
+    self.MultiDateAndOrTimePropertyTestMemcache(
+        model.DateProperty,
+        lambda: datetime.datetime.utcnow().date(),
+        datetime.date(1982, 12, 1),
+        datetime.date(1995, 4, 15))
+
   def testTimeProperty(self):
     self.MultiDateAndOrTimePropertyTest(model.TimeProperty,
                                         lambda: datetime.datetime.utcnow().time(),
                                         datetime.time(9, 0, 0),
                                         datetime.time(5, 0, 0, 500))
+
+  def testTimePropertyMemcache(self):
+    self.MultiDateAndOrTimePropertyTestMemcache(
+        model.TimeProperty,
+        lambda: datetime.datetime.utcnow().time(),
+        datetime.time(9, 0, 0),
+        datetime.time(5, 0, 0, 500))
 
   def testStructuredProperty(self):
     class Address(model.Model):
@@ -2300,6 +2337,7 @@ property <
 
     class MyModel(db.Model):
       name = db.StringProperty()
+
     dumped = []
     for proto in 0, 1, 2:
       x = MyModel()
@@ -2314,6 +2352,7 @@ property <
 
     class MyModel(model.Model):
       name = model.StringProperty()
+
     for s in dumped:
       self.assertRaises(Exception, pickle.loads, s)
 
@@ -2343,12 +2382,12 @@ property <
     a = Address(street='345 Spear', city='SF')
     # White box test: values are 'top values'.
     self.assertEqual(a._values, {'street': '345 Spear', 'city': 'SF'})
-    a.put()
+    key_id = a.put().id()
     # White box test: put() has turned wrapped values in _BaseValue().
     self.assertEqual(a._values, {'street': model._BaseValue('345 Spear'),
                                  'city': model._BaseValue('SF')})
     self.assertEqual(repr(a),
-                     "Address(key=Key('Address', 1), "
+                     "Address(key=Key('Address', %d), " % key_id +
                      # (Note: Unicode literals.)
                      "city=u'SF', street=u'345 Spear')")
     # White box test: _values is unchanged.
@@ -3903,6 +3942,12 @@ property <
     res = model.put_multi((ent1, ent2, ent3))
     self.assertEqual(res, [ent1.key, ent2.key, ent3.key])
 
+  def testPutMultiRepeatedKey(self):
+    ent1 = model.Model(key=model.Key('Model', 1))
+
+    res = model.put_multi((ent1, ent1))
+    self.assertEqual(res, [ent1.key, ent1.key])
+
   def testDeleteMultiAsync(self):
     model.Model._kind_map['Model'] = model.Model
     ent1 = model.Model(key=model.Key('Model', 1))
@@ -3944,6 +3989,17 @@ property <
     self.assertEqual(key1.get(), None)
     self.assertEqual(key2.get(), None)
     self.assertEqual(key3.get(), None)
+
+  def testDeleteMultiRepeatedKey(self):
+    model.Model._kind_map['Model'] = model.Model
+    ent1 = model.Model(key=model.Key('Model', 1))
+    key1 = ent1.put()
+
+    self.assertEqual(key1.get(), ent1)
+
+    model.delete_multi((key1, key1))
+
+    self.assertEquals(key1.get(), None)
 
   def testContextOptions(self):
     ctx = tasklets.get_context()
@@ -4742,12 +4798,12 @@ property <
       t = model.TextProperty(compressed=True)
       l = model.LocalStructuredProperty(Foo, compressed=True)
     x = M(b='b' * 100, t=u't' * 100, l=Foo(name='joe'))
-    x.put()
+    key_id = x.put().id()
     y = x.key.get()
     self.assertFalse(x is y)
     self.assertEqual(
         repr(y),
-        'M(key=Key(\'M\', 1), ' +
+        'M(key=Key(\'M\', %d), ' % key_id +
         'b=%r, ' % ('b' * 100) +
         'l=%r, ' % Foo(name=u'joe') +
         't=%r)' % (u't' * 100))
@@ -5072,6 +5128,84 @@ property <
     bar = foo.key.get(use_memcache=False, use_cache=False)
     self.assertTrue(isinstance(bar.bk, model.BlobKey))
     self.assertEqual(bar.bk, bk)
+
+
+class ModelV3Tests(test_utils.NDBTest, BaseModelTestMixin):
+  """Model tests that use a connection to a Datastore V3 stub."""
+
+  def setUp(self):
+    test_utils.NDBTest.setUp(self)
+    BaseModelTestMixin.setUp(self)
+
+
+@real_unittest.skipUnless(datastore_pbs._CLOUD_DATASTORE_ENABLED,
+                          'V1 must be supported to run V1 tests.')
+class ModelV1Tests(test_utils.NDBCloudDatastoreV1Test, BaseModelTestMixin):
+  """Model tests that use a connection to a Cloud Datastore V1 stub."""
+
+  def setUp(self):
+    test_utils.NDBCloudDatastoreV1Test.setUp(self)
+    BaseModelTestMixin.setUp(self)
+
+  def testDeleteMultiRepeatedKey(self):
+    # TODO(eddavisson): b/21268199.
+    pass
+
+  def testKeyPropertyNonUtf8Kind(self):
+    # TODO(eddavisson): b/9793610.
+    pass
+
+  def testPutMultiRepeatedKey(self):
+    # TODO(eddavisson): b/21268199.
+    pass
+
+  def testAllocateIds(self):
+    # TODO(eddavisson): b/20055469.
+    pass
+
+  def testAllocateIdsHooksCalled(self):
+    # TODO(eddavisson): b/20055469.
+    pass
+
+  def testContextOptions(self):
+    # TODO(eddavisson): This test requires memcache.
+    pass
+
+  def testContextOptions_PerClass(self):
+    # TODO(eddavisson): This test requires memcache.
+    pass
+
+  def testContextOptions_ThreeLevels(self):
+    # TODO(eddavisson): This test requires memcache.
+    pass
+
+  def testContextOptions_Timeouts(self):
+    # TODO(eddavisson): This test requires memcache.
+    pass
+
+  def testDatePropertyMemcache(self):
+    # Memcache not supported in v1.
+    pass
+
+  def testDateTimePropertyMemcache(self):
+    # Memcache not supported in v1.
+    pass
+
+  def testTimePropertyMemcache(self):
+    # Memcache not supported in v1.
+    pass
+
+  def testMonkeyPatchHooks(self):
+    # TODO(eddavisson): This tests allocates IDs. b/20055469.
+    pass
+
+  def testNonTransactionalDecorator(self):
+    # TODO(eddavisson): This test uses db.
+    pass
+
+  def testRejectOldPickles(self):
+    # TODO(eddavisson): This test uses db to insert an entity.
+    pass
 
 
 class IndexTests(test_utils.NDBTest):
