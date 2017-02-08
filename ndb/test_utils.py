@@ -39,12 +39,6 @@ from . import tasklets
 from . import eventloop
 
 
-_STARTUP_OPTIONS = [
-    '--dev_appserver_option='
-    '--property=datastore.auto_id_allocation_policy=SEQUENTIAL',
-]
-
-
 class NDBBaseTest(unittest.TestCase):
   """Base class for tests that interact with API stubs or create Models.
 
@@ -169,9 +163,9 @@ class NDBCloudDatastoreV1Test(NDBBaseTest):
   def setUpClass(cls):
     # Late import so that tests can still run if googledatastore is not
     # available.
-    from . import local_cloud_datastore_factory
-    factory = local_cloud_datastore_factory.LocalCloudDatastoreFactory()
-    cls.datastore = factory.Create(cls.APP_ID, _STARTUP_OPTIONS)
+    from . import datastore_emulator
+    factory = datastore_emulator.DatastoreEmulatorFactory()
+    cls.datastore = factory.Create(cls.APP_ID)
 
   @classmethod
   def tearDownClass(cls):
