@@ -383,10 +383,12 @@ class ContextTestMixin(object):
 
       @tasklets.tasklet
       def callback():
-        # Cause rollback to return an exception
-        ctx = tasklets.get_context()
-        ctx._conn._end_transaction = self.make_bad_transaction
         yield ent.put_async()
+        ctx = tasklets.get_context()
+        ctx._conn.transaction  # force evaluation
+        # hack for testing
+        (ctx._conn
+         ._TransactionalConnection__transaction) = self.make_bad_transaction()
         raise CustomException()
       yield self.ctx.transaction(callback)
     try:
