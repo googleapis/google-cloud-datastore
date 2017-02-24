@@ -573,8 +573,8 @@ class ContextTestMixin(object):
     self.assertEqual(bar.name, 'updated-bar')
 
   def start_test_server(self):
-    host = '127.0.0.1'
-    s = socket.socket()
+    host = 'localhost'
+    s = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     for i in range(10):
       port = random.randrange(32768, 60000)
