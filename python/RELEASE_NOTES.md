@@ -1,5 +1,9 @@
 # Python Client
 
+## 7.0.1
+
+    - Better error handling.
+
 ## 7.0.0
 
     - Added dependency on `proto-google-cloud-datastore-v1` package (replacing `proto-google-datastore-v1`). This changes the proto import paths from `google.datastore.v1` to `google.cloud.proto.datastore.v1`.
