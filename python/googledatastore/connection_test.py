@@ -21,16 +21,13 @@ import os
 import threading
 import unittest
 
+import httplib2
 import mox
 
 import googledatastore as datastore
+from googledatastore import connection
 from googledatastore import helper
-
-
-class TestResponse(object):
-  def __init__(self, status, reason):
-    self.status = status
-    self.reason = reason
+from google.rpc import code_pb2
 
 
 class FakeCredentialsFromEnv(object):
@@ -88,32 +85,42 @@ class DatastoreTest(unittest.TestCase):
   def testLookupSuccess(self):
     request = self.makeLookupRequest()
     payload = request.SerializeToString()
-    response = self.makeLookupResponse()
+    proto_response = self.makeLookupResponse()
+    response = httplib2.Response({
+        'status': 200,
+        'content-type': 'application/x-protobuf',
+    })
+
     self.expectRequest(
         'https://example.com/datastore/v1/projects/foo:lookup',
         method='POST', body=payload,
         headers=self.makeExpectedHeaders(payload)).AndReturn((
-            TestResponse(status=200, reason='Found'),
-            response.SerializeToString()))
+            response,
+            proto_response.SerializeToString()))
     self.mox.ReplayAll()
 
     resp = self.conn.lookup(request)
-    self.assertEqual(response, resp)
+    self.assertEqual(proto_response, resp)
     self.mox.VerifyAll()
 
   def testLookupFailure(self):
     request = self.makeLookupRequest()
     payload = request.SerializeToString()
-    response = datastore.Status()
-    response.code = 3  # Code.INVALID_ARGUMENT
-    response.message = 'An error message.'
+    status = datastore.Status()
+    status.code = 3  # Code.INVALID_ARGUMENT
+    status.message = 'An error message.'
+    response = httplib2.Response({
+        'status': 400,
+        'content-type': 'application/x-protobuf',
+    })
+
     self.expectRequest(
         'https://example.com/datastore/v1/projects/foo:lookup',
         method='POST',
         body=payload,
         headers=self.makeExpectedHeaders(payload)).AndReturn((
-            TestResponse(status=400, reason='IGNORED'),
-            response.SerializeToString()))
+            response,
+            status.SerializeToString()))
     self.mox.ReplayAll()
 
     with self.assertRaisesRegexp(
@@ -126,19 +133,76 @@ class DatastoreTest(unittest.TestCase):
   def testLookupFailureWithNonStatus(self):
     request = self.makeLookupRequest()
     payload = request.SerializeToString()
+    response = httplib2.Response({
+        'status': 400,
+        # No application/x-protobuf content type.
+    })
+
     self.expectRequest(
         'https://example.com/datastore/v1/projects/foo:lookup',
         method='POST',
         body=payload,
         headers=self.makeExpectedHeaders(payload)).AndReturn((
-            TestResponse(status=400, reason='IGNORED'),
-            'There was an error.'))
+            response,
+            'There was an error'))
     self.mox.ReplayAll()
 
     with self.assertRaisesRegexp(
         datastore.RPCError,
         'datastore call lookup failed: '
-        'HTTP status code: 400. Message: There was an error'):
+        'Non-protobuf error: There was an error. HTTP status code was: 400'):
+      self.conn.lookup(request)
+    self.mox.VerifyAll()
+
+  def testLookupFailureUnexpectedOk(self):
+    request = self.makeLookupRequest()
+    payload = request.SerializeToString()
+    status = datastore.Status()
+    status.code = 0  # Code.OK
+    status.message = 'An error message.'
+    response = httplib2.Response({
+        'status': 400,
+        'content-type': 'application/x-protobuf',
+    })
+
+    self.expectRequest(
+        'https://example.com/datastore/v1/projects/foo:lookup',
+        method='POST',
+        body=payload,
+        headers=self.makeExpectedHeaders(payload)).AndReturn((
+            response,
+            status.SerializeToString()))
+    self.mox.ReplayAll()
+
+    with self.assertRaisesRegexp(
+        datastore.RPCError,
+        'datastore call lookup failed: '
+        'Unexpected OK error code with HTTP status code of 400. '
+        'Message: An error message.'):
+      self.conn.lookup(request)
+    self.mox.VerifyAll()
+
+  def testLookupFailureCannotParseStatus(self):
+    request = self.makeLookupRequest()
+    payload = request.SerializeToString()
+    response = httplib2.Response({
+        'status': 400,
+        'content-type': 'application/x-protobuf',
+    })
+
+    self.expectRequest(
+        'https://example.com/datastore/v1/projects/foo:lookup',
+        method='POST',
+        body=payload,
+        headers=self.makeExpectedHeaders(payload)).AndReturn((
+            response,
+            'cannot parse this as a Status'))
+    self.mox.ReplayAll()
+
+    with self.assertRaisesRegexp(
+        datastore.RPCError,
+        'datastore call lookup failed: '
+        'Unable to parse Status protocol buffer: HTTP status code was 400.'):
       self.conn.lookup(request)
     self.mox.VerifyAll()
 
@@ -146,100 +210,130 @@ class DatastoreTest(unittest.TestCase):
     request = datastore.RunQueryRequest()
     request.query.kind.add().name = 'Foo'
     payload = request.SerializeToString()
-    response = datastore.RunQueryResponse()
+    proto_response = datastore.RunQueryResponse()
+    response = httplib2.Response({
+        'status': 200,
+        'content-type': 'application/x-protobuf',
+    })
+
     self.expectRequest(
         'https://example.com/datastore/v1/projects/foo:runQuery',
         method='POST', body=payload,
         headers=self.makeExpectedHeaders(payload)).AndReturn((
-            TestResponse(status=200, reason='Found'),
-            response.SerializeToString()))
+            response,
+            proto_response.SerializeToString()))
     self.mox.ReplayAll()
 
     resp = self.conn.run_query(request)
-    self.assertEqual(response, resp)
+    self.assertEqual(proto_response, resp)
     self.mox.VerifyAll()
 
   def testBeginTransaction(self):
     request = datastore.BeginTransactionRequest()
     payload = request.SerializeToString()
-    response = datastore.BeginTransactionResponse()
+    proto_response = datastore.BeginTransactionResponse()
+    response = httplib2.Response({
+        'status': 200,
+        'content-type': 'application/x-protobuf',
+    })
+
     self.expectRequest(
         'https://example.com/datastore/v1/projects/foo:beginTransaction',
         method='POST', body=payload,
         headers=self.makeExpectedHeaders(payload)).AndReturn((
-            TestResponse(status=200, reason='Found'),
-            response.SerializeToString()))
+            response,
+            proto_response.SerializeToString()))
     self.mox.ReplayAll()
 
     resp = self.conn.begin_transaction(request)
-    self.assertEqual(response, resp)
+    self.assertEqual(proto_response, resp)
     self.mox.VerifyAll()
 
   def testCommit(self):
     request = datastore.CommitRequest()
     request.transaction = 'transaction-id'
     payload = request.SerializeToString()
-    response = datastore.CommitResponse()
+    proto_response = datastore.CommitResponse()
+    response = httplib2.Response({
+        'status': 200,
+        'content-type': 'application/x-protobuf',
+    })
+
     self.expectRequest(
         'https://example.com/datastore/v1/projects/foo:commit',
         method='POST', body=payload,
         headers=self.makeExpectedHeaders(payload)).AndReturn((
-            TestResponse(status=200, reason='Found'),
-            response.SerializeToString()))
+            response,
+            proto_response.SerializeToString()))
     self.mox.ReplayAll()
 
     resp = self.conn.commit(request)
-    self.assertEqual(response, resp)
+    self.assertEqual(proto_response, resp)
     self.mox.VerifyAll()
 
   def testRollback(self):
     request = datastore.RollbackRequest()
     request.transaction = 'transaction-id'
     payload = request.SerializeToString()
-    response = datastore.RollbackResponse()
+    proto_response = datastore.RollbackResponse()
+    response = httplib2.Response({
+        'status': 200,
+        'content-type': 'application/x-protobuf',
+    })
+
     self.expectRequest(
         'https://example.com/datastore/v1/projects/foo:rollback',
         method='POST', body=payload,
         headers=self.makeExpectedHeaders(payload)).AndReturn((
-            TestResponse(status=200, reason='Found'),
-            response.SerializeToString()))
+            response,
+            proto_response.SerializeToString()))
     self.mox.ReplayAll()
 
     resp = self.conn.rollback(request)
-    self.assertEqual(response, resp)
+    self.assertEqual(proto_response, resp)
     self.mox.VerifyAll()
 
   def testAllocateIds(self):
     request = datastore.AllocateIdsRequest()
     payload = request.SerializeToString()
-    response = datastore.AllocateIdsResponse()
+    proto_response = datastore.AllocateIdsResponse()
+    response = httplib2.Response({
+        'status': 200,
+        'content-type': 'application/x-protobuf',
+    })
+
     self.expectRequest(
         'https://example.com/datastore/v1/projects/foo:allocateIds',
         method='POST', body=payload,
         headers=self.makeExpectedHeaders(payload)).AndReturn((
-            TestResponse(status=200, reason='Found'),
-            response.SerializeToString()))
+            response,
+            proto_response.SerializeToString()))
     self.mox.ReplayAll()
 
     resp = self.conn.allocate_ids(request)
-    self.assertEqual(response, resp)
+    self.assertEqual(proto_response, resp)
     self.mox.VerifyAll()
 
   def testDefaultBaseUrl(self):
     self.conn = datastore.Datastore(project_id='foo')
     request = self.makeLookupRequest()
     payload = request.SerializeToString()
-    response = self.makeLookupResponse()
+    proto_response = self.makeLookupResponse()
+    response = httplib2.Response({
+        'status': 200,
+        'content-type': 'application/x-protobuf',
+    })
+
     self.expectRequest(
         'https://datastore.googleapis.com/v1/projects/foo:lookup',
         method='POST', body=payload,
         headers=self.makeExpectedHeaders(payload)).AndReturn((
-            TestResponse(status=200, reason='Found'),
-            response.SerializeToString()))
+            response,
+            proto_response.SerializeToString()))
     self.mox.ReplayAll()
 
     resp = self.conn.lookup(request)
-    self.assertEqual(response, resp)
+    self.assertEqual(proto_response, resp)
     self.mox.VerifyAll()
 
   def testSetOptions(self):
@@ -341,6 +435,15 @@ class DatastoreTest(unittest.TestCase):
       result = method(req_class())
       self.assertEqual(resp_class, type(result))
     self.mox.VerifyAll()
+
+  def testRPCError(self):
+    e = connection.RPCError('method', code_pb2.INTERNAL, 'message')
+    # Check that it can be-reraised from its args.
+    e2 = connection.RPCError(*e.args)
+    try:
+      raise type(e), e.args
+    except connection.RPCError:
+      pass
 
 if __name__ == '__main__':
   unittest.main()

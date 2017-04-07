@@ -205,17 +205,31 @@ class Datastore(object):
 
 
 def _make_rpc_error(method, response, content):
+  if ('content-type' not in response
+      or response['content-type'] != 'application/x-protobuf'):
+    return RPCError(
+        method, code_pb2.INTERNAL,
+        ('Non-protobuf error: %s. HTTP status code was: %s'
+         % (content, response.status)))
+
   try:
     status = status_pb2.Status()
     status.ParseFromString(content)
-    code_string = code_pb2.Code.Name(status.code)
+    if status.code == code_pb2.OK:
+      # We may have accidentally successfully parsed a non-Status message.
+      return RPCError(
+        method, code_pb2.INTERNAL,
+        ('Unexpected OK error code with HTTP status code of %d. Message: %s'
+         % (response.status, status.message)))
     return RPCError(
         method, status.code,
-        'Error code: %s. Message: %s' % (code_string, status.message))
+        ('Error code: %s. Message: %s'
+         % (code_pb2.Code.Name(status.code), status.message)))
   except Exception:
     return RPCError(
         method, code_pb2.INTERNAL,
-        'HTTP status code: %s. Message: %s' % (response.status, content))
+        ('Unable to parse Status protocol buffer: HTTP status code was %s.'
+         % response.status))
 
 
 class Error(Exception):
@@ -236,6 +250,7 @@ class RPCError(Error):
     self.method = method
     self.code = code
     self.message = message
-    super(RPCError, self).__init__(self._failure_format.format(
-        method=method,
-        message=message))
+    super(RPCError, self).__init__(method, code, message)
+
+  def __str__(self):
+    return self._failure_format.format(method=self.method, message=self.message)
