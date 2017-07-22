@@ -14,7 +14,6 @@
 # limitations under the License.
 
 """Tests for msgprop.py."""
-
 from protorpc import messages
 
 from . import model
@@ -30,7 +29,7 @@ class Color(messages.Enum):
   BLUE = 450
 
 
-SAMPLE_PB = r"""key <
+SAMPLE_PB1 = r"""key <
   app: "ndb-test-app-id"
   path <
     Element {
@@ -63,6 +62,39 @@ raw_property <
 """
 
 
+SAMPLE_PB2 = r"""key {
+  app: "ndb-test-app-id"
+  path {
+    Element {
+      type: "Storage"
+      id: 1
+    }
+  }
+}
+property {
+  name: "greet.text"
+  multiple: false
+  value {
+    stringValue: "abc"
+  }
+}
+raw_property {
+  meaning: BLOB
+  name: "greet.__protobuf__"
+  multiple: false
+  value {
+    stringValue: "\n\003abc\020{"
+  }
+}
+entity_group {
+  Element {
+    type: "Storage"
+    id: 1
+  }
+}
+"""
+
+
 class MsgPropTests(test_utils.NDBTest):
 
   the_module = msgprop
@@ -91,7 +123,12 @@ class MsgPropTests(test_utils.NDBTest):
     self.assertEqual(result.greet, Greeting(when=123, text='abc'))
     self.assertEqual(result,
                      Storage(greet=Greeting(when=123, text='abc'), key=key))
-    self.assertEqual(str(result._to_pb()), SAMPLE_PB)
+    try:
+      self.assertEqual(str(result._to_pb()), SAMPLE_PB2)
+    except AssertionError:
+      # Some test environment setups (e.g py27 runtime) use proto2.
+      # Some still use proto1 (e.g dev_appserver).
+      self.assertEqual(str(result._to_pb()), SAMPLE_PB1)
 
   def testValidator(self):
     logs = []

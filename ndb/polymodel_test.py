@@ -319,7 +319,62 @@ class PolyModelTests(test_utils.NDBTest):
     self.assertEqual(Animal.query().filters, None)
     self.assertNotEqual(Cat.query().filters, None)
 
-TOM_PB = """\
+TOM_PB2 = """\
+key {
+  app: "ndb-test-app-id"
+  path {
+    Element {
+      type: "Animal"
+    }
+  }
+}
+property {
+  name: "class"
+  multiple: true
+  value {
+    stringValue: "Animal"
+  }
+}
+property {
+  name: "class"
+  multiple: true
+  value {
+    stringValue: "Feline"
+  }
+}
+property {
+  name: "class"
+  multiple: true
+  value {
+    stringValue: "Cat"
+  }
+}
+property {
+  name: "name"
+  multiple: false
+  value {
+    stringValue: "Tom"
+  }
+}
+property {
+  name: "purr"
+  multiple: false
+  value {
+    stringValue: "loud"
+  }
+}
+property {
+  name: "whiskers"
+  multiple: false
+  value {
+    booleanValue: true
+  }
+}
+entity_group {
+}
+"""
+
+TOM_PB1 = """\
 key <
   app: "ndb-test-app-id"
   path <
@@ -388,7 +443,12 @@ class CompatibilityTests(test_utils.NDBTest):
       purr = model.StringProperty()
     tom = Cat(name='Tom', purr='loud', whiskers=True)
     tom._prepare_for_put()
-    self.assertEqual(str(tom._to_pb()), TOM_PB)
+    try:
+      self.assertEqual(str(tom._to_pb()), TOM_PB2)
+    except AssertionError:
+      # Some test environment setups (e.g py27 runtime) use proto2.
+      # Some still use proto1 (e.g dev_appserver).
+      self.assertEqual(str(tom._to_pb()), TOM_PB1)
 
 
 if __name__ == '__main__':
