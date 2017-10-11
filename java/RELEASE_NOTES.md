@@ -1,5 +1,9 @@
 # Java Client
 
+## v1-1.4.1
+
+  - Fix [google/google-http-java-client#367](https://github.com/google/google-http-java-client/issues/367)
+
 ## v1-1.4.0
 
   - Add method `host()` to `DatastoreOptions`.

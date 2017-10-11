@@ -20,7 +20,7 @@
 
   <groupId>com.google.cloud.datastore</groupId>
   <artifactId>datastore-v1-proto-demos</artifactId>
-  <version>1.4.0</version>
+  <version>1.4.1</version>
 
   <name>${project.groupId}:${project.artifactId}</name>
 
@@ -29,14 +29,14 @@
   <parent>
     <groupId>com.google.cloud.datastore</groupId>
     <artifactId>datastore-v1-proto-client-parent</artifactId>
-    <version>1.4.0</version>
+    <version>1.4.1</version>
   </parent>
 
   <dependencies>
     <dependency>
       <groupId>com.google.cloud.datastore</groupId>
       <artifactId>datastore-v1-proto-client</artifactId>
-      <version>1.4.0</version>
+      <version>1.4.1</version>
     </dependency>
   </dependencies>
 
