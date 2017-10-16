@@ -15,7 +15,7 @@
 #
 """Python wrapper for the Cloud Datastore emulator."""
 
-__author__ = 'eddavisson@google.com (Ed Davisson)'
+
 
 
 import logging
@@ -28,6 +28,7 @@ import time
 import zipfile
 
 from googledatastore import connection
+import httplib
 import httplib2
 import portpicker
 
@@ -202,9 +203,7 @@ class DatastoreEmulator(object):
     Returns:
       True if the data was successfully cleared, False otherwise.
     """
-    headers = {'Content-length': '0'}
-    response, _ = self._http.request('%s/reset' % self._host, method='POST',
-                                     headers=headers)
+    response, _ = self._http.request('%s/reset' % self._host, method='POST')
     if response.status == 200:
       return True
     else:
@@ -215,18 +214,26 @@ class DatastoreEmulator(object):
     if not self.__running:
       return
     logging.info('shutting down the emulator running at %s', self._host)
-    headers = {'Content-length': '0'}
-    response, _ = self._http.request('%s/shutdown' % self._host,
-                                     method='POST', headers=headers)
-    if response.status != 200:
-      logging.warning('failed to shut down emulator; response: %s', response)
-
-    self.__running = False
-    # Delete temp files.
-    shutil.rmtree(self._tmp_dir)
+    try:
+      response, _ = self._http.request('%s/shutdown' % self._host,
+                                       method='POST')
+      if response.status != 200:
+        logging.warning('failed to shut down emulator; response: %s', response)
+    except socket.error as e:
+      logging.warning('failed to shut down emulator; received error: %s', e)
+    except httplib.BadStatusLine as e:
+      logging.warning('failed to shut down emulator; received error: %s', e)
+    finally:
+      self.__running = False
+      # Delete temp files.
+      shutil.rmtree(self._tmp_dir)
 
   def __del__(self):
     # If the user forgets to call Stop()
     logging.warning('emulator shutting down due to '
                     'DatastoreEmulator object deletion')
     self.Stop()
+
+  def GetHostPort(self):
+    """Returns the hostname:port of this emulator."""
+    return self._host
