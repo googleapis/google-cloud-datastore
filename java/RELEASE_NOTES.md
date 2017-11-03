@@ -1,5 +1,13 @@
 # Java Client
 
+## v1-1.5.1
+
+  - Include [#186](https://github.com/GoogleCloudPlatform/google-cloud-datastore/pull/186), which fixes HTTP connection handling on errors.
+
+## v1-1.5.0
+
+  - Include [ID reservation](https://cloud.google.com/datastore/docs/reference/rest/v1/projects/reserveIds).
+
 ## v1-1.4.1
 
   - Fix [google/google-http-java-client#367](https://github.com/google/google-http-java-client/issues/367)
