@@ -20,7 +20,7 @@
 
   <groupId>com.google.cloud.datastore</groupId>
   <artifactId>datastore-v1-proto-client-parent</artifactId>
-  <version>1.5.1</version>
+  <version>1.6.0</version>
 
   <name>${project.groupId}:${project.artifactId}</name>
   <url>https://cloud.google.com/datastore/</url>
@@ -61,9 +61,9 @@
   <dependencyManagement>
     <dependencies>
       <dependency>
-        <groupId>com.google.cloud.datastore</groupId>
-        <artifactId>datastore-v1-protos</artifactId>
-        <version>1.5.0</version>
+        <groupId>com.google.api.grpc</groupId>
+        <artifactId>proto-google-cloud-datastore-v1</artifactId>
+        <version>0.1.27</version>
       </dependency>
 
       <dependency>
