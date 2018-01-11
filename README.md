@@ -32,14 +32,14 @@ pip install googledatastore
 
 ```
 <dependency>
-  <groupId>com.google.cloud.datastore</groupId>
-  <artifactId>datastore-v1-protos</artifactId>
-  <version>1.5.0</version>
+  <groupId>com.google.api.grpc</groupId>
+  <artifactId>proto-google-cloud-datastore-v1</artifactId>
+  <version>0.1.27</version>
 </dependency>
 <dependency>
   <groupId>com.google.cloud.datastore</groupId>
   <artifactId>datastore-v1-proto-client</artifactId>
-  <version>1.5.0</version>
+  <version>1.6.0</version>
 </dependency>
 ```
 
