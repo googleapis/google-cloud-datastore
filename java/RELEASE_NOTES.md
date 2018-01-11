@@ -1,5 +1,11 @@
 # Java Client
 
+## v1-1.6.0
+
+  - Switch to proto-google-cloud-datastore-v1. The `datastore-v1-protos` dependency is *deprecated* and will not be updated henceforth.
+  - Cache project ID information when retrieved from Compute Engine metadata.
+  - Use GzipFixingInputStream for error response content.
+
 ## v1-1.5.1
 
   - Include [#186](https://github.com/GoogleCloudPlatform/google-cloud-datastore/pull/186), which fixes HTTP connection handling on errors.
