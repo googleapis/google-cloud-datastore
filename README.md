@@ -50,10 +50,10 @@ For more information, see the [Cloud Datastore documentation][4].
 ## Filing Issues
 
 1. For production issues and support options, see [Cloud Datastore support][25].
-1. For bugs or feature requests, please first look at [existing issues][14].
-1. When applicable, create a new [report][15].
-1. For bugs, detail the steps to reproduce the problem and the affected version number.
-1. For feature requests, articulate the use case you are trying solve and describe any current workaround(s).
+2. For bugs or feature requests, please first look at [existing issues][14].
+3. When applicable, create a new [report][15]. Note that this repo _exclusively_ covers the low-level, _Protobuf-based_ clients. If you're using `com.google.cloud.google-cloud-datastore` (Java) or `google-cloud-datastore` (Python), **please** file your issue in the appropriate repo, [google-cloud-java][26] or [google-cloud-python][27]. If you file an issue with either of those client libraries here, we will (gently) redirect you to the right repo and close the issue in this one.
+4. For bugs, detail the steps to reproduce the problem and the affected version number.
+5. For feature requests, articulate the use case you are trying solve and describe any current workaround(s).
 
 ## Contributing changes
 
@@ -76,5 +76,5 @@ For more information, see the [Cloud Datastore documentation][4].
 [18]: https://pypi.python.org/pypi/googledatastore
 [24]: https://cloud.google.com/datastore/docs/client-libraries
 [25]: https://cloud.google.com/datastore/docs/support
-[26]: https://github.com/GoogleCloudPlatform/gcloud-java
-[27]: https://github.com/GoogleCloudPlatform/gcloud-python
+[26]: https://github.com/GoogleCloudPlatform/google-cloud-java
+[27]: https://github.com/GoogleCloudPlatform/google-cloud-python
