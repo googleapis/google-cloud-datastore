@@ -61,6 +61,12 @@
     <dependency>
       <groupId>com.google.api-client</groupId>
       <artifactId>google-api-client</artifactId>
+	  <exclusions>
+	      <exclusion>
+		      <groupId>com.google.guava</groupId>
+		      <artifactId>guava-jdk5</artifactId>			  
+	      </exclusion>			  
+	  </exclusions>		  
     </dependency>
 
     <dependency>
@@ -81,6 +87,8 @@
       <scope>test</scope>
     </dependency>
   </dependencies>
+
+
 
   <build>
     <plugins>
@@ -103,6 +111,43 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-gpg-plugin</artifactId>
       </plugin>
+	  
+	  <plugin>
+	    <groupId>org.apache.maven.plugins</groupId>
+	    <artifactId>maven-shade-plugin</artifactId>
+	    <version>3.0.0</version>
+	    <executions>
+	      <execution>
+	        <phase>package</phase>
+	        <goals>
+	          <goal>shade</goal>
+	        </goals>
+	        <configuration>
+	          <!--finalName>${project.artifactId}-${project.version}-shaded</finalName-->
+	          <relocations>
+	            <relocation>
+	              <pattern>com.google.common</pattern>
+	              <shadedPattern>guavashaded.com.google.common</shadedPattern>
+	            </relocation>
+	            <relocation>
+	              <pattern>com.fasterxml.jackson</pattern>
+	              <shadedPattern>guavashaded.com.google.common</shadedPattern>
+	            </relocation>
+	            <relocation>
+	              <pattern>org.apache.http</pattern>
+	              <shadedPattern>guavashaded.org.apache.http</shadedPattern>
+	            </relocation>
+	          </relocations>
+	          <artifactSet>
+	            <includes>
+	              <include>*:*</include>
+	            </includes>
+	          </artifactSet>
+	        </configuration>
+	      </execution>
+	    </executions>
+	  </plugin>
+	  
     </plugins>
   </build>
 </project>
