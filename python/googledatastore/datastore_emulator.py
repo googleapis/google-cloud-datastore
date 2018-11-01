@@ -18,6 +18,7 @@
 __author__ = 'eddavisson@google.com (Ed Davisson)'
 
 
+import httplib
 import logging
 import os
 import shutil
@@ -187,7 +188,7 @@ class DatastoreEmulator(object):
         if response.status == 200:
           logging.info('emulator responded after %f seconds', Elapsed())
           return True
-      except socket.error:
+      except (socket.error, httplib.ResponseNotReady):
         pass
       if Elapsed() >= deadline:
         # Out of time; give up.
