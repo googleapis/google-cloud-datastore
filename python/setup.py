@@ -1,5 +1,5 @@
 #
-# Copyright 2013 Google Inc. All Rights Reserved.
+# Copyright 2017 Google Inc. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,14 +15,14 @@
 #
 from setuptools import setup
 
-__version__ = '7.0.1'
+__version__ = '7.1.0'
 
 setup(
     name='googledatastore',
     version=__version__,
-    description='google cloud datastore protobuf client',
+    description='Google Cloud Datastore Protobuf client',
     long_description=open('README.rst').read(),
-    author='Google Cloud Datastore Team',
+    author='Google',
     author_email='gcd-discuss@google.com',
     url='https://github.com/GoogleCloudPlatform/google-cloud-datastore',
     packages=['googledatastore'],
@@ -30,7 +30,7 @@ setup(
     install_requires=[
         'httplib2>=0.9.1,<=0.12.0',
         'oauth2client>=2.0.1,<4.0.0',
-        'proto-google-cloud-datastore-v1>=0.90.0',
+        'proto-google-datastore-v1>=1.5.0',
     ],
     classifiers=[
         'Development Status :: 5 - Production/Stable',

@@ -22,8 +22,8 @@ import os
 
 import httplib2
 from oauth2client import client
-from google.cloud.proto.datastore.v1 import entity_pb2
-from google.cloud.proto.datastore.v1 import query_pb2
+from google.datastore.v1 import entity_pb2
+from google.datastore.v1 import query_pb2
 
 __all__ = [
     'get_credentials_from_env',

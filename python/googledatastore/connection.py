@@ -19,7 +19,9 @@ import logging
 import httplib2
 
 from googledatastore import helper
-from google.cloud.proto.datastore.v1 import datastore_pb2
+import threading
+
+from google.datastore.v1 import datastore_pb2
 from google.protobuf import timestamp_pb2
 from google.rpc import code_pb2
 from google.rpc import status_pb2
@@ -35,8 +37,12 @@ __all__ = [
 class Datastore(object):
   """Datastore client connection constructor."""
 
-  def __init__(self, project_id=None, credentials=None, project_endpoint=None,
-               host=None):
+  def __init__(self,
+               project_id=None,
+               credentials=None,
+               project_endpoint=None,
+               host=None,
+               http_factory=None):
     """Datastore client connection constructor.
 
     Args:
@@ -48,7 +54,10 @@ class Datastore(object):
           project_endpoint and project_id must be set. Must not be set if
           host is also set.
       host: the Cloud Datastore API host to use. Must not be set if project_endpoint
-         is also set.
+          is also set.
+      http_factory: a method that creates a httplib2.Http object for the
+          request. Defaults to the httplib2.Http constructor. Called once
+          per thread.
 
     Usage: demos/trivial.py for example usages.
 
@@ -56,7 +65,9 @@ class Datastore(object):
       TypeError: when neither or both of project_endpoint and project_id
       are set or when both project_endpoint and host are set.
     """
-    self._http = httplib2.Http()
+    self._http_factory = http_factory or httplib2.Http
+    self._locals = threading.local()
+
     if not project_endpoint and not project_id:
       raise TypeError('project_endpoint or project_id argument is required.')
     if project_endpoint and project_id:
@@ -69,11 +80,19 @@ class Datastore(object):
                  or helper.get_project_endpoint_from_env(project_id=project_id,
                                                          host=host))
 
-    if credentials:
-      self._credentials = credentials
-      credentials.authorize(self._http)
-    else:
+    if credentials is None:
       logging.warning('no datastore credentials')
+    self._credentials = credentials
+
+  @property
+  def _http(self):
+    # httplib2.Http is not threadsafe, so we make one instance per thread.
+    # See: http://goo.gl/fgtkl
+    if not hasattr(self._locals, 'http'):
+      self._locals.http = self._http_factory()
+      if self._credentials:
+        self._credentials.authorize(self._locals.http)
+    return self._locals.http
 
   def lookup(self, request):
     """Lookup entities by key.
@@ -156,7 +175,7 @@ class Datastore(object):
                              datastore_pb2.RollbackResponse)
 
   def allocate_ids(self, request):
-    """Allocate ids for incomplete keys.
+    """Allocate IDs for incomplete keys.
 
     Args:
       request: AllocateIdsRequest proto message.
@@ -170,6 +189,22 @@ class Datastore(object):
     """
     return self._call_method('allocateIds', request,
                              datastore_pb2.AllocateIdsResponse)
+
+  def reserve_ids(self, request):
+    """Reserve the supplied IDs to prevent them from being auto-allocated.
+
+    Args:
+      request: ReserveIdsRequest proto message.
+
+    Returns:
+      ReserveIdsResponse proto message.
+
+    Raises:
+      RPCError: The underlying RPC call failed with an HTTP error.
+          (See: .response attribute)
+    """
+    return self._call_method('reserveIds', request,
+                             datastore_pb2.ReserveIdsResponse)
 
   def _call_method(self, method, req, resp_class):
     """_call_method call the given RPC method over HTTP.
