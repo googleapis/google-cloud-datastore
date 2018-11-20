@@ -15,14 +15,13 @@
 #
 """googledatastore helper test suite."""
 
-
+__author__ = 'proppy@google.com (Johan Euphrosine)'
 
 import collections
 import copy
 import datetime
 import os
 import unittest
-
 
 import mox
 import pytz

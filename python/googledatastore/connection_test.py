@@ -15,12 +15,11 @@
 #
 """googledatastore connection test suite."""
 
-
+__author__ = 'proppy@google.com (Johan Euphrosine)'
 
 import os
 import threading
 import unittest
-
 
 import httplib2
 import mox
@@ -45,19 +44,12 @@ class DatastoreTest(unittest.TestCase):
 
   def setUp(self):
     self.mox = mox.Mox()
-    self.http = httplib2.Http()
-    self.mox.StubOutWithMock(self.http, 'request')
-    self.setup_connection(
+    self.conn = datastore.Datastore(
         project_endpoint='https://example.com/datastore/v1/projects/foo')
 
   def tearDown(self):
     self.mox.UnsetStubs()
     self.mox.ResetAll()
-
-  def setup_connection(self, project_id=None, project_endpoint=None):
-    self.conn = datastore.Datastore(project_id=project_id,
-                                    project_endpoint=project_endpoint,
-                                    http_factory=lambda: self.http)
 
   def makeLookupRequest(self):
     request = datastore.LookupRequest()
@@ -83,7 +75,8 @@ class DatastoreTest(unittest.TestCase):
     }
 
   def expectRequest(self, *args, **kwargs):
-    return self.http.request(*args, **kwargs)
+    self.mox.StubOutWithMock(self.conn._http, 'request')
+    return self.conn._http.request(*args, **kwargs)
 
   def testProjectIdRequired(self):
     self.assertRaises(TypeError, datastore.Datastore, None)
@@ -321,29 +314,8 @@ class DatastoreTest(unittest.TestCase):
     self.assertEqual(proto_response, resp)
     self.mox.VerifyAll()
 
-  def testReserveIds(self):
-    request = datastore.ReserveIdsRequest()
-    payload = request.SerializeToString()
-    proto_response = datastore.ReserveIdsResponse()
-    response = httplib2.Response({
-        'status': 200,
-        'content-type': 'application/x-protobuf',
-    })
-
-    self.expectRequest(
-        'https://example.com/datastore/v1/projects/foo:reserveIds',
-        method='POST',
-        body=payload,
-        headers=self.makeExpectedHeaders(payload)).AndReturn(
-            (response, proto_response.SerializeToString()))
-    self.mox.ReplayAll()
-
-    resp = self.conn.reserve_ids(request)
-    self.assertEqual(proto_response, resp)
-    self.mox.VerifyAll()
-
   def testDefaultBaseUrl(self):
-    self.setup_connection('foo')
+    self.conn = datastore.Datastore(project_id='foo')
     request = self.makeLookupRequest()
     payload = request.SerializeToString()
     proto_response = self.makeLookupResponse()
@@ -363,25 +335,6 @@ class DatastoreTest(unittest.TestCase):
     resp = self.conn.lookup(request)
     self.assertEqual(proto_response, resp)
     self.mox.VerifyAll()
-
-  def testThreadSafeHttp(self):
-    other_thread_http = []
-    lock = threading.Lock()
-    lock2 = threading.Lock()
-    lock.acquire()
-    lock2.acquire()
-    conn = datastore.get_default_connection()
-    http = conn._http
-
-    def target():
-      other_thread_http.append(conn._http)
-      lock.release()  # Notify that we have grabbed the http object.
-
-    other_thread = threading.Thread(target=target)
-    # Start and wait for thread to grab the http object
-    other_thread.start()
-    lock.acquire()
-    self.assertIsNot(other_thread_http[0], http)
 
   def testSetOptions(self):
     other_thread_conn = []
