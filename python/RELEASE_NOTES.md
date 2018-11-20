@@ -1,5 +1,9 @@
 # Python Client
 
+## 7.0.2
+
+    - Updated httplib2 constraint for Beam.
+
 ## 7.0.1
 
     - Better error handling.
