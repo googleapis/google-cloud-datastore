@@ -1,9 +1,5 @@
 # Python Client
 
-## 7.1.0
-
-    - Support for ID reservation.
-
 ## 7.0.1
 
     - Better error handling.

@@ -23,7 +23,7 @@ from . import connection
 from .connection import *
 # Import the Datastore protos. These are listed separately to avoid importing
 # the Datastore service, which conflicts with our Datastore class.
-from google.datastore.v1.datastore_pb2 import (
+from google.cloud.proto.datastore.v1.datastore_pb2 import (
     LookupRequest,
     LookupResponse,
     RunQueryRequest,
@@ -36,13 +36,11 @@ from google.datastore.v1.datastore_pb2 import (
     RollbackResponse,
     AllocateIdsRequest,
     AllocateIdsResponse,
-    ReserveIdsRequest,
-    ReserveIdsResponse,
     Mutation,
     MutationResult,
     ReadOptions)
-from google.datastore.v1.entity_pb2 import *
-from google.datastore.v1.query_pb2 import *
+from google.cloud.proto.datastore.v1.entity_pb2 import *
+from google.cloud.proto.datastore.v1.query_pb2 import *
 
 from google.protobuf.timestamp_pb2 import Timestamp
 from google.protobuf.struct_pb2 import NULL_VALUE
@@ -50,8 +48,8 @@ from google.rpc.status_pb2 import Status
 from google.rpc import code_pb2
 from google.type.latlng_pb2 import LatLng
 
-__version__ = '7.1.0'
-VERSION = (7, 1, 0, '~')
+__version__ = '7.0.1'
+VERSION = (7, 0, 1, '~')
 
 _conn_holder = {}  # thread id -> thread-local connection.
 _options = {}  # Global options.
@@ -130,8 +128,3 @@ def rollback(request):
 def allocate_ids(request):
   """See connection.Datastore.allocate_ids."""
   return get_default_connection().allocate_ids(request)
-
-
-def reserve_ids(request):
-  """See connection.Datastore.reserve_ids."""
-  return get_default_connection().reserve_ids(request)
