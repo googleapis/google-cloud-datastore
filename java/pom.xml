@@ -20,7 +20,7 @@
 
   <groupId>com.google.cloud.datastore</groupId>
   <artifactId>datastore-v1-proto-client-parent</artifactId>
-  <version>1.6.0</version>
+  <version>1.6.1</version>
 
   <name>${project.groupId}:${project.artifactId}</name>
   <url>https://cloud.google.com/datastore/</url>
@@ -69,7 +69,7 @@
       <dependency>
         <groupId>com.google.http-client</groupId>
         <artifactId>google-http-client</artifactId>
-        <version>1.23.0</version>
+        <version>1.26.0</version>
         <exclusions>
           <exclusion>
             <artifactId>guava-jdk5</artifactId>
@@ -81,43 +81,43 @@
       <dependency>
         <groupId>com.google.http-client</groupId>
         <artifactId>google-http-client-protobuf</artifactId>
-        <version>1.20.0</version>
+        <version>1.26.0</version>
       </dependency>
 
       <dependency>
         <groupId>com.google.http-client</groupId>
         <artifactId>google-http-client-jackson</artifactId>
-        <version>1.20.0</version>
+        <version>1.26.0</version>
       </dependency>
 
       <dependency>
         <groupId>com.google.oauth-client</groupId>
         <artifactId>google-oauth-client</artifactId>
-        <version>1.20.0</version>
+        <version>1.26.0</version>
       </dependency>
 
       <dependency>
         <groupId>com.google.api-client</groupId>
         <artifactId>google-api-client</artifactId>
-        <version>1.20.0</version>
+        <version>1.26.0</version>
       </dependency>
 
       <dependency>
         <groupId>com.google.guava</groupId>
         <artifactId>guava</artifactId>
-        <version>18.0</version>
+        <version>20.0</version>
       </dependency>
 
       <dependency>
         <groupId>junit</groupId>
         <artifactId>junit</artifactId>
-        <version>4.11</version>
+        <version>4.12</version>
       </dependency>
 
       <dependency>
         <groupId>com.google.truth</groupId>
         <artifactId>truth</artifactId>
-        <version>0.27</version>
+        <version>0.42</version>
       </dependency>
     </dependencies>
   </dependencyManagement>

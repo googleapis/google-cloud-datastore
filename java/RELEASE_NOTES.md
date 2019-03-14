@@ -1,5 +1,9 @@
 # Java Client
 
+## v1-1.6.1
+
+  - Version bumps for dependencies.
+
 ## v1-1.6.0
 
   - Switch to proto-google-cloud-datastore-v1. The `datastore-v1-protos` dependency is *deprecated* and will not be updated henceforth.
