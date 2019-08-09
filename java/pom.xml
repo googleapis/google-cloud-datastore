@@ -56,6 +56,7 @@
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <google.client.version>1.29.2</google.client.version>
   </properties>
 
   <dependencyManagement>
@@ -69,7 +70,7 @@
       <dependency>
         <groupId>com.google.http-client</groupId>
         <artifactId>google-http-client</artifactId>
-        <version>1.28.0</version>
+        <version>${google.client.version}</version>
         <exclusions>
           <exclusion>
             <artifactId>guava-jdk5</artifactId>
@@ -81,25 +82,25 @@
       <dependency>
         <groupId>com.google.http-client</groupId>
         <artifactId>google-http-client-protobuf</artifactId>
-        <version>1.28.0</version>
+        <version>${google.client.version}</version>
       </dependency>
 
       <dependency>
         <groupId>com.google.http-client</groupId>
         <artifactId>google-http-client-jackson</artifactId>
-        <version>1.28.0</version>
+        <version>${google.client.version}</version>
       </dependency>
 
       <dependency>
         <groupId>com.google.oauth-client</groupId>
         <artifactId>google-oauth-client</artifactId>
-        <version>1.28.0</version>
+        <version>${google.client.version}</version>
       </dependency>
 
       <dependency>
         <groupId>com.google.api-client</groupId>
         <artifactId>google-api-client</artifactId>
-        <version>1.28.0</version>
+        <version>${google.client.version}</version>
       </dependency>
 
       <dependency>
