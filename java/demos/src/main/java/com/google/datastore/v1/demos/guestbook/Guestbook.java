@@ -131,11 +131,11 @@ public class Guestbook {
     query.addOrder(makeOrder(DATE_PROPERTY, PropertyOrder.Direction.DESCENDING));
 
     List<Entity> greetings = runQuery(query.build());
-    if (greetings.size() == 0) {
+    if (greetings.isEmpty()) {
       System.out.println("no greetings in " + guestbookName);
     }
     for (Entity greeting : greetings) {
-      Map<String, Value> propertyMap = greeting.getProperties();
+      Map<String, Value> propertyMap = greeting.getPropertiesMap();
       System.out.println(
           DatastoreHelper.toDate(propertyMap.get(DATE_PROPERTY)) + ": " +
           DatastoreHelper.getString(propertyMap.get(USER_PROPERTY)) + " says " +
