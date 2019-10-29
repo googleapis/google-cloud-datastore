@@ -94,11 +94,11 @@ public class Adams {
         entityBuilder.setKey(key);
         // Add two entity properties:
         // - a UTF-8 string: `question`
-	entityBuilder.getMutableProperties().put(
+	entityBuilder.putProperties(
 	    "question",
 	    Value.newBuilder().setStringValue("Meaning of Life?").build());
         // - a 64bit integer: `answer`
-	entityBuilder.getMutableProperties().put(
+	entityBuilder.putProperties(
 	    "answer",
 	    Value.newBuilder().setIntegerValue(42).build());
         // Build the entity.
