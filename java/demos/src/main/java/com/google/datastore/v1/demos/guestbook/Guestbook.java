@@ -113,9 +113,9 @@ public class Guestbook {
       throws DatastoreException {
     Entity.Builder greeting = Entity.newBuilder();
     greeting.setKey(makeKey(GUESTBOOK_KIND, guestbookName, GREETING_KIND));
-    greeting.getMutableProperties().put(USER_PROPERTY, makeValue(user).build());
-    greeting.getMutableProperties().put(MESSAGE_PROPERTY, makeValue(message).build());
-    greeting.getMutableProperties().put(DATE_PROPERTY, makeValue(new Date()).build());
+    greeting.putProperties(USER_PROPERTY, makeValue(user).build());
+    greeting.putProperties(MESSAGE_PROPERTY, makeValue(message).build());
+    greeting.putProperties(DATE_PROPERTY, makeValue(new Date()).build());
     Key greetingKey = insert(greeting.build());
     System.out.println("greeting key is: " + greetingKey);
   }
@@ -131,11 +131,11 @@ public class Guestbook {
     query.addOrder(makeOrder(DATE_PROPERTY, PropertyOrder.Direction.DESCENDING));
 
     List<Entity> greetings = runQuery(query.build());
-    if (greetings.size() == 0) {
+    if (greetings.isEmpty()) {
       System.out.println("no greetings in " + guestbookName);
     }
     for (Entity greeting : greetings) {
-      Map<String, Value> propertyMap = greeting.getProperties();
+      Map<String, Value> propertyMap = greeting.getPropertiesMap();
       System.out.println(
           DatastoreHelper.toDate(propertyMap.get(DATE_PROPERTY)) + ": " +
           DatastoreHelper.getString(propertyMap.get(USER_PROPERTY)) + " says " +
@@ -152,12 +152,12 @@ public class Guestbook {
    * @throws DatastoreException on error
    */
   private Key insert(Entity entity) throws DatastoreException {
-    CommitRequest req = CommitRequest.newBuilder()
+    CommitRequest request = CommitRequest.newBuilder()
 	.addMutations(Mutation.newBuilder()
 	    .setInsert(entity))
         .setMode(CommitRequest.Mode.NON_TRANSACTIONAL)
 	.build();
-    return datastore.commit(req).getMutationResults(0).getKey();
+    return datastore.commit(request).getMutationResults(0).getKey();
   }
 
   /**

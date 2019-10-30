@@ -18,7 +18,6 @@ package com.google.datastore.v1.demos.trivial;
 import com.google.datastore.v1.BeginTransactionRequest;
 import com.google.datastore.v1.BeginTransactionResponse;
 import com.google.datastore.v1.CommitRequest;
-import com.google.datastore.v1.CommitResponse;
 import com.google.datastore.v1.Entity;
 import com.google.datastore.v1.Key;
 import com.google.datastore.v1.LookupRequest;
@@ -94,12 +93,12 @@ public class Adams {
         // Set the entity key.
         entityBuilder.setKey(key);
         // Add two entity properties:
-        // - a utf-8 string: `question`
-	entityBuilder.getMutableProperties().put(
+        // - a UTF-8 string: `question`
+	entityBuilder.putProperties(
 	    "question",
 	    Value.newBuilder().setStringValue("Meaning of Life?").build());
         // - a 64bit integer: `answer`
-	entityBuilder.getMutableProperties().put(
+	entityBuilder.putProperties(
 	    "answer",
 	    Value.newBuilder().setIntegerValue(42).build());
         // Build the entity.
@@ -112,9 +111,9 @@ public class Adams {
       // the transaction.
       datastore.commit(creq.build());
       // Get `question` property value.
-      String question = entity.getProperties().get("question").getStringValue();
+      String question = entity.getPropertiesMap().get("question").getStringValue();
       // Get `answer` property value.
-      Long answer = entity.getProperties().get("answer").getIntegerValue();
+      Long answer = entity.getPropertiesMap().get("answer").getIntegerValue();
       System.out.println(question);
       String result = System.console().readLine("> ");
       if (result.equals(answer.toString())) {
