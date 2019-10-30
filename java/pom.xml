@@ -68,20 +68,10 @@
 
       <dependency>
         <groupId>com.google.http-client</groupId>
-        <artifactId>google-http-client</artifactId>
+        <artifactId>google-http-client-bom</artifactId>
         <version>1.32.1</version>
-      </dependency>
-
-      <dependency>
-        <groupId>com.google.http-client</groupId>
-        <artifactId>google-http-client-protobuf</artifactId>
-        <version>1.32.1</version>
-      </dependency>
-
-      <dependency>
-        <groupId>com.google.http-client</groupId>
-        <artifactId>google-http-client-jackson2</artifactId>
-        <version>1.32.1</version>
+        <type>pom</type>
+        <scope>import</scope>
       </dependency>
 
       <dependency>
