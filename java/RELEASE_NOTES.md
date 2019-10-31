@@ -1,5 +1,9 @@
 # Java Client
 
+## v1-1.6.2
+
+  - Version bumps for dependencies.
+
 ## v1-1.6.1
 
   - Version bumps for dependencies.
