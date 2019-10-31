@@ -16,7 +16,6 @@
 package com.google.datastore.v1.client;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotEquals;
 
 import com.google.api.client.http.HttpTransport;
 import com.google.api.client.http.LowLevelHttpRequest;
@@ -118,23 +117,10 @@ public class RemoteRpcTest {
   }
 
   @Test
-  public void testGzipHack_NonGzip() throws Exception {
-    BeginTransactionResponse response = newBeginTransactionResp();
+  public void testGzip() throws IOException, DatastoreException {
+    BeginTransactionResponse response = newBeginTransactionResponse();
     InjectedTestValues injectedTestValues =
-        new InjectedTestValues(response.toByteArray(), new byte[0], false);
-    RemoteRpc rpc = newRemoteRpc(injectedTestValues);
-
-    InputStream is = rpc.call("beginTransaction", BeginTransactionResponse.getDefaultInstance());
-    BeginTransactionResponse parsedResponse = BeginTransactionResponse.parseFrom(is);
-    is.close();
-
-    assertEquals(response, parsedResponse);
-  }
-
-  @Test
-  public void testGzipHack_Gzip() throws Exception {
-    BeginTransactionResponse response = newBeginTransactionResp();
-    InjectedTestValues injectedTestValues = new InjectedTestValues(gzip(response), new byte[1], true);
+        new InjectedTestValues(gzip(response), new byte[1], true);
     RemoteRpc rpc = newRemoteRpc(injectedTestValues);
 
     InputStream is = rpc.call("beginTransaction", BeginTransactionResponse.getDefaultInstance());
@@ -146,26 +132,7 @@ public class RemoteRpcTest {
     assertEquals(-1, injectedTestValues.inputStream.read());
   }
 
-  @Test
-  public void testGzipHack_GzipTooManyExtraBytes() throws Exception {
-    BeginTransactionResponse response = newBeginTransactionResp();
-    // NOTE(eddavisson): We might expect 101 extra bytes to be enough that the underlying input
-    // stream is not exhausted, but this is not the case (likely due to a buffer somewhere). 1000
-    // extra bytes seems to be enough.
-    InjectedTestValues injectedTestValues =
-        new InjectedTestValues(gzip(response), new byte[1000], true);
-    RemoteRpc rpc = newRemoteRpc(injectedTestValues);
-
-    InputStream is = rpc.call("beginTransaction", BeginTransactionResponse.getDefaultInstance());
-    BeginTransactionResponse parsedResponse = BeginTransactionResponse.parseFrom(is);
-    is.close();
-
-    assertEquals(response, parsedResponse);
-    // Check that the underlying stream is _not_ exhausted.
-    assertNotEquals(-1, injectedTestValues.inputStream.read());
-  }
-
-  private static BeginTransactionResponse newBeginTransactionResp() {
+  private static BeginTransactionResponse newBeginTransactionResponse() {
     return BeginTransactionResponse.newBuilder()
         .setTransaction(ByteString.copyFromUtf8("blah-blah-blah"))
         .build();
@@ -178,10 +145,10 @@ public class RemoteRpcTest {
         "https://www.example.com/v1/projects/p");
   }
 
-  private byte[] gzip(BeginTransactionResponse resp) throws IOException {
+  private byte[] gzip(BeginTransactionResponse response) throws IOException {
     ByteArrayOutputStream bytesOut = new ByteArrayOutputStream();
     try (GZIPOutputStream gzipOut = new GZIPOutputStream(bytesOut)) {
-      resp.writeTo(gzipOut);
+      response.writeTo(gzipOut);
     }
     return bytesOut.toByteArray();
   }
