@@ -83,9 +83,10 @@ $ mvn clean deploy
 
 1. Log into the Sonatype dashboard at https://oss.sonatype.org
 2. Find and select the staged repository that was just created. It should be
-   marked as "Open"
-3. Click the "Close" button
-4. Wait until the repository is in the "Closed" state
-5. Select the repository again and click "Release"
+   marked with status "open"
+3. Click the "Close" button and confirm closing the repository
+4. Wait until the repository is in the "closed" state
+5. Select the repository again, click "Release", and confirm releasing the
+   repository
 
 It may take some time for the artifacts to be published and be discoverable.
