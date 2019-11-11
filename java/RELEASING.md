@@ -90,3 +90,13 @@ $ mvn clean deploy
    repository
 
 It may take some time for the artifacts to be published and be discoverable.
+
+## Create a GitHub tag
+
+When creating the git tag, specify the tag as  `java-v1-<version>` (e.g.
+`java-v1-1.6.3`):
+
+```bash
+$ git tag java-v1-<version goes here>
+$ git push --tags
+```
