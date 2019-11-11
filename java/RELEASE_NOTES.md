@@ -1,5 +1,10 @@
 # Java Client
 
+## v1-1.6.3
+
+  - Update google-http-client to 1.33.0
+  - Removes gzip hack which fixes Java 9+ compatibility (fixed upstream in google-http-client)
+
 ## v1-1.6.2
 
   - Version bumps for dependencies.
@@ -60,7 +65,7 @@
   - Allow IP address to be used in local host option.
 
 ## v1beta3-1.0.0-beta.1
- 
+
   - Use try-with-resource to close RPC streams.
   - Removed unnecessary logging information.
 
