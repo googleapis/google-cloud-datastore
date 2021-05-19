@@ -9,7 +9,6 @@ install:
 - pip install --upgrade tox
 
 env:
-- TEST_DIR=java TEST_CMD='mvn test'
 - TEST_DIR=python TEST_CMD='tox -e py27'
 
 script:
