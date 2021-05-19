@@ -1,0 +1,1 @@
+The datastore-v1-proto-client client code has been moved to https://github.com/googleapis/java-datastore/tree/master/datastore-v1-proto-client
