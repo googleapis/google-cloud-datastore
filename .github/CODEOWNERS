@@ -4,5 +4,5 @@
 # For syntax help see:
 # https://help.github.com/en/github/creating-cloning-and-archiving-repositories/about-code-owners#codeowners-syntax
 
-# The @googleapis/firestore-dpe is the default owner for changes in this repo
-*                       @googleapis/firestore-dpe
+# The @googleapis/firestore-dpe and @googleapis/yoshi-python are the default owners for changes in this repo
+*                       @googleapis/firestore-dpe @googleapis/yoshi-python
