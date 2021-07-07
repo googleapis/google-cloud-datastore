@@ -31,6 +31,8 @@ setup(
         'httplib2>=0.9.1,<=0.12.0',
         'oauth2client>=2.0.1,<4.0.0',
         'proto-google-cloud-datastore-v1>=0.90.0',
+        # rsa version 4.5 is the last version that is compatible with Python 2.7
+        "rsa==4.5;python_version<'3'",
     ],
     classifiers=[
         'Development Status :: 5 - Production/Stable',
