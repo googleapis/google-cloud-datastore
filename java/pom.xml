@@ -63,7 +63,7 @@
       <dependency>
         <groupId>com.google.api.grpc</groupId>
         <artifactId>proto-google-cloud-datastore-v1</artifactId>
-        <version>0.1.27</version>
+        <version>0.92.2</version>
       </dependency>
 
       <dependency>
