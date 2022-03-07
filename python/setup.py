@@ -28,7 +28,7 @@ setup(
     packages=['googledatastore'],
     package_dir={'googledatastore': 'googledatastore'},
     install_requires=[
-        'httplib2>=0.9.1,<=0.12.0',
+        'httplib2>=0.20.4,<=0.20.4',
         'oauth2client>=2.0.1,<4.0.0',
         'proto-google-cloud-datastore-v1>=0.90.0',
     ],
