@@ -29,7 +29,7 @@ setup(
     package_dir={'googledatastore': 'googledatastore'},
     install_requires=[
         'httplib2>=0.9.1,<=0.12.0',
-        'oauth2client>=2.0.1,<4.0.0',
+        'oauth2client>=4.1.3,<4.2.0',
         'proto-google-cloud-datastore-v1>=0.90.0',
     ],
     classifiers=[
